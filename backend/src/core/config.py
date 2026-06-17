@@ -5,7 +5,14 @@ Loads environment variables and provides centralized settings management.
 from pydantic_settings import BaseSettings
 from pydantic import model_validator, ConfigDict
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
+
+# Absolute path to backend/.env (config.py is at backend/src/core/config.py).
+# Resolving by file location rather than cwd means the .env is found no matter
+# where the process is launched from (FastAPI, the test runner, Streamlit via
+# the preview tool, etc.).
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
@@ -24,10 +31,21 @@ class Settings(BaseSettings):
     
     # Security Configuration
     SECRET_KEY: str
-    
+
+    # Gemini / AI Configuration
+    # Used by src/services/summarisation.py to call gemini-2.5-flash.
+    # Loaded from backend/.env; required for any grievance summarisation work.
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_PRIMARY_MODEL: str = "gemini-2.5-flash"
+    GEMINI_FALLBACK_MODEL: str = "gemini-2.5-flash-lite"
+    # Service tier for Gemini requests: "priority" | "standard" | "flex".
+    # Grievances are time-sensitive, so we default to the priority tier for the
+    # fastest, most reliable latency (requires a paid/billed project).
+    GEMINI_SERVICE_TIER: str = "priority"
+
     # QR Code Configuration
     QR_EXPIRY_SECONDS: int = 300  # 5 minutes default
-    
+
     # Session Configuration
     SESSION_EXPIRY_SECONDS: int = 1800  # 30 minutes default
     
@@ -40,7 +58,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     model_config = ConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         case_sensitive=True,
         extra="ignore"  # Ignore extra fields like APP_ENV
     )
