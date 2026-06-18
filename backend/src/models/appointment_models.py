@@ -235,7 +235,13 @@ class Appointment(Base):
     attachments = relationship(
         "AppointmentAttachment",
         back_populates="appointment",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+    )
+    grievance_summary = relationship(
+        "GrievanceSummaryRecord",
+        back_populates="appointment",
+        cascade="all, delete-orphan",
+        order_by="GrievanceSummaryRecord.created_at.desc()",
     )
     
     __table_args__ = (
