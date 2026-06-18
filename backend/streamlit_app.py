@@ -172,16 +172,55 @@ with right:
             unsafe_allow_html=True,
         )
 
-# ── Submit ────────────────────────────────────────────────────────────────────
+# ── Input priority logic ──────────────────────────────────────────────────────
+# Attachment (image / PDF / doc) is the priority source.
+# If an attachment is present  → send ONLY the attachment to Gemini (text ignored).
+# If no attachment             → send ONLY the grievance text to Gemini.
+# The button is disabled when neither input is provided.
 
+has_attachment = attachment_bytes is not None
+has_text = bool(grievance_text.strip())
+
+# What will actually be sent
+if has_attachment:
+    _send_attachment_bytes = attachment_bytes
+    _send_attachment_mime  = attachment_mime
+    _send_attachment_name  = attachment_name
+    _send_text             = ""          # attachment is sole source — text ignored
+    _input_mode            = "attachment"
+else:
+    _send_attachment_bytes = None
+    _send_attachment_mime  = None
+    _send_attachment_name  = None
+    _send_text             = grievance_text
+    _input_mode            = "text"
+
+# Show a clear banner so the tester knows which path will be used
 st.divider()
+if has_attachment:
+    st.info(
+        f"📎 **Attachment mode** — Gemini will read the uploaded file "
+        f"(`{attachment_name}`) as the sole input. The description text will be ignored.",
+        icon="📎",
+    )
+elif has_text:
+    st.info(
+        "📝 **Text mode** — no attachment uploaded; Gemini will use the description text.",
+        icon="📝",
+    )
+else:
+    st.warning(
+        "⚠️ Please upload an attachment **or** enter grievance text before summarising.",
+        icon="⚠️",
+    )
+
 col_run, col_clear, _ = st.columns([1.5, 1, 4])
 with col_run:
     run = st.button(
         "✨ Summarise grievance",
         type="primary",
         use_container_width=True,
-        disabled=not grievance_text.strip(),
+        disabled=not (has_attachment or has_text),
     )
 with col_clear:
     if st.button("Reset result", use_container_width=True):
@@ -190,25 +229,32 @@ with col_clear:
         st.session_state.pop("last_inputs", None)
 
 if run:
-    with st.spinner("Calling Gemini…"):
+    mode_label = "attachment" if _input_mode == "attachment" else "text"
+    with st.spinner(f"Calling Gemini via {mode_label} input…"):
         t0 = time.monotonic()
         try:
             summary = svc.summarise(
                 citizen_name=citizen_name.strip() or "Unknown",
                 constituency=constituency.strip() or "Unknown",
-                grievance_text=grievance_text,
-                attachment_bytes=attachment_bytes,
-                attachment_mime=attachment_mime,
-                attachment_filename=attachment_name,
+                grievance_text=_send_text,
+                attachment_bytes=_send_attachment_bytes,
+                attachment_mime=_send_attachment_mime,
+                attachment_filename=_send_attachment_name,
             )
             elapsed = time.monotonic() - t0
             st.session_state["last_summary"] = summary
             st.session_state["last_elapsed"] = elapsed
             st.session_state["last_inputs"] = {
-                "had_text": bool(grievance_text.strip()),
-                "had_image": attachment_mime is not None
+                "input_mode": _input_mode,
+                "had_text": _input_mode == "text" and has_text,
+                "had_image": _input_mode == "attachment"
+                and attachment_mime is not None
                 and attachment_mime.startswith("image/"),
-                "had_pdf": attachment_mime == "application/pdf",
+                "had_pdf": _input_mode == "attachment"
+                and attachment_mime == "application/pdf",
+                "had_doc": _input_mode == "attachment"
+                and attachment_mime not in (None, "application/pdf")
+                and not (attachment_mime or "").startswith("image/"),
             }
         except Exception as exc:
             st.session_state.pop("last_summary", None)
@@ -371,23 +417,18 @@ if summary is not None:
         f"{len(summary.headline)} chars",
     ))
 
-    # 8. If an image was uploaded, attachment_notes should be present
-    if inputs.get("had_image"):
+    # 8. If attachment was the input source, attachment_notes must be populated
+    if inputs.get("had_image") or inputs.get("had_pdf") or inputs.get("had_doc"):
+        att_type = "image" if inputs.get("had_image") else ("PDF" if inputs.get("had_pdf") else "document")
         checks.append((
-            "attachment_notes populated (image, English)",
+            f"attachment_notes populated ({att_type}, English)",
             bool(summary.attachment_notes and summary.attachment_notes.strip()),
-            summary.attachment_notes or "missing — model ignored the image?",
+            summary.attachment_notes or f"missing — model ignored the {att_type}?",
         ))
         checks.append((
-            "attachment_notes_ta populated (image, Tamil)",
+            f"attachment_notes_ta populated ({att_type}, Tamil)",
             bool(summary.attachment_notes_ta and summary.attachment_notes_ta.strip()),
-            (summary.attachment_notes_ta or "missing — model ignored the image?")[:80],
-        ))
-    elif inputs.get("had_pdf"):
-        checks.append((
-            "attachment_notes populated (PDF, English)",
-            bool(summary.attachment_notes and summary.attachment_notes.strip()),
-            summary.attachment_notes or "missing — model ignored the PDF?",
+            (summary.attachment_notes_ta or f"missing — model ignored the {att_type}?")[:80],
         ))
 
     # Render the validation rows
