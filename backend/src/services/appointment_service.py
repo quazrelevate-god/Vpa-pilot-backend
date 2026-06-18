@@ -5,6 +5,7 @@ Implements stateless identity gatekeeper pattern with brute-force protection.
 import hashlib
 import secrets
 import os
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -565,9 +566,21 @@ class AppointmentService:
             if session:
                 session.is_used = True
             
-            # Step 12: Commit transaction
+            # Step 12: Commit transaction — citizen gets token NOW
             await db.commit()
-            
+
+            # Step 13: Trigger Gemini summarisation (non-blocking enrichment).
+            # This runs AFTER commit so the citizen's appointment is guaranteed
+            # saved regardless of Gemini availability.
+            await self._trigger_summarisation(
+                appointment_id=appointment.id,
+                citizen_name=name,
+                constituency=constituency,
+                description=description,
+                attachments_created=attachments_created,
+                db=db,
+            )
+
             return {
                 "appointment_id": appointment.id,
                 "token_assigned": token_assigned,
@@ -576,7 +589,7 @@ class AppointmentService:
                 "status": "SCHEDULED",
                 "message": f"Appointment created successfully. Your token number is {token_assigned}."
             }
-            
+
         except HTTPException:
             await db.rollback()
             raise
@@ -586,6 +599,125 @@ class AppointmentService:
                 status_code=500,
                 detail=f"Failed to process submission: {str(e)}"
             )
+
+    async def _trigger_summarisation(
+        self,
+        appointment_id: int,
+        citizen_name: str,
+        constituency: str,
+        description: str,
+        attachments_created: List[AppointmentAttachment],
+        db: AsyncSession,
+    ) -> None:
+        """
+        Call Gemini summarisation after the appointment transaction is committed.
+
+        Priority:
+            IMAGE attachment > DOCUMENT (PDF/Word) attachment > description text.
+
+        If both image and text exist, image wins (text is ignored) — same logic
+        as the Streamlit tester.  Audio/video files are skipped; they are saved
+        to disk as evidence but not sent to Gemini.
+
+        Always non-blocking: any failure is logged as a warning. The appointment
+        record is never rolled back due to a Gemini error.
+
+        After a successful Gemini call:
+            - Saves a GrievanceSummaryRecord row (bilingual, linked to appointment).
+            - Updates appointments.grievance_category with the Gemini-returned value.
+        """
+        try:
+            # Lazy imports to avoid circular dependencies at module load time.
+            from src.services.summarisation import GrievanceSummarisationService
+            from src.models.grievance_summary_record import GrievanceSummaryRecord
+
+            svc = GrievanceSummarisationService.from_settings()
+
+            # ── Decide Gemini input: attachment priority ────────────────────
+            attachment_bytes: Optional[bytes] = None
+            attachment_mime: Optional[str] = None
+            attachment_filename: Optional[str] = None
+            grievance_text: str = ""
+
+            # Priority 1: first IMAGE attachment
+            for att in attachments_created:
+                if att.attachment_type == "IMAGE":
+                    try:
+                        with open(att.storage_url, "rb") as fh:
+                            attachment_bytes = fh.read()
+                        attachment_mime = att.mime_type
+                        attachment_filename = Path(att.storage_url).name
+                    except OSError as read_err:
+                        print(f"[GEMINI WARN] appointment_id={appointment_id}: "
+                              f"Could not read image file {att.storage_url}: {read_err}")
+                    break
+
+            # Priority 2: first DOCUMENT (PDF / Word) if no image found
+            if attachment_bytes is None:
+                for att in attachments_created:
+                    if att.attachment_type == "DOCUMENT":
+                        try:
+                            with open(att.storage_url, "rb") as fh:
+                                attachment_bytes = fh.read()
+                            attachment_mime = att.mime_type
+                            attachment_filename = Path(att.storage_url).name
+                        except OSError as read_err:
+                            print(f"[GEMINI WARN] appointment_id={appointment_id}: "
+                                  f"Could not read document file {att.storage_url}: {read_err}")
+                        break
+
+            # Priority 3: description text (only if no usable attachment)
+            if attachment_bytes is None:
+                grievance_text = description or ""
+                if not grievance_text.strip():
+                    print(f"[GEMINI SKIP] appointment_id={appointment_id}: "
+                          "No text and no usable image/document — skipping summarisation.")
+                    return
+
+            # ── Call Gemini ─────────────────────────────────────────────────
+            t0 = time.monotonic()
+            summary = svc.summarise(
+                citizen_name=citizen_name,
+                constituency=constituency,
+                grievance_text=grievance_text,
+                attachment_bytes=attachment_bytes,
+                attachment_mime=attachment_mime,
+                attachment_filename=attachment_filename,
+            )
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+            # ── Persist summary record ───────────────────────────────────────
+            record = GrievanceSummaryRecord.from_gemini_response(
+                appointment_id=appointment_id,
+                summary=summary,
+                gemini_model_used=svc._model_name,
+                gemini_latency_ms=elapsed_ms,
+            )
+            db.add(record)
+
+            # ── Update grievance_category on the appointment row ─────────────
+            appt_stmt = select(Appointment).where(Appointment.id == appointment_id)
+            appt_result = await db.execute(appt_stmt)
+            appt = appt_result.scalar_one_or_none()
+            if appt:
+                appt.grievance_category = summary.category.value
+
+            await db.commit()
+
+            input_mode = "attachment" if attachment_bytes else "text"
+            print(
+                f"[GEMINI OK] appointment_id={appointment_id} | input={input_mode} | "
+                f"urgency={summary.urgency.value} | category={summary.category.value} | "
+                f"latency={elapsed_ms}ms"
+            )
+
+        except Exception as exc:
+            print(f"[GEMINI WARN] appointment_id={appointment_id}: "
+                  f"Summarisation failed (appointment unaffected): {exc}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
 
 # Singleton instance
