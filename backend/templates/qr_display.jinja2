@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code - Tamil Nadu Government</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', 'Mukta Malar', sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 1);
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .content-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr 300px;
+            gap: 2rem;
+            align-items: center;
+            margin-top: 2rem;
+        }
+
+        .header {
+            margin-bottom: 2rem;
+        }
+
+        .title-en {
+            color: #1f2937;
+            font-size: 1.75rem;
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+        }
+
+        .title-ta {
+            color: #1f2937;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .subtitle-en {
+            color: #6b7280;
+            font-size: 0.95rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .subtitle-ta {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+
+        .qr-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #qrcode {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 350px;
+        }
+
+        .timer-container {
+            background: rgba(59, 130, 246, 0.1);
+            border: 2px solid #3b82f6;
+            padding: 2rem;
+            border-radius: 16px;
+            text-align: center;
+        }
+
+        .timer-label-en {
+            color: #1e40af;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .timer-label-ta {
+            color: #1e40af;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .timer-display {
+            font-size: 3rem;
+            font-weight: 900;
+            color: #1f2937;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .timer-display.warning {
+            color: #f59e0b;
+        }
+
+        .timer-display.danger {
+            color: #ef4444;
+        }
+
+        .instructions {
+            background: rgba(16, 185, 129, 0.1);
+            border: 2px solid #10b981;
+            padding: 1.5rem;
+            border-radius: 16px;
+            text-align: left;
+        }
+
+        .instructions h3 {
+            color: #065f46;
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .instructions ul {
+            list-style: none;
+            padding: 0;
+            color: #4b5563;
+            font-size: 0.85rem;
+            line-height: 1.8;
+        }
+
+        .instructions li {
+            margin-bottom: 0.75rem;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .instructions li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #10b981;
+            font-weight: bold;
+        }
+
+        .footer-text {
+            color: #6b7280;
+            font-size: 0.85rem;
+            margin-top: 2rem;
+        }
+
+        .loading {
+            color: #6b7280;
+            font-size: 1rem;
+        }
+
+        .refresh-message {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .refresh-message.show {
+            display: block;
+        }
+
+        .refresh-text-en {
+            color: #92400e;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .refresh-text-ta {
+            color: #92400e;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title-en">Scan QR Code</h1>
+            <h1 class="title-ta">QR குறியீட்டை ஸ்கேன் செய்யவும்</h1>
+            <p class="subtitle-en">Scan with your mobile device to access the grievance form</p>
+            <p class="subtitle-ta">புகார் படிவத்தை அணுக உங்கள் மொபைல் சாதனத்தில் ஸ்கேன் செய்யவும்</p>
+        </div>
+
+        <div class="content-grid">
+            <!-- Left: Instructions -->
+            <div class="instructions">
+                <h3>📱 How to use<br>எப்படி பயன்படுத்துவது</h3>
+                <ul>
+                    <li>Open phone camera<br>கேமராவைத் திறக்கவும்</li>
+                    <li>Point at QR code<br>QR குறியீட்டை நோக்கவும்</li>
+                    <li>Tap notification<br>அறிவிப்பைத் தட்டவும்</li>
+                    <li>Fill the form<br>படிவத்தை பூர்த்தி செய்யவும்</li>
+                </ul>
+            </div>
+
+            <!-- Center: QR Code -->
+            <div class="qr-container">
+                <div id="qrcode">
+                    <div class="loading">Generating...</div>
+                </div>
+            </div>
+
+            <!-- Right: Timer -->
+            <div class="timer-container">
+                <div class="timer-label-en">Valid for</div>
+                <div class="timer-label-ta">செல்லுபடியாகும்</div>
+                <div class="timer-display" id="timer">60</div>
+                <div style="color: #6b7280; font-size: 0.85rem; margin-top: 0.5rem;">
+                    seconds<br>விநாடிகள்
+                </div>
+                <div class="refresh-message" id="refreshMessage" style="margin-top: 1rem;">
+                    <div class="refresh-text-en">Refreshing...</div>
+                    <div class="refresh-text-ta">புதுப்பிக்கப்படுகிறது...</div>
+                </div>
+            </div>
+        </div>
+
+        <p class="footer-text">
+            Tamil Nadu Government Grievance Portal | தமிழ்நாடு அரசு குறைதீர்க்கும் போர்ட்டல்
+        </p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script>
+        let qrCodeInstance = null;
+        let countdown = {{ expiry_seconds }};
+        let timerInterval = null;
+        let venueId = '{{ venue_id }}';
+        let currentQrUrl = '{{ qr_url }}';
+        let baseUrl = '{{ qr_url }}'.split('/api/v1/qr/verify')[0]; // Extract base URL from qr_url
+
+        async function generateQRCode(qrUrl = null) {
+            try {
+                let qrDataUrl = qrUrl;
+                
+                // If no QR URL provided, fetch from API
+                if (!qrDataUrl) {
+                    const response = await fetch(`/api/v1/qr/generate?venue_id=${venueId}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to generate QR code');
+                    }
+
+                    const data = await response.json();
+                    // Construct full URL from verification_url using configured base URL
+                    qrDataUrl = `${baseUrl}${data.verification_url}`;
+                    currentQrUrl = qrDataUrl;
+                }
+                
+                // Clear existing QR code
+                const qrContainer = document.getElementById('qrcode');
+                qrContainer.innerHTML = '';
+                
+                // Generate new QR code
+                qrCodeInstance = new QRCode(qrContainer, {
+                    text: qrDataUrl,
+                    width: 350,
+                    height: 350,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+
+                // Reset countdown
+                countdown = {{ expiry_seconds }};
+                updateTimer();
+                
+                // Hide refresh message
+                document.getElementById('refreshMessage').classList.remove('show');
+                
+            } catch (error) {
+                console.error('Error generating QR code:', error);
+                document.getElementById('qrcode').innerHTML = '<div class="loading" style="color: #ef4444;">Error generating QR code. Retrying...</div>';
+                
+                // Retry after 2 seconds
+                setTimeout(() => generateQRCode(), 2000);
+            }
+        }
+
+        function updateTimer() {
+            const timerElement = document.getElementById('timer');
+            timerElement.textContent = countdown;
+            
+            // Change color based on time remaining
+            if (countdown <= 10) {
+                timerElement.classList.add('danger');
+                timerElement.classList.remove('warning');
+            } else if (countdown <= 30) {
+                timerElement.classList.add('warning');
+                timerElement.classList.remove('danger');
+            } else {
+                timerElement.classList.remove('warning', 'danger');
+            }
+        }
+
+        function startCountdown() {
+            timerInterval = setInterval(() => {
+                countdown--;
+                updateTimer();
+                
+                // Show refresh message when 5 seconds left
+                if (countdown === 5) {
+                    document.getElementById('refreshMessage').classList.add('show');
+                }
+                
+                // Refresh QR code when timer reaches 0
+                if (countdown <= 0) {
+                    clearInterval(timerInterval);
+                    generateQRCode();
+                    startCountdown();
+                }
+            }, 1000);
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            // Render QR code immediately with server-provided URL
+            generateQRCode(currentQrUrl);
+            startCountdown();
+        });
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Success - Tamil Nadu Government</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', 'Mukta Malar', sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 1);
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(16, 185, 129, 0.15);
+            border: 2px solid rgba(16, 185, 129, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #10b981;
+            font-size: 2.5rem;
+            margin: 0 auto 1.5rem;
+        }
+
+        h1 {
+            color: #1f2937;
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: #6b7280;
+            font-size: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .token-display {
+            background: rgba(0, 135, 4, 0.85);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 2rem;
+            border-radius: 16px;
+            margin: 2rem 0;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .token-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .token-number {
+            font-size: 3.5rem;
+            font-weight: 900;
+            letter-spacing: 0.05em;
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            text-align: left;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #6b7280;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .info-value {
+            color: #1f2937;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .instructions {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 4px solid #3b82f6;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+            text-align: left;
+        }
+
+        .instructions h3 {
+            color: #1e40af;
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .instructions ul {
+            margin-left: 1.5rem;
+            color: #4b5563;
+            font-size: 0.9rem;
+            line-height: 1.8;
+        }
+
+        .btn {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.85);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            text-decoration: none;
+            margin-top: 1.5rem;
+            font-weight: 700;
+            transition: all 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .btn:hover {
+            background: rgba(37, 99, 235, 0.95);
+        }
+
+        .lang-container {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(0, 0, 0, 0.05);
+            padding: 0.35rem 1rem;
+            border-radius: 50px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+            align-self: flex-start;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .lang-text {
+            color: #1f2937;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .switch-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+
+        .switch-wrapper input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.15);
+            transition: .3s;
+            border-radius: 20px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: rgba(0,135,4,0.3);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(16px);
+        }
+
+        .tamil {
+            display: none;
+        }
+
+        body.tamil-mode .english {
+            display: none;
+        }
+
+        body.tamil-mode .tamil {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="lang-container">
+            <span class="lang-text">EN</span>
+            <label class="switch-wrapper">
+                <input type="checkbox" id="languageToggle" onchange="toggleLanguage()">
+                <span class="slider"></span>
+            </label>
+            <span class="lang-text">தமிழ்</span>
+        </div>
+
+        <div class="success-icon">✓</div>
+        
+        <h1 class="english">Appointment Confirmed!</h1>
+        <h1 class="tamil">சந்திப்பு உறுதி செய்யப்பட்டது!</h1>
+        
+        <p class="subtitle english">Your grievance has been successfully registered</p>
+        <p class="subtitle tamil">உங்கள் புகார் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது</p>
+        
+        <div class="token-display">
+            <div class="token-label english">Your Token Number</div>
+            <div class="token-label tamil">உங்கள் டோக்கன் எண்</div>
+            <div class="token-number" id="token-number">TKN-000</div>
+        </div>
+        
+        <div class="info-card">
+            <div class="info-row">
+                <span class="info-label english">Name</span>
+                <span class="info-label tamil">பெயர்</span>
+                <span class="info-value" id="citizen-name">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label english">Date</span>
+                <span class="info-label tamil">தேதி</span>
+                <span class="info-value" id="appointment-date">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label english">Time</span>
+                <span class="info-label tamil">நேரம்</span>
+                <span class="info-value" id="appointment-time">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label english">Status</span>
+                <span class="info-label tamil">நிலை</span>
+                <span class="info-value">
+                    <span class="english">SCHEDULED</span>
+                    <span class="tamil">திட்டமிடப்பட்டது</span>
+                </span>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h3 class="english">📋 Next Steps</h3>
+            <h3 class="tamil">📋 அடுத்த படிகள்</h3>
+            <ul class="english">
+                <li>Please save your token number <strong id="token-ref-en">TKN-000</strong> for future reference</li>
+                <li>You will be notified via SMS about your appointment details</li>
+                <li>Bring a valid ID proof when visiting the office</li>
+                <li>Arrive 10 minutes before your scheduled time</li>
+            </ul>
+            <ul class="tamil">
+                <li>எதிர்கால குறிப்புக்காக உங்கள் டோக்கன் எண் <strong id="token-ref-ta">TKN-000</strong> ஐ சேமிக்கவும்</li>
+                <li>உங்கள் சந்திப்பு விவரங்கள் குறித்து SMS மூலம் அறிவிக்கப்படும்</li>
+                <li>அலுவலகத்திற்கு வரும்போது செல்லுபடியாகும் அடையாள ஆதாரத்தை கொண்டு வாருங்கள்</li>
+                <li>திட்டமிடப்பட்ட நேரத்திற்கு 10 நிமிடங்களுக்கு முன்பு வாருங்கள்</li>
+            </ul>
+        </div>
+        
+        <p style="color: #6b7280; font-size: 0.85rem; margin-top: 2rem;" class="english">
+            Thank you for using Tamil Nadu Government Grievance Portal
+        </p>
+        <p style="color: #6b7280; font-size: 0.85rem; margin-top: 2rem;" class="tamil">
+            தமிழ்நாடு அரசு குறைதீர்க்கும் போர்ட்டலைப் பயன்படுத்தியதற்கு நன்றி
+        </p>
+    </div>
+
+    <script>
+        // Get parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token') || '000';
+        const name = urlParams.get('name') || 'Citizen';
+
+        // Set token number
+        const tokenDisplay = `TKN-${token}`;
+        document.getElementById('token-number').textContent = tokenDisplay;
+        document.getElementById('token-ref-en').textContent = tokenDisplay;
+        document.getElementById('token-ref-ta').textContent = tokenDisplay;
+
+        // Set name
+        document.getElementById('citizen-name').textContent = decodeURIComponent(name);
+
+        // Set date and time
+        const now = new Date();
+        const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+        const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
+        
+        document.getElementById('appointment-date').textContent = now.toLocaleDateString('en-US', dateOptions);
+        document.getElementById('appointment-time').textContent = now.toLocaleTimeString('en-US', timeOptions);
+
+        function toggleLanguage() {
+            const isChecked = document.getElementById('languageToggle').checked;
+            if (isChecked) {
+                document.body.classList.add('tamil-mode');
+            } else {
+                document.body.classList.remove('tamil-mode');
+            }
+        }
+    </script>
+</body>
+</html>

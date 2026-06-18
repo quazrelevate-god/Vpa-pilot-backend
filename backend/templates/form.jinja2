@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tamil Nadu Government Grievance Portal</title>
+    
+    <!-- Design Assets -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* Base Resets & Global CSS Definitions */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', 'Mukta Malar', sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+            color: #1f2937;
+        }
+
+        /* Glassmorphism Structural Classes */
+        .main-card {
+            width: 100%;
+            max-width: 650px;
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 1);
+        }
+
+        .header-bar {
+            background: rgb(0,135,4);
+            backdrop-filter: blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(30px) saturate(180%);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            text-align: center;
+        }
+
+        .header-logo {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            object-fit: cover;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(4px);
+        }
+
+        .header-center h1 {
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+
+        .header-center h2 {
+            color: #ffffff;
+            font-size: 1.3rem;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Language Switcher Styling */
+        .lang-container {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(0, 0, 0, 0.15);
+            padding: 0.35rem 1rem;
+            border-radius: 50px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .lang-text {
+            color: #ffffff;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .switch-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+
+        .switch-wrapper input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.25);
+            transition: .3s;
+            border-radius: 20px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: rgba(255,255,255,0.3);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(16px);
+        }
+
+        /* UI Form Functional Elements */
+        .form-body {
+            padding: 2rem;
+        }
+
+        .section-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .icon-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #2563eb;
+        }
+
+        .section-indicator h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .field-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .label-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        label {
+            font-size: 0.87rem;
+            font-weight: 600;
+            color: #1e40af;
+        }
+
+        .req-star {
+            color: #ef4444;
+            font-weight: 700;
+        }
+
+        .validation-msg {
+            font-size: 0.75rem;
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            display: none;
+        }
+
+        .glass-field {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            color: #1f2937;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+        }
+
+        .glass-field:focus {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.02);
+            outline: none;
+        }
+
+        textarea.glass-field {
+            resize: none;
+        }
+
+        /* Layout Block for Phone + OTP Generation Trigger */
+        .phone-otp-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        /* File Upload Control Design */
+        .upload-container {
+            border: 2px dashed rgba(59, 130, 246, 0.3);
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .upload-container:hover {
+            background: rgba(255, 255, 255, 0.6);
+            border-color: #3b82f6;
+        }
+
+        .upload-icon {
+            font-size: 1.75rem;
+            color: #3b82f6;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-text {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #4b5563;
+        }
+
+        .upload-hint {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 0.25rem;
+        }
+
+        .file-input-hidden {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .file-preview-list {
+            margin-top: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .file-badge {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(255, 255, 255, 1);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.8rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+
+        .file-badge i {
+            color: #10b981;
+            margin-right: 0.5rem;
+        }
+
+        .remove-file-btn {
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+
+        /* Form Submissions Action Strip */
+        .action-strip {
+            margin-top: 2rem;
+        }
+
+        .base-btn {
+            border: none;
+            border-radius: 0.75rem;
+            padding: 0.85rem 1.25rem;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .btn-inline-action {
+            background: rgba(59, 130, 246, 0.85);
+            color: white;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            font-size: 0.85rem;
+            padding: 0.75rem 1.25rem;
+            height: 100%;
+        }
+
+        .btn-inline-action:hover {
+            background: rgba(37, 99, 235, 0.95);
+        }
+
+        .btn-submit-main {
+            width: 100%;
+            background: rgba(68, 139, 69, 0.85);
+            color: white;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 16px rgba(68, 139, 69, 0.15);
+            padding: 1rem;
+        }
+
+        .btn-submit-main:hover {
+            background: rgba(56, 116, 57, 0.95);
+            box-shadow: 0 10px 20px rgba(68, 139, 69, 0.25);
+        }
+
+        .base-btn:disabled {
+            background: rgba(156, 163, 175, 0.4) !important;
+            color: rgba(31, 41, 55, 0.4) !important;
+            cursor: not-allowed;
+            box-shadow: none !important;
+        }
+
+        /* Success Message Layout Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.4);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-box {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            max-width: 400px;
+            width: 90%;
+            padding: 2rem;
+            border-radius: 2rem;
+            text-align: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+            transform: scale(0.95);
+            transition: transform 0.4s ease;
+        }
+
+        .modal-overlay.active .modal-box {
+            transform: scale(1);
+        }
+
+        .success-icon-container {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #10b981;
+            font-size: 2rem;
+            margin: 0 auto 1.25rem;
+        }
+
+        .receipt-card {
+            background: rgba(255,255,255,0.4);
+            border: 1px solid rgba(255,255,255,0.6);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            text-align: left;
+            margin: 1.25rem 0;
+        }
+
+        .receipt-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .receipt-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .receipt-label { color: #6b7280; font-weight: 500; }
+        .receipt-val { color: #1f2937; font-weight: 700; }
+
+        .btn-modal-close {
+            width: 100%;
+            background: rgba(68, 139, 69, 0.85);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-card">
+        <!-- Header View Block -->
+        <div class="header-bar">
+            <!-- Left Header Icon Emblem -->
+            <img src="/static/assets/TN-logo.jpeg" alt="TN Govt Emblem" class="header-logo">
+            
+            <div class="header-center">
+                <h1 id="lbl-dist"> Tamil Nadu Government</h1>
+                <h2 id="lbl-portal-title">Grievance Registration</h2>
+                
+                <!-- Interface Localizer Switch -->
+                <div class="lang-container">
+                    <span class="lang-text">EN</span>
+                    <label class="switch-wrapper">
+                        <input type="checkbox" id="languageToggle" onchange="switchLocalization(this.checked)" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <span class="lang-text">தமிழ்</span>
+                </div>
+            </div>
+
+            <!-- Right Header Icon Emblem -->
+            <img src="/static/assets/CM-vijay.jpg" alt="Chief Minister" class="header-logo">
+        </div>
+
+        <!-- Dynamic Content Processing Form Form -->
+        <div class="form-body">
+            <div class="section-indicator">
+                <div class="icon-circle">
+                    <i class="fa-solid fa-file-invoice"></i>
+                </div>
+                <h3 id="lbl-sec-title">Grievance Form</h3>
+            </div>
+
+            <form id="submissionForm" data-session-token="{{ session_token }}" onsubmit="executeFormSubmission(event)">
+                
+                <!-- Name Field Row -->
+                <div class="field-group">
+                    <div class="label-container">
+                        <label for="txtName"><span id="lbl-name">Full Name</span> <span class="req-star">*</span></label>
+                    </div>
+                    <input type="text" id="txtName" required placeholder="Enter full legal name" class="glass-field">
+                </div>
+
+                <!-- Mobile Field and OTP Processing Container -->
+                <div class="field-group">
+                    <div class="label-container">
+                        <label for="txtMobile"><span id="lbl-phone">Mobile Number</span> <span class="req-star">*</span></label>
+                        <span class="validation-msg" id="errMobile">Invalid 10-digit number</span>
+                    </div>
+                    <div class="phone-otp-row">
+                        <input type="tel" id="txtMobile" required maxlength="10" placeholder="Enter 10 digit mobile number" class="glass-field" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                        <button type="button" id="btnGenOtp" class="base-btn btn-inline-action" onclick="generateVerificationOtp()">Send OTP</button>
+                    </div>
+                </div>
+
+                <!-- OTP Input Verification Grid -->
+                <div class="field-group" id="otpVerificationWrapper" style="display: none;">
+                    <div class="label-container">
+                        <label for="txtOtp"><span id="lbl-otp">Enter OTP</span> <span class="req-star">*</span></label>
+                        <span class="validation-msg" id="errOtp">Invalid 6-digit OTP</span>
+                    </div>
+                    <div class="phone-otp-row">
+                        <input type="text" id="txtOtp" maxlength="6" placeholder="Enter 6-digit verification code" class="glass-field" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                        <button type="button" id="btnVerifyOtp" class="base-btn btn-inline-action" onclick="verifyInputOtp()" style="background: rgba(16, 185, 129, 0.85);">Verify</button>
+                    </div>
+                </div>
+
+                <!-- Description Block Field Row -->
+                <div class="field-group">
+                    <div class="label-container">
+                        <label for="txtDesc"><span id="lbl-desc">Grievance Description</span> <span style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(or upload files)</span></label>
+                    </div>
+                    <textarea id="txtDesc" rows="4" placeholder="Describe your issue or application details clearly..." class="glass-field"></textarea>
+                </div>
+
+                <!-- Multi-format Application Upload Target Wrapper -->
+                <div class="field-group">
+                    <div class="label-container">
+                        <label><span id="lbl-upload">Upload Attachments</span></label>
+                    </div>
+                    <div class="upload-container">
+                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                        <div class="upload-text" id="lbl-upload-text">Click or drag file to upload</div>
+                        <div class="upload-hint" id="lbl-upload-hint">Supported formats: CSV, PDF, JPG, PNG, DOC, DOCX (Max 5MB)</div>
+                        <input type="file" id="fileAttachments" class="file-input-hidden" multiple accept=".csv, .pdf, image/*, .doc, .docx" onchange="renderUploadedFiles(this)">
+                    </div>
+                    <div class="file-preview-list" id="filePreviews"></div>
+                </div>
+
+                <!-- Form Final Target Actions Pipeline Interface -->
+                <div class="action-strip" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <button type="button" id="btnSubmitPetition" disabled class="base-btn btn-submit-main" onclick="submitForm(false)" style="background: rgba(59, 130, 246, 0.85);">
+                        <i class="fa-solid fa-file-lines"></i> <span id="lbl-btn-petition">Submit Petition</span>
+                    </button>
+                    <button type="button" id="btnSubmitMeeting" disabled class="base-btn btn-submit-main" onclick="submitForm(true)" style="background: rgba(139, 92, 246, 0.85);">
+                        <i class="fa-solid fa-handshake"></i> <span id="lbl-btn-meeting">Submit & Request Meeting</span>
+                    </button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+
+    <!-- Application Submission Success View Modal Component Layout -->
+    <div class="modal-overlay" id="successModal">
+        <div class="modal-box">
+            <div class="success-icon-container">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <h4 id="lbl-modal-title" style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">Submission Successful</h4>
+            <p id="lbl-modal-body" style="font-size: 0.87rem; color: #4b5563;">Your grievance registration has been parsed and logged securely into the regional database core.</p>
+            
+            <div class="receipt-card">
+                <div class="receipt-row">
+                    <span class="receipt-label" id="lbl-modal-id">Reference ID</span>
+                    <span class="receipt-val" id="valReceiptId">NKL-XXXXXX</span>
+                </div>
+                <div class="receipt-row">
+                    <span class="receipt-label" id="lbl-modal-date">Logged Date</span>
+                    <span class="receipt-val" id="valReceiptDate">-</span>
+                </div>
+            </div>
+
+            <button type="button" class="base-btn btn-modal-close" onclick="dismissModalScreen()">Close Screen</button>
+        </div>
+    </div>
+
+    <!-- Runtime JavaScript Execution Layer -->
+    <script>
+        // Storage Registry Object arrays
+        let registeredFileList = [];
+        let runtimeActiveLanguage = 'ta';  // Default to Tamil
+        let isSystemPhoneVerified = false;
+        
+        // Validation helper function
+        function validateFormForOTP() {
+            const name = document.getElementById('txtName').value.trim();
+            const mobile = document.getElementById('txtMobile').value.trim();
+            const description = document.getElementById('txtDesc').value.trim();
+            const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
+            
+            // All fields must be filled: name, mobile, and (description OR files)
+            const isValid = name && mobile && (description || hasFiles);
+            
+            // Enable/disable OTP button based on validation
+            document.getElementById('btnGenOtp').disabled = !isValid;
+            
+            return isValid;
+        }
+
+        const dynamicLocalizationDictionary = {
+            en: {
+                dist: "Government Of Tamil Nadu", portalTitle: "Grievance Registration", secTitle: "Grievance Form",
+                name: "Full Name", phone: "Mobile Number", otp: "Enter OTP", desc: "Grievance Description",
+                upload: "Upload Attachments", uploadText: "Click or drag file to upload",
+                uploadHint: "Supported formats: CSV, PDF, JPG, PNG, DOC, DOCX (Max 5MB)",
+                btnSubmit: "Submit Grievance Application", btnPetition: "Submit Petition", btnMeeting: "Submit & Request Meeting",
+                errMob: "Invalid 10-digit number",
+                errOtp: "Invalid 6-digit OTP", modalTitle: "Submission Successful",
+                modalBody: "Your grievance registration has been parsed and logged securely into the regional database core.",
+                modalId: "Reference ID", modalDate: "Logged Date", placeholderName: "Enter full legal name",
+                placeholderMobile: "Enter 10 digit mobile number", placeholderDesc: "Describe your issue or application details clearly..."
+            },
+            ta: {
+                dist: "தமிழ்நாடு அரசு", portalTitle: "குறைதீர்க்கும் பதிவு", secTitle: "புகார் படிவம்",
+                name: "முழு பெயர்", phone: "அலைபேசி எண்", otp: "ஒடிபி (OTP) உள்ளிடவும்", desc: "புகார் விவரம் (அல்லது கோப்புகளை பதிவேற்றவும்)",
+                upload: "ஆவணங்களை பதிவேற்றவும்", uploadText: "கோப்புகளைத் தேர்ந்தெடுக்க இங்கே கிளிக் செய்யவும்",
+                uploadHint: "ஆதரிக்கப்படும் வடிவங்கள்: CSV, PDF, JPG, PNG, DOC, DOCX (அதிகபட்சம் 5MB)",
+                btnSubmit: "புகாரைப் பதிவு செய்க", btnPetition: "மனுவை சமர்ப்பிக்கவும்", btnMeeting: "மனு & சந்திப்பு கோரிக்கை",
+                errMob: "சரியான 10 இலக்க எண் தேவை",
+                errOtp: "தவறான ஒடிபி எண்", modalTitle: "வெற்றிகரமாக சமர்ப்பிக்கப்பட்டது!",
+                modalBody: "உங்கள் மனு வெற்றிகரமாக பதிவு செய்யப்பட்டு மாவட்ட தரவுத்தளத்தில் சேர்க்கப்பட்டுள்ளது.",
+                modalId: "விண்ணப்ப எண்", modalDate: "பதிவு செய்யப்பட்ட தேதி", placeholderName: "உங்கள் முழு பெயரை உள்ளிடவும்",
+                placeholderMobile: "10 இலக்க அலைபேசி எண்ணை உள்ளிடவும்", placeholderDesc: "உங்கள் புகாரை விரிவாக இங்கே எழுதவும்..."
+            }
+        };
+
+        function switchLocalization(isChecked) {
+            runtimeActiveLanguage = isChecked ? 'ta' : 'en';
+            const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
+
+            document.getElementById('lbl-dist').innerText = copy.dist;
+            document.getElementById('lbl-portal-title').innerText = copy.portalTitle;
+            document.getElementById('lbl-sec-title').innerText = copy.secTitle;
+            document.getElementById('lbl-name').innerText = copy.name;
+            document.getElementById('lbl-phone').innerText = copy.phone;
+            document.getElementById('lbl-otp').innerText = copy.otp;
+            document.getElementById('lbl-desc').innerText = copy.desc;
+            document.getElementById('lbl-upload').innerText = copy.upload;
+            document.getElementById('lbl-upload-text').innerText = copy.uploadText;
+            document.getElementById('lbl-upload-hint').innerText = copy.uploadHint;
+            document.getElementById('lbl-btn-petition').innerText = copy.btnPetition;
+            document.getElementById('lbl-btn-meeting').innerText = copy.btnMeeting;
+            
+            document.getElementById('txtName').placeholder = copy.placeholderName;
+            document.getElementById('txtMobile').placeholder = copy.placeholderMobile;
+            document.getElementById('txtDesc').placeholder = copy.placeholderDesc;
+
+            document.getElementById('lbl-modal-title').innerText = copy.modalTitle;
+            document.getElementById('lbl-modal-body').innerText = copy.modalBody;
+            document.getElementById('lbl-modal-id').innerText = copy.modalId;
+            document.getElementById('lbl-modal-date').innerText = copy.modalDate;
+        }
+
+        async function generateVerificationOtp() {
+            // Validate all required fields first
+            if (!validateFormForOTP()) {
+                alert('Please fill in Name, Mobile Number, and either Description or upload files before requesting OTP.');
+                return;
+            }
+            
+            const phoneField = document.getElementById('txtMobile');
+            const errorElement = document.getElementById('errMobile');
+            
+            // Validate mobile number format
+            if (!/^[6-9][0-9]{9}$/.test(phoneField.value)) {
+                errorElement.innerText = dynamicLocalizationDictionary[runtimeActiveLanguage].errMob;
+                errorElement.style.display = 'block';
+                return;
+            }
+            errorElement.style.display = 'none';
+
+            // Get session token from form data attribute
+            const sessionToken = document.getElementById('submissionForm').dataset.sessionToken;
+            if (!sessionToken) {
+                alert('Session token not found. Please scan QR code again.');
+                return;
+            }
+
+            // Disable button and show loading state
+            const genBtn = document.getElementById('btnGenOtp');
+            genBtn.innerText = 'Sending...';
+            genBtn.disabled = true;
+
+            try {
+                // Call backend OTP request API
+                const response = await fetch('/api/v1/otp/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_token: sessionToken,
+                        mobile_number: phoneField.value
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    // Show OTP input section
+                    document.getElementById('otpVerificationWrapper').style.display = 'block';
+                    genBtn.innerText = 'Sent ✓';
+                    phoneField.disabled = true;
+                    alert(`OTP sent successfully! Valid for 3 minutes. Check ${data.mobile_number}`);
+                } else {
+                    const error = await response.json();
+                    alert('Error: ' + (error.detail || 'Failed to send OTP'));
+                    genBtn.innerText = 'Send OTP';
+                    genBtn.disabled = false;
+                }
+            } catch (error) {
+                alert('Network error. Please try again.');
+                genBtn.innerText = 'Send OTP';
+                genBtn.disabled = false;
+            }
+        }
+
+        function verifyInputOtp() {
+            const otpVal = document.getElementById('txtOtp').value;
+            const errorElement = document.getElementById('errOtp');
+
+            // Hardcoded validation pattern simulation for client demonstration purposes
+            if (otpVal.length !== 6) {
+                errorElement.innerText = dynamicLocalizationDictionary[runtimeActiveLanguage].errOtp;
+                errorElement.style.display = 'block';
+                return;
+            }
+            errorElement.style.display = 'none';
+
+            isSystemPhoneVerified = true;
+            document.getElementById('btnVerifyOtp').innerText = 'Verified';
+            document.getElementById('btnVerifyOtp').disabled = true;
+            document.getElementById('txtOtp').disabled = true;
+            
+            // Activate both submission buttons
+            document.getElementById('btnSubmitPetition').disabled = false;
+            document.getElementById('btnSubmitMeeting').disabled = false;
+        }
+
+        function renderUploadedFiles(input) {
+            const previewContainer = document.getElementById('filePreviews');
+            const newUploadedFiles = Array.from(input.files);
+
+            newUploadedFiles.forEach(file => {
+                // Safeguard against layout processing file size bounds over 5MB
+                if(file.size > 5 * 1024 * 1024) return; 
+                
+                registeredFileList.push(file);
+                const itemIndex = registeredFileList.length - 1;
+
+                const fileBadgeNode = document.createElement('div');
+                fileBadgeNode.className = 'file-badge';
+                fileBadgeNode.id = `badge-${itemIndex}`;
+                fileBadgeNode.innerHTML = `
+                    <div><i class="fa-solid fa-file-shield"></i> <strong>${file.name}</strong> (${(file.size/1024).toFixed(1)} KB)</div>
+                    <button type="button" class="remove-file-btn" onclick="purgeUploadedFile(${itemIndex})"><i class="fa-solid fa-trash-can"></i></button>
+                `;
+                previewContainer.appendChild(fileBadgeNode);
+            });
+            input.value = ""; // Reset input capture target stream
+        }
+
+        function purgeUploadedFile(index) {
+            document.getElementById(`badge-${index}`).remove();
+            registeredFileList[index] = null; // Purge contents cleanly from array space
+            validateFormForOTP(); // Re-validate after file removal
+        }
+        
+        // Initialize form validation on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Disable OTP button initially
+            document.getElementById('btnGenOtp').disabled = true;
+            
+            // Add input event listeners to validate form
+            document.getElementById('txtName').addEventListener('input', validateFormForOTP);
+            document.getElementById('txtMobile').addEventListener('input', validateFormForOTP);
+            document.getElementById('txtDesc').addEventListener('input', validateFormForOTP);
+            document.getElementById('fileAttachments').addEventListener('change', function(e) {
+                renderUploadedFiles(e.target);
+                validateFormForOTP();
+            });
+        });
+
+        async function submitForm(scheduleMeeting) {
+            // Validate OTP verification
+            if (!isSystemPhoneVerified) {
+                alert('Please verify your OTP before submitting.');
+                return;
+            }
+
+            // Get session token
+            const sessionToken = document.getElementById('submissionForm').dataset.sessionToken;
+            if (!sessionToken) {
+                alert('Session token not found. Please scan QR code again.');
+                return;
+            }
+
+            // Validate required fields
+            const name = document.getElementById('txtName').value.trim();
+            const mobile = document.getElementById('txtMobile').value.trim();
+            const description = document.getElementById('txtDesc').value.trim();
+            const otp = document.getElementById('txtOtp').value.trim();
+            const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
+
+            if (!name || !mobile || !otp || (!description && !hasFiles)) {
+                alert('Please fill in all required fields: Name, Mobile, OTP, and either Description or upload files.');
+                return;
+            }
+
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('session_token', sessionToken);
+            formData.append('name', name);
+            formData.append('mobile_number', mobile);
+            formData.append('constituency', 'Tamil Nadu'); // Default constituency
+            formData.append('description', description || 'See attachments');
+            formData.append('otp_code', otp);
+            formData.append('schedule_meeting', scheduleMeeting.toString());
+
+            // Add files
+            registeredFileList.filter(f => f !== null).forEach(file => {
+                formData.append('files', file);
+            });
+
+            // Disable both buttons during submission
+            const petitionBtn = document.getElementById('btnSubmitPetition');
+            const meetingBtn = document.getElementById('btnSubmitMeeting');
+            petitionBtn.disabled = true;
+            meetingBtn.disabled = true;
+            
+            const activeBtn = scheduleMeeting ? meetingBtn : petitionBtn;
+            const originalHTML = activeBtn.innerHTML;
+            activeBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+
+            try {
+                const response = await fetch('/api/v1/appointments/submit', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Redirect to success page with token number
+                    window.location.href = `/form/success?token=${data.token_assigned}&name=${encodeURIComponent(name)}`;
+                } else {
+                    const error = await response.json();
+                    alert('Submission Error: ' + (error.detail || 'Failed to submit appointment'));
+                    petitionBtn.disabled = false;
+                    meetingBtn.disabled = false;
+                    activeBtn.innerHTML = originalHTML;
+                }
+            } catch (error) {
+                alert('Network error. Please try again.');
+                petitionBtn.disabled = false;
+                meetingBtn.disabled = false;
+                activeBtn.innerHTML = originalHTML;
+            }
+        }
+
+        function dismissModalScreen() {
+            document.getElementById('successModal').classList.remove('active');
+            document.getElementById('submissionForm').reset();
+            document.getElementById('filePreviews').innerHTML = "";
+            registeredFileList = [];
+            
+            // Soft reset OTP verification presentation state machine configurations
+            isSystemPhoneVerified = false;
+            document.getElementById('otpVerificationWrapper').style.display = 'none';
+            document.getElementById('txtMobile').disabled = false;
+            
+            const genBtn = document.getElementById('btnGenOtp');
+            genBtn.innerText = 'Send OTP';
+            genBtn.disabled = false;
+
+            const verifyBtn = document.getElementById('btnVerifyOtp');
+            verifyBtn.innerText = 'Verify';
+            verifyBtn.disabled = false;
+            document.getElementById('txtOtp').disabled = false;
+            
+            document.getElementById('btnSubmitPetition').disabled = true;
+            document.getElementById('btnSubmitMeeting').disabled = true;
+        }
+
+        // Initialize Tamil as default language on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            switchLocalization(true);  // true = Tamil
+        });
+    </script>
+</body>
+</html>
