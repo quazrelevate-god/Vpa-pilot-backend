@@ -156,6 +156,59 @@ class AppointmentService:
             print(f"[TWILIO ERROR] Failed to send OTP to {mobile_number}: {e}")
             return False
     
+    async def verify_otp(
+        self,
+        mobile_number: str,
+        otp_code: str,
+        db: AsyncSession,
+    ) -> Dict[str, Any]:
+        """
+        Verify OTP entered by the citizen and mark it as verified.
+
+        Does NOT mark is_used — that happens on form submission.
+        Brute-force protection: max 3 attempts, then record is locked.
+        """
+        current_time = datetime.utcnow()
+
+        stmt = select(OTPVerification).where(
+            OTPVerification.mobile_number == mobile_number,
+            OTPVerification.is_used == False,
+            OTPVerification.expires_at > current_time,
+        ).order_by(OTPVerification.created_at.desc()).limit(1)
+
+        result = await db.execute(stmt)
+        otp_record = result.scalar_one_or_none()
+
+        if not otp_record:
+            raise HTTPException(
+                status_code=404,
+                detail="No active OTP found. Please request a new OTP.",
+            )
+
+        if otp_record.attempts_count >= self.MAX_OTP_ATTEMPTS:
+            otp_record.is_used = True
+            await db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum OTP attempts exceeded. Please request a new OTP.",
+            )
+
+        hashed_input = self._hash_otp_code(otp_code)
+        if hashed_input != otp_record.hashed_otp_code:
+            otp_record.attempts_count += 1
+            await db.commit()
+            remaining = self.MAX_OTP_ATTEMPTS - otp_record.attempts_count
+            raise HTTPException(
+                status_code=400,
+                detail=f"Incorrect OTP. {remaining} attempt(s) remaining.",
+            )
+
+        # Mark verified so the submission step can trust it without re-hashing
+        otp_record.is_verified = True
+        await db.commit()
+
+        return {"verified": True, "message": "OTP verified successfully."}
+
     async def create_otp_request(
         self,
         session_token: UUID,
@@ -431,49 +484,25 @@ class AppointmentService:
             - Composite indexes optimize OTP lookup
         """
         try:
-            # Step 1: Look up most recent active OTP record
+            # Step 1: Look up the pre-verified OTP record
             current_time = datetime.utcnow()
-            
+
             stmt = select(OTPVerification).where(
                 OTPVerification.mobile_number == mobile,
                 OTPVerification.is_used == False,
-                OTPVerification.expires_at > current_time
+                OTPVerification.is_verified == True,
+                OTPVerification.expires_at > current_time,
             ).order_by(OTPVerification.created_at.desc()).limit(1)
-            
+
             result = await db.execute(stmt)
             otp_record = result.scalar_one_or_none()
-            
+
             if not otp_record:
                 raise HTTPException(
-                    status_code=404,
-                    detail="No active OTP found for this mobile number. Please request a new OTP."
-                )
-            
-            # Step 2: Check brute-force threshold
-            if otp_record.attempts_count >= self.MAX_OTP_ATTEMPTS:
-                # Mark as used to prevent further attempts
-                otp_record.is_used = True
-                await db.commit()
-                
-                raise HTTPException(
                     status_code=400,
-                    detail="Maximum OTP attempts exceeded. Please request a new OTP."
+                    detail="OTP not verified. Please verify your OTP before submitting.",
                 )
-            
-            # Step 3: Verify OTP hash
-            hashed_input = self._hash_otp_code(otp_code)
-            
-            if hashed_input != otp_record.hashed_otp_code:
-                # Increment attempts count
-                otp_record.attempts_count += 1
-                await db.commit()
-                
-                remaining_attempts = self.MAX_OTP_ATTEMPTS - otp_record.attempts_count
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid OTP code. {remaining_attempts} attempts remaining."
-                )
-            
+
             # OTP is valid - proceed with atomic transaction
             # Step 4: Begin explicit transaction
             async with db.begin_nested():

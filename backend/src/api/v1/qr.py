@@ -181,37 +181,31 @@ async def verify_qr_code(
         - Isolation: Row-level locks prevent concurrent verification
         - Auto-committed by get_db() dependency on success
     """
+    from urllib.parse import urlencode
+
     try:
-        # Step 1: Generate device fingerprint from request headers (server-side)
         device_fingerprint = generate_device_fingerprint(request)
-        
-        # Step 2-6: Verify QR and create session within secure transaction
+
         session_data = await qr_service.verify_qr_and_create_session(
             signature_string=signature,
             device_fingerprint=device_fingerprint,
-            db=db
+            db=db,
         )
-        
-        # Construct redirect URL with session token
+
         session_token = session_data["session_token"]
         redirect_url = f"{settings.FRONTEND_FORM_BASE_URL}?token={session_token}"
-        
-        # HTTP 307 Temporary Redirect (preserves GET method)
-        return RedirectResponse(
-            url=redirect_url,
-            status_code=307
-        )
-    
+        return RedirectResponse(url=redirect_url, status_code=307)
+
     except ValueError as e:
-        # Handle business logic errors (expired QR, replay attacks, etc.)
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
+        msg = str(e)
+        error_type = "qr_expired" if "expired" in msg.lower() else "unknown"
+        return RedirectResponse(
+            url="/form/error?" + urlencode({"type": error_type, "message": msg}),
+            status_code=302,
         )
-    
+
     except Exception as e:
-        # Handle unexpected errors (database failures, etc.)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error during QR verification: {str(e)}"
+        return RedirectResponse(
+            url="/form/error?" + urlencode({"type": "unknown", "message": str(e)}),
+            status_code=302,
         )

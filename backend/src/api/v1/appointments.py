@@ -50,6 +50,18 @@ class OTPResponseModel(BaseModel):
     otp_code: str | None = None  # Only populated in dummy/dev mode (no SMS configured)
 
 
+class OTPVerifyModel(BaseModel):
+    """Request model for OTP verification."""
+    mobile_number: str = Field(..., min_length=10, max_length=15, example="9876543210")
+    otp_code: str = Field(..., min_length=6, max_length=6, example="123456")
+
+
+class OTPVerifyResponseModel(BaseModel):
+    """Response model for OTP verification."""
+    verified: bool
+    message: str
+
+
 class AppointmentResponseModel(BaseModel):
     """Response model for appointment submission."""
     appointment_id: int
@@ -138,6 +150,34 @@ async def request_otp(
             status_code=500,
             detail=f"OTP request failed: {str(e)}"
         )
+
+
+@router.post(
+    "/otp/verify",
+    response_model=OTPVerifyResponseModel,
+    status_code=200,
+    summary="Verify OTP Code",
+    description="Verify the 6-digit OTP entered by the citizen before form submission"
+)
+@limiter.limit("5/minute")
+async def verify_otp(
+    request: Request,
+    body: OTPVerifyModel,
+    db: AsyncSession = Depends(get_db),
+) -> OTPVerifyResponseModel:
+    try:
+        if not body.otp_code.isdigit():
+            raise HTTPException(status_code=400, detail="OTP must be 6 digits.")
+        result = await appointment_service.verify_otp(
+            mobile_number=body.mobile_number,
+            otp_code=body.otp_code,
+            db=db,
+        )
+        return OTPVerifyResponseModel(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OTP verification failed: {str(e)}")
 
 
 @router.post(

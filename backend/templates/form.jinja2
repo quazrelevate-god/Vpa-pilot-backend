@@ -236,6 +236,85 @@
             align-items: center;
         }
 
+        /* OTP Box Grid */
+        .otp-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .otp-boxes {
+            display: flex;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .otp-box {
+            width: 100%;
+            aspect-ratio: 1;
+            max-width: 52px;
+            text-align: center;
+            font-size: 1.4rem;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.5);
+            border: 2px solid rgba(203, 213, 225, 0.8);
+            border-radius: 0.6rem;
+            color: #1f2937;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+            outline: none;
+            caret-color: transparent;
+        }
+
+        .otp-box:focus {
+            border-color: #3b82f6;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .otp-box.otp-valid {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.08);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+            color: #065f46;
+        }
+
+        .otp-box.otp-invalid {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.07);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+            color: #991b1b;
+            animation: shake 0.35s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25%       { transform: translateX(-4px); }
+            75%       { transform: translateX(4px); }
+        }
+
+        .otp-status-msg {
+            font-size: 0.78rem;
+            font-weight: 600;
+            margin-top: 0.45rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .otp-status-msg.success {
+            display: block;
+            color: #065f46;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .otp-status-msg.error {
+            display: block;
+            color: #991b1b;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
         /* File Upload Control Design */
         .upload-container {
             border: 2px dashed rgba(59, 130, 246, 0.3);
@@ -297,9 +376,39 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
 
-        .file-badge i {
-            color: #10b981;
-            margin-right: 0.5rem;
+        .file-badge-inner {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            overflow: hidden;
+        }
+
+        .file-thumb {
+            width: 56px;
+            height: 56px;
+            object-fit: cover;
+            border-radius: 0.4rem;
+            border: 1px solid rgba(0,0,0,0.08);
+            flex-shrink: 0;
+        }
+
+        .file-badge-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+            overflow: hidden;
+        }
+
+        .file-badge-info strong {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 260px;
+        }
+
+        .file-badge-info span {
+            color: #6b7280;
+            font-size: 0.75rem;
         }
 
         .remove-file-btn {
@@ -495,6 +604,28 @@
                     <input type="text" id="txtName" required placeholder="Enter full legal name" class="glass-field">
                 </div>
 
+                <!-- Multi-format Application Upload Target Wrapper -->
+                <div class="field-group">
+                    <div class="label-container">
+                        <label><span id="lbl-upload">Upload Attachments</span></label>
+                    </div>
+                    <div class="upload-container">
+                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                        <div class="upload-text" id="lbl-upload-text">Click or drag file to upload</div>
+                        <div class="upload-hint" id="lbl-upload-hint">Supported formats: CSV, PDF, JPG, PNG, DOC, DOCX (Max 5MB)</div>
+                        <input type="file" id="fileAttachments" class="file-input-hidden" multiple accept=".csv, .pdf, image/*, .doc, .docx" onchange="renderUploadedFiles(this)">
+                    </div>
+                    <div class="file-preview-list" id="filePreviews"></div>
+                </div>
+
+                <!-- Description Block Field Row -->
+                <div class="field-group">
+                    <div class="label-container">
+                        <label for="txtDesc"><span id="lbl-desc">Grievance Description</span> <span style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(or upload files)</span></label>
+                    </div>
+                    <textarea id="txtDesc" rows="4" placeholder="Describe your issue or application details clearly..." class="glass-field"></textarea>
+                </div>
+
                 <!-- Mobile Field and OTP Processing Container -->
                 <div class="field-group">
                     <div class="label-container">
@@ -510,35 +641,22 @@
                 <!-- OTP Input Verification Grid -->
                 <div class="field-group" id="otpVerificationWrapper" style="display: none;">
                     <div class="label-container">
-                        <label for="txtOtp"><span id="lbl-otp">Enter OTP</span> <span class="req-star">*</span></label>
-                        <span class="validation-msg" id="errOtp">Invalid 6-digit OTP</span>
+                        <label><span id="lbl-otp">Enter OTP</span> <span class="req-star">*</span></label>
                     </div>
-                    <div class="phone-otp-row">
-                        <input type="text" id="txtOtp" maxlength="6" placeholder="Enter 6-digit verification code" class="glass-field" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
-                        <button type="button" id="btnVerifyOtp" class="base-btn btn-inline-action" onclick="verifyInputOtp()" style="background: rgba(16, 185, 129, 0.85);">Verify</button>
+                    <div class="otp-row">
+                        <div class="otp-boxes" id="otpBoxes">
+                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp0">
+                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp1">
+                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp2">
+                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp3">
+                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp4">
+                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp5">
+                        </div>
+                        <button type="button" id="btnVerifyOtp" class="base-btn btn-inline-action" onclick="verifyInputOtp()" style="background: rgba(16, 185, 129, 0.85); white-space: nowrap;">Verify OTP</button>
                     </div>
-                </div>
-
-                <!-- Description Block Field Row -->
-                <div class="field-group">
-                    <div class="label-container">
-                        <label for="txtDesc"><span id="lbl-desc">Grievance Description</span> <span style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(or upload files)</span></label>
-                    </div>
-                    <textarea id="txtDesc" rows="4" placeholder="Describe your issue or application details clearly..." class="glass-field"></textarea>
-                </div>
-
-                <!-- Multi-format Application Upload Target Wrapper -->
-                <div class="field-group">
-                    <div class="label-container">
-                        <label><span id="lbl-upload">Upload Attachments</span></label>
-                    </div>
-                    <div class="upload-container">
-                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
-                        <div class="upload-text" id="lbl-upload-text">Click or drag file to upload</div>
-                        <div class="upload-hint" id="lbl-upload-hint">Supported formats: CSV, PDF, JPG, PNG, DOC, DOCX (Max 5MB)</div>
-                        <input type="file" id="fileAttachments" class="file-input-hidden" multiple accept=".csv, .pdf, image/*, .doc, .docx" onchange="renderUploadedFiles(this)">
-                    </div>
-                    <div class="file-preview-list" id="filePreviews"></div>
+                    <!-- Hidden aggregator used by form submission -->
+                    <input type="hidden" id="txtOtp">
+                    <div id="otpStatusMsg" class="otp-status-msg"></div>
                 </div>
 
                 <!-- Form Final Target Actions Pipeline Interface -->
@@ -699,44 +817,141 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    // Show OTP input section
                     document.getElementById('otpVerificationWrapper').style.display = 'block';
                     genBtn.innerText = 'Sent ✓';
                     phoneField.disabled = true;
-                    alert(`OTP sent successfully! Valid for 3 minutes. Check ${data.mobile_number}`);
+
+                    // Dummy mode: auto-fill the OTP boxes and show hint
+                    if (data.otp_code) {
+                        const boxes = document.querySelectorAll('.otp-box');
+                        data.otp_code.split('').forEach((d, i) => { if (boxes[i]) boxes[i].value = d; });
+                        syncOtpHidden();
+                        const msg = document.getElementById('otpStatusMsg');
+                        msg.className = 'otp-status-msg error';
+                        msg.textContent = `[Dev] OTP auto-filled: ${data.otp_code} — SMS not configured`;
+                        msg.style.display = 'block';
+                    }
+
+                    document.getElementById('otp0').focus();
                 } else {
                     const error = await response.json();
-                    alert('Error: ' + (error.detail || 'Failed to send OTP'));
+                    // Show error below the mobile field
+                    const errEl = document.getElementById('errMobile');
+                    errEl.innerText = error.detail || 'Failed to send OTP';
+                    errEl.style.display = 'block';
                     genBtn.innerText = 'Send OTP';
                     genBtn.disabled = false;
                 }
             } catch (error) {
-                alert('Network error. Please try again.');
+                const errEl = document.getElementById('errMobile');
+                errEl.innerText = 'Network error. Please try again.';
+                errEl.style.display = 'block';
                 genBtn.innerText = 'Send OTP';
                 genBtn.disabled = false;
             }
         }
 
-        function verifyInputOtp() {
-            const otpVal = document.getElementById('txtOtp').value;
-            const errorElement = document.getElementById('errOtp');
+        /* ── OTP box keyboard navigation & auto-advance ── */
+        function initOtpBoxes() {
+            const boxes = Array.from(document.querySelectorAll('.otp-box'));
+            boxes.forEach((box, i) => {
+                box.addEventListener('input', e => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    e.target.value = val ? val[val.length - 1] : '';
+                    clearOtpState();
+                    if (val && i < 5) boxes[i + 1].focus();
+                    syncOtpHidden();
+                });
 
-            // Hardcoded validation pattern simulation for client demonstration purposes
+                box.addEventListener('keydown', e => {
+                    if (e.key === 'Backspace' && !box.value && i > 0) {
+                        boxes[i - 1].value = '';
+                        boxes[i - 1].focus();
+                        syncOtpHidden();
+                    }
+                    if (e.key === 'ArrowLeft' && i > 0) boxes[i - 1].focus();
+                    if (e.key === 'ArrowRight' && i < 5) boxes[i + 1].focus();
+                });
+
+                box.addEventListener('paste', e => {
+                    e.preventDefault();
+                    const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+                    boxes.forEach((b, j) => { b.value = pasted[j] || ''; });
+                    const focusIdx = Math.min(pasted.length, 5);
+                    boxes[focusIdx].focus();
+                    clearOtpState();
+                    syncOtpHidden();
+                });
+            });
+        }
+
+        function syncOtpHidden() {
+            const val = Array.from(document.querySelectorAll('.otp-box')).map(b => b.value).join('');
+            document.getElementById('txtOtp').value = val;
+        }
+
+        function clearOtpState() {
+            document.querySelectorAll('.otp-box').forEach(b => b.classList.remove('otp-valid', 'otp-invalid'));
+            const msg = document.getElementById('otpStatusMsg');
+            msg.className = 'otp-status-msg';
+            msg.textContent = '';
+        }
+
+        function setOtpBoxState(state, message) {
+            // state: 'valid' | 'invalid'
+            document.querySelectorAll('.otp-box').forEach(b => {
+                b.classList.remove('otp-valid', 'otp-invalid');
+                b.classList.add(state === 'valid' ? 'otp-valid' : 'otp-invalid');
+            });
+            const msg = document.getElementById('otpStatusMsg');
+            msg.className = 'otp-status-msg ' + (state === 'valid' ? 'success' : 'error');
+            msg.textContent = message;
+        }
+
+        function showOtpFieldError(message) {
+            setOtpBoxState('invalid', message);
+            document.getElementById('otp0').focus();
+        }
+
+        async function verifyInputOtp() {
+            syncOtpHidden();
+            const otpVal = document.getElementById('txtOtp').value;
+
             if (otpVal.length !== 6) {
-                errorElement.innerText = dynamicLocalizationDictionary[runtimeActiveLanguage].errOtp;
-                errorElement.style.display = 'block';
+                showOtpFieldError(dynamicLocalizationDictionary[runtimeActiveLanguage].errOtp);
                 return;
             }
-            errorElement.style.display = 'none';
 
-            isSystemPhoneVerified = true;
-            document.getElementById('btnVerifyOtp').innerText = 'Verified';
-            document.getElementById('btnVerifyOtp').disabled = true;
-            document.getElementById('txtOtp').disabled = true;
-            
-            // Activate both submission buttons
-            document.getElementById('btnSubmitPetition').disabled = false;
-            document.getElementById('btnSubmitMeeting').disabled = false;
+            const mobile = document.getElementById('txtMobile').value.trim();
+            const verifyBtn = document.getElementById('btnVerifyOtp');
+            verifyBtn.disabled = true;
+            verifyBtn.innerText = 'Verifying...';
+
+            try {
+                const response = await fetch('/api/v1/otp/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mobile_number: mobile, otp_code: otpVal }),
+                });
+
+                if (response.ok) {
+                    isSystemPhoneVerified = true;
+                    setOtpBoxState('valid', runtimeActiveLanguage === 'ta' ? 'OTP சரிபார்க்கப்பட்டது ✓' : 'OTP verified successfully ✓');
+                    verifyBtn.innerText = '✓ Verified';
+                    document.querySelectorAll('.otp-box').forEach(b => b.disabled = true);
+                    document.getElementById('btnSubmitPetition').disabled = false;
+                    document.getElementById('btnSubmitMeeting').disabled = false;
+                } else {
+                    const err = await response.json();
+                    showOtpFieldError(err.detail || dynamicLocalizationDictionary[runtimeActiveLanguage].errOtp);
+                    verifyBtn.disabled = false;
+                    verifyBtn.innerText = 'Verify OTP';
+                }
+            } catch (e) {
+                showOtpFieldError('Network error. Please try again.');
+                verifyBtn.disabled = false;
+                verifyBtn.innerText = 'Verify OTP';
+            }
         }
 
         function renderUploadedFiles(input) {
@@ -744,19 +959,43 @@
             const newUploadedFiles = Array.from(input.files);
 
             newUploadedFiles.forEach(file => {
-                // Safeguard against layout processing file size bounds over 5MB
-                if(file.size > 5 * 1024 * 1024) return; 
-                
+                if (file.size > 5 * 1024 * 1024) return;
+
                 registeredFileList.push(file);
                 const itemIndex = registeredFileList.length - 1;
 
                 const fileBadgeNode = document.createElement('div');
                 fileBadgeNode.className = 'file-badge';
                 fileBadgeNode.id = `badge-${itemIndex}`;
-                fileBadgeNode.innerHTML = `
-                    <div><i class="fa-solid fa-file-shield"></i> <strong>${file.name}</strong> (${(file.size/1024).toFixed(1)} KB)</div>
-                    <button type="button" class="remove-file-btn" onclick="purgeUploadedFile(${itemIndex})"><i class="fa-solid fa-trash-can"></i></button>
-                `;
+
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        fileBadgeNode.innerHTML = `
+                            <div class="file-badge-inner">
+                                <img src="${e.target.result}" class="file-thumb" alt="${file.name}">
+                                <div class="file-badge-info">
+                                    <strong>${file.name}</strong>
+                                    <span>${(file.size/1024).toFixed(1)} KB</span>
+                                </div>
+                            </div>
+                            <button type="button" class="remove-file-btn" onclick="purgeUploadedFile(${itemIndex})"><i class="fa-solid fa-trash-can"></i></button>
+                        `;
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    fileBadgeNode.innerHTML = `
+                        <div class="file-badge-inner">
+                            <i class="fa-solid fa-file-shield" style="font-size:1.5rem; color:#10b981;"></i>
+                            <div class="file-badge-info">
+                                <strong>${file.name}</strong>
+                                <span>${(file.size/1024).toFixed(1)} KB</span>
+                            </div>
+                        </div>
+                        <button type="button" class="remove-file-btn" onclick="purgeUploadedFile(${itemIndex})"><i class="fa-solid fa-trash-can"></i></button>
+                    `;
+                }
+
                 previewContainer.appendChild(fileBadgeNode);
             });
             input.value = ""; // Reset input capture target stream
@@ -770,6 +1009,8 @@
         
         // Initialize form validation on page load
         document.addEventListener('DOMContentLoaded', function() {
+            initOtpBoxes();
+
             // Disable OTP button initially
             document.getElementById('btnGenOtp').disabled = true;
             
@@ -801,22 +1042,21 @@
             const name = document.getElementById('txtName').value.trim();
             const mobile = document.getElementById('txtMobile').value.trim();
             const description = document.getElementById('txtDesc').value.trim();
-            const otp = document.getElementById('txtOtp').value.trim();
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
 
-            if (!name || !mobile || !otp || (!description && !hasFiles)) {
-                alert('Please fill in all required fields: Name, Mobile, OTP, and either Description or upload files.');
+            if (!name || !mobile || (!description && !hasFiles)) {
+                showOtpFieldError('Please fill in all required fields: Name, Mobile, and either Description or upload files.');
                 return;
             }
 
-            // Prepare form data
+            // Prepare form data — otp_code omitted, server checks is_verified flag
             const formData = new FormData();
             formData.append('session_token', sessionToken);
             formData.append('name', name);
             formData.append('mobile_number', mobile);
-            formData.append('constituency', 'Tamil Nadu'); // Default constituency
+            formData.append('constituency', 'Tamil Nadu');
             formData.append('description', description || 'See attachments');
-            formData.append('otp_code', otp);
+            formData.append('otp_code', document.getElementById('txtOtp').value);
             formData.append('schedule_meeting', scheduleMeeting.toString());
 
             // Add files
@@ -847,13 +1087,13 @@
                     window.location.href = `/form/success?token=${data.token_assigned}&name=${encodeURIComponent(name)}`;
                 } else {
                     const error = await response.json();
-                    alert('Submission Error: ' + (error.detail || 'Failed to submit appointment'));
+                    showOtpFieldError(error.detail || 'Submission failed. Please try again.');
                     petitionBtn.disabled = false;
                     meetingBtn.disabled = false;
                     activeBtn.innerHTML = originalHTML;
                 }
             } catch (error) {
-                alert('Network error. Please try again.');
+                showOtpFieldError('Network error. Please try again.');
                 petitionBtn.disabled = false;
                 meetingBtn.disabled = false;
                 activeBtn.innerHTML = originalHTML;
@@ -866,19 +1106,26 @@
             document.getElementById('filePreviews').innerHTML = "";
             registeredFileList = [];
             
-            // Soft reset OTP verification presentation state machine configurations
+            // Soft reset OTP verification state
             isSystemPhoneVerified = false;
             document.getElementById('otpVerificationWrapper').style.display = 'none';
             document.getElementById('txtMobile').disabled = false;
-            
+
+            document.querySelectorAll('.otp-box').forEach(b => {
+                b.value = '';
+                b.disabled = false;
+                b.classList.remove('otp-valid', 'otp-invalid');
+            });
+            document.getElementById('txtOtp').value = '';
+            clearOtpState();
+
             const genBtn = document.getElementById('btnGenOtp');
             genBtn.innerText = 'Send OTP';
             genBtn.disabled = false;
 
             const verifyBtn = document.getElementById('btnVerifyOtp');
-            verifyBtn.innerText = 'Verify';
+            verifyBtn.innerText = 'Verify OTP';
             verifyBtn.disabled = false;
-            document.getElementById('txtOtp').disabled = false;
             
             document.getElementById('btnSubmitPetition').disabled = true;
             document.getElementById('btnSubmitMeeting').disabled = true;

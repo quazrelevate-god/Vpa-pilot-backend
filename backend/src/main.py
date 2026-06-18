@@ -12,6 +12,10 @@ from fastapi.staticfiles import StaticFiles
 from src.core.config import settings
 from src.api.v1 import qr, form, appointments
 
+# Import all ORM models so SQLAlchemy can resolve cross-model relationships
+# (e.g. Appointment → GrievanceSummaryRecord) before the mapper is configured.
+import src.models.grievance_summary_record  # noqa: F401
+
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

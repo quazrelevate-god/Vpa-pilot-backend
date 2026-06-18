@@ -5,6 +5,7 @@ Uses itsdangerous for tamper-proof token signing and PostgreSQL for state manage
 import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, Any
+from urllib.parse import quote
 from itsdangerous import TimestampSigner, BadSignature, SignatureExpired
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -80,8 +81,9 @@ class QRService:
             await db.rollback()
             raise ValueError(f"QR signature collision detected: {str(e)}")
         
-        # Step 5: Construct verification URL
-        verification_url = f"/api/v1/qr/verify?signature={signature_string}"
+        # Step 5: Construct verification URL — URL-encode the signature so that
+        # characters like + and / (from base64) survive the query-string round-trip.
+        verification_url = f"/api/v1/qr/verify?signature={quote(signature_string, safe='')}"
         
         return {
             "signature": signature_string,

@@ -65,11 +65,18 @@ class OTPVerification(Base):
         comment="Number of failed OTP verification attempts (max 3)"
     )
     
+    is_verified = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        comment="True after citizen passes the /otp/verify step (before form submit)"
+    )
+
     is_used = Column(
         Boolean,
         nullable=False,
         default=False,
-        comment="True if OTP has been successfully verified and consumed"
+        comment="True if OTP has been consumed by form submission"
     )
     
     created_at = Column(

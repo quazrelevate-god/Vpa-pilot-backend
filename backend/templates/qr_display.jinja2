@@ -28,6 +28,7 @@
         }
 
         .container {
+            position: relative;
             width: 100%;
             max-width: 1200px;
             background: rgba(255, 255, 255, 0.65);
@@ -50,6 +51,19 @@
 
         .header {
             margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .header-logo {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid rgba(0, 135, 4, 0.35);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
         .title-en {
@@ -208,6 +222,8 @@
 </head>
 <body>
     <div class="container">
+        <img src="/static/assets/TN-logo.jpeg" alt="TN Govt Emblem" class="header-logo">
+
         <div class="header">
             <h1 class="title-en">Scan QR Code</h1>
             <h1 class="title-ta">QR குறியீட்டை ஸ்கேன் செய்யவும்</h1>
@@ -230,7 +246,7 @@
             <!-- Center: QR Code -->
             <div class="qr-container">
                 <div id="qrcode">
-                    <div class="loading">Generating...</div>
+                    <div id="qr-loading" class="loading">Generating...</div>
                 </div>
             </div>
 
@@ -256,109 +272,45 @@
 
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
-        let qrCodeInstance = null;
-        let countdown = {{ expiry_seconds }};
-        let timerInterval = null;
-        let venueId = '{{ venue_id }}';
-        let currentQrUrl = '{{ qr_url }}';
-        let baseUrl = '{{ qr_url }}'.split('/api/v1/qr/verify')[0]; // Extract base URL from qr_url
+        const EXPIRY = {{ expiry_seconds }};
+        let countdown = EXPIRY;
 
-        async function generateQRCode(qrUrl = null) {
-            try {
-                let qrDataUrl = qrUrl;
-                
-                // If no QR URL provided, fetch from API
-                if (!qrDataUrl) {
-                    const response = await fetch(`/api/v1/qr/generate?venue_id=${venueId}`);
-                    
-                    if (!response.ok) {
-                        throw new Error('Failed to generate QR code');
-                    }
-
-                    const data = await response.json();
-                    // Construct full URL from verification_url using configured base URL
-                    qrDataUrl = `${baseUrl}${data.verification_url}`;
-                    currentQrUrl = qrDataUrl;
-                }
-                
-                // Clear existing QR code
-                const qrContainer = document.getElementById('qrcode');
-                qrContainer.innerHTML = '';
-                
-                // Generate new QR code
-                qrCodeInstance = new QRCode(qrContainer, {
-                    text: qrDataUrl,
-                    width: 350,
-                    height: 350,
-                    colorDark: "#000000",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.H
-                });
-
-                // Reset countdown
-                countdown = {{ expiry_seconds }};
-                updateTimer();
-                
-                // Hide refresh message
-                document.getElementById('refreshMessage').classList.remove('show');
-                
-            } catch (error) {
-                console.error('Error generating QR code:', error);
-                document.getElementById('qrcode').innerHTML = '<div class="loading" style="color: #ef4444;">Error generating QR code. Retrying...</div>';
-                
-                // Retry after 2 seconds
-                setTimeout(() => generateQRCode(), 2000);
-            }
-        }
-
-        function updateTimer() {
-            const timerElement = document.getElementById('timer');
-            timerElement.textContent = countdown;
-            
-            // Change color based on time remaining
-            if (countdown <= 10) {
-                timerElement.classList.add('danger');
-                timerElement.classList.remove('warning');
-            } else if (countdown <= 30) {
-                timerElement.classList.add('warning');
-                timerElement.classList.remove('danger');
-            } else {
-                timerElement.classList.remove('warning', 'danger');
-            }
-        }
-
-        function startCountdown() {
-            timerInterval = setInterval(() => {
-                countdown--;
-                updateTimer();
-                
-                // Show refresh message when 5 seconds left
-                if (countdown === 5) {
-                    document.getElementById('refreshMessage').classList.add('show');
-                }
-                
-                // Refresh QR code when timer reaches 0
-                if (countdown <= 0) {
-                    clearInterval(timerInterval);
-                    generateQRCode();
-                    startCountdown();
-                }
-            }, 1000);
-        }
-
-        // Initialize on page load
-        window.addEventListener('DOMContentLoaded', () => {
-            // Render QR code immediately with server-provided URL
-            generateQRCode(currentQrUrl);
-            startCountdown();
+        // Clear "Generating..." placeholder, then render QR
+        const qrContainer = document.getElementById('qrcode');
+        qrContainer.innerHTML = '';
+        new QRCode(qrContainer, {
+            text: '{{ qr_url }}',
+            width: 350,
+            height: 350,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
         });
 
-        // Clean up on page unload
-        window.addEventListener('beforeunload', () => {
-            if (timerInterval) {
-                clearInterval(timerInterval);
+        // Hide the "Generating..." placeholder once the QR image appears
+        const loadingEl = document.getElementById('qr-loading');
+        const observer = new MutationObserver(() => {
+            if (qrContainer.querySelector('img, canvas')) {
+                loadingEl.style.display = 'none';
+                observer.disconnect();
             }
         });
+        observer.observe(qrContainer, { childList: true, subtree: true });
+
+        // Countdown timer
+        const timerEl = document.getElementById('timer');
+        const refreshMsg = document.getElementById('refreshMessage');
+
+        setInterval(() => {
+            countdown--;
+            timerEl.textContent = countdown;
+            timerEl.classList.toggle('danger',  countdown <= 10);
+            timerEl.classList.toggle('warning', countdown > 10 && countdown <= 30);
+
+            if (countdown <= 5) refreshMsg.classList.add('show');
+
+            if (countdown <= 0) window.location.reload();
+        }, 1000);
     </script>
 </body>
 </html>
