@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointments — Petition Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { sidebar: '#0c2e59', sidebarHover: '#164075', sidebarActive: '#1a4b8c', brand: '#0f62fe' } } }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.2); border-radius: 4px; }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .status-select {
+            appearance: none;
+            padding: 4px 28px 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            transition: all 0.2s;
+        }
+        .status-select:focus { outline: none; box-shadow: 0 0 0 2px rgba(15,98,254,0.2); }
+        .s-Scheduled   { background:#dcfce7; color:#15803d; }
+        .s-Rescheduled { background:#fef08a; color:#854d0e; }
+        .s-Submitted   { background:#dbeafe; color:#1d4ed8; }
+        .s-Closed      { background:#f1f5f9; color:#475569; }
+        .s-Waiting     { background:#ffedd5; color:#c2410c; }
+        .urgency-low      { background:#f0fdf4; color:#166534; }
+        .urgency-medium   { background:#fefce8; color:#854d0e; }
+        .urgency-high     { background:#fff7ed; color:#c2410c; }
+        .urgency-critical { background:#fef2f2; color:#991b1b; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden text-slate-800 bg-slate-50">
+
+    <!-- Sidebar -->
+    <aside class="w-60 bg-sidebar text-white flex flex-col flex-shrink-0">
+        <div class="h-16 flex items-center px-5 border-b border-white/10">
+            <span class="text-sm font-bold leading-tight">Petition Management<br><span class="text-white/50 font-normal text-xs">Staff Portal</span></span>
+        </div>
+        <nav class="flex-1 overflow-y-auto sidebar-scroll py-3">
+            <a href="/dashboard/overview"
+               class="flex items-center px-5 py-3 text-white/70 hover:bg-sidebarHover hover:text-white text-sm font-medium gap-3 transition-colors">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
+            </a>
+            <a href="/dashboard/appointments"
+               class="flex items-center px-5 py-3 bg-sidebarActive text-white text-sm font-medium gap-3">
+                <i data-lucide="calendar-days" class="w-4 h-4"></i> Appointments
+            </a>
+        </nav>
+        <div class="p-4 border-t border-white/10">
+            <a href="/dashboard/logout" class="flex items-center gap-2 text-white/60 hover:text-white text-xs transition-colors">
+                <i data-lucide="log-out" class="w-4 h-4"></i> Sign out ({{ user }})
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <!-- Header -->
+        <header class="h-16 bg-white border-b flex items-center px-6 gap-4 flex-shrink-0">
+            <div class="text-xs text-slate-500 font-medium tracking-wide">Government of Tamil Nadu</div>
+            <div class="h-5 w-px bg-slate-200"></div>
+            <div class="text-sm font-bold text-slate-900">Petition Appointment Management System</div>
+        </header>
+
+        <!-- Content -->
+        <main class="flex-1 overflow-x-hidden overflow-y-auto p-6 flex flex-col">
+
+            <!-- Page header -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 mb-0.5">Appointments</h1>
+                    <p class="text-sm text-slate-500">Citizens who have submitted petitions via the QR flow.</p>
+                </div>
+                <button onclick="exportCSV()" class="px-4 py-2 bg-white border shadow-sm text-sm font-medium text-slate-700 rounded-md hover:bg-slate-50 transition-colors flex items-center gap-2">
+                    <i data-lucide="download" class="w-4 h-4 text-brand"></i> Export
+                </button>
+            </div>
+
+            <!-- Panel -->
+            <div class="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col flex-1 min-h-0">
+
+                <!-- Filters -->
+                <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3 flex-wrap items-end">
+                    <div class="relative">
+                        <input id="search-input" type="text" placeholder="Search name, token, mobile…"
+                            class="w-56 pl-3 pr-9 py-2 border rounded-md text-sm text-slate-700 focus:border-brand focus:outline-none"
+                            oninput="debounceLoad()">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2"></i>
+                    </div>
+                    <!-- Date filters hidden - showing all appointments -->
+                    <input type="date" id="appt-from" class="hidden">
+                    <input type="date" id="appt-to" class="hidden">
+                </div>
+
+                <!-- Tabs -->
+                <div class="border-b border-slate-200 px-5 pt-2 flex gap-5 overflow-x-auto flex-shrink-0">
+                    {% for tab in ['All','Scheduled','Waiting','Rescheduled','Submitted','Closed'] %}
+                    <button onclick="setTab('{{ tab }}')"
+                        class="tab-btn whitespace-nowrap pb-3 text-sm font-medium border-b-2 focus:outline-none transition-colors
+                               {% if tab == 'All' %}text-brand border-brand font-semibold{% else %}text-slate-500 border-transparent hover:border-slate-300{% endif %}"
+                        data-tab="{{ tab }}">{{ tab }}</button>
+                    {% endfor %}
+                </div>
+
+                <!-- Table -->
+                <div class="flex-1 overflow-auto">
+                    <table class="w-full text-left border-collapse min-w-[900px]">
+                        <thead class="sticky top-0 bg-slate-50 z-10">
+                            <tr class="border-b border-slate-200">
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 w-10">#</th>
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 w-28">Token</th>
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 w-40">Name</th>
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 w-36">Category</th>
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 w-36">Submitted Time</th>
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 w-36">Appt. Time</th>
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 w-24">Priority</th>
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 w-36">Status</th>
+                                <th class="py-3 px-4 text-xs font-semibold text-slate-600 text-center w-16">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-slate-100">
+                            <tr><td colspan="9" class="py-10 text-center text-slate-400 text-sm">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Footer / pagination -->
+                <div class="p-4 border-t border-slate-100 flex items-center justify-between bg-white rounded-b-lg flex-shrink-0">
+                    <span class="text-sm text-slate-500" id="pagination-info">—</span>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-prev" onclick="changePage(-1)"
+                            class="px-3 py-1.5 text-sm border rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">← Prev</button>
+                        <span class="text-sm text-slate-600" id="page-label">Page 1</span>
+                        <button id="btn-next" onclick="changePage(1)"
+                            class="px-3 py-1.5 text-sm border rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">Next →</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Status Updated Toast -->
+    <div id="status-toast" class="fixed bottom-6 right-6 z-50 hidden">
+        <div class="flex items-center gap-3 bg-slate-900 text-white px-5 py-3.5 rounded-xl shadow-2xl">
+            <div class="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
+            </div>
+            <div>
+                <div class="text-sm font-semibold">Status Updated</div>
+                <div class="text-xs text-slate-400" id="toast-msg">Appointment status has been changed.</div>
+            </div>
+            <button onclick="hideToast()" class="ml-2 text-slate-400 hover:text-white">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Reschedule Modal -->
+    <div id="reschedule-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
+            <div class="flex items-center justify-between mb-5">
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="calendar-clock" class="w-5 h-5 text-orange-500"></i>
+                    Reschedule Appointment
+                </h2>
+                <button onclick="closeRescheduleModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">New Date & Time</label>
+                    <input type="datetime-local" id="modal-datetime"
+                        class="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-brand">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">SMS Notification</label>
+                    <textarea id="modal-sms-template"
+                        class="w-full border border-slate-300 rounded-md px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:border-brand"></textarea>
+                    <p class="text-[10px] text-slate-400 mt-1">Sent to the citizen's registered mobile number.</p>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button onclick="closeRescheduleModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md">Cancel</button>
+                <button onclick="submitReschedule()" class="px-4 py-2 bg-brand text-white text-sm font-medium rounded-md hover:bg-blue-700 flex items-center gap-2 shadow-sm">
+                    <i data-lucide="send" class="w-4 h-4"></i> Send & Reschedule
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        let currentTab = 'All';
+        let currentPage = 1;
+        let totalItems = 0;
+        const PAGE_SIZE = 25;
+        let pendingSelectEl = null;
+        let pendingApptId = null;
+        let searchTimer = null;
+
+        function debounceLoad() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => { currentPage = 1; loadTable(); }, 350);
+        }
+
+        function setTab(tab) {
+            currentTab = tab;
+            currentPage = 1;
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                const active = b.dataset.tab === tab;
+                b.classList.toggle('text-brand', active);
+                b.classList.toggle('border-brand', active);
+                b.classList.toggle('font-semibold', active);
+                b.classList.toggle('text-slate-500', !active);
+                b.classList.toggle('border-transparent', !active);
+            });
+            loadTable();
+        }
+
+        function changePage(delta) {
+            const maxPage = Math.ceil(totalItems / PAGE_SIZE);
+            const next = currentPage + delta;
+            if (next < 1 || next > maxPage) return;
+            currentPage = next;
+            loadTable();
+        }
+
+        function statusClass(s) {
+            return { Scheduled:'s-Scheduled', Rescheduled:'s-Rescheduled', Submitted:'s-Submitted', Closed:'s-Closed', Waiting:'s-Waiting' }[s] || '';
+        }
+
+        const PRIORITY_STYLES = {
+            critical: { bg: 'bg-red-600',    text: 'text-white',      label: 'Critical' },
+            high:     { bg: 'bg-red-100',     text: 'text-red-700',    label: 'High' },
+            medium:   { bg: 'bg-orange-100',  text: 'text-orange-700', label: 'Medium' },
+            major:    { bg: 'bg-orange-100',  text: 'text-orange-700', label: 'Major' },
+            low:      { bg: 'bg-green-100',   text: 'text-green-700',  label: 'Low' },
+            minor:    { bg: 'bg-green-100',   text: 'text-green-700',  label: 'Minor' },
+            normal:   { bg: 'bg-green-100',   text: 'text-green-700',  label: 'Normal' },
+        };
+
+        function priorityBadge(u) {
+            if (!u) return '<span class="text-slate-300 text-xs">—</span>';
+            const s = PRIORITY_STYLES[u.toLowerCase()] || { bg: 'bg-slate-100', text: 'text-slate-600', label: u };
+            return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${s.bg} ${s.text} uppercase tracking-wide">${s.label}</span>`;
+        }
+
+        function urgencyBadge(u) {
+            if (!u) return '';
+            return priorityBadge(u);
+        }
+
+        function applyDateFilter() { currentPage = 1; loadTable(); }
+        function clearApptFilter() {
+            document.getElementById('appt-from').value = '';
+            document.getElementById('appt-to').value = '';
+            currentPage = 1; loadTable();
+        }
+
+        async function loadTable() {
+            const search = document.getElementById('search-input').value.trim();
+            const from   = document.getElementById('appt-from').value;
+            const to     = document.getElementById('appt-to').value;
+            const params = new URLSearchParams({ status: currentTab, search, page: currentPage });
+            if (from) params.set('date_from', from);
+            if (to)   params.set('date_to', to);
+            const url = `/dashboard/api/appointments?` + params.toString();
+            const resp = await fetch(url);
+            const data = await resp.json();
+            totalItems = data.total;
+
+            const tbody = document.getElementById('table-body');
+            if (!data.items.length) {
+                tbody.innerHTML = `<tr><td colspan="9" class="py-10 text-center text-slate-400 text-sm">No appointments found.</td></tr>`;
+                updatePagination();
+                lucide.createIcons();
+                return;
+            }
+
+            const offset = (currentPage - 1) * PAGE_SIZE;
+            tbody.innerHTML = '';
+            data.items.forEach((row, idx) => {
+                const sc = statusClass(row.status);
+
+                // Main row
+                const trMain = document.createElement('tr');
+                trMain.className = 'hover:bg-slate-50 transition-colors bg-white';
+                trMain.innerHTML = `
+                    <td class="py-3 px-4 text-sm text-slate-500">${offset + idx + 1}</td>
+                    <td class="py-3 px-4 text-sm font-medium text-slate-800">${row.token}</td>
+                    <td class="py-3 px-4 text-sm text-slate-800">${row.name}</td>
+                    <td class="py-3 px-4 text-sm text-slate-600">${row.category}</td>
+                    <td class="py-3 px-4 text-xs text-slate-500">${row.created_at}</td>
+                    <td class="py-3 px-4 text-xs text-slate-500">${row.appointment_time || '<span class="text-slate-300">—</span>'}</td>
+                    <td class="py-3 px-4">${priorityBadge(row.urgency)}</td>
+                    <td class="py-3 px-4">
+                        <select class="status-select ${sc}" data-id="${row.id}" data-prev="${row.status}"
+                                onchange="onStatusChange(this, '${row.name.replace(/'/g,"\\'")}')">
+                            <option value="Scheduled"   ${row.status==='Scheduled'   ?'selected':''}>Scheduled</option>
+                            <option value="Waiting"     ${row.status==='Waiting'     ?'selected':''}>Waiting</option>
+                            <option value="Rescheduled" ${row.status==='Rescheduled' ?'selected':''}>Rescheduled</option>
+                            <option value="Submitted"   ${row.status==='Submitted'   ?'selected':''}>Submitted</option>
+                            <option value="Closed"      ${row.status==='Closed'      ?'selected':''}>Closed</option>
+                        </select>
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <button onclick="toggleExpand(${row.id}, this)"
+                            class="p-1 text-slate-400 hover:text-brand hover:bg-blue-50 rounded transition-all">
+                            <i data-lucide="chevron-down" class="w-5 h-5 transition-transform duration-200"></i>
+                        </button>
+                    </td>`;
+
+                // Expand row
+                const trExpand = document.createElement('tr');
+                trExpand.id = `expand-${row.id}`;
+                trExpand.className = 'hidden bg-slate-50/80 border-b border-slate-200';
+
+                // Description (citizen's own words)
+                const descHtml = row.description
+                    ? `<div class="mb-4">
+                           <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Citizen's Description</div>
+                           <p class="text-sm text-slate-700 bg-white p-4 rounded border border-slate-200 leading-relaxed">${row.description}</p>
+                       </div>` : '';
+
+                // AI summary block
+                const headlineHtml = row.headline
+                    ? `<div class="font-semibold text-slate-800 mb-1">${row.headline}</div>` : '';
+                const summaryHtml = row.summary
+                    ? `<p class="text-sm text-slate-700 leading-relaxed">${row.summary}</p>`
+                    : `<p class="text-sm text-slate-400 italic">AI summary not yet generated.</p>`;
+                const askHtml = row.citizen_ask
+                    ? `<div class="mt-3"><div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Citizen's Ask</div>
+                       <p class="text-sm text-slate-700">${row.citizen_ask}</p></div>` : '';
+                const detailsHtml = (row.key_details || []).map(d => `<li class="text-sm text-slate-600">${d}</li>`).join('');
+                const detailsBlock = detailsHtml
+                    ? `<div class="mt-3"><div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Key Details</div>
+                       <ul class="list-disc pl-4 space-y-0.5">${detailsHtml}</ul></div>` : '';
+                const urgencyHtml = row.urgency ? `<div class="mt-3">${urgencyBadge(row.urgency)}</div>` : '';
+
+                // Attachments grid
+                const attachments = row.attachments || [];
+                let mediaHtml = '';
+                if (attachments.length === 0) {
+                    mediaHtml = `<div class="h-32 bg-slate-100 rounded border border-slate-200 flex items-center justify-center text-slate-400 text-sm">No files attached</div>`;
+                } else {
+                    mediaHtml = attachments.map(a => {
+                        if (a.type === 'IMAGE') {
+                            return `<div class="relative group">
+                                <img src="${a.url}" class="w-full h-36 object-cover rounded border border-slate-200">
+                                <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center rounded">
+                                    <a href="${a.url}" target="_blank" class="text-white text-xs font-medium bg-black/50 px-2 py-1 rounded">View</a>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1 truncate">${a.name}</p>
+                            </div>`;
+                        } else {
+                            const icon = a.type === 'DOCUMENT' ? '📄' : a.type === 'AUDIO' ? '🎵' : '🎬';
+                            return `<a href="${a.url}" target="_blank"
+                                class="flex flex-col items-center justify-center h-36 bg-slate-50 rounded border border-slate-200 hover:bg-slate-100 transition text-center p-2">
+                                <span class="text-3xl mb-2">${icon}</span>
+                                <span class="text-[10px] text-slate-500 truncate w-full text-center">${a.name}</span>
+                            </a>`;
+                        }
+                    }).join('');
+                }
+
+                trExpand.innerHTML = `
+                    <td colspan="9" class="p-0">
+                        <div class="px-8 py-5 border-l-4 border-brand">
+                            <!-- Top: name + mobile -->
+                            <div class="grid grid-cols-2 gap-4 bg-white p-4 rounded border border-slate-200 mb-4 max-w-lg">
+                                <div>
+                                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Name</div>
+                                    <div class="font-medium text-slate-800">${row.name}</div>
+                                </div>
+                                <div>
+                                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Mobile</div>
+                                    <div class="font-medium text-slate-800">${row.mobile}</div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-6">
+                                <!-- Left: description + AI summary -->
+                                <div class="flex-1 min-w-0">
+                                    ${descHtml}
+                                    <div class="bg-white p-4 rounded border border-slate-200">
+                                        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">AI Summary</div>
+                                        ${headlineHtml}${summaryHtml}${askHtml}${detailsBlock}${urgencyHtml}
+                                    </div>
+                                </div>
+                                <!-- Right: attachments -->
+                                <div class="w-72 flex-shrink-0">
+                                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Attachments (${attachments.length})</div>
+                                    <div class="grid grid-cols-2 gap-2">${mediaHtml}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </td>`;
+
+                tbody.appendChild(trMain);
+                tbody.appendChild(trExpand);
+            });
+
+            updatePagination();
+            lucide.createIcons();
+        }
+
+        function updatePagination() {
+            const maxPage = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+            document.getElementById('pagination-info').textContent =
+                `Showing ${Math.min((currentPage-1)*PAGE_SIZE+1, totalItems)}–${Math.min(currentPage*PAGE_SIZE, totalItems)} of ${totalItems}`;
+            document.getElementById('page-label').textContent = `Page ${currentPage} of ${maxPage}`;
+            document.getElementById('btn-prev').disabled = currentPage <= 1;
+            document.getElementById('btn-next').disabled = currentPage >= maxPage;
+        }
+
+        function toggleExpand(id, btn) {
+            const row = document.getElementById(`expand-${id}`);
+            const icon = btn.querySelector('svg') || btn.querySelector('i');
+            row.classList.toggle('hidden');
+            if (icon) icon.classList.toggle('rotate-180');
+        }
+
+        // ── Status change ──────────────────────────────────────────────────────
+        function onStatusChange(sel, name) {
+            if (sel.value === 'Rescheduled') {
+                pendingSelectEl = sel;
+                pendingApptId = sel.dataset.id;
+                document.getElementById('modal-datetime').value = new Date().toISOString().slice(0,16);
+                document.getElementById('modal-sms-template').value =
+                    `Dear ${name},\n\nYour petition appointment has been rescheduled. Please check your portal for the new timings.\n\n- Public Grievances Dept.`;
+                document.getElementById('reschedule-modal').classList.remove('hidden');
+            } else {
+                saveStatus(sel.dataset.id, sel.value, sel);
+            }
+        }
+
+        let toastTimer = null;
+
+        function showToast(msg) {
+            document.getElementById('toast-msg').textContent = msg;
+            const toast = document.getElementById('status-toast');
+            toast.classList.remove('hidden');
+            lucide.createIcons();
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(hideToast, 3500);
+        }
+
+        function hideToast() {
+            document.getElementById('status-toast').classList.add('hidden');
+        }
+
+        async function saveStatus(id, status, sel) {
+            const prev = sel.dataset.prev;
+            const resp = await fetch(`/dashboard/api/appointments/${id}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status }),
+            });
+            if (resp.ok) {
+                sel.className = `status-select ${statusClass(status)}`;
+                sel.dataset.prev = status;
+                showToast(`Status changed to "${status}" successfully.`);
+            } else {
+                sel.value = prev;
+                sel.className = `status-select ${statusClass(prev)}`;
+                showToast('Failed to update status. Please try again.');
+            }
+        }
+
+        function closeRescheduleModal() {
+            document.getElementById('reschedule-modal').classList.add('hidden');
+            if (pendingSelectEl) {
+                const prev = pendingSelectEl.dataset.prev;
+                pendingSelectEl.value = prev;
+                pendingSelectEl.className = `status-select ${statusClass(prev)}`;
+                pendingSelectEl = null; pendingApptId = null;
+            }
+        }
+
+        async function submitReschedule() {
+            if (pendingSelectEl && pendingApptId) {
+                await saveStatus(pendingApptId, 'Rescheduled', pendingSelectEl);
+                pendingSelectEl = null; pendingApptId = null;
+            }
+            document.getElementById('reschedule-modal').classList.add('hidden');
+            showToast('Appointment rescheduled and SMS sent.');
+        }
+
+        // ── Export CSV ─────────────────────────────────────────────────────────
+        async function exportCSV() {
+            const from = document.getElementById('appt-from').value;
+            const to   = document.getElementById('appt-to').value;
+            const params = new URLSearchParams({ status: currentTab, page: 1, page_size: 10000 });
+            if (from) params.set('date_from', from);
+            if (to)   params.set('date_to', to);
+            const resp = await fetch(`/dashboard/api/appointments?` + params.toString());
+            const data = await resp.json();
+            const rows = [['Token','Name','Mobile','Category','Status','Submitted']];
+            data.items.forEach(r => rows.push([r.token, r.name, r.mobile, r.category, r.status, r.created_at]));
+            const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+            const a = document.createElement('a');
+            a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+            a.download = 'appointments.csv';
+            a.click();
+        }
+
+        // Initial load
+        loadTable();
+    </script>
+</body>
+</html>

@@ -39,8 +39,9 @@ logger = logging.getLogger(__name__)
 # These are defaults. The real values come from `settings.GEMINI_PRIMARY_MODEL`
 # / `settings.GEMINI_FALLBACK_MODEL` when the service is constructed via the
 # `from_settings()` factory below.
-PRIMARY_MODEL  = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-2.5-flash-lite"
+PRIMARY_MODEL   = "gemini-2.5-flash"
+FALLBACK_MODEL  = "gemini-2.5-flash-lite"
+FALLBACK_MODEL2 = "gemini-2.0-flash"
 
 # Transient errors (server busy / rate limited) are retried on the SAME model
 # with exponential backoff before falling through to the fallback model.
@@ -135,6 +136,7 @@ class GrievanceSummarisationService:
         api_key: str,
         model_name: str = PRIMARY_MODEL,
         fallback_model: str = FALLBACK_MODEL,
+        fallback_model2: str = FALLBACK_MODEL2,
         service_tier: str = SERVICE_TIER,
     ) -> None:
         if not api_key:
@@ -142,6 +144,7 @@ class GrievanceSummarisationService:
         self._client = genai.Client(api_key=api_key)
         self._model_name = model_name
         self._fallback_model = fallback_model
+        self._fallback_model2 = fallback_model2
         self._service_tier = self._resolve_service_tier(service_tier)
 
     @staticmethod
@@ -179,6 +182,7 @@ class GrievanceSummarisationService:
             api_key=settings.GEMINI_API_KEY,
             model_name=settings.GEMINI_PRIMARY_MODEL,
             fallback_model=settings.GEMINI_FALLBACK_MODEL,
+            fallback_model2=settings.GEMINI_FALLBACK_MODEL2,
             service_tier=settings.GEMINI_SERVICE_TIER,
         )
 
@@ -330,8 +334,9 @@ class GrievanceSummarisationService:
           - finally fall through to the fallback model.
         """
         models_to_try = [self._model_name]
-        if self._fallback_model and self._fallback_model != self._model_name:
-            models_to_try.append(self._fallback_model)
+        for m in (self._fallback_model, self._fallback_model2):
+            if m and m not in models_to_try:
+                models_to_try.append(m)
 
         last_exc: Optional[Exception] = None
         for model_idx, model in enumerate(models_to_try):

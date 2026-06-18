@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — Petition Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { sidebar: '#0c2e59', sidebarHover: '#164075', sidebarActive: '#1a4b8c', brand: '#0f62fe' } } }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.2); border-radius: 4px; }
+
+        /* Gauge arc */
+        .gauge-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+        .gauge-label { position: absolute; text-align: center; }
+
+        /* Card hover */
+        .stat-card { transition: transform 0.15s, box-shadow 0.15s; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+
+        /* Skeleton shimmer */
+        @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+        .skeleton { background: linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%); background-size: 400px 100%; animation: shimmer 1.2s infinite; border-radius: 6px; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden text-slate-800 bg-slate-50">
+
+    <!-- Sidebar -->
+    <aside class="w-60 bg-sidebar text-white flex flex-col flex-shrink-0">
+        <div class="h-16 flex items-center px-5 border-b border-white/10">
+            <span class="text-sm font-bold leading-tight">Petition Management<br><span class="text-white/50 font-normal text-xs">Staff Portal</span></span>
+        </div>
+        <nav class="flex-1 overflow-y-auto sidebar-scroll py-3">
+            <a href="/dashboard/overview" class="flex items-center px-5 py-3 bg-sidebarActive text-white text-sm font-medium gap-3">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
+            </a>
+            <a href="/dashboard/appointments" class="flex items-center px-5 py-3 text-white/70 hover:bg-sidebarHover hover:text-white text-sm font-medium gap-3 transition-colors">
+                <i data-lucide="calendar-days" class="w-4 h-4"></i> Appointments
+            </a>
+        </nav>
+        <div class="p-4 border-t border-white/10">
+            <a href="/dashboard/logout" class="flex items-center gap-2 text-white/60 hover:text-white text-xs transition-colors">
+                <i data-lucide="log-out" class="w-4 h-4"></i> Sign out ({{ user }})
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <header class="h-16 bg-white border-b flex items-center px-6 gap-4 flex-shrink-0 justify-between">
+            <div class="flex items-center gap-4">
+                <div class="text-xs text-slate-500 font-medium tracking-wide">Government of Tamil Nadu</div>
+                <div class="h-5 w-px bg-slate-200"></div>
+                <div class="text-sm font-bold text-slate-900">Petition Appointment Management System</div>
+            </div>
+            <div class="text-xs text-slate-400" id="last-updated"></div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto p-6 space-y-6">
+
+            <!-- Page title -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h1 class="text-2xl font-extrabold text-slate-900">Performance Overview</h1>
+                    <p class="text-sm text-slate-500 mt-0.5">Today's petition analytics — <span id="today-date"></span></p>
+                </div>
+                <button onclick="loadDashboard()" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-blue-700 transition shadow-sm">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Refresh
+                </button>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="kpi-cards">
+                <!-- filled by JS -->
+                <div class="skeleton h-28 rounded-xl"></div>
+                <div class="skeleton h-28 rounded-xl"></div>
+                <div class="skeleton h-28 rounded-xl"></div>
+                <div class="skeleton h-28 rounded-xl"></div>
+            </div>
+
+            <!-- Row 1: Gauges + Trend line -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- Resolution Rate Gauge -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col items-center justify-center">
+                    <div class="text-sm font-semibold text-slate-600 mb-4">Resolution Rate</div>
+                    <div class="gauge-wrap">
+                        <canvas id="gaugeResolution" width="200" height="120"></canvas>
+                        <div class="gauge-label" style="bottom:8px">
+                            <div class="text-3xl font-extrabold text-slate-800" id="gauge-resolution-val">—</div>
+                            <div class="text-xs text-slate-400">of total</div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-3 text-center">Petitions fully submitted vs total received</p>
+                </div>
+
+                <!-- AI Coverage Gauge -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col items-center justify-center">
+                    <div class="text-sm font-semibold text-slate-600 mb-4">AI Summary Coverage</div>
+                    <div class="gauge-wrap">
+                        <canvas id="gaugeAI" width="200" height="120"></canvas>
+                        <div class="gauge-label" style="bottom:8px">
+                            <div class="text-3xl font-extrabold text-slate-800" id="gauge-ai-val">—</div>
+                            <div class="text-xs text-slate-400">summarised</div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-3 text-center">Appointments with Gemini AI summaries generated</p>
+                </div>
+
+                <!-- Status Doughnut -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col">
+                    <div class="text-sm font-semibold text-slate-600 mb-4">Status Breakdown</div>
+                    <div class="flex-1 flex items-center justify-center">
+                        <canvas id="chartStatus" height="180"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Trend line (full width) -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <div class="text-sm font-semibold text-slate-700">Submission Trend</div>
+                        <div class="text-xs text-slate-400">Daily petition submissions — last 14 days</div>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-slate-500">
+                        <span class="w-3 h-3 rounded-full bg-brand inline-block"></span> Submissions
+                    </div>
+                </div>
+                <div class="h-52">
+                    <canvas id="chartTrend"></canvas>
+                </div>
+            </div>
+
+            <!-- Row 3: Category bar + Urgency + Sentiment -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- Category Bar -->
+                <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <div class="text-sm font-semibold text-slate-700 mb-1">Petitions by Category</div>
+                    <div class="text-xs text-slate-400 mb-4">Top categories by volume</div>
+                    <div class="h-56">
+                        <canvas id="chartCategory"></canvas>
+                    </div>
+                </div>
+
+                <!-- Urgency + Sentiment stacked -->
+                <div class="flex flex-col gap-6">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex-1">
+                        <div class="text-sm font-semibold text-slate-700 mb-4">Urgency Distribution</div>
+                        <div id="urgency-bars" class="space-y-2.5"></div>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex-1">
+                        <div class="text-sm font-semibold text-slate-700 mb-3">Citizen Sentiment</div>
+                        <div class="h-36 flex items-center justify-center">
+                            <canvas id="chartSentiment"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const KPI_CONFIG = [
+            { key: 'total',      label: 'Total Petitions',       icon: 'file-text',      color: 'text-brand',      bg: 'bg-blue-50'   },
+            { key: 'scheduled',  label: 'Scheduled Meetings',    icon: 'calendar-check', color: 'text-orange-600', bg: 'bg-orange-50' },
+            { key: 'submitted',  label: 'Submitted Petitions',   icon: 'check-circle',   color: 'text-green-600',  bg: 'bg-green-50'  },
+            { key: 'closed',  label: 'Closed',             icon: 'x-circle',       color: 'text-red-500',    bg: 'bg-red-50'    },
+        ];
+
+        function renderKPICards(data) {
+            document.getElementById('kpi-cards').innerHTML = KPI_CONFIG.map(c => `
+                <div class="stat-card bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">${c.label}</span>
+                        <div class="w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center">
+                            <i data-lucide="${c.icon}" class="w-4 h-4 ${c.color}"></i>
+                        </div>
+                    </div>
+                    <div class="text-3xl font-extrabold ${c.color}">${(data[c.key] || 0).toLocaleString()}</div>
+                    ${c.key === 'total' ? `<div class="text-xs text-slate-400 mt-1">AI covered: ${data.ai_coverage}%</div>` : ''}
+                    ${c.key === 'submitted' ? `<div class="text-xs text-slate-400 mt-1">Resolution: ${data.resolution_rate}%</div>` : ''}
+                </div>`).join('');
+            lucide.createIcons();
+        }
+
+        // Semi-circle gauge using Chart.js doughnut
+        function drawGauge(canvasId, pct, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            const remaining = 100 - pct;
+            return new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [pct, remaining, 100],
+                        backgroundColor: [color, '#f1f5f9', 'transparent'],
+                        borderWidth: 0,
+                        circumference: 180,
+                        rotation: 270,
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    cutout: '72%',
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    animation: { duration: 900, easing: 'easeOutQuart' }
+                }
+            });
+        }
+
+        function renderUrgencyBars(urgency, total) {
+            const order = [
+                { key: 'critical', label: 'Critical', color: 'bg-red-600' },
+                { key: 'high',     label: 'High',     color: 'bg-red-400' },
+                { key: 'medium',   label: 'Medium',   color: 'bg-orange-400' },
+                { key: 'low',      label: 'Low',      color: 'bg-green-400' },
+            ];
+            const aiTotal = Object.values(urgency).reduce((a, b) => a + b, 0) || 1;
+            document.getElementById('urgency-bars').innerHTML = order.map(u => {
+                const count = urgency[u.key] || 0;
+                const pct = Math.round(count / aiTotal * 100);
+                return `<div>
+                    <div class="flex justify-between text-xs text-slate-600 mb-1">
+                        <span class="font-medium">${u.label}</span>
+                        <span class="text-slate-400">${count} <span class="text-slate-300">(${pct}%)</span></span>
+                    </div>
+                    <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div class="h-full ${u.color} rounded-full transition-all duration-700" style="width:${pct}%"></div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        let charts = {};
+
+        // Chart.js can't reliably reuse a canvas after destroy — replace the element instead
+        function resetCanvas(id) {
+            const old = document.getElementById(id);
+            if (!old) return;
+            const parent = old.parentNode;
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = id;
+            // Preserve explicit width/height attrs (used by gauges)
+            if (old.hasAttribute('width'))  newCanvas.setAttribute('width',  old.getAttribute('width'));
+            if (old.hasAttribute('height')) newCanvas.setAttribute('height', old.getAttribute('height'));
+            parent.replaceChild(newCanvas, old);
+        }
+
+        function destroyAll() {
+            Object.values(charts).forEach(c => { try { c.destroy(); } catch(e){} });
+            charts = {};
+            ['gaugeResolution','gaugeAI','chartStatus','chartTrend','chartCategory','chartSentiment']
+                .forEach(resetCanvas);
+        }
+
+        function getTodayDate() {
+            const today = new Date();
+            return today.toISOString().split('T')[0];
+        }
+
+        async function loadDashboard() {
+            const today = getTodayDate();
+            const params = new URLSearchParams();
+            params.set('date_from', today);
+            params.set('date_to', today);
+            let resp, d;
+            try {
+                resp = await fetch('/dashboard/api/stats?' + params.toString());
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+                d = await resp.json();
+            } catch(e) {
+                document.getElementById('kpi-cards').innerHTML =
+                    `<div class="col-span-4 text-red-500 text-sm p-4 bg-red-50 rounded-xl border border-red-200">
+                        Failed to load stats: ${e.message}
+                     </div>`;
+                return;
+            }
+            destroyAll();
+            renderKPICards(d);
+
+            // Gauges
+            document.getElementById('gauge-resolution-val').textContent = d.resolution_rate + '%';
+            document.getElementById('gauge-ai-val').textContent = d.ai_coverage + '%';
+            drawGauge('gaugeResolution', d.resolution_rate, '#10b981');
+            drawGauge('gaugeAI', d.ai_coverage, '#0f62fe');
+
+            // Status doughnut
+            charts.status = new Chart(document.getElementById('chartStatus').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Scheduled', 'Submitted', 'Closed', 'Rescheduled'],
+                    datasets: [{
+                        data: [d.scheduled, d.submitted, d.closed, d.rescheduled],
+                        backgroundColor: ['#f97316', '#10b981', '#ef4444', '#facc15'],
+                        borderWidth: 2, borderColor: '#fff',
+                        hoverOffset: 6,
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '60%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12, font: { size: 11 } } },
+                        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed.toLocaleString()}` } }
+                    },
+                    animation: { duration: 800 }
+                }
+            });
+
+            // Trend line
+            charts.trend = new Chart(document.getElementById('chartTrend').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: d.trend_labels,
+                    datasets: [{
+                        label: 'Submissions',
+                        data: d.trend_counts,
+                        borderColor: '#0f62fe',
+                        backgroundColor: 'rgba(15,98,254,0.08)',
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#0f62fe',
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    },
+                    animation: { duration: 900 }
+                }
+            });
+
+            // Category horizontal bar
+            charts.category = new Chart(document.getElementById('chartCategory').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: d.categories.map(c => c.label),
+                    datasets: [{
+                        label: 'Petitions',
+                        data: d.categories.map(c => c.count),
+                        backgroundColor: [
+                            '#0f62fe','#10b981','#f97316','#8b5cf6','#ef4444','#facc15','#06b6d4','#ec4899'
+                        ],
+                        borderRadius: 6,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { color: '#f8fafc' } },
+                        y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+                    },
+                    animation: { duration: 800 }
+                }
+            });
+
+            // Urgency bars
+            renderUrgencyBars(d.urgency, d.total);
+
+            // Sentiment polar area
+            const sentimentLabels = Object.keys(d.sentiment).map(s => s.charAt(0).toUpperCase() + s.slice(1));
+            const sentimentData   = Object.values(d.sentiment);
+            charts.sentiment = new Chart(document.getElementById('chartSentiment').getContext('2d'), {
+                type: 'polarArea',
+                data: {
+                    labels: sentimentLabels,
+                    datasets: [{
+                        data: sentimentData,
+                        backgroundColor: ['rgba(239,68,68,0.7)','rgba(249,115,22,0.7)','rgba(100,116,139,0.7)','rgba(16,185,129,0.7)'],
+                        borderWidth: 1, borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 9, font: { size: 10 }, padding: 8 } } },
+                    scales: { r: { ticks: { display: false }, grid: { color: '#f1f5f9' } } },
+                    animation: { duration: 700 }
+                }
+            });
+
+            document.getElementById('last-updated').textContent =
+                'Updated ' + new Date().toLocaleTimeString();
+        }
+
+        // Set today's date display
+        const today = new Date();
+        document.getElementById('today-date').textContent = today.toLocaleDateString('en-IN', { 
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+        });
+        
+        loadDashboard();
+    </script>
+</body>
+</html>

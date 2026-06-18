@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_PRIMARY_MODEL: str = "gemini-2.5-flash"
     GEMINI_FALLBACK_MODEL: str = "gemini-2.5-flash-lite"
+    GEMINI_FALLBACK_MODEL2: str = "gemini-2.0-flash"
     # Service tier for Gemini requests: "priority" | "standard" | "flex".
     # Grievances are time-sensitive, so we default to the priority tier for the
     # fastest, most reliable latency (requires a paid/billed project).
@@ -49,10 +50,17 @@ class Settings(BaseSettings):
     # Session Configuration
     SESSION_EXPIRY_SECONDS: int = 1800  # 30 minutes default
     
-    # Twilio SMS Configuration
+    # Twilio SMS Configuration (kept for reference, currently unused)
     TWILIO_ACCOUNT_SID: Optional[str] = None
     TWILIO_AUTH_TOKEN: Optional[str] = None
     TWILIO_FROM_NUMBER: str = ""
+
+    # APM Technologies SMS Configuration
+    APM_SMS_API_KEY: Optional[str] = None
+
+    # Staff Dashboard Credentials
+    DASHBOARD_USERNAME: str = "admin"
+    DASHBOARD_PASSWORD: str = "admin123"
 
     # Frontend Configuration
     FRONTEND_FORM_BASE_URL: str = "http://localhost:8000/form"

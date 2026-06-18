@@ -8,7 +8,16 @@ import sys
 from sqlalchemy.ext.asyncio import create_async_engine
 from src.core.config import settings
 from src.core.database import Base
+
+# Import all ORM models so SQLAlchemy can discover and create their tables
 from src.models.qr_models import QRLog, GatekeeperSession
+from src.models.appointment_models import (
+    OTPVerification,
+    Citizen,
+    Appointment,
+    AppointmentAttachment,
+)
+from src.models.grievance_summary_record import GrievanceSummaryRecord
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':

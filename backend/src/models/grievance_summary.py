@@ -170,7 +170,7 @@ class GrievanceSummary(BaseModel):
             "and whether it corroborates or adds to the written grievance. "
             "Omit if no attachment was processed."
         ),
-        max_length=200,
+        max_length=1000,
     )
 
     attachment_notes_ta: Optional[str] = Field(
@@ -178,5 +178,5 @@ class GrievanceSummary(BaseModel):
         description=(
             "Tamil translation of `attachment_notes`. Omit if no attachment was processed."
         ),
-        max_length=300,
+        max_length=1000,
     )

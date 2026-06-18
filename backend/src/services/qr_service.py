@@ -3,6 +3,7 @@ Business logic for QR code generation, cryptographic signing, and session manage
 Uses itsdangerous for tamper-proof token signing and PostgreSQL for state management.
 """
 import hashlib
+import secrets
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from urllib.parse import quote
@@ -54,8 +55,12 @@ class QRService:
             - Atomic: QR log insertion is committed within this function's scope
             - Isolation: Uses default READ COMMITTED level
         """
-        # Step 1: Generate cryptographic signature with embedded timestamp
-        signature_bytes = self.signer.sign(venue_id.encode('utf-8'))
+        # Step 1: Generate cryptographic signature with embedded timestamp.
+        # A random nonce is appended so concurrent/rapid reloads (same venue_id,
+        # same second) never produce the same signature hash.
+        nonce = secrets.token_hex(6)
+        payload = f"{venue_id}:{nonce}"
+        signature_bytes = self.signer.sign(payload.encode('utf-8'))
         signature_string = signature_bytes.decode('utf-8')
         
         # Step 2: Compute deterministic hash for database uniqueness constraint
@@ -136,7 +141,8 @@ class QRService:
                 signature_string.encode('utf-8'),
                 max_age=settings.QR_EXPIRY_SECONDS
             )
-            venue_id = unsigned_payload.decode('utf-8')
+            # Payload format is "venue_id:nonce" — extract only the venue_id part
+            venue_id = unsigned_payload.decode('utf-8').split(':')[0]
         except SignatureExpired:
             raise ValueError("QR code has expired. Please scan a new code.")
         except BadSignature:

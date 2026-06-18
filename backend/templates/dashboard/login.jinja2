@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Login — Petition Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { brand: '#0f62fe', sidebar: '#0c2e59' } } }
+        }
+    </script>
+</head>
+<body class="min-h-screen bg-slate-100 flex items-center justify-center font-sans">
+    <div class="w-full max-w-md">
+        <!-- Card -->
+        <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+            <!-- Header band -->
+            <div class="bg-sidebar px-8 py-6 text-white text-center">
+                <div class="text-xs font-semibold tracking-widest uppercase opacity-70 mb-1">Government of Tamil Nadu</div>
+                <div class="text-xl font-bold">Petition Management System</div>
+                <div class="text-sm opacity-60 mt-1">Staff Portal</div>
+            </div>
+
+            <!-- Form -->
+            <div class="px-8 py-8">
+                {% if error %}
+                <div class="mb-5 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                    {{ error }}
+                </div>
+                {% endif %}
+
+                <form method="POST" action="/dashboard/login" class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Username</label>
+                        <input type="text" name="username" required autofocus
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition"
+                            placeholder="Enter your username">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Password</label>
+                        <input type="password" name="password" required
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition"
+                            placeholder="Enter your password">
+                    </div>
+                    <button type="submit"
+                        class="w-full bg-brand text-white font-semibold text-sm py-2.5 rounded-lg hover:bg-blue-700 transition-colors shadow-sm mt-2">
+                        Sign In
+                    </button>
+                </form>
+            </div>
+        </div>
+        <p class="text-center text-xs text-slate-400 mt-4">&copy; 2026 Government of Tamil Nadu. Authorised personnel only.</p>
+    </div>
+</body>
+</html>

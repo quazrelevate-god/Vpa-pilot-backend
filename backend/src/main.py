@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from src.core.config import settings
-from src.api.v1 import qr, form, appointments
+from src.api.v1 import qr, form, appointments, dashboard
 
 # Import all ORM models so SQLAlchemy can resolve cross-model relationships
 # (e.g. Appointment → GrievanceSummaryRecord) before the mapper is configured.
@@ -43,9 +43,14 @@ app.add_middleware(
 _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 app.mount("/static/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets")
 
+_UPLOADS_DIR = Path(__file__).resolve().parent.parent / "uploads"
+_UPLOADS_DIR.mkdir(exist_ok=True)
+app.mount("/static/uploads", StaticFiles(directory=str(_UPLOADS_DIR)), name="uploads")
+
 app.include_router(qr.router)
 app.include_router(form.router)
 app.include_router(appointments.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/health", tags=["Health Check"])

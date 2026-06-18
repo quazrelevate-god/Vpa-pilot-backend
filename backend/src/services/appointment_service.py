@@ -2,6 +2,7 @@
 Business logic for OTP verification and atomic appointment submission.
 Implements stateless identity gatekeeper pattern with brute-force protection.
 """
+import asyncio
 import hashlib
 import secrets
 import os
@@ -123,38 +124,149 @@ class AppointmentService:
         import base64
         return base64.b64decode(ciphertext.encode('utf-8')).decode('utf-8')
     
-    async def _send_otp_sms(self, mobile_number: str, otp_code: str):
+    async def _send_otp_sms(self, mobile_number: str) -> Optional[str]:
         """
-        Send OTP via Twilio SMS. Returns None in dummy mode (no credentials),
-        True on success, False on failure.
+        Call APM Technologies SMS API to generate and send OTP to the mobile number.
+
+        The API generates the OTP itself and SMS it to the citizen. The OTP is
+        returned in the response so we can store it (hashed) for verification.
+
+        Returns:
+            str   — the OTP string received from the API (to be stored hashed)
+            None  — dummy mode (no API key configured); caller must generate locally
+        Raises:
+            HTTPException(502) if the API call fails or OTP cannot be extracted.
         """
-        if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_AUTH_TOKEN:
-            print(f"[OTP DUMMY] Twilio not configured. OTP for {mobile_number}: {otp_code}")
-            return None  # None signals dummy mode; caller exposes code in response
+        if not settings.APM_SMS_API_KEY:
+            return None  # dummy mode — caller generates OTP locally
+
+        # Strip country code prefix; API expects plain 10-digit number
+        phone = mobile_number.lstrip("+")
+        if phone.startswith("91") and len(phone) == 12:
+            phone = phone[2:]
 
         try:
-            import asyncio
-            from twilio.rest import Client as TwilioClient
-
-            # Prepend +91 for Indian numbers if no country code given
-            to_number = f"+91{mobile_number}" if not mobile_number.startswith("+") else mobile_number
-
-            def _send():
-                client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-                msg = client.messages.create(
-                    from_=settings.TWILIO_FROM_NUMBER,
-                    body=f"Your OTP is {otp_code}. Valid for {self.OTP_EXPIRY_MINUTES} minutes. Do not share it.",
-                    to="+919003259339",
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    "https://sms.apmtechnologies.in/api/Home/Registration",
+                    params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
                 )
-                return msg.sid
+            resp.raise_for_status()
 
-            sid = await asyncio.get_event_loop().run_in_executor(None, _send)
-            print(f"[TWILIO SUCCESS] OTP sent to {to_number}, SID: {sid}")
-            return True
+            # Response is the OTP as a plain string e.g. "493568"
+            otp_from_api = resp.text.strip().strip('"')
 
+            if not otp_from_api or not otp_from_api.isdigit():
+                print(f"[APM SMS ERROR] Could not extract OTP from response: {resp.text!r}")
+                raise HTTPException(status_code=502, detail="SMS gateway did not return an OTP.")
+
+            print(f"[APM SMS SUCCESS] OTP sent to {phone}, otp: {otp_from_api}")
+            return otp_from_api
+
+        except HTTPException:
+            raise
         except Exception as e:
-            print(f"[TWILIO ERROR] Failed to send OTP to {mobile_number}: {e}")
+            print(f"[APM SMS ERROR] Failed to send OTP to {mobile_number}: {e}")
+            raise HTTPException(status_code=502, detail=f"SMS gateway error: {e}")
+
+    async def _send_confirmation_sms(self, mobile_number: str, token_number: int, citizen_name: str) -> bool:
+        """
+        Send appointment confirmation SMS to citizen with their token number.
+        
+        Uses APM Technologies SMS API. In dummy mode (no API key), logs to console.
+        Fire-and-forget — failures are logged but don't affect the appointment.
+        
+        Args:
+            mobile_number: Citizen's mobile number
+            token_number: Assigned token number
+            citizen_name: Citizen's name for personalization
+            
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        if not settings.APM_SMS_API_KEY:
+            print(f"[SMS CONFIRMATION DUMMY] Token {token_number} assigned to {citizen_name} ({mobile_number})")
             return False
+        
+        phone = mobile_number.lstrip("+")
+        if phone.startswith("91") and len(phone) == 12:
+            phone = phone[2:]
+        
+        message = f"Dear {citizen_name}, your appointment is confirmed. Token: {token_number}. Thank you for your submission."
+        
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    "https://sms.apmtechnologies.in/api/Home/ForgotPassword",
+                    params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
+                )
+            resp.raise_for_status()
+            print(f"[SMS CONFIRMATION SUCCESS] Token {token_number} sent to {phone}")
+            return True
+        except Exception as e:
+            print(f"[SMS CONFIRMATION ERROR] Failed to send to {mobile_number}: {e}")
+            return False
+    
+    async def send_status_update_sms(self, mobile_number: str, token_number: int, citizen_name: str, new_status: str) -> bool:
+        """
+        Send status update SMS notification to citizen.
+        
+        Currently reuses the confirmation SMS endpoint. Will be replaced with
+        a dedicated status update template later.
+        
+        Args:
+            mobile_number: Citizen's mobile number
+            token_number: Assigned token number
+            citizen_name: Citizen's name
+            new_status: New status value (e.g., "Scheduled", "Submitted", "Closed")
+            
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        if not settings.APM_SMS_API_KEY:
+            print(f"[SMS STATUS UPDATE DUMMY] Token {token_number} status changed to {new_status} for {citizen_name} ({mobile_number})")
+            return False
+        
+        phone = mobile_number.lstrip("+")
+        if phone.startswith("91") and len(phone) == 12:
+            phone = phone[2:]
+        
+        # TODO: Replace with dedicated status update template
+        message = f"Dear {citizen_name}, your appointment status has been updated to {new_status}. Token: {token_number}."
+        
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    "https://sms.apmtechnologies.in/api/Home/ForgotPassword",
+                    params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
+                )
+            resp.raise_for_status()
+            print(f"[SMS STATUS UPDATE SUCCESS] Token {token_number} status update sent to {phone}")
+            return True
+        except Exception as e:
+            print(f"[SMS STATUS UPDATE ERROR] Failed to send to {mobile_number}: {e}")
+            return False
+    
+    # ── Twilio (commented out — replaced by APM Technologies SMS) ───────────────
+    # async def _send_otp_sms_twilio(self, mobile_number: str, otp_code: str):
+    #     if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_AUTH_TOKEN:
+    #         return None
+    #     try:
+    #         from twilio.rest import Client as TwilioClient
+    #         to_number = f"+91{mobile_number}" if not mobile_number.startswith("+") else mobile_number
+    #         def _send():
+    #             client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+    #             msg = client.messages.create(
+    #                 from_=settings.TWILIO_FROM_NUMBER,
+    #                 body=f"Your OTP is {otp_code}. Valid for {self.OTP_EXPIRY_MINUTES} minutes.",
+    #                 to=to_number,
+    #             )
+    #             return msg.sid
+    #         sid = await asyncio.get_event_loop().run_in_executor(None, _send)
+    #         return True
+    #     except Exception as e:
+    #         print(f"[TWILIO ERROR] {e}")
+    #         return False
     
     async def verify_otp(
         self,
@@ -275,16 +387,24 @@ class AppointmentService:
                     detail="Invalid mobile number format. Must be 10-15 digits."
                 )
             
-            # Step 2: Generate OTP code
-            otp_code = self._generate_otp_code()
-            
-            # Step 3: Hash OTP code
+            # Step 2: Call APM SMS API — it generates + sends the OTP and returns it.
+            # In dummy mode (no API key) we fall back to local generation.
+            otp_from_api = await self._send_otp_sms(mobile_number)
+            dummy_mode = otp_from_api is None
+
+            if dummy_mode:
+                otp_code = self._generate_otp_code()
+                print(f"[OTP DUMMY] APM SMS not configured. OTP for {mobile_number}: {otp_code}")
+            else:
+                otp_code = otp_from_api
+
+            # Step 3: Hash OTP code for storage
             hashed_otp = self._hash_otp_code(otp_code)
-            
+
             # Step 4: Calculate expiry time
             expires_at = current_time + timedelta(minutes=self.OTP_EXPIRY_MINUTES)
-            
-            # Save OTP verification record
+
+            # Step 5: Persist OTP record (hashed)
             otp_record = OTPVerification(
                 session_token=session_token,
                 mobile_number=mobile_number,
@@ -294,17 +414,9 @@ class AppointmentService:
                 created_at=current_time,
                 expires_at=expires_at
             )
-            
+
             db.add(otp_record)
             await db.commit()
-            
-            # Step 5: Send OTP via SMS gateway (async)
-            # Returns None in dummy mode (no SMS key configured), True/False otherwise
-            sms_result = await self._send_otp_sms(mobile_number, otp_code)
-            dummy_mode = sms_result is None
-
-            if sms_result is False:
-                print(f"[WARNING] OTP generated but SMS failed for {mobile_number}  otp : {otp_code}")
 
             # Mask mobile number for response (show last 4 digits only)
             masked_mobile = "*" * (len(mobile_number) - 4) + mobile_number[-4:]
@@ -598,17 +710,23 @@ class AppointmentService:
             # Step 12: Commit transaction — citizen gets token NOW
             await db.commit()
 
-            # Step 13: Trigger Gemini summarisation (non-blocking enrichment).
-            # This runs AFTER commit so the citizen's appointment is guaranteed
-            # saved regardless of Gemini availability.
-            await self._trigger_summarisation(
+            # Step 13: Fire-and-forget confirmation SMS
+            asyncio.create_task(self._send_confirmation_sms(
+                mobile_number=mobile,
+                token_number=token_assigned,
+                citizen_name=name,
+            ))
+
+            # Step 14: Fire-and-forget Gemini summarisation.
+            # Uses its own DB session so it runs completely independently of
+            # the request lifecycle — citizen gets the response immediately.
+            asyncio.create_task(self._trigger_summarisation(
                 appointment_id=appointment.id,
                 citizen_name=name,
                 constituency=constituency,
                 description=description,
                 attachments_created=attachments_created,
-                db=db,
-            )
+            ))
 
             return {
                 "appointment_id": appointment.id,
@@ -636,25 +754,16 @@ class AppointmentService:
         constituency: str,
         description: str,
         attachments_created: List[AppointmentAttachment],
-        db: AsyncSession,
     ) -> None:
         """
-        Call Gemini summarisation after the appointment transaction is committed.
+        Background Gemini summarisation — runs after the HTTP response is sent.
 
-        Priority:
-            IMAGE attachment > DOCUMENT (PDF/Word) attachment > description text.
-
-        If both image and text exist, image wins (text is ignored) — same logic
-        as the Streamlit tester.  Audio/video files are skipped; they are saved
-        to disk as evidence but not sent to Gemini.
-
-        Always non-blocking: any failure is logged as a warning. The appointment
-        record is never rolled back due to a Gemini error.
-
-        After a successful Gemini call:
-            - Saves a GrievanceSummaryRecord row (bilingual, linked to appointment).
-            - Updates appointments.grievance_category with the Gemini-returned value.
+        Opens its own DB session so it is fully decoupled from the request
+        session (which is already closed by the time this executes).
+        Any failure is logged; the appointment record is never affected.
         """
+        from src.core.database import AsyncSessionLocal
+        print(f"[GEMINI START] appointment_id={appointment_id} — background summarisation starting")
         try:
             # Lazy imports to avoid circular dependencies at module load time.
             from src.services.summarisation import GrievanceSummarisationService
@@ -703,35 +812,40 @@ class AppointmentService:
                           "No text and no usable image/document — skipping summarisation.")
                     return
 
-            # ── Call Gemini ─────────────────────────────────────────────────
+            # ── Call Gemini in a thread — summarise() is sync/blocking ─────
             t0 = time.monotonic()
-            summary = svc.summarise(
-                citizen_name=citizen_name,
-                constituency=constituency,
-                grievance_text=grievance_text,
-                attachment_bytes=attachment_bytes,
-                attachment_mime=attachment_mime,
-                attachment_filename=attachment_filename,
+            loop = asyncio.get_event_loop()
+            summary = await loop.run_in_executor(
+                None,
+                lambda: svc.summarise(
+                    citizen_name=citizen_name,
+                    constituency=constituency,
+                    grievance_text=grievance_text,
+                    attachment_bytes=attachment_bytes,
+                    attachment_mime=attachment_mime,
+                    attachment_filename=attachment_filename,
+                ),
             )
             elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-            # ── Persist summary record ───────────────────────────────────────
-            record = GrievanceSummaryRecord.from_gemini_response(
-                appointment_id=appointment_id,
-                summary=summary,
-                gemini_model_used=svc._model_name,
-                gemini_latency_ms=elapsed_ms,
-            )
-            db.add(record)
+            # ── Persist summary record in its own session ────────────────────
+            async with AsyncSessionLocal() as db:
+                record = GrievanceSummaryRecord.from_gemini_response(
+                    appointment_id=appointment_id,
+                    summary=summary,
+                    gemini_model_used=svc._model_name,
+                    gemini_latency_ms=elapsed_ms,
+                )
+                db.add(record)
 
-            # ── Update grievance_category on the appointment row ─────────────
-            appt_stmt = select(Appointment).where(Appointment.id == appointment_id)
-            appt_result = await db.execute(appt_stmt)
-            appt = appt_result.scalar_one_or_none()
-            if appt:
-                appt.grievance_category = summary.category.value
+                appt_result = await db.execute(
+                    select(Appointment).where(Appointment.id == appointment_id)
+                )
+                appt = appt_result.scalar_one_or_none()
+                if appt:
+                    appt.grievance_category = summary.category.value
 
-            await db.commit()
+                await db.commit()
 
             input_mode = "attachment" if attachment_bytes else "text"
             print(
@@ -743,10 +857,6 @@ class AppointmentService:
         except Exception as exc:
             print(f"[GEMINI WARN] appointment_id={appointment_id}: "
                   f"Summarisation failed (appointment unaffected): {exc}")
-            try:
-                await db.rollback()
-            except Exception:
-                pass
 
 
 # Singleton instance
