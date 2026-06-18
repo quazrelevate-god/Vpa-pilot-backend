@@ -122,91 +122,37 @@ class AppointmentService:
         import base64
         return base64.b64decode(ciphertext.encode('utf-8')).decode('utf-8')
     
-    async def _send_otp_sms(self, mobile_number: str, otp_code: str) -> bool:
+    async def _send_otp_sms(self, mobile_number: str, otp_code: str):
         """
-        Send OTP code via MSG91 SMS gateway.
-        
-        MSG91 API Documentation: https://docs.msg91.com/p/tf9GTextN/e/Hoi3Q0Hxe/MSG91
-        
-        This method uses httpx.AsyncClient to make an asynchronous HTTP request
-        to MSG91's SMS API for OTP delivery.
-        
-        Args:
-            mobile_number: Recipient's mobile number (10 digits for India)
-            otp_code: 6-digit OTP code to send
-        
-        Returns:
-            bool: True if SMS sent successfully, False otherwise
-        
-        Raises:
-            HTTPException: If SMS gateway returns error
-        
-        MSG91 Response Codes:
-            - 200: Success
-            - 401: Invalid auth key
-            - 400: Bad request (invalid parameters)
+        Send OTP via Twilio SMS. Returns None in dummy mode (no credentials),
+        True on success, False on failure.
         """
+        if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_AUTH_TOKEN:
+            print(f"[OTP DUMMY] Twilio not configured. OTP for {mobile_number}: {otp_code}")
+            return None  # None signals dummy mode; caller exposes code in response
+
         try:
-            # Check if MSG91 is configured
-            if not settings.MSG91_AUTH_KEY:
-                print(f"[SMS WARNING] MSG91_AUTH_KEY not configured. OTP: {otp_code}")
-                return True  # Return success in development mode
-            
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # MSG91 SMS API endpoint
-                sms_gateway_url = "https://api.msg91.com/api/v5/otp"
-                
-                # Prepare headers
-                headers = {
-                    "authkey": settings.MSG91_AUTH_KEY,
-                    "Content-Type": "application/json"
-                }
-                
-                # Prepare payload for MSG91 OTP API
-                payload = {
-                    "template_id": settings.MSG91_DLT_TEMPLATE_ID,
-                    "mobile": mobile_number,
-                    "authkey": settings.MSG91_AUTH_KEY,
-                    "otp": otp_code,
-                    "otp_expiry": self.OTP_EXPIRY_MINUTES  # in minutes
-                }
-                
-                # Alternative: Use MSG91 Flow API (recommended for DLT compliance)
-                # flow_url = f"https://api.msg91.com/api/v5/flow/"
-                # flow_payload = {
-                #     "flow_id": settings.MSG91_DLT_TEMPLATE_ID,
-                #     "sender": settings.MSG91_SENDER_ID,
-                #     "mobiles": mobile_number,
-                #     "OTP": otp_code,
-                #     "VAR1": str(self.OTP_EXPIRY_MINUTES)
-                # }
-                
-                # Send OTP via MSG91
-                response = await client.post(
-                    sms_gateway_url,
-                    json=payload,
-                    headers=headers
+            import asyncio
+            from twilio.rest import Client as TwilioClient
+
+            # Prepend +91 for Indian numbers if no country code given
+            to_number = f"+91{mobile_number}" if not mobile_number.startswith("+") else mobile_number
+
+            def _send():
+                client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                msg = client.messages.create(
+                    from_=settings.TWILIO_FROM_NUMBER,
+                    body=f"Your OTP is {otp_code}. Valid for {self.OTP_EXPIRY_MINUTES} minutes. Do not share it.",
+                    to="+919003259339",
                 )
-                
-                # Check response
-                if response.status_code == 200:
-                    response_data = response.json()
-                    print(f"[MSG91 SUCCESS] OTP sent to {mobile_number}: {response_data}, OTP: {otp_code}")
-                    return True
-                else:
-                    error_text = response.text
-                    print(f"[MSG91 ERROR] Failed to send OTP to {mobile_number}: {error_text}")
-                    
-                    # Log but don't fail the request (OTP is still saved in DB)
-                    # In production, you may want to raise an exception here
-                    return False
-                
-        except httpx.HTTPError as e:
-            print(f"[MSG91 HTTP ERROR] Failed to send OTP to {mobile_number}: {str(e)}")
-            # Log to monitoring system
-            return False
+                return msg.sid
+
+            sid = await asyncio.get_event_loop().run_in_executor(None, _send)
+            print(f"[TWILIO SUCCESS] OTP sent to {to_number}, SID: {sid}")
+            return True
+
         except Exception as e:
-            print(f"[MSG91 EXCEPTION] Unexpected error sending OTP: {str(e)}")
+            print(f"[TWILIO ERROR] Failed to send OTP to {mobile_number}: {e}")
             return False
     
     async def create_otp_request(
@@ -299,21 +245,24 @@ class AppointmentService:
             await db.commit()
             
             # Step 5: Send OTP via SMS gateway (async)
-            sms_sent = await self._send_otp_sms(mobile_number, otp_code)
-            
-            if not sms_sent:
-                # Log warning but don't fail the request
-                print(f"[WARNING] OTP generated but SMS failed for {mobile_number}")
-            
+            # Returns None in dummy mode (no SMS key configured), True/False otherwise
+            sms_result = await self._send_otp_sms(mobile_number, otp_code)
+            dummy_mode = sms_result is None
+
+            if sms_result is False:
+                print(f"[WARNING] OTP generated but SMS failed for {mobile_number}  otp : {otp_code}")
+
             # Mask mobile number for response (show last 4 digits only)
             masked_mobile = "*" * (len(mobile_number) - 4) + mobile_number[-4:]
-            
-            return {
-                "message": "OTP sent successfully",
+
+            response = {
+                "message": "OTP sent successfully" if not dummy_mode else "OTP generated (dummy mode — SMS not configured)",
                 "expires_at": expires_at.isoformat(),
                 "mobile_number": masked_mobile,
-                "expires_in_seconds": self.OTP_EXPIRY_MINUTES * 60
+                "expires_in_seconds": self.OTP_EXPIRY_MINUTES * 60,
+                "otp_code": otp_code if dummy_mode else None,
             }
+            return response
             
         except HTTPException:
             raise

@@ -2,8 +2,11 @@
 FastAPI routes for QR code generation and verification.
 Implements RESTful endpoints with proper HTTP status codes and error handling.
 """
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any
 
@@ -12,11 +15,45 @@ from src.core.config import settings
 from src.core.utils import generate_device_fingerprint
 from src.services.qr_service import qr_service
 
+# Templates dir: backend/templates/
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
 
 router = APIRouter(
     prefix="/api/v1/qr",
     tags=["QR Code Management"]
 )
+
+
+@router.get("/display", include_in_schema=False)
+async def display_qr(
+    request: Request,
+    venue_id: str = Query(
+        default="main_office",
+        description="Venue identifier shown on the display screen",
+        min_length=1,
+        max_length=100,
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Venue display screen — renders qr_display.jinja2 with an initial QR code.
+    The page JS auto-rotates the QR before expiry via /api/v1/qr/generate.
+    """
+    qr_data = await qr_service.generate_rotating_qr(venue_id, db)
+    base_url = settings.SERVER_BASE_URL.rstrip("/")
+    qr_url = base_url + qr_data["verification_url"]
+
+    return templates.TemplateResponse(
+        "qr_display.jinja2",
+        {
+            "request": request,
+            "venue_id": venue_id,
+            "qr_url": qr_url,
+            "expiry_seconds": qr_data["qr_expiry_seconds"],
+        },
+    )
 
 
 @router.get(

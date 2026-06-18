@@ -47,6 +47,7 @@ class OTPResponseModel(BaseModel):
     expires_at: str
     mobile_number: str
     expires_in_seconds: int
+    otp_code: str | None = None  # Only populated in dummy/dev mode (no SMS configured)
 
 
 class AppointmentResponseModel(BaseModel):

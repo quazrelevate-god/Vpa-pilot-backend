@@ -4,11 +4,13 @@ Configures middleware, CORS, and routes for the citizen scheduler API.
 """
 import sys
 import asyncio
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.core.config import settings
-from src.api.v1 import qr, form
+from src.api.v1 import qr, form, appointments
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':
@@ -34,8 +36,12 @@ app.add_middleware(
 )
 
 
+_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+app.mount("/static/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets")
+
 app.include_router(qr.router)
 app.include_router(form.router)
+app.include_router(appointments.router)
 
 
 @app.get("/health", tags=["Health Check"])

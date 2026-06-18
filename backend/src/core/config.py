@@ -49,8 +49,18 @@ class Settings(BaseSettings):
     # Session Configuration
     SESSION_EXPIRY_SECONDS: int = 1800  # 30 minutes default
     
+    # Twilio SMS Configuration
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_FROM_NUMBER: str = ""
+
     # Frontend Configuration
     FRONTEND_FORM_BASE_URL: str = "http://localhost:8000/form"
+
+    # Public base URL used when constructing QR codes that must be reachable
+    # from mobile devices on the same network (e.g. http://192.168.1.x:8000).
+    # Defaults to localhost; override in .env for LAN/mobile testing.
+    SERVER_BASE_URL: str = "http://localhost:8000"
     
     # Application Metadata
     APP_NAME: str = "Citizen Scheduler API"

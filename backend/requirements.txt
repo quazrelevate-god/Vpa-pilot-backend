@@ -9,6 +9,7 @@ pytest==8.2.1
 httpx>=0.28.1
 google-genai>=2.8.0
 python-multipart==0.0.19
+twilio>=9.0.0
 
 # Dev-only: standalone tester UI for the summarisation module.
 # Note: Streamlit upgrades starlette past FastAPI 0.111's pin — install in a
