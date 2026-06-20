@@ -95,6 +95,13 @@ class GrievanceSummaryRecord(Base):
         comment="GrievanceCategory enum value for routing",
     )
 
+    department = Column(
+        VARCHAR(60),
+        nullable=False,
+        server_default="other",
+        comment="Department enum: TN govt department best suited to action this grievance",
+    )
+
     sentiment = Column(
         VARCHAR(20),
         nullable=False,
@@ -227,6 +234,7 @@ class GrievanceSummaryRecord(Base):
             # classification
             urgency=summary.urgency.value,
             category=summary.category.value,
+            department=summary.department.value,
             sentiment=summary.sentiment.value,
             # English fields
             headline=summary.headline,
@@ -264,5 +272,6 @@ class GrievanceSummaryRecord(Base):
         # Dashboard queries: filter/sort by urgency or category
         Index("ix_gsr_urgency", "urgency"),
         Index("ix_gsr_category", "category"),
+        Index("ix_gsr_department", "department"),
         Index("ix_gsr_created_at", "created_at"),
     )

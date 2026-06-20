@@ -285,10 +285,12 @@ if summary is not None:
         CitizenSentiment.NEUTRAL: "😐",
         CitizenSentiment.HOPEFUL: "🙂",
     }[summary.sentiment]
+    from src.models.grievance_summary import DEPARTMENT_DISPLAY
     m1.metric("Urgency", f"{urgency_emoji} {summary.urgency.value.upper()}")
     m2.metric("Category", summary.category.value.replace("_", " ").title())
     m3.metric("Sentiment", f"{sentiment_emoji} {summary.sentiment.value.title()}")
     m4.metric("Round-trip", f"{elapsed:.2f}s")
+    st.info(f"**🏛️ Department:** {DEPARTMENT_DISPLAY.get(summary.department.value, summary.department.value)}")
 
     st.markdown("")
 

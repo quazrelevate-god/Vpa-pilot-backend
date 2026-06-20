@@ -111,9 +111,33 @@ CORE RULES — follow every one without exception:
    whether it corroborates the written complaint. Provide notes in English
    (attachment_notes) and Tamil (attachment_notes_ta). Omit both if no attachment.
 
-9. CATEGORY: Choose the single best-fit category for routing to the right department.
+9. CATEGORY: Choose the single best-fit category for routing.
 
-10. OUTPUT: Return ONLY a JSON object matching the response schema exactly.
+10. DEPARTMENT: Choose the single Tamil Nadu government department that owns the
+    subject of this grievance, from the fixed enum list. Examples:
+      - Pension stoppage / women's welfare / Adi Dravidar issue → social_welfare_women_welfare
+        or social_justice_adi_dravidar_welfare (pick the more specific one).
+      - Power cuts, meter problems, EB bills → energy_law_courts_prevention_corruption.
+      - Hospital, ambulance, medicine, PHC issues → health_medical_education_family_welfare.
+      - School teacher, scholarship, mid-day meal → school_education_tamil_dev_info_publicity.
+      - College / polytechnic / engineering education → higher_education_technical_education.
+      - Land patta, survey, eviction, flood/cyclone relief → revenue_disaster_management.
+      - Ration card, PDS, kerosene, consumer fraud → food_civil_supplies_consumer_protection.
+      - Rural roads, panchayat works, drinking water → rural_development_water_resources.
+      - State highways, public buildings, sports facilities → public_works_sports_development.
+      - Bus / RTO / driving licence / transport → transport.
+      - Police, FIR, court, anti-corruption → energy_law_courts_prevention_corruption.
+      - Temple, HR&CE administration → hindu_religious_charitable_endowments.
+      - Farmer crop loss, fertiliser, MGNREGS for farmers → agriculture_farmers_welfare.
+      - Fishermen relief, boat issues → fisheries_fishermen_welfare.
+      - Housing scheme (PM Awas, TN housing) → housing_urban_development.
+      - Job card, skill training, labour disputes → labour_welfare_skill_development.
+      - GST / commercial tax / property registration → commercial_taxes_registration.
+      - Minority / Wakf board issues → minorities_welfare_wakf_board.
+    Pick 'other' ONLY if no department plausibly owns the subject. Do not guess
+    based on the petitioner's identity — pick based on the SUBJECT of the grievance.
+
+11. OUTPUT: Return ONLY a JSON object matching the response schema exactly.
     No markdown fences, no preamble, no explanation.
 """.strip()
 
