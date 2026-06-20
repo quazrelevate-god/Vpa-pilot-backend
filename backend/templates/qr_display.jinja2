@@ -43,27 +43,18 @@
         
         .content-grid {
             display: grid;
-            grid-template-columns: 300px 1fr 300px;
+            grid-template-columns: 1fr 300px;
             gap: 2rem;
             align-items: center;
             margin-top: 2rem;
+            max-width: 1000px;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .header {
             margin-bottom: 2rem;
             text-align: center;
-        }
-
-        .header-logo {
-            position: absolute;
-            top: 2rem;
-            left: 2rem;
-            width: 110px;
-            height: 110px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 3px solid rgba(0, 135, 4, 0.35);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
         .title-en {
@@ -91,21 +82,12 @@
             font-size: 0.9rem;
         }
 
-        .qr-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 16px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
 
         #qrcode {
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 350px;
+            min-height: 500px;
         }
 
         .timer-container {
@@ -222,26 +204,7 @@
 </head>
 <body>
     <div class="container">
-        <img src="/static/assets/TN-logo.jpeg" alt="TN Govt Emblem" class="header-logo">
-
-        <div class="header">
-            <h1 class="title-en">Scan QR Code</h1>
-            <h1 class="title-ta">QR குறியீட்டை ஸ்கேன் செய்யவும்</h1>
-            <p class="subtitle-en">Scan with your mobile device to access the grievance form</p>
-            <p class="subtitle-ta">புகார் படிவத்தை அணுக உங்கள் மொபைல் சாதனத்தில் ஸ்கேன் செய்யவும்</p>
-        </div>
-
         <div class="content-grid">
-            <!-- Left: Instructions -->
-            <div class="instructions">
-                <h3>📱 How to use<br>எப்படி பயன்படுத்துவது</h3>
-                <ul>
-                    <li>Open phone camera<br>கேமராவைத் திறக்கவும்</li>
-                    <li>Point at QR code<br>QR குறியீட்டை நோக்கவும்</li>
-                    <li>Tap notification<br>அறிவிப்பைத் தட்டவும்</li>
-                    <li>Fill the form<br>படிவத்தை பூர்த்தி செய்யவும்</li>
-                </ul>
-            </div>
 
             <!-- Center: QR Code -->
             <div class="qr-container">
@@ -265,9 +228,6 @@
             </div>
         </div>
 
-        <p class="footer-text">
-            Tamil Nadu Government Grievance Portal | தமிழ்நாடு அரசு குறைதீர்க்கும் போர்ட்டல்
-        </p>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -280,8 +240,8 @@
         qrContainer.innerHTML = '';
         new QRCode(qrContainer, {
             text: '{{ qr_url }}',
-            width: 350,
-            height: 350,
+            width: 500,
+            height: 500,
             colorDark: '#000000',
             colorLight: '#ffffff',
             correctLevel: QRCode.CorrectLevel.H
@@ -301,16 +261,44 @@
         const timerEl = document.getElementById('timer');
         const refreshMsg = document.getElementById('refreshMessage');
 
+        function updateTimerColor() {
+            // Calculate color from green (100%) to red (0%)
+            const percentage = (countdown / EXPIRY) * 100;
+            let color;
+            
+            if (percentage > 66) {
+                // Green zone (100% - 66%)
+                color = '#10b981'; // green
+            } else if (percentage > 33) {
+                // Yellow/Orange zone (66% - 33%)
+                color = '#f59e0b'; // orange
+            } else if (percentage > 0) {
+                // Red zone (33% - 0%)
+                color = '#ef4444'; // red
+            } else {
+                // Expired
+                color = '#dc2626'; // dark red
+            }
+            
+            timerEl.style.color = color;
+        }
+
         setInterval(() => {
-            countdown--;
-            timerEl.textContent = countdown;
-            timerEl.classList.toggle('danger',  countdown <= 10);
-            timerEl.classList.toggle('warning', countdown > 10 && countdown <= 30);
-
-            if (countdown <= 5) refreshMsg.classList.add('show');
-
-            if (countdown <= 0) window.location.reload();
+            if (countdown > 0) {
+                countdown--;
+                timerEl.textContent = countdown;
+                updateTimerColor();
+                
+                if (countdown <= 5) refreshMsg.classList.add('show');
+                
+                if (countdown === 0) {
+                    setTimeout(() => window.location.reload(), 1000);
+                }
+            }
         }, 1000);
+        
+        // Initial color
+        updateTimerColor();
     </script>
 </body>
 </html>

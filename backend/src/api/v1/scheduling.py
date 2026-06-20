@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/v1/scheduling", tags=["scheduling"])
 
 # Pydantic models for request validation
 class SetAvailabilityRequest(BaseModel):
-    mla_id: int = Field(..., description="MLA ID")
+    mla_id: int = Field(1, description="MLA ID (defaults to 1 for single person workflow)")
     date: date_type = Field(..., description="Date of availability")
     start_time: time_type = Field(..., description="Start time (e.g., 16:00)")
     end_time: time_type = Field(..., description="End time (e.g., 18:00)")

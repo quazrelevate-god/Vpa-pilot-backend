@@ -33,9 +33,9 @@ export default function SchedulingPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Form state
+  // Form state (single-person workflow: default MLA id 1)
   const [formData, setFormData] = useState({
-    mla_id: "",
+    mla_id: "1",
     date: new Date().toISOString().split("T")[0],
     start_time: "16:00",
     end_time: "18:00",
@@ -134,7 +134,7 @@ export default function SchedulingPage() {
             Government of Tamil Nadu
           </div>
           <div className="h-5 w-px bg-slate-200"></div>
-          <div className="text-sm font-bold text-slate-900">MLA Scheduling Management</div>
+          <div className="text-sm font-bold text-slate-900">Time Slot Management</div>
         </div>
       </header>
 
@@ -142,9 +142,9 @@ export default function SchedulingPage() {
       <main className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Page Title */}
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">MLA Availability</h1>
+          <h1 className="text-2xl font-extrabold text-slate-900">Availability</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Set MLA availability and manage appointment scheduling
+            Set time slot availability for citizen appointments
           </p>
         </div>
 
@@ -250,7 +250,7 @@ export default function SchedulingPage() {
 
         {/* Set Availability Form */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <h2 className="text-lg font-bold text-slate-900 mb-4">Set MLA Availability</h2>
+          <h2 className="text-lg font-bold text-slate-900 mb-4">Set Availability</h2>
 
           {message && (
             <div
@@ -266,26 +266,6 @@ export default function SchedulingPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* MLA Selection */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Select MLA
-                </label>
-                <select
-                  value={formData.mla_id}
-                  onChange={(e) => setFormData({ ...formData, mla_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="">Select MLA</option>
-                  {mlas.map((mla) => (
-                    <option key={mla.id} value={mla.id}>
-                      {mla.name} - {mla.constituency}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               {/* Date */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Date</label>

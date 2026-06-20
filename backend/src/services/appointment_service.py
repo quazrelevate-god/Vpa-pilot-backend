@@ -705,6 +705,9 @@ class AppointmentService:
                     )
                     db.add(citizen)
                     await db.flush()  # Get citizen.id
+                else:
+                    # Update name in case citizen re-submitted with a different name
+                    citizen.encrypted_name = encrypted_name
                 
                 # Step 9: Save audio recording if provided
                 audio_url = None
