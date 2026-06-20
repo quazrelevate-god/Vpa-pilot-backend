@@ -1,0 +1,17 @@
+# Streamlit config for the grievance summariser tester.
+
+[browser]
+# Disable the anonymous usage-stats prompt (the first-run "Email:" prompt that
+# fails in headless / non-interactive launches).
+gatherUsageStats = false
+
+[server]
+headless = true
+port = 8501
+
+[theme]
+primaryColor = "#4f46e5"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f8fafc"
+textColor = "#0f172a"
+font = "sans serif"
