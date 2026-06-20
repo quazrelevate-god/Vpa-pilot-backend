@@ -645,8 +645,8 @@
                     <input type="hidden" id="audioRecordingData">
                 </div>
 
-                <!-- Description Block Field Row -->
-                <div class="field-group">
+                <!-- Description Block Field Row - HIDDEN -->
+                <div class="field-group" style="display: none;">
                     <div class="label-container">
                         <label for="txtDesc"><span id="lbl-desc">Grievance Description</span> <span style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(optional if audio recorded)</span></label>
                     </div>
@@ -786,9 +786,10 @@
             const mobile = document.getElementById('txtMobile').value.trim();
             const description = document.getElementById('txtDesc').value.trim();
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
+            const hasAudio = document.getElementById('audioRecordingData').value !== '';
             
-            // All fields must be filled: name, mobile, and (description OR files)
-            const isValid = name && mobile && (description || hasFiles);
+            // All fields must be filled: name, mobile, and (description OR files OR audio)
+            const isValid = name && mobile && (description || hasFiles || hasAudio);
             
             // Enable/disable OTP button based on validation
             document.getElementById('btnGenOtp').disabled = !isValid;
@@ -1323,6 +1324,8 @@
                     reader.readAsDataURL(audioBlob);
                     reader.onloadend = () => {
                         document.getElementById('audioRecordingData').value = reader.result;
+                        // Trigger validation to enable OTP button
+                        validateFormForOTP();
                     };
                     
                     // Stop all tracks
@@ -1371,6 +1374,8 @@
             document.getElementById('audioPreview').style.display = 'none';
             document.getElementById('audioRecordingData').value = '';
             document.getElementById('audioPlayer').src = '';
+            // Trigger validation to update OTP button state
+            validateFormForOTP();
         }
 
         function dismissModalScreen() {

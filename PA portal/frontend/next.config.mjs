@@ -13,7 +13,7 @@ const nextConfig = {
       { source: "/api/:path*", destination: `${API_BASE}/dashboard/api/:path*` },
       { source: "/auth/login", destination: `${API_BASE}/dashboard/login` },
       { source: "/auth/logout", destination: `${API_BASE}/dashboard/logout` },
-      { source: "/uploads/:path*", destination: `${API_BASE}/static/uploads/:path*` },
+      { source: "/static/:path*", destination: `${API_BASE}/static/:path*` },
     ];
   },
 };

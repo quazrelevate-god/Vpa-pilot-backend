@@ -729,6 +729,23 @@ class AppointmentService:
                 # Step 11: Save uploaded files and create attachment records
                 attachments_created = []
                 
+                # Add audio recording as attachment if present
+                if audio_url:
+                    from pathlib import Path
+                    audio_path = Path(audio_url)
+                    audio_size = audio_path.stat().st_size if audio_path.exists() else 0
+                    
+                    audio_attachment = AppointmentAttachment(
+                        appointment_id=appointment.id,
+                        attachment_type='AUDIO',
+                        storage_url=audio_url,
+                        file_size_bytes=audio_size,
+                        mime_type='audio/webm',
+                        created_at=current_time
+                    )
+                    db.add(audio_attachment)
+                    attachments_created.append(audio_attachment)
+                
                 for file in files:
                     if file.filename:  # Skip empty file uploads
                         # Save file to disk

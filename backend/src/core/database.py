@@ -22,6 +22,7 @@ engine = create_async_engine(
     max_overflow=10,  # Additional connections when pool is exhausted
     pool_pre_ping=True,  # Verify connections before using them
     pool_recycle=3600,  # Recycle connections after 1 hour
+    use_insertmanyvalues=False,  # Fix for psycopg3 parameter binding
 )
 
 
