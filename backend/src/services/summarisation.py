@@ -111,31 +111,135 @@ CORE RULES — follow every one without exception:
    whether it corroborates the written complaint. Provide notes in English
    (attachment_notes) and Tamil (attachment_notes_ta). Omit both if no attachment.
 
-9. CATEGORY: Choose the single best-fit category for routing.
+9. CATEGORY — STRICT ROOT-CAUSE CLASSIFICATION (no scattershot):
+   Categories describe the KIND of grievance pattern, NOT the subject (that's
+   `department`'s job). Pick the SINGLE category that matches the ROOT problem.
+   Do NOT pick a category just because a word appears in the text.
+     - service_delay_nonresponse       → application stuck; no reply to letters/calls;
+                                          tossed between depts; SLA blown
+     - denial_of_entitlement           → eligible citizen rejected from a scheme,
+                                          pension, scholarship, or welfare benefit
+     - corruption_bribery              → demand for illegal payment to do a job
+                                          that is supposed to be free
+     - official_misconduct_harassment  → rude/abusive/threatening behaviour by
+                                          government staff (NO money involved)
+     - certificate_document_issues     → patta, ration card, certificate, ID errors,
+                                          delays in issuing, or wrongful rejection
+     - financial_irregularity          → wrong billing, payment dues unpaid,
+                                          deductions disputes, fund misuse
+     - infrastructure_maintenance      → broken/damaged physical assets — roads,
+                                          street lights, drainage, water lines,
+                                          school/hospital buildings, public toilets
+     - emergency_disaster_relief       → flood, fire, cyclone, crop loss, medical
+                                          emergency — citizen needs URGENT AID NOW
+     - land_property_dispute           → encroachment, boundary, survey dispute,
+                                          government-land conflict
+     - information_rti                 → RTI request unanswered, info refused,
+                                          lack of transparency about decisions
+     - appeal_legal_compliance         → challenging an official decision; rule
+                                          or court-order violation by the dept;
+                                          policy announced but not implemented
+     - other                           → ONLY when none of the above truly fit
 
-10. DEPARTMENT: Choose the single Tamil Nadu government department that owns the
-    subject of this grievance, from the fixed enum list. Examples:
-      - Pension stoppage / women's welfare / Adi Dravidar issue → social_welfare_women_welfare
-        or social_justice_adi_dravidar_welfare (pick the more specific one).
-      - Power cuts, meter problems, EB bills → energy_law_courts_prevention_corruption.
-      - Hospital, ambulance, medicine, PHC issues → health_medical_education_family_welfare.
-      - School teacher, scholarship, mid-day meal → school_education_tamil_dev_info_publicity.
-      - College / polytechnic / engineering education → higher_education_technical_education.
-      - Land patta, survey, eviction, flood/cyclone relief → revenue_disaster_management.
-      - Ration card, PDS, kerosene, consumer fraud → food_civil_supplies_consumer_protection.
-      - Rural roads, panchayat works, drinking water → rural_development_water_resources.
-      - State highways, public buildings, sports facilities → public_works_sports_development.
-      - Bus / RTO / driving licence / transport → transport.
-      - Police, FIR, court, anti-corruption → energy_law_courts_prevention_corruption.
-      - Temple, HR&CE administration → hindu_religious_charitable_endowments.
-      - Farmer crop loss, fertiliser, MGNREGS for farmers → agriculture_farmers_welfare.
-      - Fishermen relief, boat issues → fisheries_fishermen_welfare.
-      - Housing scheme (PM Awas, TN housing) → housing_urban_development.
-      - Job card, skill training, labour disputes → labour_welfare_skill_development.
-      - GST / commercial tax / property registration → commercial_taxes_registration.
-      - Minority / Wakf board issues → minorities_welfare_wakf_board.
-    Pick 'other' ONLY if no department plausibly owns the subject. Do not guess
-    based on the petitioner's identity — pick based on the SUBJECT of the grievance.
+   ROOT-CAUSE TEST for category:
+   • "Doctor demanded ₹500 to give injection" → corruption_bribery (money demand
+     is the root). NOT health-related infrastructure.
+   • "Pothole on my street has been there 6 months, no one comes" →
+     infrastructure_maintenance (broken asset is root). NOT service_delay_nonresponse
+     even though it's also a delay.
+   • "Filed RTI 90 days back about land record, no reply" → information_rti
+     (RTI Act timeline blown is the specific grievance). NOT generic
+     service_delay_nonresponse.
+   • "Got pension once, never again — please restart" → service_delay_nonresponse
+     if the citizen says payment is stuck; denial_of_entitlement if they were
+     told they're now ineligible. Read carefully.
+
+10. DEPARTMENT — STRICT, ROOT-CAUSE-DRIVEN, NEVER SCATTERSHOT:
+
+    PRIMARY DEPARTMENT (the `department` field, ALWAYS exactly one):
+    Pick the department that owns the ROOT CAUSE — the thing that, if fixed,
+    actually resolves the grievance. Do NOT pick a department just because it
+    appears in the text. Do NOT pick based on the petitioner's identity
+    (student / farmer / fisherman) — pick on the SUBJECT of the problem.
+
+    Worked examples of the root-cause test:
+    • "My son's school bus broke down — driver says no diesel for 3 days."
+      → department = transport (broken bus + fuel logistics = transport dept's
+      ownership). The fact that it's a school bus does NOT make this
+      school_education_… . Root cause: vehicle operations.
+
+    • "Headmaster refuses to give my daughter's transfer certificate without
+      ₹500 bribe."
+      → department = school_education_tamil_dev_info_publicity (the certificate
+      issuance is a school admin function). NOT energy_law_courts_prevention_
+      corruption — that dept is for vigilance investigations; the SERVICE failure
+      is in Schools. (Category = corruption_bribery captures the pattern.)
+
+    • "PHC doctor refuses to treat my mother in the OPD."
+      → department = health_medical_education_family_welfare. NOT
+      official_misconduct or anti-corruption — those are categories.
+
+    • "EB officer collected ₹2000 cash for new meter, no receipt."
+      → department = energy_law_courts_prevention_corruption (electricity ops).
+      Category = corruption_bribery.
+
+    • "Cooperative society chairman pocketed our paddy procurement money."
+      → department = cooperation (society regulation is its job).
+      Category = corruption_bribery.
+
+    • "Flood washed away my house in Cuddalore, no relief yet."
+      → department = revenue_disaster_management (relief is its core mandate).
+      Category = emergency_disaster_relief.
+
+    Anchor list of canonical mappings (subject → primary department):
+      power-cut / EB meter / EB bill         → energy_law_courts_prevention_corruption
+      hospital / PHC / ambulance / medicine  → health_medical_education_family_welfare
+      school teacher / TC / mid-day meal     → school_education_tamil_dev_info_publicity
+      college / polytechnic / engineering    → higher_education_technical_education
+      patta / land record / cyclone relief   → revenue_disaster_management
+      ration card / PDS / kerosene           → food_civil_supplies_consumer_protection
+      panchayat road / drinking water        → rural_development_water_resources
+      state highway / public building        → public_works_sports_development
+      bus / RTO / DL / state transport       → transport
+      police / FIR / court / anti-corruption → energy_law_courts_prevention_corruption
+      temple / HR&CE                         → hindu_religious_charitable_endowments
+      farmer crop loss / fertiliser          → agriculture_farmers_welfare
+      fishermen / boat                       → fisheries_fishermen_welfare
+      PM Awas / TN housing                   → housing_urban_development
+      MGNREGS / skill training               → labour_welfare_skill_development
+      GST / property registration            → commercial_taxes_registration
+      minority / Wakf                        → minorities_welfare_wakf_board
+      pension / women / Adi Dravidar         → social_welfare_women_welfare OR
+                                               social_justice_adi_dravidar_welfare
+                                               (pick more specific)
+
+    SECONDARY DEPARTMENTS (the `secondary_departments` list, 0–2 entries):
+    Add a secondary department ONLY if:
+      (a) it has a clear, independent stake in resolving the grievance, AND
+      (b) the primary alone cannot close the case without that dept's action.
+    If you are NOT sure, leave the list EMPTY. False positives waste PA hours.
+
+    When to use secondary departments — restrictive guidance:
+    • "Cyclone destroyed school building AND killed our crops." → primary =
+      revenue_disaster_management; secondary = [school_education_…,
+      agriculture_farmers_welfare]. Both have real, independent work to do.
+    • "Power cut spoiled medicines at PHC, patients in distress." → primary =
+      energy_law_courts_prevention_corruption; secondary = [health_medical_…].
+      Health needs to assess medicine loss.
+    • "Bus route to village school cancelled." → primary = transport.
+      Secondary = []. The school is just the destination, no school dept action
+      needed.
+    • "Doctor at PHC demanded bribe." → primary = health_medical_…;
+      secondary = []. Anti-corruption dept handles vigilance via category;
+      it doesn't need a secondary slot.
+
+    NEVER:
+    • NEVER fill secondary_departments to look thorough.
+    • NEVER add a department just because the word appears in the petition.
+    • NEVER add a department because the petitioner is associated with it
+      (e.g., a teacher's bank-loan complaint is NOT school_education_… — it's
+      finance/banking-related, primary department determined by what's broken).
+    • If max useful = 1, return ONE primary and an EMPTY secondary list.
 
 11. OUTPUT: Return ONLY a JSON object matching the response schema exactly.
     No markdown fences, no preamble, no explanation.

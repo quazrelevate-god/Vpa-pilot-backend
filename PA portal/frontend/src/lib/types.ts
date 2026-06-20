@@ -21,8 +21,8 @@ export interface StatsResponse {
   trend_labels: string[];    // ISO dates for last 14 days
   trend_counts: number[];    // matching daily submission counts
   categories: { label: string; count: number }[];
+  departments: { label: string; count: number }[];
   urgency: Partial<Record<Urgency, number>>;
-  sentiment: Record<string, number>;
 }
 
 export interface AppointmentAttachment {
@@ -37,6 +37,8 @@ export interface AppointmentRow {
   name: string;
   mobile: string;
   category: string;
+  department?: string | null;     // primary dept — snake_case Department enum key
+  secondary_departments?: string[]; // 0–2 additional depts to loop in
   status: AppointmentStatus;
   created_at: string;        // pre-formatted timestamp
   appointment_time?: string;
@@ -46,6 +48,8 @@ export interface AppointmentRow {
   summary?: string;
   citizen_ask?: string;
   key_details?: string[];
+  audio_transcript?: string | null;
+  audio_url?: string | null;            // dedicated form-mic recording
   attachments?: AppointmentAttachment[];
 }
 

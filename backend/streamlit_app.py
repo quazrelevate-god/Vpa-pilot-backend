@@ -30,7 +30,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.models.grievance_summary import (  # noqa: E402
-    CitizenSentiment,
     GrievanceCategory,
     GrievanceSummary,
     UrgencyLevel,
@@ -272,25 +271,23 @@ if summary is not None:
     st.markdown("## 📋 Structured summary")
 
     # Top-line metrics (language-neutral enums)
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3 = st.columns(3)
     urgency_emoji = {
         UrgencyLevel.LOW: "🟢",
         UrgencyLevel.MEDIUM: "🟡",
         UrgencyLevel.HIGH: "🟠",
         UrgencyLevel.CRITICAL: "🔴",
     }[summary.urgency]
-    sentiment_emoji = {
-        CitizenSentiment.DISTRESSED: "😟",
-        CitizenSentiment.FRUSTRATED: "😤",
-        CitizenSentiment.NEUTRAL: "😐",
-        CitizenSentiment.HOPEFUL: "🙂",
-    }[summary.sentiment]
-    from src.models.grievance_summary import DEPARTMENT_DISPLAY
+    from src.models.grievance_summary import DEPARTMENT_DISPLAY, CATEGORY_DISPLAY
     m1.metric("Urgency", f"{urgency_emoji} {summary.urgency.value.upper()}")
-    m2.metric("Category", summary.category.value.replace("_", " ").title())
-    m3.metric("Sentiment", f"{sentiment_emoji} {summary.sentiment.value.title()}")
-    m4.metric("Round-trip", f"{elapsed:.2f}s")
-    st.info(f"**🏛️ Department:** {DEPARTMENT_DISPLAY.get(summary.department.value, summary.department.value)}")
+    m2.metric("Category", CATEGORY_DISPLAY.get(summary.category.value, summary.category.value))
+    m3.metric("Round-trip", f"{elapsed:.2f}s")
+    st.info(f"**🏛️ Primary Department:** {DEPARTMENT_DISPLAY.get(summary.department.value, summary.department.value)}")
+    if summary.secondary_departments:
+        sec = ", ".join(
+            DEPARTMENT_DISPLAY.get(d.value, d.value) for d in summary.secondary_departments
+        )
+        st.warning(f"**↳ Also loop in:** {sec}")
 
     st.markdown("")
 

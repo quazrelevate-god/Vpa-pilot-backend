@@ -11,7 +11,6 @@ import Gauge from "@/components/Gauge";
 import StatusDoughnut from "@/components/charts/StatusDoughnut";
 import TrendLine from "@/components/charts/TrendLine";
 import CategoryBar from "@/components/charts/CategoryBar";
-import SentimentPolar from "@/components/charts/SentimentPolar";
 import UrgencyBars from "@/components/UrgencyBars";
 import { fetchStats } from "@/lib/api";
 import type { StatsResponse } from "@/lib/types";
@@ -144,12 +143,17 @@ export default function OverviewPage() {
                   <div className="text-sm font-semibold text-slate-700 mb-4">Urgency Distribution</div>
                   <UrgencyBars urgency={stats.urgency} />
                 </div>
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex-1">
-                  <div className="text-sm font-semibold text-slate-700 mb-3">Citizen Sentiment</div>
-                  <div className="h-36 flex items-center justify-center">
-                    <SentimentPolar sentiment={stats.sentiment} />
-                  </div>
-                </div>
+              </div>
+            </div>
+
+            {/* Row 4: department breakdown (KPI for Minister routing) */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <div className="text-sm font-semibold text-slate-700 mb-1">Petitions by Department</div>
+              <div className="text-xs text-slate-400 mb-4">
+                Primary department assigned by AI — top 10 by volume
+              </div>
+              <div className="h-72">
+                <CategoryBar items={stats.departments ?? []} />
               </div>
             </div>
           </>

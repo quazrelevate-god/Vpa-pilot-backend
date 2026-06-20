@@ -13,19 +13,41 @@ from pydantic import BaseModel, Field
 
 
 class GrievanceCategory(str, Enum):
-    INFRASTRUCTURE   = "infrastructure"    # roads, lights, drainage, public buildings
-    WATER_SANITATION = "water_sanitation"  # water supply, sewage, garbage
-    PENSION_WELFARE  = "pension_welfare"   # pension stoppage, welfare schemes
-    HEALTH           = "health"            # hospitals, medicine, ambulance
-    EDUCATION        = "education"         # schools, teachers, scholarships
-    LAND_REVENUE     = "land_revenue"      # land disputes, pattas, survey issues
-    ELECTRICITY      = "electricity"       # power cuts, meter issues, bills
-    LEGAL_JUSTICE    = "legal_justice"     # police complaints, FIR, court matters
-    EMPLOYMENT       = "employment"        # MGNREGS, job cards, unemployment
-    HOUSING          = "housing"           # PM Awas, housing schemes
-    CORRUPTION       = "corruption"        # bribery, misuse of office
-    DISASTER_RELIEF  = "disaster_relief"   # flood, fire, crop damage
-    OTHER            = "other"
+    """
+    Pattern-based grievance categories — describe WHAT KIND of grievance the
+    citizen is raising, independent of which department owns it. Use the
+    `department` field for routing; use this for cross-department analytics
+    (e.g. "how much corruption did we see this month, across all depts?").
+    """
+    SERVICE_DELAY_NONRESPONSE      = "service_delay_nonresponse"        # application stuck, no reply, inter-dept hand-off failure
+    DENIAL_OF_ENTITLEMENT          = "denial_of_entitlement"            # eligible but rejected from scheme / benefit / enrolment
+    CORRUPTION_BRIBERY             = "corruption_bribery"               # demand for illegal payment, misuse of office
+    OFFICIAL_MISCONDUCT_HARASSMENT = "official_misconduct_harassment"   # rude, negligent, intimidating, or abusive officials
+    CERTIFICATE_DOCUMENT_ISSUES    = "certificate_document_issues"      # patta, certificate, ID, ration card errors / delays / refusals
+    FINANCIAL_IRREGULARITY         = "financial_irregularity"           # wrong billing, payment dues, fund misuse, deductions
+    INFRASTRUCTURE_MAINTENANCE     = "infrastructure_maintenance"       # broken roads, lights, water lines, drainage, public assets
+    EMERGENCY_DISASTER_RELIEF      = "emergency_disaster_relief"        # flood, fire, cyclone, crop loss, medical emergency — needs urgent aid
+    LAND_PROPERTY_DISPUTE          = "land_property_dispute"            # encroachment, boundary, govt-land conflict, survey disputes
+    INFORMATION_RTI                = "information_rti"                  # refused information, RTI Act delays, lack of transparency
+    APPEAL_LEGAL_COMPLIANCE        = "appeal_legal_compliance"          # challenging decision; rule/policy violation; policy gap
+    OTHER                          = "other"
+
+
+# Human-readable category labels — used by PA portal & dashboard analytics.
+CATEGORY_DISPLAY: dict[str, str] = {
+    "service_delay_nonresponse":      "Service Delay & Non-response",
+    "denial_of_entitlement":          "Denial of Entitlement",
+    "corruption_bribery":             "Corruption & Bribery",
+    "official_misconduct_harassment": "Official Misconduct / Harassment",
+    "certificate_document_issues":    "Certificate & Document Issues",
+    "financial_irregularity":         "Financial Irregularity",
+    "infrastructure_maintenance":     "Infrastructure & Maintenance",
+    "emergency_disaster_relief":      "Emergency / Disaster Relief",
+    "land_property_dispute":          "Land & Property Dispute",
+    "information_rti":                "Information / RTI",
+    "appeal_legal_compliance":        "Appeal / Legal Compliance",
+    "other":                          "Other / Unclassified",
+}
 
 
 class Department(str, Enum):
@@ -114,13 +136,6 @@ class UrgencyLevel(str, Enum):
     CRITICAL = "critical"  # life/safety/livelihood at immediate risk
 
 
-class CitizenSentiment(str, Enum):
-    DISTRESSED  = "distressed"   # fear, desperation, crying for help
-    FRUSTRATED  = "frustrated"   # repeated attempts, system failed them
-    NEUTRAL     = "neutral"      # factual, calm request
-    HOPEFUL     = "hopeful"      # believes the Minister can resolve it
-
-
 class GrievanceSummary(BaseModel):
     """
     Structured output produced by the Gemini summarisation call.
@@ -173,13 +188,29 @@ class GrievanceSummary(BaseModel):
 
     department: Department = Field(
         description=(
-            "Tamil Nadu government department best suited to action this grievance. "
-            "Choose ONE department that owns the subject matter — e.g. a pension issue "
-            "→ social_welfare_women_welfare; a school teacher transfer → "
-            "school_education_tamil_dev_info_publicity; a power-cut complaint → "
-            "energy_law_courts_prevention_corruption. Use 'other' ONLY when the "
-            "grievance does not plausibly fit any listed department."
+            "PRIMARY department — the ONE Tamil Nadu government department that "
+            "owns the ROOT CAUSE of this grievance. Pick based on what is actually "
+            "broken or being requested, NOT on departments merely mentioned. "
+            "Example: 'school bus broke down' → transport (broken vehicle is the "
+            "root cause), even though 'school' is mentioned. Example: 'PHC doctor "
+            "demanded bribe' → health_medical_education_family_welfare (the service "
+            "failure is in Health), NOT energy_law_courts_prevention_corruption. "
+            "Use 'other' ONLY when the root cause does not plausibly fit any "
+            "listed department."
         )
+    )
+
+    secondary_departments: list[Department] = Field(
+        default_factory=list,
+        description=(
+            "0–2 ADDITIONAL departments with CLEAR partial ownership that genuinely "
+            "need to be looped in. Leave empty unless a second department's "
+            "involvement is unambiguous and necessary to resolve the grievance. "
+            "Do NOT pad this list. Do NOT add a department just because it was "
+            "mentioned in passing. The PA office uses these for cross-routing — "
+            "false positives waste cycles."
+        ),
+        max_length=2,
     )
 
     urgency: UrgencyLevel = Field(
@@ -246,10 +277,6 @@ class GrievanceSummary(BaseModel):
         ),
         min_length=1,
         max_length=6,
-    )
-
-    sentiment: CitizenSentiment = Field(
-        description="Emotional tone inferred from the text and/or audio (always English enum)."
     )
 
     # ── Attachment notes ───────────────────────────────────────────────────────

@@ -1,14 +1,56 @@
 import type { AppointmentRow } from "@/lib/types";
 import PriorityBadge from "./PriorityBadge";
 
+const DEPT_DISPLAY: Record<string, string> = {
+  rural_development_water_resources:         "Rural Development & Water Resources",
+  public_works_sports_development:           "Public Works & Sports Development",
+  health_medical_education_family_welfare:   "Health, Medical Education & Family Welfare",
+  revenue_disaster_management:               "Revenue & Disaster Management",
+  food_civil_supplies_consumer_protection:   "Food, Civil Supplies & Consumer Protection",
+  energy_law_courts_prevention_corruption:   "Energy, Law, Courts & Prevention of Corruption",
+  school_education_tamil_dev_info_publicity: "School Education, Tamil Development, Information & Publicity",
+  natural_resources_minerals_mines:          "Natural Resources (Minerals & Mines)",
+  industries_investment_promotion:           "Industries & Investment Promotion",
+  fisheries_fishermen_welfare:               "Fisheries & Fishermen Welfare",
+  animal_husbandry:                          "Animal Husbandry",
+  milk_dairy_development:                    "Milk & Dairy Development",
+  forests:                                   "Forests",
+  agriculture_farmers_welfare:               "Agriculture & Farmers Welfare",
+  environment_climate_change:                "Environment & Climate Change",
+  housing_urban_development:                 "Housing & Urban Development",
+  cooperation:                               "Cooperation",
+  msme:                                      "MSME",
+  social_welfare_women_welfare:              "Social Welfare & Women Welfare",
+  handlooms_textiles_khadi:                  "Handlooms, Textiles & Khadi",
+  commercial_taxes_registration:             "Commercial Taxes & Registration",
+  transport:                                 "Transport",
+  hindu_religious_charitable_endowments:     "HR & CE",
+  ai_information_technology:                 "AI & Information Technology",
+  welfare_non_resident_tamils:               "Welfare of Non-Resident Tamils",
+  backward_classes_welfare:                  "Backward Classes Welfare",
+  labour_welfare_skill_development:          "Labour Welfare & Skill Development",
+  human_resources_management:                "Human Resources Management",
+  finance_planning_development:              "Finance, Planning & Development",
+  prohibition_excise:                        "Prohibition & Excise",
+  tourism:                                   "Tourism",
+  higher_education_technical_education:      "Higher Education & Technical Education",
+  minorities_welfare_wakf_board:             "Minorities Welfare & Wakf Board",
+  social_justice_adi_dravidar_welfare:       "Social Justice & Adi Dravidar Welfare",
+  other:                                     "Other / Unclassified",
+};
+
 export default function AppointmentExpand({ row }: { row: AppointmentRow }) {
   const attachments = row.attachments ?? [];
-  
+
   // Debug logging
   if (attachments.length > 0) {
     console.log('Attachments for appointment:', row.id, attachments);
   }
-  
+
+  const deptLabel = row.department ? (DEPT_DISPLAY[row.department] ?? row.department) : null;
+  const secondaryDepts = (row.secondary_departments ?? []).map(
+    (d) => DEPT_DISPLAY[d] ?? d
+  );
   return (
     <td colSpan={9} className="p-0">
       <div className="px-8 py-5 border-l-4 border-brand">
@@ -67,10 +109,43 @@ export default function AppointmentExpand({ row }: { row: AppointmentRow }) {
                   </ul>
                 </div>
               )}
-              {row.urgency && (
-                <div className="mt-3"><PriorityBadge urgency={row.urgency} /></div>
+              {(row.urgency || deptLabel || secondaryDepts.length > 0) && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {row.urgency && <PriorityBadge urgency={row.urgency} />}
+                  {deptLabel && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 border border-indigo-200 rounded text-[11px] font-semibold text-indigo-700">
+                      🏛️ {deptLabel}
+                    </span>
+                  )}
+                  {secondaryDepts.map((d, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] font-medium text-slate-600"
+                      title="Also looped in"
+                    >
+                      ↳ {d}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
+
+            {/* Audio transcript (Gemini STT) */}
+            {(row.audio_transcript || row.audio_url) && (
+              <div className="mt-4 bg-white p-4 rounded border border-slate-200">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  🎤 Voice Recording {row.audio_transcript ? "(Transcribed)" : ""}
+                </div>
+                {row.audio_url && (
+                  <audio controls src={row.audio_url} className="w-full mb-2 h-8" />
+                )}
+                {row.audio_transcript && (
+                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                    {row.audio_transcript}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right: attachments */}

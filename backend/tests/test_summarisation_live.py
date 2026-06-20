@@ -115,7 +115,9 @@ def render_summary(s: GrievanceSummary) -> None:
         print(f"  — {DIM}{s.urgency_reason}{RESET}")
     else:
         print()
-    print(f"  {BOLD}Sentiment  :{RESET} {s.sentiment.value}")
+    print(f"  {BOLD}Department :{RESET} {MAGENTA}{s.department.value}{RESET}")
+    if s.secondary_departments:
+        print(f"  {BOLD}Secondary  :{RESET} {', '.join(d.value for d in s.secondary_departments)}")
     print(f"  {BOLD}Citizen ask:{RESET} {s.citizen_ask}")
     print(f"  {BOLD}Key details:{RESET}")
     for d in s.key_details:

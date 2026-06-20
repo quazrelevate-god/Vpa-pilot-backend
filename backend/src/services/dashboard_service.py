@@ -13,6 +13,14 @@ from sqlalchemy.orm import selectinload
 
 from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment
 from src.models.grievance_summary_record import GrievanceSummaryRecord
+from src.models.grievance_summary import CATEGORY_DISPLAY
+
+
+def _category_label(value: Optional[str]) -> str:
+    """Map a snake_case category to its human-readable form."""
+    if not value:
+        return "—"
+    return CATEGORY_DISPLAY.get(value, value.replace("_", " ").title())
 
 
 # DB status → display label (used only for non-appointment-type statuses like Closed/Rescheduled)
@@ -97,7 +105,7 @@ async def get_stats(
     if _df():
         cat_q = cat_q.where(and_(*_df()))
     cat_rows  = await db.execute(cat_q)
-    categories = [{"label": r[0].replace("_", " ").title(), "count": r[1]} for r in cat_rows]
+    categories = [{"label": _category_label(r[0]), "count": r[1]} for r in cat_rows]
 
     # Appointments in range → used to filter GSR
     appt_ids_in_range = (
@@ -118,12 +126,18 @@ async def get_stats(
     )
     urgency = {r[0]: r[1] for r in urgency_rows}
 
-    sentiment_rows = await db.execute(
-        select(GrievanceSummaryRecord.sentiment, func.count(GrievanceSummaryRecord.id))
+    # Primary department breakdown — drives the routing KPI for the Minister.
+    dept_rows = await db.execute(
+        select(GrievanceSummaryRecord.department, func.count(GrievanceSummaryRecord.id))
         .where(*gsr_filter)
-        .group_by(GrievanceSummaryRecord.sentiment)
+        .group_by(GrievanceSummaryRecord.department)
+        .order_by(func.count(GrievanceSummaryRecord.id).desc())
+        .limit(10)
     )
-    sentiment = {r[0]: r[1] for r in sentiment_rows}
+    from src.models.grievance_summary import DEPARTMENT_DISPLAY
+    departments = [
+        {"label": DEPARTMENT_DISPLAY.get(r[0], r[0]), "count": r[1]} for r in dept_rows
+    ]
 
     # Trend — day-by-day within the selected range (or last 14 days)
     if date_from and date_to:
@@ -162,8 +176,8 @@ async def get_stats(
         "resolution_rate": resolution_rate,
         "ai_coverage":     ai_coverage,
         "categories":      categories,
+        "departments":     departments,
         "urgency":         urgency,
-        "sentiment":       sentiment,
         "trend_labels":    day_labels,
         "trend_counts":    day_counts,
     }
@@ -269,7 +283,9 @@ async def get_appointments(
             "token": f"TKN{appt.token_assigned:05d}",
             "name": name,
             "mobile": mobile,
-            "category": (appt.grievance_category or "—").replace("_", " ").title(),
+            "category": _category_label(appt.grievance_category),
+            "department": (summary_rec.department if summary_rec else None),
+            "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
             "status_db": appt.status,
             "status": _resolve_display_status(appt),
             "created_at": appt.created_at.strftime("%d %b %Y, %I:%M %p"),
@@ -282,6 +298,7 @@ async def get_appointments(
             "citizen_ask": summary_rec.citizen_ask if summary_rec else None,
             "urgency": summary_rec.urgency if summary_rec else None,
             "key_details": summary_rec.key_details if summary_rec else [],
+            "audio_transcript": summary_rec.audio_transcript if summary_rec else None,
             "attachments": attachments_data,
         })
 

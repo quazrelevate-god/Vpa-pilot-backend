@@ -99,16 +99,18 @@ class GrievanceSummaryRecord(Base):
         VARCHAR(60),
         nullable=False,
         server_default="other",
-        comment="Department enum: TN govt department best suited to action this grievance",
+        comment="PRIMARY Department enum value — the dept owning the root cause",
     )
 
-    sentiment = Column(
-        VARCHAR(20),
+    secondary_departments = Column(
+        JSONB,
         nullable=False,
-        comment="CitizenSentiment enum: distressed | frustrated | neutral | hopeful",
+        server_default="[]",
+        comment="0–2 additional Department enum values to be looped in. "
+                "Empty list when only the primary dept needs to act.",
     )
 
-    # ── English narrative fields ───────────────────────────────────────────────
+# ── English narrative fields ───────────────────────────────────────────────
     headline = Column(
         VARCHAR(150),
         nullable=False,
@@ -182,6 +184,20 @@ class GrievanceSummaryRecord(Base):
         comment="Tamil translation of attachment_notes. NULL if no attachment.",
     )
 
+    # ── STT transcript (Gemini speech-to-text on audio attachment) ────────────
+    audio_transcript = Column(
+        Text,
+        nullable=True,
+        comment="Verbatim Tamil/English transcript of the citizen's audio recording, "
+                "produced by Gemini STT before summarisation. NULL if no audio was provided.",
+    )
+
+    audio_stt_latency_ms = Column(
+        Integer,
+        nullable=True,
+        comment="End-to-end Gemini STT round-trip in milliseconds. NULL if no audio.",
+    )
+
     # ── Gemini metadata (for cost / performance audit) ────────────────────────
     gemini_model_used = Column(
         VARCHAR(60),
@@ -211,6 +227,8 @@ class GrievanceSummaryRecord(Base):
         summary: "GrievanceSummary",  # noqa: F821 — forward ref, imported at call site
         gemini_model_used: str,
         gemini_latency_ms: int | None = None,
+        audio_transcript: str | None = None,
+        audio_stt_latency_ms: int | None = None,
     ) -> "GrievanceSummaryRecord":
         """
         Build a ready-to-persist record from a GrievanceSummary Pydantic object.
@@ -235,7 +253,7 @@ class GrievanceSummaryRecord(Base):
             urgency=summary.urgency.value,
             category=summary.category.value,
             department=summary.department.value,
-            sentiment=summary.sentiment.value,
+            secondary_departments=[d.value for d in summary.secondary_departments],
             # English fields
             headline=summary.headline,
             summary=summary.summary,
@@ -250,6 +268,9 @@ class GrievanceSummaryRecord(Base):
             urgency_reason_ta=summary.urgency_reason_ta,
             key_details_ta=summary.key_details_ta,
             attachment_notes_ta=summary.attachment_notes_ta,
+            # STT
+            audio_transcript=audio_transcript,
+            audio_stt_latency_ms=audio_stt_latency_ms,
             # Gemini metadata
             gemini_model_used=gemini_model_used,
             gemini_latency_ms=gemini_latency_ms,

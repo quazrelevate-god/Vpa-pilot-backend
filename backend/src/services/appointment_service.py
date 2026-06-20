@@ -792,6 +792,7 @@ class AppointmentService:
                 constituency=constituency,
                 description=description,
                 attachments_created=attachments_created,
+                audio_recording_url=audio_url,
             ))
 
             return {
@@ -820,6 +821,7 @@ class AppointmentService:
         constituency: str,
         description: str,
         attachments_created: List[AppointmentAttachment],
+        audio_recording_url: Optional[str] = None,
     ) -> None:
         """
         Background Gemini summarisation — runs after the HTTP response is sent.
@@ -870,18 +872,47 @@ class AppointmentService:
                                   f"Could not read document file {att.storage_url}: {read_err}")
                         break
 
-            # Priority 3: description text (only if no usable attachment)
-            if attachment_bytes is None:
-                grievance_text = description or ""
-                if not grievance_text.strip():
-                    print(f"[GEMINI SKIP] appointment_id={appointment_id}: "
-                          "No text and no usable image/document — skipping summarisation.")
-                    return
+            # Priority 3: AUDIO — find from attachments or the dedicated mic recording.
+            # Audio is sent to Gemini summariser as multimodal bytes (same channel as
+            # image/document) AND transcribed via Gemini STT in parallel — the two
+            # calls are independent, so we run them concurrently to save wall time.
+            audio_path: Optional[str] = None
+            audio_mime: Optional[str] = None
+            for att in attachments_created:
+                if att.attachment_type == "AUDIO":
+                    audio_path = att.storage_url
+                    audio_mime = att.mime_type or "audio/webm"
+                    break
+            if audio_path is None and audio_recording_url:
+                audio_path = audio_recording_url
+                audio_mime = "audio/webm"  # form mic captures as webm/opus
 
-            # ── Call Gemini in a thread — summarise() is sync/blocking ─────
-            t0 = time.monotonic()
+            audio_bytes_for_gemini: Optional[bytes] = None
+            if audio_path:
+                try:
+                    with open(audio_path, "rb") as fh:
+                        audio_bytes_for_gemini = fh.read()
+                except OSError as read_err:
+                    print(f"[GEMINI WARN] appointment_id={appointment_id}: "
+                          f"Could not read audio file {audio_path}: {read_err}")
+
+            # Build grievance_text from description only — the audio goes directly
+            # to Gemini as multimodal bytes (richer signal than just the transcript).
+            grievance_text = (description or "").strip()
+
+            # Skip only when nothing at all to summarise.
+            if attachment_bytes is None and audio_bytes_for_gemini is None and not grievance_text:
+                print(f"[GEMINI SKIP] appointment_id={appointment_id}: "
+                      "No usable input — skipping summarisation.")
+                return
+
+            # ── Run summariser + STT in parallel ──────────────────────────────
+            # Both are sync/blocking; push them into the default executor so they
+            # run on separate threads, then await both.
             loop = asyncio.get_event_loop()
-            summary = await loop.run_in_executor(
+            t0 = time.monotonic()
+
+            summarise_future = loop.run_in_executor(
                 None,
                 lambda: svc.summarise(
                     citizen_name=citizen_name,
@@ -890,8 +921,35 @@ class AppointmentService:
                     attachment_bytes=attachment_bytes,
                     attachment_mime=attachment_mime,
                     attachment_filename=attachment_filename,
+                    audio_bytes=audio_bytes_for_gemini,
+                    audio_mime=audio_mime if audio_bytes_for_gemini else None,
                 ),
             )
+
+            audio_transcript: Optional[str] = None
+            audio_stt_latency_ms: Optional[int] = None
+
+            if audio_bytes_for_gemini:
+                from src.services.stt_service import GeminiSTTService
+                stt_svc = GeminiSTTService.from_settings()
+                stt_future = loop.run_in_executor(
+                    None,
+                    lambda: stt_svc.transcribe(audio_bytes_for_gemini, mime_type=audio_mime),
+                )
+                summary, stt_result = await asyncio.gather(
+                    summarise_future, stt_future, return_exceptions=False
+                )
+                if stt_result.error:
+                    print(f"[STT WARN] appointment_id={appointment_id}: "
+                          f"Gemini STT failed: {stt_result.error}")
+                elif stt_result.transcript:
+                    audio_transcript = stt_result.transcript.strip()
+                    audio_stt_latency_ms = stt_result.latency_ms
+                    print(f"[STT OK] appointment_id={appointment_id} | "
+                          f"chars={len(audio_transcript)} | latency={audio_stt_latency_ms}ms")
+            else:
+                summary = await summarise_future
+
             elapsed_ms = int((time.monotonic() - t0) * 1000)
 
             # ── Persist summary record in its own session ────────────────────
@@ -901,6 +959,8 @@ class AppointmentService:
                     summary=summary,
                     gemini_model_used=svc._model_name,
                     gemini_latency_ms=elapsed_ms,
+                    audio_transcript=audio_transcript,
+                    audio_stt_latency_ms=audio_stt_latency_ms,
                 )
                 db.add(record)
 
@@ -913,11 +973,16 @@ class AppointmentService:
 
                 await db.commit()
 
-            input_mode = "attachment" if attachment_bytes else "text"
+            input_parts = []
+            if attachment_bytes: input_parts.append("attachment")
+            if audio_bytes_for_gemini: input_parts.append("audio")
+            if grievance_text: input_parts.append("text")
+            input_mode = "+".join(input_parts) if input_parts else "empty"
             print(
                 f"[GEMINI OK] appointment_id={appointment_id} | input={input_mode} | "
                 f"urgency={summary.urgency.value} | category={summary.category.value} | "
-                f"latency={elapsed_ms}ms"
+                f"department={summary.department.value} | "
+                f"latency={elapsed_ms}ms (parallel summarise+STT)"
             )
 
         except Exception as exc:
