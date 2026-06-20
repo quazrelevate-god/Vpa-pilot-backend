@@ -454,6 +454,48 @@ class AppointmentService:
                 return attachment_type
         return None
     
+    async def _save_audio_recording(self, audio_base64: str, token_number: int) -> str:
+        """
+        Save base64 encoded audio recording to disk.
+        
+        Args:
+            audio_base64: Base64 encoded audio data (data:audio/webm;base64,...)
+            token_number: Token number for filename
+            
+        Returns:
+            str: Storage URL path
+        """
+        import base64
+        from pathlib import Path
+        
+        try:
+            # Parse base64 data URL
+            if ',' in audio_base64:
+                header, encoded = audio_base64.split(',', 1)
+            else:
+                encoded = audio_base64
+            
+            # Decode base64
+            audio_bytes = base64.b64decode(encoded)
+            
+            # Create directory
+            audio_dir = Path("uploads/audio")
+            audio_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename
+            filename = f"audio_{token_number}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.webm"
+            file_path = audio_dir / filename
+            
+            # Save to disk
+            with open(file_path, 'wb') as f:
+                f.write(audio_bytes)
+            
+            return str(file_path)
+            
+        except Exception as e:
+            print(f"[AUDIO SAVE ERROR] Failed to save audio: {e}")
+            return None
+    
     async def _save_uploaded_file(
         self,
         file: UploadFile,
@@ -537,6 +579,7 @@ class AppointmentService:
         description: str,
         otp_code: str,
         schedule_meeting: bool,
+        audio_recording: str,
         files: List[UploadFile],
         db: AsyncSession
     ) -> Dict[str, Any]:
@@ -663,12 +706,18 @@ class AppointmentService:
                     db.add(citizen)
                     await db.flush()  # Get citizen.id
                 
-                # Step 9: Create appointment record
+                # Step 9: Save audio recording if provided
+                audio_url = None
+                if audio_recording:
+                    audio_url = await self._save_audio_recording(audio_recording, token_assigned)
+                
+                # Step 10: Create appointment record
                 appointment = Appointment(
                     citizen_id=citizen.id,
                     slot_id=slot_id,
                     token_assigned=token_assigned,
                     encrypted_grievance=encrypted_grievance,
+                    audio_recording_url=audio_url,
                     grievance_category=None,  # TODO: Implement category classification
                     status='SCHEDULED',
                     schedule_meeting=schedule_meeting,
@@ -677,7 +726,7 @@ class AppointmentService:
                 db.add(appointment)
                 await db.flush()  # Get appointment.id
                 
-                # Step 10: Save uploaded files and create attachment records
+                # Step 11: Save uploaded files and create attachment records
                 attachments_created = []
                 
                 for file in files:

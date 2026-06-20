@@ -228,6 +228,10 @@ async def submit_appointment(
         default="false",
         description="Whether to schedule a meeting (true/false)"
     ),
+    audio_recording: str = Form(
+        default="",
+        description="Base64 encoded audio recording (optional)"
+    ),
     files: List[UploadFile] = File(
         default=[],
         description="Optional file attachments (audio, images, documents, video)"
@@ -328,14 +332,15 @@ async def submit_appointment(
                 detail="Mobile number must contain only digits"
             )
         
-        # Validate description OR files (at least one required)
+        # Validate description OR files OR audio (at least one required)
         has_description = description and description.strip()
         has_files = files and len(files) > 0 and any(f.filename for f in files)
+        has_audio = audio_recording and audio_recording.strip()
         
-        if not has_description and not has_files:
+        if not has_description and not has_files and not has_audio:
             raise HTTPException(
                 status_code=400,
-                detail="Either description or file attachments must be provided"
+                detail="Either description, audio recording, or file attachments must be provided"
             )
         
         # Convert schedule_meeting string to boolean
@@ -350,6 +355,7 @@ async def submit_appointment(
             description=description,
             otp_code=otp_code,
             schedule_meeting=schedule_meeting_bool,
+            audio_recording=audio_recording,
             files=files,
             db=db
         )

@@ -257,6 +257,13 @@ async def get_appointments(
             for a in appt.attachments
         ]
 
+        # Add audio recording URL if available
+        audio_url = None
+        if appt.audio_recording_url:
+            p = appt.audio_recording_url.replace("\\", "/")
+            idx = p.find("uploads/")
+            audio_url = "/static/" + p[idx:] if idx != -1 else "/static/" + p
+        
         items.append({
             "id": appt.id,
             "token": f"TKN{appt.token_assigned:05d}",
@@ -268,6 +275,7 @@ async def get_appointments(
             "created_at": appt.created_at.strftime("%d %b %Y, %I:%M %p"),
             "appointment_time": appt.created_at.strftime("%d %b %Y, %I:%M %p") if appt.schedule_meeting else None,
             "description": _decode(appt.encrypted_grievance) if appt.encrypted_grievance else None,
+            "audio_url": audio_url,
             "headline": summary_rec.headline if summary_rec else None,
             "headline_ta": summary_rec.headline_ta if summary_rec else None,
             "summary": summary_rec.summary if summary_rec else None,

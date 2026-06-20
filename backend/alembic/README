@@ -1,0 +1,36 @@
+Generic single-database configuration for Alembic migrations.
+
+## Usage
+
+### Generate a new migration
+```bash
+# Auto-generate migration based on model changes
+alembic revision --autogenerate -m "description of changes"
+
+# Create empty migration
+alembic revision -m "description"
+```
+
+### Apply migrations
+```bash
+# Upgrade to latest
+alembic upgrade head
+
+# Upgrade one version
+alembic upgrade +1
+
+# Downgrade one version
+alembic downgrade -1
+
+# Show current version
+alembic current
+
+# Show migration history
+alembic history
+```
+
+### Important Notes
+- Always review auto-generated migrations before applying
+- Test migrations in development before production
+- Database URL is read from src/core/config.py settings
+- All models must be imported in env.py for autogenerate to work

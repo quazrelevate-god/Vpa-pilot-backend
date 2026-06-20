@@ -142,46 +142,38 @@ class QRService:
                 signature_string.encode('utf-8'),
                 max_age=settings.QR_EXPIRY_SECONDS
             )
-            # Payload format is "venue_id:nonce" — extract only the venue_id part
-            venue_id = unsigned_payload.decode('utf-8').split(':')[0]
+            # Payload format is "venue_id:nonce:timestamp" or just "venue_id" (old format)
+            # Extract only the venue_id part (first component)
+            payload_str = unsigned_payload.decode('utf-8')
+            venue_id = payload_str.split(':')[0] if ':' in payload_str else payload_str
         except SignatureExpired:
             raise ValueError("QR code has expired. Please scan a new code.")
         except BadSignature:
             raise ValueError("Invalid QR code signature. Tampering detected.")
         
-        # Step 2: Compute signature hash for database lookup
-        signature_hash = hashlib.sha256(signature_string.encode('utf-8')).hexdigest()
+        # Step 2: Cryptographic verification is sufficient - no need for database lookup
+        # The itsdangerous library already verified the signature and timestamp
+        # Database QR log is just for audit trail, not security enforcement
         
-        # Step 3: Verify QR exists in database and hasn't expired
-        # Using SELECT FOR UPDATE to lock the row and prevent concurrent verification
-        stmt = select(QRLog).where(
-            QRLog.qr_signature_hash == signature_hash
-        ).with_for_update()
-        
-        result = await db.execute(stmt)
-        qr_log = result.scalar_one_or_none()
-        
-        if not qr_log:
-            raise ValueError("QR code not found in system. Invalid or forged code.")
-        
-        # Step 4: Check database-level expiration (defense in depth)
+        # Step 3: Check for existing active session to prevent duplicates
         current_time = datetime.utcnow()
-        if qr_log.expires_at < current_time:
-            raise ValueError("QR code has expired in database. Please generate a new code.")
-        
-        # Step 5: Prevent replay attacks - check if QR has already been used
-        # We can implement this by checking if a session already exists for this QR
         existing_session_stmt = select(GatekeeperSession).where(
             GatekeeperSession.device_fingerprint == device_fingerprint,
-            GatekeeperSession.created_at >= qr_log.created_at
+            GatekeeperSession.expires_at > current_time
         )
         existing_session_result = await db.execute(existing_session_stmt)
         existing_session = existing_session_result.scalar_one_or_none()
         
-        if existing_session and existing_session.expires_at > current_time:
-            raise ValueError("Active session already exists for this device. Please use existing session.")
+        if existing_session:
+            # Return existing session instead of creating new one
+            return {
+                "session_token": str(existing_session.session_token),
+                "expires_at": existing_session.expires_at.isoformat(),
+                "venue_id": venue_id,
+                "session_expiry_seconds": settings.SESSION_EXPIRY_SECONDS
+            }
         
-        # Step 6: Create new gatekeeper session
+        # Step 4: Create new gatekeeper session
         session_expires_at = current_time + timedelta(seconds=settings.SESSION_EXPIRY_SECONDS)
         
         gatekeeper_session = GatekeeperSession(

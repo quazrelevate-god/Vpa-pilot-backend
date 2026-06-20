@@ -10,11 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from src.core.config import settings
-from src.api.v1 import qr, form, appointments, dashboard
+from src.api.v1 import qr, form, appointments, dashboard, scheduling
 
 # Import all ORM models so SQLAlchemy can resolve cross-model relationships
 # (e.g. Appointment → GrievanceSummaryRecord) before the mapper is configured.
 import src.models.grievance_summary_record  # noqa: F401
+import src.models.scheduling_models  # noqa: F401
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':
@@ -51,6 +52,7 @@ app.include_router(qr.router)
 app.include_router(form.router)
 app.include_router(appointments.router)
 app.include_router(dashboard.router)
+app.include_router(scheduling.router)
 
 
 @app.get("/health", tags=["Health Check"])

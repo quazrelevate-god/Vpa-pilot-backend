@@ -4,7 +4,7 @@ Defines core permanent tables for citizen data, appointments, and attachments.
 """
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, Boolean, 
-    DateTime, ForeignKey, Index
+    DateTime, Date, Time, ForeignKey, Index
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -206,8 +206,14 @@ class Appointment(Base):
     
     encrypted_grievance = Column(
         Text,
-        nullable=False,
-        comment="AES-256 encrypted grievance/query description"
+        nullable=True,
+        comment="AES-256 encrypted grievance/query description (optional if audio provided)"
+    )
+    
+    audio_recording_url = Column(
+        Text,
+        nullable=True,
+        comment="Storage URL for citizen's voice recording (blob storage path)"
     )
     
     grievance_category = Column(
@@ -237,6 +243,58 @@ class Appointment(Base):
         comment="Timestamp when appointment was created"
     )
     
+    # MLA Scheduling columns
+    scheduled_date = Column(
+        Date,
+        nullable=True,
+        comment="Date when meeting is scheduled (null if not scheduled yet)"
+    )
+    
+    scheduled_start_time = Column(
+        Time,
+        nullable=True,
+        comment="Start time of scheduled meeting"
+    )
+    
+    scheduled_end_time = Column(
+        Time,
+        nullable=True,
+        comment="End time of scheduled meeting"
+    )
+    
+    appointment_slot_id = Column(
+        Integer,
+        ForeignKey('appointment_slots.id', ondelete='SET NULL'),
+        nullable=True,
+        comment="Foreign key to appointment_slots table"
+    )
+    
+    preferred_window_id = Column(
+        Integer,
+        ForeignKey('time_windows.id', ondelete='SET NULL'),
+        nullable=True,
+        comment="Citizen's preferred time window selection"
+    )
+    
+    queue_position = Column(
+        Integer,
+        nullable=True,
+        comment="Position in waiting queue (null if not waiting)"
+    )
+    
+    waiting_since = Column(
+        DateTime,
+        nullable=True,
+        comment="Timestamp when appointment was moved to waiting queue"
+    )
+    
+    priority_score = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        comment="Priority score for queue processing (higher = older/more urgent)"
+    )
+    
     # Relationships
     citizen = relationship("Citizen", back_populates="appointments")
     attachments = relationship(
@@ -250,12 +308,24 @@ class Appointment(Base):
         cascade="all, delete-orphan",
         order_by="GrievanceSummaryRecord.created_at.desc()",
     )
+    scheduled_slot = relationship(
+        "AppointmentSlot",
+        foreign_keys=[appointment_slot_id],
+        back_populates="appointment"
+    )
+    preferred_window = relationship(
+        "TimeWindow",
+        foreign_keys=[preferred_window_id]
+    )
     
     __table_args__ = (
         Index('ix_appointments_citizen_id', 'citizen_id'),
         Index('ix_appointments_slot_id', 'slot_id'),
         Index('ix_appointments_status', 'status'),
         Index('ix_appointments_created_at', 'created_at'),
+        Index('ix_appointments_scheduled_date', 'scheduled_date'),
+        Index('ix_appointments_queue_position', 'queue_position'),
+        Index('ix_appointments_waiting_since', 'waiting_since'),
     )
 
 

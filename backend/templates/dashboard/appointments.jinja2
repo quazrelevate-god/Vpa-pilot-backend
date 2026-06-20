@@ -337,6 +337,18 @@
                            <p class="text-sm text-slate-700 bg-white p-4 rounded border border-slate-200 leading-relaxed">${row.description}</p>
                        </div>` : '';
 
+                // Audio recording
+                const audioHtml = row.audio_url
+                    ? `<div class="mb-4">
+                           <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Voice Recording</div>
+                           <div class="bg-white p-4 rounded border border-slate-200">
+                               <audio controls class="w-full" style="height: 40px;">
+                                   <source src="${row.audio_url}" type="audio/webm">
+                                   Your browser does not support the audio element.
+                               </audio>
+                           </div>
+                       </div>` : '';
+
                 // AI summary block
                 const headlineHtml = row.headline
                     ? `<div class="font-semibold text-slate-800 mb-1">${row.headline}</div>` : '';
@@ -394,9 +406,10 @@
                             </div>
 
                             <div class="flex gap-6">
-                                <!-- Left: description + AI summary -->
+                                <!-- Left: description + audio + AI summary -->
                                 <div class="flex-1 min-w-0">
                                     ${descHtml}
+                                    ${audioHtml}
                                     <div class="bg-white p-4 rounded border border-slate-200">
                                         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">AI Summary</div>
                                         ${headlineHtml}${summaryHtml}${askHtml}${detailsBlock}${urgencyHtml}
