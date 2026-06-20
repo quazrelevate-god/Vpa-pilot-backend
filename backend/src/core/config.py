@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     # fastest, most reliable latency (requires a paid/billed project).
     GEMINI_SERVICE_TIER: str = "priority"
 
+    # Sarvam AI Configuration — Indian-language speech-to-text (Tamil-first).
+    # Used by src/services/stt_service.py.  Get a key at https://www.sarvam.ai/
+    SARVAM_API_KEY: Optional[str] = None
+    SARVAM_STT_MODEL: str = "saaras:v3"      # saarika:v2.5 (deprecating) | saaras:v3 (recommended)
+    SARVAM_STT_LANGUAGE: str = "ta-IN"        # BCP-47; use "unknown" for auto-detect
+    SARVAM_API_BASE_URL: str = "https://api.sarvam.ai"
+
     # QR Code Configuration
     QR_EXPIRY_SECONDS: int = 300  # 5 minutes default
 

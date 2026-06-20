@@ -16,6 +16,9 @@ pydantic-settings==2.2.1
 # HTTP Client & File Handling
 httpx>=0.28.1
 python-multipart==0.0.19
+requests>=2.31  # used by src/services/stt_service.py for Sarvam REST calls
+sarvamai>=0.1   # Sarvam batch STT for clips > 30 s (used by stt_service.py)
+mutagen>=1.47   # audio duration probe for routing REST vs Batch
 
 # AI & SMS Services
 google-genai>=2.8.0
