@@ -57,3 +57,89 @@ export interface AppointmentsResponse {
   items: AppointmentRow[];
   total: number;
 }
+
+// ── Ticketing (PA team only) ────────────────────────────────────────────────
+
+export type TicketStatus =
+  | "open"
+  | "triaged"
+  | "assigned"
+  | "in_progress"
+  | "forwarded_to_dept"
+  | "pending_citizen"
+  | "resolved"
+  | "closed"
+  | "reopened";
+
+export type TicketPriority = "P0" | "P1" | "P2" | "P3";
+
+export type ClosureReason =
+  | "action_taken"
+  | "not_actionable"
+  | "duplicate"
+  | "resolved_by_dept"
+  | "no_response_from_citizen"
+  | "out_of_scope";
+
+export interface TicketEvent {
+  id: number;
+  event_type: string;
+  actor: string;
+  note?: string | null;
+  payload?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface TicketRow {
+  id: number;
+  ticket_number: string;
+  token?: string | null;
+  appointment_id: number;
+  citizen_name?: string | null;
+  citizen_mobile?: string | null;
+  status: TicketStatus;
+  priority?: TicketPriority | null;
+  assigned_to_pa?: string | null;
+  due_date?: string | null;
+  forwarded_to_dept?: string | null;
+  forwarded_to_dept_label?: string | null;
+  reopen_count: number;
+  created_at: string;
+  updated_at: string;
+  urgency?: Urgency | null;
+  category?: string | null;
+  category_label?: string | null;
+  department?: string | null;
+  department_label?: string | null;
+  headline?: string | null;
+}
+
+export interface TicketDetail extends TicketRow {
+  description?: string | null;
+  summary?: string | null;
+  summary_ta?: string | null;
+  headline_ta?: string | null;
+  citizen_ask?: string | null;
+  citizen_ask_ta?: string | null;
+  key_details?: string[];
+  key_details_ta?: string[];
+  audio_transcript?: string | null;
+  secondary_departments?: string[];
+  resolution_notes?: string | null;
+  closure_reason?: ClosureReason | null;
+  resolved_at?: string | null;
+  closed_at?: string | null;
+  reopened_at?: string | null;
+  forwarded_at?: string | null;
+  forwarded_by?: string | null;
+  forwarded_notes?: string | null;
+  attachments?: AppointmentAttachment[];
+  events: TicketEvent[];
+}
+
+export interface TicketsResponse {
+  items: TicketRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}

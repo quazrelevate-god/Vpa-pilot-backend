@@ -8,8 +8,10 @@ import PriorityBadge from "@/components/PriorityBadge";
 import Toast from "@/components/Toast";
 import RescheduleModal from "@/components/RescheduleModal";
 import AppointmentExpand from "@/components/AppointmentExpand";
+import FilterStrip from "@/components/FilterStrip";
 import { fetchAppointments, updateAppointmentStatus } from "@/lib/api";
 import type { AppointmentRow, AppointmentStatus } from "@/lib/types";
+import { urgencyOptions, deptOptions, categoryOptions } from "@/lib/enums";
 
 const TABS = ["All", "Scheduled", "Waiting", "Rescheduled", "Submitted", "Closed"] as const;
 const PAGE_SIZE = 25;
@@ -28,13 +30,17 @@ export default function AppointmentsPage() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
 
+  const [urgency, setUrgency] = useState("");
+  const [department, setDepartment] = useState("");
+  const [category, setCategory] = useState("");
+
   const [rescheduleFor, setRescheduleFor] = useState<{ id: number; name: string } | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAppointments({ status: tab, search, page });
+      const data = await fetchAppointments({ status: tab, search, page, urgency, department, category });
       setRows(data.items);
       setTotal(data.total);
     } catch (e) {
@@ -42,7 +48,7 @@ export default function AppointmentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, search, page]);
+  }, [tab, search, page, urgency, department, category]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -157,6 +163,18 @@ export default function AppointmentsPage() {
                 </button>
               );
             })}
+          </div>
+
+          {/* AI-derived filters */}
+          <div className="px-6 pt-4">
+            <FilterStrip
+              onClearAll={() => { setUrgency(""); setDepartment(""); setCategory(""); setPage(1); }}
+              groups={[
+                { key: "urgency",    label: "Urgency",    value: urgency,    onChange: v => { setPage(1); setUrgency(v); },    options: urgencyOptions },
+                { key: "department", label: "Department", value: department, onChange: v => { setPage(1); setDepartment(v); }, options: deptOptions },
+                { key: "category",   label: "Category",   value: category,   onChange: v => { setPage(1); setCategory(v); },   options: categoryOptions },
+              ]}
+            />
           </div>
 
           {/* Table */}

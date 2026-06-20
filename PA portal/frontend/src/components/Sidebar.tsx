@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, LayoutDashboard, LogOut, Clock, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CalendarDays, LayoutDashboard, LogOut, Clock, Users, Ticket } from "lucide-react";
+import { fetchTicketsOpenCount } from "@/lib/api";
 
 const NAV = [
   { href: "/overview",       label: "Dashboard",      icon: LayoutDashboard },
+  { href: "/tickets",        label: "Tickets",        icon: Ticket, badge: "openTickets" as const },
   { href: "/appointments",   label: "Appointments",   icon: CalendarDays },
   { href: "/scheduling",     label: "Scheduling",     icon: Clock },
   { href: "/waiting-queue",  label: "Waiting Queue",  icon: Users },
@@ -13,6 +16,17 @@ const NAV = [
 
 export default function Sidebar({ user = "admin" }: { user?: string }) {
   const pathname = usePathname();
+  const [openTickets, setOpenTickets] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchTicketsOpenCount().then(setOpenTickets).catch(() => setOpenTickets(null));
+    const id = setInterval(() => {
+      fetchTicketsOpenCount().then(setOpenTickets).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [pathname]);
+
+  const badges: Record<string, number | null> = { openTickets };
   return (
     <aside className="w-60 bg-sidebar text-white flex flex-col flex-shrink-0">
       <div className="h-16 flex items-center px-5 border-b border-white/10">
@@ -23,8 +37,9 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
         </span>
       </div>
       <nav className="flex-1 overflow-y-auto sidebar-scroll py-3">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {NAV.map(({ href, label, icon: Icon, badge }) => {
           const active = pathname?.startsWith(href);
+          const badgeVal = badge ? badges[badge] : null;
           return (
             <Link
               key={href}
@@ -37,7 +52,12 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
               ].join(" ")}
             >
               <Icon className="w-4 h-4" />
-              {label}
+              <span className="flex-1">{label}</span>
+              {badgeVal != null && badgeVal > 0 && (
+                <span className="bg-red-500/90 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+                  {badgeVal > 99 ? "99+" : badgeVal}
+                </span>
+              )}
             </Link>
           );
         })}

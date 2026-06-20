@@ -189,6 +189,9 @@ async def get_appointments(
     search: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    urgency: Optional[str] = None,
+    department: Optional[str] = None,
+    category: Optional[str] = None,
     page: int = 1,
     page_size: int = 25,
 ) -> Dict[str, Any]:
@@ -229,6 +232,20 @@ async def get_appointments(
             stmt = stmt.where(Appointment.status == "RESCHEDULED")
         elif status_filter == "Waiting":
             stmt = stmt.where(Appointment.status.in_(["WAITING", "IN_PROGRESS"]))
+
+    # AI-derived filters (urgency / dept / category) live on GrievanceSummaryRecord.
+    if urgency or department or category:
+        gsr_sub = (
+            select(GrievanceSummaryRecord.appointment_id)
+            .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
+        )
+        if urgency:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+        if department:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+        if category:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
+        stmt = stmt.where(Appointment.id.in_(gsr_sub))
 
     # Count before pagination
     count_stmt = select(func.count()).select_from(stmt.subquery())

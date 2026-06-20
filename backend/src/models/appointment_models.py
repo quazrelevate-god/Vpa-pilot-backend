@@ -3,14 +3,43 @@ SQLAlchemy ORM models for appointment management and OTP verification.
 Defines core permanent tables for citizen data, appointments, and attachments.
 """
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, Boolean, 
+    Column, Integer, BigInteger, String, Text, Boolean,
     DateTime, Date, Time, ForeignKey, Index
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
 from src.core.database import Base
+
+
+# ── Ticket lifecycle states ───────────────────────────────────────────────────
+# The PA team moves a petition through these states manually.
+# NOTE: distinct from Appointment.status (which is queue-centric:
+# SCHEDULED / WAITING / COMPLETED). ticket_status is case-management:
+# "where is the petition's resolution".
+TICKET_STATUSES = (
+    "OPEN",              # just submitted (auto)
+    "TRIAGED",           # AI summary done, ready to assign (auto when summary lands)
+    "ASSIGNED",          # PA officer picked it up
+    "IN_PROGRESS",       # PA is actively working
+    "PENDING_DEPT",      # forwarded to a govt dept, awaiting dept response
+    "PENDING_CITIZEN",   # awaiting more info from citizen
+    "RESOLVED",          # action taken, awaiting close confirmation
+    "CLOSED",            # case closed
+    "REOPENED",          # citizen / PA re-opened a closed case
+)
+
+TICKET_PRIORITIES = ("P0", "P1", "P2", "P3")
+
+TICKET_CLOSURE_REASONS = (
+    "action_taken",
+    "not_actionable",
+    "duplicate",
+    "resolved_by_dept",
+    "no_response_from_citizen",
+    "withdrawn_by_citizen",
+)
 
 
 class OTPVerification(Base):
@@ -307,6 +336,12 @@ class Appointment(Base):
         back_populates="appointment",
         cascade="all, delete-orphan",
         order_by="GrievanceSummaryRecord.created_at.desc()",
+    )
+    ticket = relationship(
+        "Ticket",
+        back_populates="appointment",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     scheduled_slot = relationship(
         "AppointmentSlot",

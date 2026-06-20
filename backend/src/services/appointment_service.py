@@ -772,7 +772,39 @@ class AppointmentService:
             
             if session:
                 session.is_used = True
-            
+
+            # Step 11b: Auto-create ticket for PA case-management tracking.
+            # Year-prefixed sequence per submission year. Built BEFORE commit so
+            # ticket lives or dies with the appointment.
+            from src.models.ticket_models import (
+                Ticket, TicketEvent, TicketStatus,
+                TicketEventType, generate_ticket_number,
+            )
+            from sqlalchemy import func as sa_func
+            year = current_time.year
+            count_q = await db.execute(
+                select(sa_func.count(Ticket.id))
+                .where(sa_func.extract("year", Ticket.created_at) == year)
+            )
+            year_count = (count_q.scalar() or 0) + 1
+            new_ticket = Ticket(
+                appointment_id=appointment.id,
+                ticket_number=generate_ticket_number(year, year_count),
+                status=TicketStatus.OPEN.value,
+                created_at=current_time,
+                updated_at=current_time,
+            )
+            db.add(new_ticket)
+            await db.flush()  # get ticket.id for the event
+            db.add(TicketEvent(
+                ticket_id=new_ticket.id,
+                event_type=TicketEventType.CREATED.value,
+                actor="system",
+                note=f"Ticket auto-created from appointment submission (token {token_assigned})",
+                payload={"token": token_assigned, "appointment_id": appointment.id},
+                created_at=current_time,
+            ))
+
             # Step 12: Commit transaction — citizen gets token NOW
             await db.commit()
 
@@ -970,6 +1002,34 @@ class AppointmentService:
                 appt = appt_result.scalar_one_or_none()
                 if appt:
                     appt.grievance_category = summary.category.value
+
+                # Auto-suggest ticket priority from AI urgency (PA can override).
+                # Only set if not already set manually by a PA.
+                from src.models.ticket_models import (
+                    Ticket, TicketEvent, TicketEventType, URGENCY_TO_PRIORITY,
+                )
+                tkt_result = await db.execute(
+                    select(Ticket).where(Ticket.appointment_id == appointment_id)
+                )
+                ticket = tkt_result.scalar_one_or_none()
+                if ticket is not None:
+                    suggested_priority = URGENCY_TO_PRIORITY.get(summary.urgency.value)
+                    if ticket.priority is None and suggested_priority:
+                        ticket.priority = suggested_priority
+                    db.add(TicketEvent(
+                        ticket_id=ticket.id,
+                        event_type=TicketEventType.AI_SUMMARISED.value,
+                        actor="system",
+                        note=f"AI summarised — urgency={summary.urgency.value}, "
+                             f"category={summary.category.value}, "
+                             f"department={summary.department.value}",
+                        payload={
+                            "urgency": summary.urgency.value,
+                            "category": summary.category.value,
+                            "department": summary.department.value,
+                            "suggested_priority": suggested_priority,
+                        },
+                    ))
 
                 await db.commit()
 

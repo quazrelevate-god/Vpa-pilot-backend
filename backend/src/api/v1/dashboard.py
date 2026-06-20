@@ -84,6 +84,9 @@ async def api_appointments(
     search: str = "",
     date_from: str = "",
     date_to: str = "",
+    urgency: str = "",
+    department: str = "",
+    category: str = "",
     page: int = 1,
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
@@ -94,6 +97,9 @@ async def api_appointments(
         search=search or None,
         date_from=date_from or None,
         date_to=date_to or None,
+        urgency=urgency or None,
+        department=department or None,
+        category=category or None,
         page=page,
     )
     return JSONResponse(data)
@@ -124,5 +130,184 @@ async def api_update_status(
             citizen_name=result["name"],
             new_status=result["status"],
         ))
-    
+
     return JSONResponse({"ok": True})
+
+
+# ══ Ticketing endpoints — PA team only ════════════════════════════════════════
+# All routes require auth and write a TicketEvent for every mutation.
+
+from src.services import ticket_service  # noqa: E402
+
+
+@router.get("/api/tickets/open_count")
+async def api_tickets_open_count(
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Feeds the sidebar badge."""
+    return JSONResponse({"open": await ticket_service.get_open_count(db)})
+
+
+@router.get("/api/tickets")
+async def api_tickets_list(
+    request: Request,
+    status: str = "",
+    priority: str = "",
+    urgency: str = "",
+    department: str = "",
+    category: str = "",
+    assigned_to: str = "",
+    forwarded_to_dept: str = "",
+    search: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    data = await ticket_service.list_tickets(
+        db,
+        status=status or None,
+        priority=priority or None,
+        urgency=urgency or None,
+        department=department or None,
+        category=category or None,
+        assigned_to=assigned_to or None,
+        forwarded_to_dept=forwarded_to_dept or None,
+        search=search or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        page=page,
+    )
+    return JSONResponse(data)
+
+
+@router.get("/api/tickets/{ticket_id}")
+async def api_ticket_detail(
+    ticket_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    data = await ticket_service.get_ticket(db, ticket_id)
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)
+
+
+@router.patch("/api/tickets/{ticket_id}")
+async def api_ticket_patch(
+    ticket_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Update any subset of {status, priority, assigned_to_pa, due_date}."""
+    body = await request.json()
+    try:
+        data = await ticket_service.update_ticket_fields(
+            db, ticket_id, actor=user,
+            status=body.get("status"),
+            priority=body.get("priority"),
+            assigned_to_pa=body.get("assigned_to_pa"),
+            due_date=body.get("due_date"),
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)
+
+
+@router.post("/api/tickets/{ticket_id}/forward")
+async def api_ticket_forward(
+    ticket_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    body = await request.json()
+    dept = body.get("department")
+    if not dept:
+        return JSONResponse({"error": "department is required"}, status_code=400)
+    data = await ticket_service.forward_to_dept(
+        db, ticket_id, actor=user, department=dept, notes=body.get("notes"),
+    )
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)
+
+
+@router.post("/api/tickets/{ticket_id}/comment")
+async def api_ticket_comment(
+    ticket_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    body = await request.json()
+    try:
+        data = await ticket_service.add_comment(
+            db, ticket_id, actor=user, text=body.get("text", ""),
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)
+
+
+@router.post("/api/tickets/{ticket_id}/resolve")
+async def api_ticket_resolve(
+    ticket_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    body = await request.json()
+    try:
+        data = await ticket_service.mark_resolved(
+            db, ticket_id, actor=user,
+            resolution_notes=body.get("resolution_notes", ""),
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)
+
+
+@router.post("/api/tickets/{ticket_id}/close")
+async def api_ticket_close(
+    ticket_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    body = await request.json()
+    reason = body.get("closure_reason")
+    if not reason:
+        return JSONResponse({"error": "closure_reason is required"}, status_code=400)
+    data = await ticket_service.mark_closed(
+        db, ticket_id, actor=user,
+        closure_reason=reason, notes=body.get("notes"),
+    )
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)
+
+
+@router.post("/api/tickets/{ticket_id}/reopen")
+async def api_ticket_reopen(
+    ticket_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    body = await request.json()
+    data = await ticket_service.reopen(
+        db, ticket_id, actor=user, reason=body.get("reason"),
+    )
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)

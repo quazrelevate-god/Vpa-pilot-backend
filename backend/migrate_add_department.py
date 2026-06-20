@@ -76,6 +76,72 @@ SQL_STATEMENTS = [
     ALTER TABLE grievance_summary_records
         ADD COLUMN IF NOT EXISTS secondary_departments JSONB NOT NULL DEFAULT '[]'::jsonb
     """,
+    # ── Ticketing system: tickets table ──────────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS tickets (
+        id              BIGSERIAL PRIMARY KEY,
+        appointment_id  INTEGER NOT NULL UNIQUE REFERENCES appointments(id) ON DELETE CASCADE,
+        ticket_number   VARCHAR(20) NOT NULL UNIQUE,
+        status          VARCHAR(30) NOT NULL DEFAULT 'open',
+        priority        VARCHAR(5),
+        assigned_to_pa  VARCHAR(100),
+        due_date        TIMESTAMP,
+        forwarded_to_dept   VARCHAR(60),
+        forwarded_at        TIMESTAMP,
+        forwarded_by        VARCHAR(100),
+        forwarded_notes     TEXT,
+        resolution_notes    TEXT,
+        closure_reason      VARCHAR(40),
+        resolved_at         TIMESTAMP,
+        closed_at           TIMESTAMP,
+        reopened_at         TIMESTAMP,
+        reopen_count        INTEGER NOT NULL DEFAULT 0,
+        created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_tickets_status              ON tickets (status)",
+    "CREATE INDEX IF NOT EXISTS ix_tickets_priority            ON tickets (priority)",
+    "CREATE INDEX IF NOT EXISTS ix_tickets_assigned_to         ON tickets (assigned_to_pa)",
+    "CREATE INDEX IF NOT EXISTS ix_tickets_created_at          ON tickets (created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tickets_forwarded_to_dept   ON tickets (forwarded_to_dept)",
+    "CREATE INDEX IF NOT EXISTS ix_tickets_due_date            ON tickets (due_date)",
+
+    # ── Ticket events (audit log) ────────────────────────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS ticket_events (
+        id          BIGSERIAL PRIMARY KEY,
+        ticket_id   BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+        event_type  VARCHAR(40) NOT NULL,
+        actor       VARCHAR(100) NOT NULL,
+        note        TEXT,
+        payload     JSONB,
+        created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_ticket_events_ticket_id      ON ticket_events (ticket_id)",
+    "CREATE INDEX IF NOT EXISTS ix_ticket_events_ticket_created ON ticket_events (ticket_id, created_at)",
+
+    # ── Backfill: create an OPEN ticket for every existing appointment ───────
+    # Uses a windowed row_number per year so ticket numbers are deterministic
+    # and contiguous. ON CONFLICT DO NOTHING makes this safe to re-run.
+    """
+    INSERT INTO tickets (appointment_id, ticket_number, status, created_at, updated_at)
+    SELECT
+        a.id,
+        'TKT-' || TO_CHAR(a.created_at, 'YYYY') || '-' ||
+            LPAD(ROW_NUMBER() OVER (
+                PARTITION BY EXTRACT(YEAR FROM a.created_at)
+                ORDER BY a.id
+            )::text, 5, '0'),
+        'open',
+        a.created_at,
+        a.created_at
+    FROM appointments a
+    LEFT JOIN tickets t ON t.appointment_id = a.id
+    WHERE t.id IS NULL
+    ON CONFLICT (appointment_id) DO NOTHING
+    """,
     # Same remap on the appointments.grievance_category mirror column
     """
     UPDATE appointments
