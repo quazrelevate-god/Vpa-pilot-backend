@@ -39,7 +39,7 @@ async def display_qr(
 ):
     """
     Venue display screen — renders qr_display.jinja2 with an initial QR code.
-    The page JS auto-rotates the QR before expiry via /api/v1/qr/generate.
+    The page JS auto-rotates the QR before expiry.
     """
     qr_data = await qr_service.generate_rotating_qr(venue_id, db)
     base_url = settings.SERVER_BASE_URL.rstrip("/")

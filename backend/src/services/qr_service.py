@@ -58,16 +58,17 @@ class QRService:
         # Step 1: Generate cryptographic signature with embedded timestamp.
         # A random nonce is appended so concurrent/rapid reloads (same venue_id,
         # same second) never produce the same signature hash.
+        created_at = datetime.utcnow()
         nonce = secrets.token_hex(6)
-        payload = f"{venue_id}:{nonce}"
+        timestamp_ms = int(created_at.timestamp() * 1000000)
+        payload = f"{venue_id}:{nonce}:{timestamp_ms}"
         signature_bytes = self.signer.sign(payload.encode('utf-8'))
         signature_string = signature_bytes.decode('utf-8')
         
         # Step 2: Compute deterministic hash for database uniqueness constraint
-        signature_hash = hashlib.sha256(signature_string.encode('utf-8')).hexdigest()
+        signature_hash = hashlib.sha512(signature_string.encode('utf-8')).hexdigest()
         
         # Step 3: Calculate expiration timestamp
-        created_at = datetime.utcnow()
         expires_at = created_at + timedelta(seconds=settings.QR_EXPIRY_SECONDS)
         
         # Step 4: Persist QR log record
