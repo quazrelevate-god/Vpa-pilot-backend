@@ -42,7 +42,12 @@ async def display_qr(
     The page JS auto-rotates the QR before expiry.
     """
     qr_data = await qr_service.generate_rotating_qr(venue_id, db)
-    base_url = settings.SERVER_BASE_URL.rstrip("/")
+    # Use SERVER_BASE_URL when explicitly configured (e.g. LAN IP for phone scanning).
+    # Fall back to the request's own origin so localhost dev works without config changes.
+    if settings.SERVER_BASE_URL != "http://localhost:8000":
+        base_url = settings.SERVER_BASE_URL.rstrip("/")
+    else:
+        base_url = str(request.base_url).rstrip("/")
     qr_url = base_url + qr_data["verification_url"]
 
     return templates.TemplateResponse(

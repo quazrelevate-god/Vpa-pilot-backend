@@ -22,7 +22,6 @@ from src.models.qr_models import GatekeeperSession
 from src.models.appointment_models import (
     OTPVerification, Citizen, Appointment, AppointmentAttachment
 )
-from src.models.scheduling_models import TimeWindow
 from src.services.scheduling_service import scheduling_service
 
 
@@ -583,8 +582,7 @@ class AppointmentService:
         schedule_meeting: bool,
         audio_recording: str,
         files: List[UploadFile],
-        db: AsyncSession,
-        time_window_id: Optional[int] = None
+        db: AsyncSession
     ) -> Dict[str, Any]:
         """
         Atomically verify OTP and create appointment with attachments.
@@ -717,8 +715,9 @@ class AppointmentService:
                     slot_id=slot_id,
                     token_assigned=token_assigned,
                     encrypted_grievance=encrypted_grievance,
+                    encrypted_name=encrypted_name,
                     audio_recording_url=audio_url,
-                    grievance_category=None,  # TODO: Implement category classification
+                    grievance_category=None,
                     status=initial_status,
                     schedule_meeting=schedule_meeting,
                     created_at=current_time
@@ -726,31 +725,13 @@ class AppointmentService:
                 db.add(appointment)
                 await db.flush()  # Get appointment.id
 
-                # Step 10b: For meeting requests, book a real slot or queue
+                # Step 10b: Meeting requests — try to assign to an available slot today,
+                # only fall back to waiting queue if no slots are available
                 if schedule_meeting:
-                    chosen_window = time_window_id
-                    if chosen_window:
-                        window = await db.get(TimeWindow, chosen_window)
-                        if not window or window.available_slots <= 0:
-                            chosen_window = None
-
-                    if not chosen_window:
-                        windows_data = await scheduling_service.get_available_time_windows(
-                            db, date.today()
-                        )
-                        if windows_data.get('available') and windows_data.get('windows'):
-                            chosen_window = windows_data['windows'][0]['id']
-
-                    if chosen_window:
-                        try:
-                            await scheduling_service.book_appointment_with_window(
-                                db, appointment, chosen_window, name, mobile, commit=False
-                            )
-                        except ValueError:
-                            await scheduling_service.move_to_waiting_queue(
-                                db, appointment, 'NO_AVAILABLE_SLOT', commit=False
-                            )
-                    else:
+                    assigned = await scheduling_service.try_auto_assign_slot(
+                        db, appointment, commit=False
+                    )
+                    if not assigned:
                         await scheduling_service.move_to_waiting_queue(
                             db, appointment, 'NO_AVAILABILITY_TODAY', commit=False
                         )

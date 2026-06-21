@@ -385,7 +385,7 @@ async def get_appointments(
     items = []
     for appt in appointments:
         citizen = appt.citizen
-        name = _decode(citizen.encrypted_name) if citizen else "—"
+        name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "—")
         mobile = _decode(citizen.encrypted_mobile) if citizen else "—"
 
         # Search filter (applied post-decode so name/mobile can be matched)
@@ -607,7 +607,7 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
     # Return appointment details for SMS notification
     citizen = appt.citizen
     mobile = _decode(citizen.encrypted_mobile) if citizen else None
-    name = _decode(citizen.encrypted_name) if citizen else None
+    name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else None)
 
     return {
         "success": True,

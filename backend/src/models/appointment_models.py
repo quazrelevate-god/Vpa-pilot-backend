@@ -238,6 +238,12 @@ class Appointment(Base):
         nullable=True,
         comment="AES-256 encrypted grievance/query description (optional if audio provided)"
     )
+
+    encrypted_name = Column(
+        Text,
+        nullable=True,
+        comment="Base64-encoded name submitted with this specific appointment"
+    )
     
     audio_recording_url = Column(
         Text,

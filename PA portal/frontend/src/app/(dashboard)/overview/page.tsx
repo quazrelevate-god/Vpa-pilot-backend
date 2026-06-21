@@ -110,7 +110,7 @@ export default function OverviewPage() {
           <div className="flex flex-shrink-0 flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
-                Education Department · Performance
+                Performance
               </h1>
               <p className="text-[12.5px] text-muted-foreground">
                 {rangeLabel(range, year)} · live snapshot for office leadership

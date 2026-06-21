@@ -4,7 +4,7 @@ Handles time slot allocation, MLA availability, and emergency rescheduling.
 """
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, Boolean, 
-    DateTime, Date, Time, ForeignKey, Index
+    DateTime, Date, Time, ForeignKey, Index, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -186,6 +186,7 @@ class MLADailyAvailability(Base):
     __table_args__ = (
         Index('ix_mla_availability_mla_date', 'mla_id', 'date'),
         Index('ix_mla_availability_date', 'date'),
+        UniqueConstraint('mla_id', 'date', 'start_time', name='uq_mla_date_start'),
     )
 
 

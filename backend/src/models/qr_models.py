@@ -104,6 +104,12 @@ class GatekeeperSession(Base):
         comment="Browser/device fingerprint hash for security tracking"
     )
     
+    qr_signature_hash = Column(
+        String(255),
+        nullable=True,
+        comment="SHA-256 hash of QR signature to prevent same QR being scanned twice on same device"
+    )
+    
     is_used = Column(
         Boolean,
         nullable=False,
@@ -125,9 +131,10 @@ class GatekeeperSession(Base):
         comment="Expiration timestamp for session validity window"
     )
     
-    # Composite index for fingerprint-based security queries
+    # Composite indexes for security queries
     __table_args__ = (
         Index('idx_fingerprint_created', 'device_fingerprint', 'created_at'),
+        Index('idx_qr_device_duplicate', 'qr_signature_hash', 'device_fingerprint'),
     )
     
     def __repr__(self):

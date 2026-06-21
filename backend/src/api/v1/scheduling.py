@@ -2,11 +2,12 @@
 API endpoints for MLA scheduling and availability management.
 Handles citizen time window selection and admin availability management.
 """
+import base64
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
-from datetime import date as date_type, time as time_type
+from datetime import date as date_type, datetime as datetime_type, time as time_type
 from typing import Optional, List
 
 from src.core.database import get_db
@@ -30,6 +31,11 @@ class SetAvailabilityRequest(BaseModel):
 class ManualScheduleRequest(BaseModel):
     appointment_id: int = Field(..., description="Appointment ID to schedule")
     slot_id: int = Field(..., description="Target slot ID")
+
+
+class RescheduleRequest(BaseModel):
+    new_datetime: datetime_type = Field(..., description="New appointment datetime (ISO 8601)")
+    sms_text: Optional[str] = Field(None, description="Custom SMS to send to citizen")
 
 
 # Citizen-facing endpoints
@@ -230,45 +236,81 @@ async def get_today_schedule(
     user: str = Depends(require_auth)
 ):
     """
-    Admin: Get today's schedule summary.
-    
-    Returns:
-        {
-            "has_availability": true,
-            "total_slots": 24,
-            "booked_slots": 18,
-            "remaining_slots": 6,
-            "time_range": "04:00 PM - 06:00 PM",
-            "appointments": [...]
-        }
+    Admin: Get today's schedule — supports multiple availability blocks.
+    Returns aggregated slot counts and a list of scheduled appointments.
     """
     try:
-        from sqlalchemy import select
+        from sqlalchemy import select, func
+        from sqlalchemy.orm import selectinload
+        from src.models.appointment_models import Appointment, Citizen
         from datetime import date
-        
+
         today = date.today()
-        
-        availability = await db.scalar(
+
+        # Fetch ALL availability blocks for today
+        avail_result = await db.execute(
             select(MLADailyAvailability)
             .where(MLADailyAvailability.date == today)
             .where(MLADailyAvailability.status == 'ACTIVE')
+            .order_by(MLADailyAvailability.start_time.asc())
         )
-        
-        if not availability:
+        availabilities = avail_result.scalars().all()
+
+        if not availabilities:
             return JSONResponse({
                 'has_availability': False,
-                'message': 'No availability set for today'
+                'message': 'No availability set for today',
+                'blocks': [],
+                'appointments': []
             })
-        
+
+        # Aggregate stats across all blocks
+        total_slots = sum(a.total_slots for a in availabilities)
+        booked_slots = sum(a.booked_slots for a in availabilities)
+
+        blocks = [
+            {
+                'id': a.id,
+                'time_range': f"{a.start_time.strftime('%I:%M %p')} - {a.end_time.strftime('%I:%M %p')}",
+                'total_slots': a.total_slots,
+                'booked_slots': a.booked_slots,
+                'remaining_slots': a.total_slots - a.booked_slots,
+            }
+            for a in availabilities
+        ]
+
+        # Fetch scheduled appointments for today
+        appt_result = await db.execute(
+            select(Appointment)
+            .options(selectinload(Appointment.citizen))
+            .where(Appointment.scheduled_date == today)
+            .where(Appointment.status == 'SCHEDULED')
+            .order_by(Appointment.scheduled_start_time.asc())
+        )
+        appointments = appt_result.scalars().all()
+
+        appt_list = [
+            {
+                'id': a.id,
+                'token': a.token_assigned,
+                'name': base64.b64decode(a.encrypted_name.encode()).decode('utf-8') if a.encrypted_name else (base64.b64decode(a.citizen.encrypted_name.encode()).decode('utf-8') if a.citizen else 'Unknown'),
+                'mobile': base64.b64decode(a.citizen.encrypted_mobile.encode()).decode('utf-8') if a.citizen else '',
+                'category': a.grievance_category or 'General',
+                'scheduled_time': f"{a.scheduled_start_time.strftime('%I:%M %p')} - {a.scheduled_end_time.strftime('%I:%M %p')}" if a.scheduled_start_time else '',
+            }
+            for a in appointments
+        ]
+
         return JSONResponse({
             'has_availability': True,
-            'total_slots': availability.total_slots,
-            'booked_slots': availability.booked_slots,
-            'remaining_slots': availability.total_slots - availability.booked_slots,
-            'time_range': f"{availability.start_time.strftime('%I:%M %p')} - {availability.end_time.strftime('%I:%M %p')}",
-            'date': today.strftime('%d %b %Y')
+            'total_slots': total_slots,
+            'booked_slots': booked_slots,
+            'remaining_slots': total_slots - booked_slots,
+            'date': today.strftime('%d %b %Y'),
+            'blocks': blocks,
+            'appointments': appt_list,
         })
-    
+
     except Exception as e:
         print(f"[ERROR] Failed to get today's schedule: {e}")
         return JSONResponse({
@@ -335,3 +377,29 @@ async def get_statistics(
         return JSONResponse({
             'error': str(e)
         }, status_code=500)
+
+
+@router.patch("/admin/reschedule/{appointment_id}")
+async def reschedule_appointment(
+    appointment_id: int,
+    data: RescheduleRequest,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """
+    Admin: Reschedule an existing appointment to a new date/time.
+
+    Releases the old slot and books a new one. Sends an SMS notification.
+    """
+    try:
+        result = await scheduling_service.reschedule_appointment(
+            db=db,
+            appointment_id=appointment_id,
+            new_datetime=data.new_datetime,
+        )
+        return JSONResponse(result)
+    except ValueError as e:
+        return JSONResponse({'error': str(e)}, status_code=404)
+    except Exception as e:
+        print(f"[ERROR] Failed to reschedule: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)

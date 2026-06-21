@@ -266,11 +266,21 @@ export default function AppointmentsPage() {
         open={!!rescheduleFor}
         citizenName={rescheduleFor?.name ?? ""}
         onClose={() => setRescheduleFor(null)}
-        onSubmit={async () => {
+        onSubmit={async (datetime: string, sms: string) => {
           if (!rescheduleFor) return;
-          await commitStatus(rescheduleFor.id, "Rescheduled");
+          const res = await fetch(`/api/v1/scheduling/admin/reschedule/${rescheduleFor.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ new_datetime: datetime, sms_text: sms }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            toast.error("Reschedule failed", { description: err.error || "Please try again." });
+            return;
+          }
+          setRows((prev) => prev.map((r) => (r.id === rescheduleFor.id ? { ...r, status: "Rescheduled" as const } : r)));
           setRescheduleFor(null);
-          toast.success("Appointment rescheduled", { description: "SMS notification sent to the citizen." });
+          toast.success("Appointment rescheduled", { description: "New slot booked and SMS notification sent." });
         }}
       />
     </>

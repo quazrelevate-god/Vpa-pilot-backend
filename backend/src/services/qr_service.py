@@ -9,7 +9,7 @@ from typing import Dict, Any
 from urllib.parse import quote
 from itsdangerous import TimestampSigner, BadSignature, SignatureExpired
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.exc import IntegrityError
 
 from src.core.config import settings
@@ -155,36 +155,40 @@ class QRService:
         # The itsdangerous library already verified the signature and timestamp
         # Database QR log is just for audit trail, not security enforcement
         
-        # Step 3: Check for existing active session to prevent duplicates
-        current_time = datetime.utcnow()
-        existing_session_stmt = select(GatekeeperSession).where(
-            GatekeeperSession.device_fingerprint == device_fingerprint,
-            GatekeeperSession.expires_at > current_time
-        )
-        existing_session_result = await db.execute(existing_session_stmt)
-        existing_session = existing_session_result.scalar_one_or_none()
+        # Step 3: Check if this device has already scanned this specific QR
+        # Hash the signature to create a unique identifier for this QR code
+        qr_signature_hash = hashlib.sha256(signature_string.encode('utf-8')).hexdigest()
         
-        if existing_session:
-            # Return existing session instead of creating new one
-            return {
-                "session_token": str(existing_session.session_token),
-                "expires_at": existing_session.expires_at.isoformat(),
-                "venue_id": venue_id,
-                "session_expiry_seconds": settings.SESSION_EXPIRY_SECONDS
-            }
+        # Check if this (QR signature, device) pair already exists
+        current_time = datetime.utcnow()
+        duplicate_scan_stmt = (
+            select(GatekeeperSession)
+            .where(GatekeeperSession.qr_signature_hash == qr_signature_hash)
+            .where(GatekeeperSession.device_fingerprint == device_fingerprint)
+        )
+        duplicate_scan_result = await db.execute(duplicate_scan_stmt)
+        duplicate_scan = duplicate_scan_result.scalar_one_or_none()
+        
+        if duplicate_scan:
+            raise ValueError(
+                "This QR code has already been scanned on this device. "
+                "Please scan a different QR code or use a different device."
+            )
         
         # Step 4: Create new gatekeeper session
         session_expires_at = current_time + timedelta(seconds=settings.SESSION_EXPIRY_SECONDS)
         
         gatekeeper_session = GatekeeperSession(
             device_fingerprint=device_fingerprint,
+            qr_signature_hash=qr_signature_hash,
             is_used=False,
             created_at=current_time,
             expires_at=session_expires_at
         )
         
         db.add(gatekeeper_session)
-        await db.flush()  # Flush to get the generated UUID token
+        await db.flush()
+        await db.refresh(gatekeeper_session)  # Load server_default UUID without sync lazy-load
         
         return {
             "session_token": str(gatekeeper_session.session_token),

@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code - Tamil Nadu Government</title>
+    <title>QR Code - Grievance Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+
     <style>
         * {
             box-sizing: border-box;
@@ -40,19 +40,13 @@
             padding: 2rem;
             text-align: center;
         }
-        
-        .content-grid {
-            display: grid;
-            grid-template-columns: 1fr 300px;
-            gap: 2rem;
-            align-items: center;
-            margin-top: 2rem;
-            max-width: 1000px;
-            margin-left: auto;
-            margin-right: auto;
-        }
 
+        /* ── Header ─────────────────────────────────────────────── */
         .header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.4rem;
             margin-bottom: 2rem;
             text-align: center;
         }
@@ -61,102 +55,102 @@
             color: #1f2937;
             font-size: 1.75rem;
             font-weight: 800;
-            margin-bottom: 0.25rem;
         }
 
         .title-ta {
             color: #1f2937;
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             font-weight: 700;
-            margin-bottom: 1rem;
         }
 
         .subtitle-en {
             color: #6b7280;
-            font-size: 0.95rem;
-            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+            margin-top: 0.35rem;
         }
 
         .subtitle-ta {
             color: #6b7280;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
 
+        /* ── Three-column content grid ──────────────────────────── */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 260px 1fr 260px;
+            gap: 2rem;
+            align-items: center;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        /* ── QR card + code ─────────────────────────────────────── */
+        .qr-card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow:
+                0 4px 6px -1px rgba(0, 0, 0, 0.07),
+                0 10px 24px -4px rgba(0, 0, 0, 0.10),
+                0 0 0 1px rgba(0, 0, 0, 0.04);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
 
         #qrcode {
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 500px;
+            width: 300px;
+            height: 300px;
         }
 
-        .timer-container {
-            background: rgba(59, 130, 246, 0.1);
-            border: 2px solid #3b82f6;
-            padding: 2rem;
-            border-radius: 16px;
-            text-align: center;
-        }
-
-        .timer-label-en {
-            color: #1e40af;
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-
-        .timer-label-ta {
-            color: #1e40af;
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-bottom: 0.75rem;
-        }
-
-        .timer-display {
-            font-size: 3rem;
-            font-weight: 900;
-            color: #1f2937;
-            font-variant-numeric: tabular-nums;
-        }
-
-        .timer-display.warning {
-            color: #f59e0b;
-        }
-
-        .timer-display.danger {
-            color: #ef4444;
-        }
-
+        /* ── Instructions (left column) ─────────────────────────── */
         .instructions {
-            background: rgba(16, 185, 129, 0.1);
+            background: rgba(16, 185, 129, 0.08);
             border: 2px solid #10b981;
             padding: 1.5rem;
             border-radius: 16px;
             text-align: left;
+            align-self: center;
         }
 
         .instructions h3 {
             color: #065f46;
             font-size: 0.95rem;
             font-weight: 700;
-            margin-bottom: 1rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .instructions h3 span {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #047857;
+            margin-top: 0.1rem;
         }
 
         .instructions ul {
             list-style: none;
             padding: 0;
-            color: #4b5563;
+            margin-top: 1rem;
+            color: #374151;
             font-size: 0.85rem;
-            line-height: 1.8;
         }
 
         .instructions li {
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.8rem;
             padding-left: 1.5rem;
             position: relative;
+            line-height: 1.4;
         }
 
-        .instructions li:before {
+        .instructions li:last-child {
+            margin-bottom: 0;
+        }
+
+        .instructions li::before {
             content: "✓";
             position: absolute;
             left: 0;
@@ -164,21 +158,62 @@
             font-weight: bold;
         }
 
-        .footer-text {
-            color: #6b7280;
-            font-size: 0.85rem;
-            margin-top: 2rem;
+        .instructions li .step-en {
+            display: block;
+            font-weight: 600;
+            color: #1f2937;
         }
 
-        .loading {
+        .instructions li .step-ta {
+            display: block;
+            font-size: 0.78rem;
             color: #6b7280;
-            font-size: 1rem;
+            margin-top: 0.05rem;
+        }
+
+        /* ── Timer (right column) ────────────────────────────────── */
+        .timer-container {
+            background: rgba(59, 130, 246, 0.08);
+            border: 2px solid #3b82f6;
+            padding: 2rem 1.5rem;
+            border-radius: 16px;
+            text-align: center;
+            align-self: center;
+        }
+
+        .timer-label-en {
+            color: #1e40af;
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 0.15rem;
+        }
+
+        .timer-label-ta {
+            color: #1e40af;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .timer-display {
+            font-size: 3.5rem;
+            font-weight: 900;
+            color: #1f2937;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+
+        .timer-unit {
+            color: #6b7280;
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            line-height: 1.6;
         }
 
         .refresh-message {
             background: rgba(245, 158, 11, 0.1);
             border: 1px solid rgba(245, 158, 11, 0.3);
-            padding: 1rem;
+            padding: 0.75rem 1rem;
             border-radius: 8px;
             margin-top: 1rem;
             display: none;
@@ -191,25 +226,75 @@
         .refresh-text-en {
             color: #92400e;
             font-weight: 600;
-            font-size: 0.9rem;
-            margin-bottom: 0.25rem;
+            font-size: 0.85rem;
         }
 
         .refresh-text-ta {
             color: #92400e;
-            font-weight: 600;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
+            margin-top: 0.1rem;
+        }
+
+        /* ── Footer ─────────────────────────────────────────────── */
+        .footer-text {
+            color: #6b7280;
+            font-size: 0.82rem;
+            margin-top: 2rem;
+            text-align: center;
+        }
+
+        .loading {
+            color: #6b7280;
+            font-size: 1rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
+
+        <!-- Header: logo + bilingual title + subtitle -->
+        <div class="header">
+            <div class="title-en">Scan QR Code</div>
+            <div class="title-ta">QR குறியீட்டை ஸ்கேன் செய்யவும்</div>
+            <div class="subtitle-en">Scan with your mobile device to access the grievance form</div>
+            <div class="subtitle-ta">புகார் படிவத்தை அணுக உங்கள் மொபைல் சாதனத்தில் ஸ்கேன் செய்யவும்</div>
+        </div>
+
+        <!-- Three-column grid: instructions | QR | timer -->
         <div class="content-grid">
 
+            <!-- Left: How to use -->
+            <div class="instructions">
+                <h3>
+                    How to use
+                    <span>எப்படி பயன்படுத்துவது</span>
+                </h3>
+                <ul>
+                    <li>
+                        <span class="step-en">Open phone camera</span>
+                        <span class="step-ta">கேமராவைத் திறக்கவும்</span>
+                    </li>
+                    <li>
+                        <span class="step-en">Point at QR code</span>
+                        <span class="step-ta">QR குறியீட்டை நோக்கவும்</span>
+                    </li>
+                    <li>
+                        <span class="step-en">Tap notification</span>
+                        <span class="step-ta">அறிவிப்பைத் தட்டவும்</span>
+                    </li>
+                    <li>
+                        <span class="step-en">Fill the form</span>
+                        <span class="step-ta">படிவத்தை பூர்த்தி செய்யவும்</span>
+                    </li>
+                </ul>
+            </div>
+
             <!-- Center: QR Code -->
-            <div class="qr-container">
-                <div id="qrcode">
-                    <div id="qr-loading" class="loading">Generating...</div>
+            <div style="display:flex;justify-content:center;">
+                <div class="qr-card">
+                    <div id="qrcode">
+                        <div id="qr-loading" class="loading">Generating...</div>
+                    </div>
                 </div>
             </div>
 
@@ -218,14 +303,17 @@
                 <div class="timer-label-en">Valid for</div>
                 <div class="timer-label-ta">செல்லுபடியாகும்</div>
                 <div class="timer-display" id="timer">60</div>
-                <div style="color: #6b7280; font-size: 0.85rem; margin-top: 0.5rem;">
-                    seconds<br>விநாடிகள்
-                </div>
-                <div class="refresh-message" id="refreshMessage" style="margin-top: 1rem;">
+                <div class="timer-unit">seconds<br>விநாடிகள்</div>
+                <div class="refresh-message" id="refreshMessage">
                     <div class="refresh-text-en">Refreshing...</div>
                     <div class="refresh-text-ta">புதுப்பிக்கப்படுகிறது...</div>
                 </div>
             </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer-text">
+            Grievance Portal &nbsp;|&nbsp; குறைதீர்க்கும் போர்ட்டல்
         </div>
 
     </div>
@@ -240,8 +328,8 @@
         qrContainer.innerHTML = '';
         new QRCode(qrContainer, {
             text: '{{ qr_url }}',
-            width: 500,
-            height: 500,
+            width: 300,
+            height: 300,
             colorDark: '#000000',
             colorLight: '#ffffff',
             correctLevel: QRCode.CorrectLevel.H

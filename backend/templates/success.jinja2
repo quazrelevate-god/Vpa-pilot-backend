@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Success - Tamil Nadu Government</title>
+    <title>Success - Page Grievance Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -274,12 +274,14 @@
             <div class="info-row">
                 <span class="info-label english">Date</span>
                 <span class="info-label tamil">தேதி</span>
-                <span class="info-value" id="appointment-date">-</span>
+                <span class="info-value english" id="appointment-date-en">-</span>
+                <span class="info-value tamil" id="appointment-date-ta">-</span>
             </div>
             <div class="info-row">
                 <span class="info-label english">Time</span>
                 <span class="info-label tamil">நேரம்</span>
-                <span class="info-value" id="appointment-time">-</span>
+                <span class="info-value english" id="appointment-time-en">-</span>
+                <span class="info-value tamil" id="appointment-time-ta">-</span>
             </div>
             <div class="info-row">
                 <span class="info-label english">Status</span>
@@ -309,10 +311,10 @@
         </div>
         
         <p style="color: #6b7280; font-size: 0.85rem; margin-top: 2rem;" class="english">
-            Thank you for using Tamil Nadu Government Grievance Portal
+            Thank you for using Grievance Portal
         </p>
         <p style="color: #6b7280; font-size: 0.85rem; margin-top: 2rem;" class="tamil">
-            தமிழ்நாடு அரசு குறைதீர்க்கும் போர்ட்டலைப் பயன்படுத்தியதற்கு நன்றி
+            குறைதீர்க்கும் போர்ட்டலைப் பயன்படுத்தியதற்கு நன்றி
         </p>
     </div>
 
@@ -331,13 +333,15 @@
         // Set name
         document.getElementById('citizen-name').textContent = decodeURIComponent(name);
 
-        // Set date and time
+        // Set date and time in both locales
         const now = new Date();
         const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
         const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
-        
-        document.getElementById('appointment-date').textContent = now.toLocaleDateString('en-US', dateOptions);
-        document.getElementById('appointment-time').textContent = now.toLocaleTimeString('en-US', timeOptions);
+
+        document.getElementById('appointment-date-en').textContent = now.toLocaleDateString('en-IN', dateOptions);
+        document.getElementById('appointment-time-en').textContent = now.toLocaleTimeString('en-IN', timeOptions);
+        document.getElementById('appointment-date-ta').textContent = now.toLocaleDateString('ta-IN', dateOptions);
+        document.getElementById('appointment-time-ta').textContent = now.toLocaleTimeString('ta-IN', timeOptions);
 
         function toggleLanguage() {
             const isChecked = document.getElementById('languageToggle').checked;

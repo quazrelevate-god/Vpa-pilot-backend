@@ -1,20 +1,34 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Calendar, Clock, Users, AlertCircle, CheckCircle, ChevronRight } from "lucide-react";
+import { Calendar, Clock, Users, AlertCircle, CheckCircle, ChevronRight, RefreshCw } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 
 interface MLA { id: number; name: string; constituency: string; is_active: boolean; }
 interface Statistics { waiting_count: number; scheduled_today: number; oldest_waiting_days: number; }
+interface ScheduledAppointment {
+  id: number; token: number; name: string; mobile: string;
+  category: string; scheduled_time: string;
+}
+interface AvailabilityBlock {
+  id: number; time_range: string; total_slots: number;
+  booked_slots: number; remaining_slots: number;
+}
 interface TodaySchedule {
   has_availability: boolean;
   total_slots?: number; booked_slots?: number; remaining_slots?: number;
-  time_range?: string; date?: string; message?: string;
+  date?: string; message?: string;
+  blocks?: AvailabilityBlock[];
+  appointments?: ScheduledAppointment[];
+}
+interface WaitingAppointment {
+  id: number; token: number; name: string; mobile: string; category: string;
+  queue_position: number; waiting_since: string; priority_score: number;
 }
 
 export default function SchedulingPage() {
@@ -23,6 +37,10 @@ export default function SchedulingPage() {
   const [todaySchedule, setTodaySchedule] = useState<TodaySchedule | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Waiting queue
+  const [waitingAppts, setWaitingAppts] = useState<WaitingAppointment[]>([]);
+  const [queueLoading, setQueueLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     mla_id: "1",
@@ -33,7 +51,7 @@ export default function SchedulingPage() {
     window_duration_minutes: 30,
   });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); loadWaitingQueue(); }, []);
 
   const loadData = async () => {
     try {
@@ -57,6 +75,16 @@ export default function SchedulingPage() {
     }
   };
 
+  const loadWaitingQueue = async () => {
+    setQueueLoading(true);
+    try {
+      const res = await fetch("/api/v1/scheduling/admin/waiting-queue?limit=100");
+      const data = await res.json();
+      if (Array.isArray(data)) { setWaitingAppts(data); }
+    } catch (e) { console.error("Failed to load waiting queue:", e); }
+    finally { setQueueLoading(false); }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -76,6 +104,7 @@ export default function SchedulingPage() {
       if (response.ok) {
         setMessage({ type: "success", text: `Success! ${data.message}` });
         loadData();
+        loadWaitingQueue();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to set availability" });
       }
@@ -115,7 +144,7 @@ export default function SchedulingPage() {
               <Clock className="h-6 w-6 text-brand" /> Availability &amp; Scheduling
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Set time-slot availability for citizen appointments.
+              Set time-slot availability — waiting queue is auto-scheduled in bulk.
             </p>
           </div>
 
@@ -158,7 +187,7 @@ export default function SchedulingPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className={labelCls}>Date</label>
-                    <Input type="date" value={formData.date}
+                    <Input type="date" value={formData.date} min={new Date().toISOString().split("T")[0]}
                       onChange={(e) => setFormData({ ...formData, date: e.target.value })} required />
                   </div>
                   <div>
@@ -202,22 +231,24 @@ export default function SchedulingPage() {
               </form>
             </Card>
 
-            {/* Today's schedule */}
+            {/* Today's schedule summary */}
             <Card className="p-6 lg:col-span-2">
               <h2 className="mb-4 text-lg font-bold text-foreground">Today's Schedule</h2>
               {todaySchedule?.has_availability ? (
                 <div className="space-y-3">
-                  {[
-                    { label: "Time Range", value: todaySchedule.time_range, cls: "text-foreground" },
-                    { label: "Total Slots", value: todaySchedule.total_slots, cls: "text-foreground" },
-                    { label: "Booked", value: todaySchedule.booked_slots, cls: "text-emerald-600" },
-                    { label: "Remaining", value: todaySchedule.remaining_slots, cls: "text-amber-600" },
-                  ].map((r) => (
-                    <div key={r.label} className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">{r.label}</span>
-                      <span className={cn("text-sm font-semibold", r.cls)}>{r.value}</span>
-                    </div>
-                  ))}
+                  {/* Aggregate stats */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Total Slots</span>
+                    <span className="text-sm font-semibold text-foreground">{todaySchedule.total_slots}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Booked</span>
+                    <span className="text-sm font-semibold text-emerald-600">{todaySchedule.booked_slots}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Remaining</span>
+                    <span className="text-sm font-semibold text-amber-600">{todaySchedule.remaining_slots}</span>
+                  </div>
                   <div className="border-t border-border pt-4">
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                       <div
@@ -226,6 +257,20 @@ export default function SchedulingPage() {
                       />
                     </div>
                   </div>
+                  {/* Individual blocks */}
+                  {todaySchedule.blocks && todaySchedule.blocks.length > 0 && (
+                    <div className="border-t border-border pt-3 space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Availability Blocks</p>
+                      {todaySchedule.blocks.map((b) => (
+                        <div key={b.id} className="flex items-center justify-between text-xs">
+                          <span className="text-foreground font-medium">{b.time_range}</span>
+                          <span className="text-muted-foreground">
+                            {b.booked_slots}/{b.total_slots} booked
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="py-10 text-center">
@@ -236,29 +281,164 @@ export default function SchedulingPage() {
             </Card>
           </div>
 
+          {/* Scheduled Today Queue */}
+          <Card className="overflow-hidden p-0">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+                  <CheckCircle className="h-5 w-5 text-emerald-500" />
+                  Scheduled Today
+                  {todaySchedule?.appointments && todaySchedule.appointments.length > 0 && (
+                    <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                      {todaySchedule.appointments.length}
+                    </span>
+                  )}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Appointments auto-scheduled from the waiting queue.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={loadData}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {todaySchedule?.appointments && todaySchedule.appointments.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px]">
+                  <thead className="bg-muted/50">
+                    <tr className="border-b border-border">
+                      {["Token", "Name", "Mobile", "Category", "Scheduled Time"].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {todaySchedule.appointments.map((appt) => (
+                      <tr key={appt.id} className="border-b border-border/70 transition-colors hover:bg-muted/40">
+                        <td className="px-4 py-3 text-sm font-semibold text-foreground">#{appt.token}</td>
+                        <td className="px-4 py-3 text-sm text-foreground">{appt.name}</td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{appt.mobile}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-medium text-brand">
+                            {appt.category || "General"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-foreground">{appt.scheduled_time}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-16 text-center">
+                <Calendar className="mx-auto mb-3 h-12 w-12 text-muted-foreground/30" />
+                <p className="text-sm font-medium text-foreground">No appointments scheduled today</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Set availability to auto-schedule from the waiting queue.</p>
+              </div>
+            )}
+          </Card>
+
+          {/* Waiting Queue (Read-Only) */}
+          <Card className="overflow-hidden p-0">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+                  <Users className="h-5 w-5 text-amber-500" />
+                  Waiting Queue
+                  {waitingAppts.length > 0 && (
+                    <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">
+                      {waitingAppts.length}
+                    </span>
+                  )}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Citizens waiting for a meeting — auto-scheduled when you set availability.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={loadWaitingQueue} disabled={queueLoading}>
+                <RefreshCw className={cn("h-4 w-4", queueLoading && "animate-spin")} />
+              </Button>
+            </div>
+
+            {queueLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : waitingAppts.length === 0 ? (
+              <div className="py-16 text-center">
+                <CheckCircle className="mx-auto mb-3 h-12 w-12 text-emerald-400/40" />
+                <p className="text-sm font-medium text-foreground">No waiting petitions</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">All meeting requests have been scheduled.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px]">
+                  <thead className="bg-muted/50">
+                    <tr className="border-b border-border">
+                      {["#", "Token", "Name", "Mobile", "Category", "Waiting Since", "Priority"].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {waitingAppts.map((appt) => {
+                      const daysWaiting = Math.floor(Math.abs(Date.now() - new Date(appt.waiting_since).getTime()) / 86400000);
+                      const isUrgent = daysWaiting >= 3;
+                      return (
+                        <tr
+                          key={appt.id}
+                          className={cn(
+                            "border-b border-border/70 transition-colors hover:bg-muted/40",
+                            isUrgent && "bg-red-50/60"
+                          )}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="grid h-7 w-7 place-items-center rounded-full bg-amber-100 text-xs font-bold text-amber-700">
+                              {appt.queue_position}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-semibold text-foreground">#{appt.token}</td>
+                          <td className="px-4 py-3 text-sm text-foreground">{appt.name}</td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">{appt.mobile}</td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-medium text-brand">
+                              {appt.category || "General"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">
+                            <span className={cn(isUrgent && "font-semibold text-red-600")}>
+                              {formatDateTime(appt.waiting_since)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-bold tabular-nums text-foreground">{appt.priority_score}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
           {/* Quick actions */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {[
-              { href: "/waiting-queue", title: "View Waiting Queue", sub: `Manage ${statistics?.waiting_count || 0} waiting appointments`, icon: Users },
-              { href: "/appointments",  title: "View All Appointments", sub: `See ${statistics?.scheduled_today || 0} scheduled today`, icon: Calendar },
-            ].map((a) => (
-              <a key={a.href} href={a.href} className="group">
-                <Card className="p-6 transition-all hover:-translate-y-0.5 hover:shadow-card-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
-                        <a.icon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-foreground">{a.title}</h3>
-                        <p className="text-sm text-muted-foreground">{a.sub}</p>
-                      </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-1">
+            <a href="/appointments" className="group">
+              <Card className="p-6 transition-all hover:-translate-y-0.5 hover:shadow-card-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                      <Calendar className="h-5 w-5" />
                     </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
+                    <div>
+                      <h3 className="font-bold text-foreground">View All Appointments</h3>
+                      <p className="text-sm text-muted-foreground">See {statistics?.scheduled_today || 0} scheduled today</p>
+                    </div>
                   </div>
-                </Card>
-              </a>
-            ))}
+                  <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
+                </div>
+              </Card>
+            </a>
           </div>
         </div>
       </main>
