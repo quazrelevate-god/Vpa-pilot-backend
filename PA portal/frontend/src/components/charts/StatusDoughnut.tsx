@@ -12,19 +12,36 @@ export default function StatusDoughnut({
         labels: ["Scheduled", "Submitted", "Closed", "Rescheduled"],
         datasets: [{
           data: [scheduled, submitted, closed, rescheduled],
-          backgroundColor: ["#f97316", "#10b981", "#ef4444", "#facc15"],
-          borderWidth: 2,
+          backgroundColor: ["#f97316", "#10b981", "#94a3b8", "#eab308"],
+          borderWidth: 3,
           borderColor: "#fff",
-          hoverOffset: 6,
+          hoverOffset: 8,
         }],
       }}
       options={{
         responsive: true,
         maintainAspectRatio: false,
-        cutout: "60%",
+        cutout: "64%",
         plugins: {
-          legend: { position: "bottom", labels: { boxWidth: 10, padding: 12, font: { size: 11 } } },
-          tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed.toLocaleString()}` } },
+          legend: {
+            position: "bottom",
+            labels: {
+              boxWidth: 8,
+              boxHeight: 8,
+              usePointStyle: true,
+              pointStyle: "circle",
+              padding: 14,
+              font: { size: 11.5, weight: 500 },
+              color: "#475569",
+            },
+          },
+          tooltip: {
+            backgroundColor: "#0c2e59",
+            padding: 10,
+            cornerRadius: 8,
+            displayColors: false,
+            callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed.toLocaleString()}` },
+          },
         },
         animation: { duration: 800 },
       }}

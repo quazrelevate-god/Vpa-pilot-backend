@@ -105,6 +105,35 @@ async def api_appointments(
     return JSONResponse(data)
 
 
+@router.patch("/api/appointments/{appointment_id}/details")
+async def api_update_appointment_details(
+    appointment_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """
+    PA-admin override for AI-derived urgency / category / department.
+
+    Body: { "urgency": "low|medium|high|critical" | null,
+            "category": "<key>" | null,
+            "department": "<key>" | null }
+
+    Any field omitted is left unchanged. Pass null to clear.
+    """
+    body = await request.json()
+    result = await dashboard_service.update_appointment_derived_fields(
+        db,
+        appointment_id,
+        urgency=body.get("urgency") if "urgency" in body else None,
+        category=body.get("category") if "category" in body else None,
+        department=body.get("department") if "department" in body else None,
+    )
+    if not result.get("success"):
+        return JSONResponse({"error": "Appointment not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
 @router.patch("/api/appointments/{appointment_id}/status")
 async def api_update_status(
     appointment_id: int,

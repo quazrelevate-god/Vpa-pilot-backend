@@ -1,39 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Calendar, Clock, Users, AlertCircle, CheckCircle } from "lucide-react";
+import { Calendar, Clock, Users, AlertCircle, CheckCircle, ChevronRight } from "lucide-react";
 
-interface MLA {
-  id: number;
-  name: string;
-  constituency: string;
-  is_active: boolean;
-}
+import TopBar from "@/components/TopBar";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-interface Statistics {
-  waiting_count: number;
-  scheduled_today: number;
-  oldest_waiting_days: number;
-}
-
+interface MLA { id: number; name: string; constituency: string; is_active: boolean; }
+interface Statistics { waiting_count: number; scheduled_today: number; oldest_waiting_days: number; }
 interface TodaySchedule {
   has_availability: boolean;
-  total_slots?: number;
-  booked_slots?: number;
-  remaining_slots?: number;
-  time_range?: string;
-  date?: string;
-  message?: string;
+  total_slots?: number; booked_slots?: number; remaining_slots?: number;
+  time_range?: string; date?: string; message?: string;
 }
 
 export default function SchedulingPage() {
-  const [mlas, setMlas] = useState<MLA[]>([]);
+  const [, setMlas] = useState<MLA[]>([]);
   const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [todaySchedule, setTodaySchedule] = useState<TodaySchedule | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Form state (single-person workflow: default MLA id 1)
   const [formData, setFormData] = useState({
     mla_id: "1",
     date: new Date().toISOString().split("T")[0],
@@ -43,13 +33,10 @@ export default function SchedulingPage() {
     window_duration_minutes: 30,
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
-      // Load MLAs
       const mlasRes = await fetch("/api/v1/scheduling/admin/mlas");
       const mlasData = await mlasRes.json();
       if (Array.isArray(mlasData)) {
@@ -58,20 +45,13 @@ export default function SchedulingPage() {
           setFormData((prev) => ({ ...prev, mla_id: mlasData[0].id.toString() }));
         }
       }
-
-      // Load statistics
       const statsRes = await fetch("/api/v1/scheduling/admin/statistics");
       const statsData = await statsRes.json();
-      if (statsData && !statsData.error) {
-        setStatistics(statsData);
-      }
+      if (statsData && !statsData.error) setStatistics(statsData);
 
-      // Load today's schedule
       const scheduleRes = await fetch("/api/v1/scheduling/admin/today-schedule");
       const scheduleData = await scheduleRes.json();
-      if (scheduleData && !scheduleData.error) {
-        setTodaySchedule(scheduleData);
-      }
+      if (scheduleData && !scheduleData.error) setTodaySchedule(scheduleData);
     } catch (error) {
       console.error("Failed to load data:", error);
     }
@@ -81,7 +61,6 @@ export default function SchedulingPage() {
     e.preventDefault();
     setLoading(true);
     setMessage(null);
-
     try {
       const response = await fetch("/api/v1/scheduling/admin/set-availability", {
         method: "POST",
@@ -93,26 +72,15 @@ export default function SchedulingPage() {
           end_time: `${formData.end_time}:00`,
         }),
       });
-
       const data = await response.json();
-
       if (response.ok) {
-        setMessage({
-          type: "success",
-          text: `Success! ${data.message}`,
-        });
-        loadData(); // Refresh data
+        setMessage({ type: "success", text: `Success! ${data.message}` });
+        loadData();
       } else {
-        setMessage({
-          type: "error",
-          text: data.error || "Failed to set availability",
-        });
+        setMessage({ type: "error", text: data.error || "Failed to set availability" });
       }
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: "Network error. Please try again.",
-      });
+    } catch {
+      setMessage({ type: "error", text: "Network error. Please try again." });
     } finally {
       setLoading(false);
     }
@@ -125,275 +93,173 @@ export default function SchedulingPage() {
     return Math.floor(totalMinutes / formData.slot_duration_minutes);
   };
 
+  const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground";
+  const selectCls = "h-10 w-full rounded-lg border border-input bg-card px-3 text-sm shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
+
+  const stats = statistics
+    ? [
+        { icon: Users,       value: statistics.waiting_count,      label: "Waiting in Queue",   color: "text-amber-600",   bg: "bg-amber-100" },
+        { icon: CheckCircle, value: statistics.scheduled_today,    label: "Scheduled Today",    color: "text-emerald-600", bg: "bg-emerald-100" },
+        { icon: AlertCircle, value: statistics.oldest_waiting_days, label: "Oldest Waiting (days)", color: "text-red-600",  bg: "bg-red-100" },
+      ]
+    : [];
+
   return (
     <>
-      {/* Header */}
-      <header className="h-16 bg-white border-b flex items-center px-6 gap-4 flex-shrink-0 justify-between">
-        <div className="flex items-center gap-4">
-          <div className="text-xs text-slate-500 font-medium tracking-wide">
-            Government of Tamil Nadu
+      <TopBar />
+      <main className="flex-1 overflow-y-auto bg-background">
+        <div className="mx-auto max-w-[1100px] space-y-6 p-6 animate-in-up">
+          {/* Title */}
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-foreground">
+              <Clock className="h-6 w-6 text-brand" /> Availability &amp; Scheduling
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Set time-slot availability for citizen appointments.
+            </p>
           </div>
-          <div className="h-5 w-px bg-slate-200"></div>
-          <div className="text-sm font-bold text-slate-900">Time Slot Management</div>
-        </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-6 space-y-6">
-        {/* Page Title */}
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Availability</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Set time slot availability for citizen appointments
-          </p>
-        </div>
-
-        {/* Statistics Cards */}
-        {statistics && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 rounded-lg">
-                  <Users className="w-5 h-5 text-amber-600" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-slate-900">
-                    {statistics.waiting_count}
+          {/* Stats */}
+          {stats.length > 0 && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {stats.map((s) => (
+                <Card key={s.label} className="p-5">
+                  <div className="flex items-center gap-3">
+                    <div className={cn("grid h-11 w-11 place-items-center rounded-xl", s.bg)}>
+                      <s.icon className={cn("h-5 w-5", s.color)} />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-extrabold tabular-nums text-foreground">{s.value}</div>
+                      <div className="text-xs text-muted-foreground">{s.label}</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500">Waiting in Queue</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-slate-900">
-                    {statistics.scheduled_today}
-                  </div>
-                  <div className="text-xs text-slate-500">Scheduled Today</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-slate-900">
-                    {statistics.oldest_waiting_days}
-                  </div>
-                  <div className="text-xs text-slate-500">Oldest Waiting (days)</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Today's Schedule */}
-        {todaySchedule && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-slate-900 mb-4">Today's Schedule</h2>
-            {todaySchedule.has_availability ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Time Range:</span>
-                  <span className="text-sm font-semibold text-slate-900">
-                    {todaySchedule.time_range}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Total Slots:</span>
-                  <span className="text-sm font-semibold text-slate-900">
-                    {todaySchedule.total_slots}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Booked:</span>
-                  <span className="text-sm font-semibold text-green-600">
-                    {todaySchedule.booked_slots}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Remaining:</span>
-                  <span className="text-sm font-semibold text-amber-600">
-                    {todaySchedule.remaining_slots}
-                  </span>
-                </div>
-                <div className="mt-4 pt-4 border-t">
-                  <div className="w-full bg-slate-200 rounded-full h-2">
-                    <div
-                      className="bg-green-600 h-2 rounded-full transition-all"
-                      style={{
-                        width: `${
-                          ((todaySchedule.booked_slots || 0) / (todaySchedule.total_slots || 1)) *
-                          100
-                        }%`,
-                      }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-sm text-slate-500">No availability set for today</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Set Availability Form */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <h2 className="text-lg font-bold text-slate-900 mb-4">Set Availability</h2>
-
-          {message && (
-            <div
-              className={`mb-4 p-4 rounded-lg ${
-                message.type === "success"
-                  ? "bg-green-50 border border-green-200 text-green-800"
-                  : "bg-red-50 border border-red-200 text-red-800"
-              }`}
-            >
-              {message.text}
+                </Card>
+              ))}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Date</label>
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+            {/* Set Availability Form */}
+            <Card className="p-6 lg:col-span-3">
+              <h2 className="mb-4 text-lg font-bold text-foreground">Set Availability</h2>
 
-              {/* Start Time */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Start Time
-                </label>
-                <input
-                  type="time"
-                  value={formData.start_time}
-                  onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
+              {message && (
+                <div className={cn(
+                  "mb-4 rounded-lg border px-4 py-3 text-sm",
+                  message.type === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border-red-200 bg-red-50 text-red-800"
+                )}>
+                  {message.text}
+                </div>
+              )}
 
-              {/* End Time */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">End Time</label>
-                <input
-                  type="time"
-                  value={formData.end_time}
-                  onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={labelCls}>Date</label>
+                    <Input type="date" value={formData.date}
+                      onChange={(e) => setFormData({ ...formData, date: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Start Time</label>
+                    <Input type="time" value={formData.start_time}
+                      onChange={(e) => setFormData({ ...formData, start_time: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className={labelCls}>End Time</label>
+                    <Input type="time" value={formData.end_time}
+                      onChange={(e) => setFormData({ ...formData, end_time: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Slot Duration</label>
+                    <select className={selectCls} value={formData.slot_duration_minutes}
+                      onChange={(e) => setFormData({ ...formData, slot_duration_minutes: parseInt(e.target.value) })}>
+                      <option value="5">5 minutes</option>
+                      <option value="10">10 minutes</option>
+                      <option value="15">15 minutes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Window Duration</label>
+                    <select className={selectCls} value={formData.window_duration_minutes}
+                      onChange={(e) => setFormData({ ...formData, window_duration_minutes: parseInt(e.target.value) })}>
+                      <option value="30">30 minutes</option>
+                      <option value="60">60 minutes</option>
+                    </select>
+                  </div>
+                </div>
 
-              {/* Slot Duration */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Slot Duration (minutes)
-                </label>
-                <select
-                  value={formData.slot_duration_minutes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, slot_duration_minutes: parseInt(e.target.value) })
-                  }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="5">5 minutes</option>
-                  <option value="10">10 minutes</option>
-                  <option value="15">15 minutes</option>
-                </select>
-              </div>
+                <div className="flex items-center gap-2 rounded-lg border border-brand/20 bg-brand/5 px-4 py-3 text-sm text-brand">
+                  <Clock className="h-4 w-4" />
+                  <span className="font-semibold">Calculated:</span>
+                  <span>{calculateTotalSlots()} slots ({formData.slot_duration_minutes} min each)</span>
+                </div>
 
-              {/* Window Duration */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Window Duration (minutes)
-                </label>
-                <select
-                  value={formData.window_duration_minutes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, window_duration_minutes: parseInt(e.target.value) })
-                  }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="30">30 minutes</option>
-                  <option value="60">60 minutes</option>
-                </select>
-              </div>
-            </div>
+                <Button type="submit" size="lg" disabled={loading} className="w-full">
+                  {loading ? "Setting Availability…" : "Set Availability & Auto-Schedule Queue"}
+                </Button>
+              </form>
+            </Card>
 
-            {/* Calculation Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-sm text-blue-800">
-                <Clock className="w-4 h-4" />
-                <span className="font-semibold">Calculated:</span>
-                <span>
-                  {calculateTotalSlots()} slots will be created (
-                  {formData.slot_duration_minutes} min each)
-                </span>
-              </div>
-            </div>
+            {/* Today's schedule */}
+            <Card className="p-6 lg:col-span-2">
+              <h2 className="mb-4 text-lg font-bold text-foreground">Today's Schedule</h2>
+              {todaySchedule?.has_availability ? (
+                <div className="space-y-3">
+                  {[
+                    { label: "Time Range", value: todaySchedule.time_range, cls: "text-foreground" },
+                    { label: "Total Slots", value: todaySchedule.total_slots, cls: "text-foreground" },
+                    { label: "Booked", value: todaySchedule.booked_slots, cls: "text-emerald-600" },
+                    { label: "Remaining", value: todaySchedule.remaining_slots, cls: "text-amber-600" },
+                  ].map((r) => (
+                    <div key={r.label} className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">{r.label}</span>
+                      <span className={cn("text-sm font-semibold", r.cls)}>{r.value}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-border pt-4">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all"
+                        style={{ width: `${((todaySchedule.booked_slots || 0) / (todaySchedule.total_slots || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-10 text-center">
+                  <AlertCircle className="mx-auto mb-3 h-12 w-12 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">No availability set for today.</p>
+                </div>
+              )}
+            </Card>
+          </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full px-4 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? "Setting Availability..." : "Set Availability & Auto-Schedule Queue"}
-            </button>
-          </form>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <a
-            href="/waiting-queue"
-            className="block bg-white rounded-xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">View Waiting Queue</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Manage {statistics?.waiting_count || 0} waiting appointments
-                </p>
-              </div>
-              <Users className="w-8 h-8 text-slate-400" />
-            </div>
-          </a>
-
-          <a
-            href="/appointments"
-            className="block bg-white rounded-xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">View All Appointments</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  See {statistics?.scheduled_today || 0} scheduled today
-                </p>
-              </div>
-              <Calendar className="w-8 h-8 text-slate-400" />
-            </div>
-          </a>
+          {/* Quick actions */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {[
+              { href: "/waiting-queue", title: "View Waiting Queue", sub: `Manage ${statistics?.waiting_count || 0} waiting appointments`, icon: Users },
+              { href: "/appointments",  title: "View All Appointments", sub: `See ${statistics?.scheduled_today || 0} scheduled today`, icon: Calendar },
+            ].map((a) => (
+              <a key={a.href} href={a.href} className="group">
+                <Card className="p-6 transition-all hover:-translate-y-0.5 hover:shadow-card-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                        <a.icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-foreground">{a.title}</h3>
+                        <p className="text-sm text-muted-foreground">{a.sub}</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
+                  </div>
+                </Card>
+              </a>
+            ))}
+          </div>
         </div>
       </main>
     </>

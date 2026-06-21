@@ -7,7 +7,7 @@ import base64
 from datetime import datetime, date, time, timedelta
 from typing import Optional, Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, delete
 from sqlalchemy.orm import selectinload
 
 from src.models.scheduling_models import (
@@ -18,6 +18,7 @@ from src.models.scheduling_models import (
     RescheduleLog,
 )
 from src.models.appointment_models import Appointment, Citizen
+from src.core.utils import utc_iso
 
 
 def _decrypt_field(ciphertext: str) -> str:
@@ -109,7 +110,8 @@ class SchedulingService:
         appointment: Appointment,
         preferred_window_id: int,
         citizen_name: str,
-        citizen_mobile: str
+        citizen_mobile: str,
+        commit: bool = True
     ) -> Dict:
         """
         Book appointment within citizen's preferred time window.
@@ -166,7 +168,10 @@ class SchedulingService:
         appointment.appointment_slot_id = next_slot.id
         appointment.preferred_window_id = preferred_window_id
         
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
         
         return {
             'scheduled_date': availability.date,
@@ -175,11 +180,54 @@ class SchedulingService:
             'window_label': window.window_label
         }
     
+    async def release_appointment_slot(
+        self,
+        db: AsyncSession,
+        appointment: Appointment,
+        commit: bool = True
+    ) -> None:
+        """Release a booked slot back to the availability pool."""
+        if not appointment.appointment_slot_id:
+            return
+        
+        slot = await db.get(AppointmentSlot, appointment.appointment_slot_id)
+        if not slot or slot.status != 'BOOKED':
+            return
+        
+        slot.status = 'AVAILABLE'
+        slot.appointment_id = None
+        
+        window = await db.scalar(
+            select(TimeWindow)
+            .where(TimeWindow.availability_id == slot.availability_id)
+            .where(TimeWindow.window_start <= slot.start_time)
+            .where(TimeWindow.window_end > slot.start_time)
+        )
+        if window:
+            window.available_slots += 1
+            window.is_available = True
+        
+        availability = await db.get(MLADailyAvailability, slot.availability_id)
+        if availability:
+            availability.booked_slots = max(0, availability.booked_slots - 1)
+        
+        appointment.appointment_slot_id = None
+        appointment.preferred_window_id = None
+        appointment.scheduled_date = None
+        appointment.scheduled_start_time = None
+        appointment.scheduled_end_time = None
+        
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
+    
     async def move_to_waiting_queue(
         self,
         db: AsyncSession,
         appointment: Appointment,
-        reason: str
+        reason: str,
+        commit: bool = True
     ) -> Dict:
         """
         Move appointment to waiting queue.
@@ -206,7 +254,10 @@ class SchedulingService:
         # Initialize priority score (will increase daily)
         appointment.priority_score = 0
         
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
         
         return {
             'status': 'WAITING',
@@ -365,6 +416,34 @@ class SchedulingService:
         ).total_seconds() / 60
         total_slots = int(total_minutes / slot_duration_minutes)
         
+        # Check for existing availability on the same date
+        existing_result = await db.execute(
+            select(MLADailyAvailability)
+            .where(MLADailyAvailability.mla_id == mla_id)
+            .where(MLADailyAvailability.date == target_date)
+        )
+        existing = existing_result.scalar_one_or_none()
+
+        if existing:
+            # Prevent overwriting if slots are already booked
+            booked_count = await db.scalar(
+                select(func.count(AppointmentSlot.id))
+                .where(AppointmentSlot.availability_id == existing.id)
+                .where(AppointmentSlot.status == 'BOOKED')
+            ) or 0
+
+            if booked_count > 0:
+                raise ValueError(
+                    f"Availability for {target_date} already exists with {booked_count} booked slot(s). "
+                    "Cancel or reschedule existing appointments before changing."
+                )
+
+            # Remove existing generated slots/windows and the availability row
+            await db.execute(delete(AppointmentSlot).where(AppointmentSlot.availability_id == existing.id))
+            await db.execute(delete(TimeWindow).where(TimeWindow.availability_id == existing.id))
+            await db.delete(existing)
+            await db.flush()
+
         # Create availability record
         availability = MLADailyAvailability(
             mla_id=mla_id,
@@ -504,9 +583,9 @@ class SchedulingService:
             
             scheduled_count += 1
         
-        # Update availability booked count
+        # Update availability booked count (preserve slots booked concurrently)
         availability = await db.get(MLADailyAvailability, availability_id)
-        availability.booked_slots = scheduled_count
+        availability.booked_slots += scheduled_count
         
         await db.commit()
         
@@ -604,9 +683,9 @@ class SchedulingService:
                 'mobile': _decrypt_field(citizen.encrypted_mobile) if citizen else 'Unknown',
                 'category': appt.grievance_category,
                 'queue_position': appt.queue_position,
-                'waiting_since': appt.waiting_since.strftime('%Y-%m-%d %H:%M') if appt.waiting_since else None,
+                'waiting_since': utc_iso(appt.waiting_since),
                 'priority_score': appt.priority_score,
-                'created_at': appt.created_at.strftime('%Y-%m-%d %H:%M')
+                'created_at': utc_iso(appt.created_at)
             })
         
         return result

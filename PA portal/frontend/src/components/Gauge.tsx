@@ -2,9 +2,10 @@
 
 import "@/components/charts/chartSetup";
 import { Doughnut } from "react-chartjs-2";
+import { Card } from "@/components/ui/card";
 
 // Semi-circle gauge — half-doughnut with `circumference: 180` and a small
-// fixed value to force layout symmetry, matching the Jinja gauges.
+// fixed value to force layout symmetry.
 export default function Gauge({
   value,
   color,
@@ -19,33 +20,34 @@ export default function Gauge({
   const pct = Math.max(0, Math.min(100, value));
   const remaining = 100 - pct;
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col items-center justify-center">
-      <div className="text-sm font-semibold text-slate-600 mb-4">{topLabel}</div>
-      <div className="relative inline-flex items-center justify-center" style={{ width: 200, height: 120 }}>
+    <Card className="flex flex-col items-center justify-center p-6">
+      <div className="self-start text-sm font-semibold text-foreground">{topLabel}</div>
+      <div className="relative mt-2 inline-flex items-center justify-center" style={{ width: 200, height: 124 }}>
         <Doughnut
           data={{
             datasets: [{
               data: [pct, remaining, 100],
-              backgroundColor: [color, "#f1f5f9", "transparent"],
+              backgroundColor: [color, "#eef2f7", "transparent"],
               borderWidth: 0,
               circumference: 180,
               rotation: 270,
+              borderRadius: 8,
             }],
           }}
           options={{
             responsive: false,
-            cutout: "72%",
+            cutout: "74%",
             plugins: { legend: { display: false }, tooltip: { enabled: false } },
-            animation: { duration: 900, easing: "easeOutQuart" },
+            animation: { duration: 1000, easing: "easeOutQuart" },
           }}
           width={200}
-          height={120}
+          height={124}
         />
-        <div className="absolute text-center" style={{ bottom: 8 }}>
-          <div className="text-3xl font-extrabold text-slate-800">{pct}%</div>
-          <div className="text-xs text-slate-400">{caption}</div>
+        <div className="absolute text-center" style={{ bottom: 6 }}>
+          <div className="text-3xl font-extrabold tracking-tight tabular-nums text-foreground">{pct}%</div>
+          {caption && <div className="text-xs font-medium text-muted-foreground">{caption}</div>}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

@@ -16,6 +16,7 @@ from sqlalchemy import and_, func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.core.utils import utc_iso
 from src.models.appointment_models import Appointment, Citizen
 from src.models.grievance_summary_record import GrievanceSummaryRecord
 from src.models.grievance_summary import CATEGORY_DISPLAY, DEPARTMENT_DISPLAY
@@ -57,14 +58,14 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         "status":          t.status,
         "priority":        t.priority,
         "assigned_to_pa":  t.assigned_to_pa,
-        "due_date":        t.due_date.isoformat() if t.due_date else None,
+        "due_date":        utc_iso(t.due_date),
         "forwarded_to_dept": t.forwarded_to_dept,
         "forwarded_to_dept_label": (
             DEPARTMENT_DISPLAY.get(t.forwarded_to_dept) if t.forwarded_to_dept else None
         ),
         "reopen_count":    t.reopen_count,
-        "created_at":      t.created_at.isoformat() if t.created_at else None,
-        "updated_at":      t.updated_at.isoformat() if t.updated_at else None,
+        "created_at":      utc_iso(t.created_at),
+        "updated_at":      utc_iso(t.updated_at),
         # AI-derived fields for the list view
         "urgency":         summary_rec.urgency if summary_rec else None,
         "category":        summary_rec.category if summary_rec else None,
@@ -84,7 +85,7 @@ def _serialize_event(e: TicketEvent) -> Dict[str, Any]:
         "actor":      e.actor,
         "note":       e.note,
         "payload":    e.payload,
-        "created_at": e.created_at.isoformat() if e.created_at else None,
+        "created_at": utc_iso(e.created_at),
     }
 
 
@@ -122,10 +123,10 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
         "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
         "resolution_notes":   t.resolution_notes,
         "closure_reason":     t.closure_reason,
-        "resolved_at":        t.resolved_at.isoformat() if t.resolved_at else None,
-        "closed_at":          t.closed_at.isoformat() if t.closed_at else None,
-        "reopened_at":        t.reopened_at.isoformat() if t.reopened_at else None,
-        "forwarded_at":       t.forwarded_at.isoformat() if t.forwarded_at else None,
+        "resolved_at":        utc_iso(t.resolved_at),
+        "closed_at":          utc_iso(t.closed_at),
+        "reopened_at":        utc_iso(t.reopened_at),
+        "forwarded_at":       utc_iso(t.forwarded_at),
         "forwarded_by":       t.forwarded_by,
         "forwarded_notes":    t.forwarded_notes,
         "attachments":        attachments,
@@ -419,8 +420,21 @@ async def reopen(
 # ── Dashboard helpers (counts for nav badge) ──────────────────────────────────
 
 async def get_open_count(db: AsyncSession) -> int:
-    """Count tickets currently in any non-terminal state — feeds the sidebar badge."""
-    terminal = [TicketStatus.RESOLVED.value, TicketStatus.CLOSED.value]
+    """
+    Count tickets that need PA attention — feeds the sidebar badge.
+
+    Whitelist (not a blacklist) so the count stays meaningful even as new
+    statuses are added later. Explicitly excludes triaged / resolved /
+    closed / reopened — reopened tickets re-enter `open` on the next
+    status transition anyway.
+    """
+    actionable = [
+        TicketStatus.OPEN.value,
+        TicketStatus.ASSIGNED.value,
+        TicketStatus.IN_PROGRESS.value,
+        TicketStatus.FORWARDED_TO_DEPT.value,
+        TicketStatus.PENDING_CITIZEN.value,
+    ]
     return await db.scalar(
-        select(func.count(Ticket.id)).where(Ticket.status.notin_(terminal))
+        select(func.count(Ticket.id)).where(Ticket.status.in_(actionable))
     ) or 0

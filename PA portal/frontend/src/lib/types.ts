@@ -7,8 +7,14 @@ export type AppointmentStatus =
   | "Scheduled"
   | "Waiting"
   | "Rescheduled"
-  | "Submitted"
-  | "Closed";
+  | "Submitted";
+
+export interface SlaBucket {
+  priority: "P0" | "P1" | "P2" | "P3";
+  on_track: number;
+  breached: number;
+  target_days: number;
+}
 
 export interface StatsResponse {
   total: number;
@@ -18,11 +24,21 @@ export interface StatsResponse {
   rescheduled: number;
   ai_coverage: number;       // 0-100 (%)
   resolution_rate: number;   // 0-100 (%)
-  trend_labels: string[];    // ISO dates for last 14 days
-  trend_counts: number[];    // matching daily submission counts
+  trend_labels: string[];
+  trend_counts: number[];
+  trend_resolved?: number[];
   categories: { label: string; count: number }[];
   departments: { label: string; count: number }[];
   urgency: Partial<Record<Urgency, number>>;
+  // New political/operational KPIs
+  unique_citizens?: number;
+  meetings_held?: number;
+  active_cases?: number;
+  avg_response_hours?: number;
+  growth_pct?: number | null;
+  sla_buckets?: SlaBucket[];
+  forwarded_departments?: { label: string; count: number }[];
+  total_forwarded?: number;
 }
 
 export interface AppointmentAttachment {
@@ -45,12 +61,19 @@ export interface AppointmentRow {
   urgency?: Urgency | null;
   description?: string;
   headline?: string;
+  headline_ta?: string | null;
   summary?: string;
+  summary_ta?: string | null;
   citizen_ask?: string;
+  citizen_ask_ta?: string | null;
   key_details?: string[];
+  key_details_ta?: string[];
   audio_transcript?: string | null;
   audio_url?: string | null;            // dedicated form-mic recording
   attachments?: AppointmentAttachment[];
+  category_label?: string | null;
+  department_label?: string | null;
+  priority?: TicketPriority | null;
 }
 
 export interface AppointmentsResponse {

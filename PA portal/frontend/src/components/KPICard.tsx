@@ -1,4 +1,6 @@
 import { LucideIcon } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export default function KPICard({
   label, value, icon: Icon, color, bg, footnote,
@@ -11,15 +13,28 @@ export default function KPICard({
   footnote?: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 transition hover:-translate-y-0.5 hover:shadow-lg">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
-        <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
-          <Icon className={`w-4 h-4 ${color}`} />
+    <Card className="group relative overflow-hidden p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-lg">
+      {/* faint corner flourish */}
+      <div
+        className={cn(
+          "pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full opacity-[0.07] blur-xl transition-opacity group-hover:opacity-[0.12]",
+          bg
+        )}
+      />
+      <div className="relative flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+        <div className={cn("grid h-9 w-9 place-items-center rounded-lg ring-1 ring-inset ring-black/5", bg)}>
+          <Icon className={cn("h-[18px] w-[18px]", color)} />
         </div>
       </div>
-      <div className={`text-3xl font-extrabold ${color}`}>{value.toLocaleString()}</div>
-      {footnote && <div className="text-xs text-slate-400 mt-1">{footnote}</div>}
-    </div>
+      <div className={cn("relative mt-3 text-3xl font-extrabold tracking-tight tabular-nums", color)}>
+        {value.toLocaleString()}
+      </div>
+      {footnote && (
+        <div className="relative mt-1 text-xs font-medium text-muted-foreground">{footnote}</div>
+      )}
+    </Card>
   );
 }

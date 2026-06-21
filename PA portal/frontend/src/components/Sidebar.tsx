@@ -3,15 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CalendarDays, LayoutDashboard, LogOut, Clock, Users, Ticket } from "lucide-react";
+import {
+  CalendarDays, LayoutDashboard, LogOut, Clock, Users, Ticket, Landmark, Activity,
+} from "lucide-react";
 import { fetchTicketsOpenCount } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/overview",       label: "Dashboard",      icon: LayoutDashboard },
-  { href: "/tickets",        label: "Tickets",        icon: Ticket, badge: "openTickets" as const },
-  { href: "/appointments",   label: "Appointments",   icon: CalendarDays },
-  { href: "/scheduling",     label: "Scheduling",     icon: Clock },
-  { href: "/waiting-queue",  label: "Waiting Queue",  icon: Users },
+  { href: "/overview",      label: "Performance",   icon: LayoutDashboard },
+  { href: "/operations",    label: "Operations",    icon: Activity },
+  { href: "/tickets",       label: "Tickets",       icon: Ticket, badge: "openTickets" as const },
+  { href: "/appointments",  label: "Appointments",  icon: CalendarDays },
+  { href: "/scheduling",    label: "Scheduling",    icon: Clock },
+  { href: "/waiting-queue", label: "Waiting Queue", icon: Users },
 ];
 
 export default function Sidebar({ user = "admin" }: { user?: string }) {
@@ -27,48 +31,81 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
   }, [pathname]);
 
   const badges: Record<string, number | null> = { openTickets };
+
   return (
-    <aside className="w-60 bg-sidebar text-white flex flex-col flex-shrink-0">
-      <div className="h-16 flex items-center px-5 border-b border-white/10">
-        <span className="text-sm font-bold leading-tight">
-          Petition Management
-          <br />
-          <span className="text-white/50 font-normal text-xs">Staff Portal</span>
-        </span>
+    <aside className="w-64 flex-shrink-0 flex flex-col bg-sidebar text-sidebar-foreground relative">
+      {/* subtle top glow */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/[0.06] to-transparent" />
+
+      {/* Brand */}
+      <div className="h-16 flex items-center gap-3 px-5 border-b border-sidebar-border relative">
+        <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand text-white shadow-card-md ring-1 ring-white/10">
+          <Landmark className="h-5 w-5" />
+        </div>
+        <div className="leading-tight">
+          <div className="text-sm font-bold tracking-tight">Petition Management</div>
+          <div className="text-[11px] font-medium text-sidebar-foreground/55">Staff Portal</div>
+        </div>
       </div>
-      <nav className="flex-1 overflow-y-auto sidebar-scroll py-3">
-        {NAV.map(({ href, label, icon: Icon, badge }) => {
-          const active = pathname?.startsWith(href);
-          const badgeVal = badge ? badges[badge] : null;
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={[
-                "flex items-center px-5 py-3 text-sm font-medium gap-3 transition-colors",
-                active
-                  ? "bg-sidebarActive text-white"
-                  : "text-white/70 hover:bg-sidebarHover hover:text-white",
-              ].join(" ")}
-            >
-              <Icon className="w-4 h-4" />
-              <span className="flex-1">{label}</span>
-              {badgeVal != null && badgeVal > 0 && (
-                <span className="bg-red-500/90 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
-                  {badgeVal > 99 ? "99+" : badgeVal}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-4">
+        <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/40">
+          Menu
+        </div>
+        <div className="space-y-1">
+          {NAV.map(({ href, label, icon: Icon, badge }) => {
+            const active = pathname?.startsWith(href);
+            const badgeVal = badge ? badges[badge] : null;
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
+                  active
+                    ? "bg-sidebar-active/90 text-white shadow-card"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-hover hover:text-white"
+                )}
+              >
+                {/* active accent bar */}
+                <span
+                  className={cn(
+                    "absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand transition-all",
+                    active ? "opacity-100" : "opacity-0 group-hover:opacity-40"
+                  )}
+                />
+                <Icon className={cn("h-[18px] w-[18px] transition-colors", active ? "text-white" : "text-sidebar-foreground/60 group-hover:text-white")} />
+                <span className="flex-1">{label}</span>
+                {badgeVal != null && badgeVal > 0 && (
+                  <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white shadow-card">
+                    {badgeVal > 99 ? "99+" : badgeVal}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
-      <div className="p-4 border-t border-white/10">
-        <a
-          href="/auth/logout"
-          className="flex items-center gap-2 text-white/60 hover:text-white text-xs transition-colors"
-        >
-          <LogOut className="w-4 h-4" /> Sign out ({user})
-        </a>
+
+      {/* Footer / user */}
+      <div className="border-t border-sidebar-border p-3">
+        <div className="flex items-center gap-3 rounded-lg px-2 py-2">
+          <div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs font-bold uppercase text-white ring-1 ring-white/10">
+            {user.slice(0, 2)}
+          </div>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-sm font-semibold text-white">{user}</div>
+            <div className="text-[11px] text-sidebar-foreground/50">PA Office</div>
+          </div>
+          <a
+            href="/auth/logout"
+            title="Sign out"
+            className="grid h-8 w-8 place-items-center rounded-md text-sidebar-foreground/60 transition-colors hover:bg-sidebar-hover hover:text-white"
+          >
+            <LogOut className="h-4 w-4" />
+          </a>
+        </div>
       </div>
     </aside>
   );

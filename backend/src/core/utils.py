@@ -3,7 +3,22 @@ Utility functions for the citizen scheduler application.
 Provides helper functions for security, fingerprinting, and common operations.
 """
 import hashlib
+from datetime import datetime, timezone
 from fastapi import Request
+
+
+def utc_iso(dt: datetime | None) -> str | None:
+    """Return a timezone-aware ISO 8601 string for a UTC datetime.
+
+    If the datetime is naive, it is assumed to be in UTC. The resulting
+    string includes the '+00:00' offset so clients can safely convert to
+    local time.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 
 def generate_device_fingerprint(request: Request) -> str:

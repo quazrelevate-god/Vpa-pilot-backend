@@ -13,10 +13,16 @@ from src.core.config import settings
 Base = declarative_base()
 
 
+# Ensure the async engine uses the async psycopg driver.
+# If the .env uses the sync form (postgresql+psycopg), rewrite it.
+_DATABASE_URL = settings.DATABASE_URL
+if _DATABASE_URL and _DATABASE_URL.startswith("postgresql+psycopg://"):
+    _DATABASE_URL = _DATABASE_URL.replace("postgresql+psycopg://", "postgresql+psycopg_async://", 1)
+
 # Create async engine with psycopg driver
 # Connection pool configured for high-traffic scenarios
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _DATABASE_URL,
     echo=settings.DEBUG,  # SQL query logging in debug mode
     pool_size=20,  # Number of persistent connections
     max_overflow=10,  # Additional connections when pool is exhausted

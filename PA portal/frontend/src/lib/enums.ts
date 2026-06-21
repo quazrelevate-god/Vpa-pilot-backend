@@ -101,6 +101,12 @@ export const URGENCY_DISPLAY: Record<string, string> = {
 export const deptOptions = Object.entries(DEPT_DISPLAY).map(([value, label]) => ({ value, label }));
 export const categoryOptions = Object.entries(CATEGORY_DISPLAY).map(([value, label]) => ({ value, label }));
 export const ticketStatusOptions = Object.entries(TICKET_STATUS_DISPLAY).map(([value, label]) => ({ value, label }));
+// In-drawer manual status picker. Triaged / Resolved / Closed / Reopened are
+// excluded — those transitions happen via the dedicated bottom-bar action
+// buttons (which require an explanation note for the audit trail).
+export const ticketManualStatusOptions = ticketStatusOptions.filter(
+  (o) => !["triaged", "resolved", "closed", "reopened"].includes(o.value)
+);
 export const priorityOptions = Object.keys(PRIORITY_COLOR).map(v => ({ value: v, label: v }));
 export const urgencyOptions = Object.entries(URGENCY_DISPLAY).map(([value, label]) => ({ value, label }));
 export const closureReasonOptions = Object.entries(CLOSURE_REASON_DISPLAY).map(([value, label]) => ({ value, label }));

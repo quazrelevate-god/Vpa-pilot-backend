@@ -541,6 +541,32 @@
                     <div class="file-preview-list" id="filePreviews"></div>
                 </div>
 
+                <!-- MLA Meeting Request Section -->
+                <div class="field-group" id="meetingSection">
+                    <div class="label-container">
+                        <label><span id="lbl-meeting">Request a meeting with MLA?</span></label>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:1rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:0.75rem;padding:0.85rem 1rem;">
+                        <label class="switch-wrapper" style="flex-shrink:0;">
+                            <input type="checkbox" id="chkMeeting" onchange="onMeetingToggle(this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                        <span id="lbl-meeting-hint" style="font-size:0.82rem;color:#4b5563;">I want to personally meet the MLA to discuss my grievance</span>
+                    </div>
+                </div>
+
+                <!-- Time Window Selection (visible only when meeting requested) -->
+                <div class="field-group" id="timeWindowSection" style="display:none;">
+                    <div class="label-container">
+                        <label for="selTimeWindow"><span id="lbl-time-window">Preferred Time Slot</span> <span class="req-star">*</span></label>
+                    </div>
+                    <div id="timeWindowStatus" style="font-size:0.82rem;color:#6b7280;margin-bottom:0.5rem;"></div>
+                    <select id="selTimeWindow" class="glass-field" style="cursor:pointer;">
+                        <option value="">-- Loading available slots... --</option>
+                    </select>
+                    <div id="slotInfo" style="margin-top:0.4rem;font-size:0.78rem;color:#6b7280;"></div>
+                </div>
+
                 <!-- Form Final Target Actions Pipeline Interface -->
                 <div class="action-strip">
                     <button type="submit" id="btnSubmitForm" disabled class="base-btn btn-submit-main">
@@ -711,25 +737,47 @@
             }
         }
 
-        function verifyInputOtp() {
+        async function verifyInputOtp() {
             const otpVal = document.getElementById('txtOtp').value;
+            const mobileVal = document.getElementById('txtMobile').value.trim();
             const errorElement = document.getElementById('errOtp');
 
-            // Hardcoded validation pattern simulation for client demonstration purposes
-            if (otpVal.length !== 6) {
+            if (otpVal.length !== 6 || !/^\d{6}$/.test(otpVal)) {
                 errorElement.innerText = dynamicLocalizationDictionary[runtimeActiveLanguage].errOtp;
                 errorElement.style.display = 'block';
                 return;
             }
             errorElement.style.display = 'none';
 
-            isSystemPhoneVerified = true;
-            document.getElementById('btnVerifyOtp').innerText = 'Verified';
-            document.getElementById('btnVerifyOtp').disabled = true;
-            document.getElementById('txtOtp').disabled = true;
-            
-            // Activate the primary Form application submission channel button
-            document.getElementById('btnSubmitForm').disabled = false;
+            const verifyBtn = document.getElementById('btnVerifyOtp');
+            verifyBtn.innerText = 'Verifying...';
+            verifyBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/v1/otp/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mobile_number: mobileVal, otp_code: otpVal })
+                });
+
+                if (response.ok) {
+                    isSystemPhoneVerified = true;
+                    verifyBtn.innerText = 'Verified ✓';
+                    document.getElementById('txtOtp').disabled = true;
+                    document.getElementById('btnSubmitForm').disabled = false;
+                } else {
+                    const error = await response.json();
+                    errorElement.innerText = error.detail || 'Invalid OTP';
+                    errorElement.style.display = 'block';
+                    verifyBtn.innerText = 'Verify';
+                    verifyBtn.disabled = false;
+                }
+            } catch (err) {
+                errorElement.innerText = 'Network error. Please try again.';
+                errorElement.style.display = 'block';
+                verifyBtn.innerText = 'Verify';
+                verifyBtn.disabled = false;
+            }
         }
 
         function renderUploadedFiles(input) {
@@ -761,6 +809,53 @@
             validateFormForOTP(); // Re-validate after file removal
         }
         
+        async function onMeetingToggle(checked) {
+            const windowSection = document.getElementById('timeWindowSection');
+            const statusEl = document.getElementById('timeWindowStatus');
+            const selectEl = document.getElementById('selTimeWindow');
+            const infoEl = document.getElementById('slotInfo');
+
+            if (!checked) {
+                windowSection.style.display = 'none';
+                return;
+            }
+
+            windowSection.style.display = 'block';
+            statusEl.textContent = 'Checking MLA availability...';
+            selectEl.innerHTML = '<option value="">-- Loading... --</option>';
+            infoEl.textContent = '';
+
+            try {
+                const res = await fetch('/api/v1/scheduling/time-windows/available');
+                const data = await res.json();
+
+                if (!data.available) {
+                    if (data.reason === 'CAPACITY_FULL') {
+                        statusEl.innerHTML = '<span style="color:#ef4444;">⚠ All slots are full for today. Your request will be added to the waiting queue.</span>';
+                    } else {
+                        statusEl.innerHTML = '<span style="color:#f59e0b;">ℹ MLA has not set availability for today. Your request will be added to the waiting queue and you will be notified via SMS when a slot is assigned.</span>';
+                    }
+                    selectEl.innerHTML = '<option value="">-- No slots available (waiting queue) --</option>';
+                    selectEl.disabled = true;
+                } else {
+                    statusEl.innerHTML = `<span style="color:#10b981;">✓ ${data.remaining_slots} of ${data.total_slots} slots available today.</span>`;
+                    selectEl.disabled = false;
+                    selectEl.innerHTML = '<option value="">-- Select your preferred time --</option>';
+                    data.windows.forEach(w => {
+                        const opt = document.createElement('option');
+                        opt.value = w.id;
+                        opt.textContent = `${w.label}  (${w.available_slots} slot${w.available_slots !== 1 ? 's' : ''} left)`;
+                        selectEl.appendChild(opt);
+                    });
+                    infoEl.textContent = 'Exact minute will be auto-assigned within your chosen window.';
+                }
+            } catch (e) {
+                statusEl.innerHTML = '<span style="color:#ef4444;">Failed to load availability. Your request will be added to the waiting queue.</span>';
+                selectEl.innerHTML = '<option value="">-- Could not load slots --</option>';
+                selectEl.disabled = true;
+            }
+        }
+
         // Initialize form validation on page load
         document.addEventListener('DOMContentLoaded', function() {
             // Disable OTP button initially
@@ -812,7 +907,12 @@
             formData.append('constituency', 'Namakkal'); // Default constituency
             formData.append('description', description || 'See attachments');
             formData.append('otp_code', otp);
-            formData.append('schedule_meeting', 'false');
+            const wantsMeeting = document.getElementById('chkMeeting').checked;
+            formData.append('schedule_meeting', wantsMeeting ? 'true' : 'false');
+            if (wantsMeeting) {
+                const windowId = document.getElementById('selTimeWindow').value;
+                if (windowId) formData.append('time_window_id', windowId);
+            }
 
             // Add files
             registeredFileList.filter(f => f !== null).forEach(file => {

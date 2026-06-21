@@ -2,44 +2,126 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
 
-html, body { height: 100%; }
-body { font-family: "Inter", ui-sans-serif, system-ui, sans-serif; }
+/* ──────────────────────────────────────────────────────────────────────────
+   Modern Gov SaaS — design tokens
+   Deep navy brand, refined royal-blue accent, cool-neutral surfaces,
+   soft elevation. shadcn/ui reads these HSL variables.
+   ────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Surfaces */
+    --background: 210 40% 98%;          /* app canvas — cool off-white */
+    --foreground: 222 47% 11%;          /* primary text — near-slate-900 */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
 
-/* Sidebar scrollbar polish (mirrors the Jinja templates) */
+    /* Brand — deep navy */
+    --primary: 213 71% 20%;             /* #0c2e59 */
+    --primary-foreground: 210 40% 98%;
+
+    /* Accent — refined royal blue (interactive) */
+    --accent-blue: 220 99% 53%;         /* #0f62fe */
+    --accent-blue-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 214 95% 96%;              /* light blue tint for hovers */
+    --accent-foreground: 213 71% 20%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 60% 36%;
+    --warning: 32 95% 44%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 220 99% 53%;
+
+    /* Sidebar (kept explicit so the navy chrome stays crisp) */
+    --sidebar: 213 71% 14%;             /* deeper navy than brand */
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-active: 220 70% 30%;
+    --sidebar-hover: 213 60% 22%;
+    --sidebar-border: 213 40% 26%;
+
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body { height: 100%; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+/* ── Elevation utilities — soft, layered government-product shadows ───────── */
+@layer utilities {
+  .shadow-card     { box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06); }
+  .shadow-card-md  { box-shadow: 0 2px 4px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.06); }
+  .shadow-card-lg  { box-shadow: 0 8px 24px rgba(16,24,40,0.08), 0 2px 6px rgba(16,24,40,0.04); }
+  .shadow-glow     { box-shadow: 0 0 0 4px hsl(var(--accent-blue) / 0.12); }
+
+  .text-balance { text-wrap: balance; }
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, rgba(15,23,42,0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(15,23,42,0.04) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+}
+
+/* ── Sidebar scrollbar polish ────────────────────────────────────────────── */
 .sidebar-scroll::-webkit-scrollbar { width: 4px; }
-.sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.2); border-radius: 4px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.18); border-radius: 4px; }
 
-/* Skeleton shimmer used by KPI/chart placeholders */
+/* ── Skeleton shimmer ────────────────────────────────────────────────────── */
 .skeleton {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, hsl(210 40% 95%) 25%, hsl(210 30% 90%) 50%, hsl(210 40% 95%) 75%);
   background-size: 400px 100%;
-  animation: shimmer 1.2s infinite;
-  border-radius: 6px;
+  animation: shimmer 1.3s ease-in-out infinite;
+  border-radius: var(--radius);
 }
 @keyframes shimmer {
   0%   { background-position: -400px 0; }
   100% { background-position:  400px 0; }
 }
 
-/* Status pill colours used by the appointments table <select> */
+/* ── Status pill colours (appointments <select>) ─────────────────────────── */
 .status-select {
   appearance: none;
-  padding: 4px 28px 4px 12px;
+  padding: 5px 30px 5px 14px;
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 8px center;
-  transition: all 0.2s;
+  background-position: right 10px center;
+  transition: all 0.18s ease;
 }
-.status-select:focus { outline: none; box-shadow: 0 0 0 2px rgba(15,98,254,0.2); }
+.status-select:focus { outline: none; box-shadow: 0 0 0 3px hsl(var(--accent-blue) / 0.18); }
 .s-Scheduled   { background: #dcfce7; color: #15803d; }
-.s-Rescheduled { background: #fef08a; color: #854d0e; }
+.s-Rescheduled { background: #fef9c3; color: #854d0e; }
 .s-Submitted   { background: #dbeafe; color: #1d4ed8; }
 .s-Closed      { background: #f1f5f9; color: #475569; }
 .s-Waiting     { background: #ffedd5; color: #c2410c; }
+
+/* ── Fade/slide entrance for content ─────────────────────────────────────── */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in-up { animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }

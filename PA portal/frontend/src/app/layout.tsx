@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
   title: "Petition Management — Staff Portal",
-  description: "Government of Tamil Nadu — petition appointment management",
+  description: "Petition & appointment management for grievance triage and scheduling",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="text-slate-800 bg-slate-50">{children}</body>
+      <body className="bg-background text-foreground antialiased">
+        {children}
+        <Toaster />
+      </body>
     </html>
   );
 }

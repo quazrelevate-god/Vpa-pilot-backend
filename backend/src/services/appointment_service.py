@@ -7,7 +7,7 @@ import hashlib
 import secrets
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
@@ -22,6 +22,8 @@ from src.models.qr_models import GatekeeperSession
 from src.models.appointment_models import (
     OTPVerification, Citizen, Appointment, AppointmentAttachment
 )
+from src.models.scheduling_models import TimeWindow
+from src.services.scheduling_service import scheduling_service
 
 
 class AppointmentService:
@@ -581,7 +583,8 @@ class AppointmentService:
         schedule_meeting: bool,
         audio_recording: str,
         files: List[UploadFile],
-        db: AsyncSession
+        db: AsyncSession,
+        time_window_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Atomically verify OTP and create appointment with attachments.
@@ -664,24 +667,14 @@ class AppointmentService:
                 # Step 5: Mark OTP as used
                 otp_record.is_used = True
                 
-                # Step 6: Allocate slot atomically using FOR UPDATE SKIP LOCKED
-                # TODO: Implement actual slot allocation query
-                # For now, generate a simple sequential token
-                # In production, query slots table with:
-                # SELECT id, token_number FROM slots 
-                # WHERE date = CURRENT_DATE AND is_allocated = FALSE
-                # ORDER BY token_number ASC
-                # LIMIT 1
-                # FOR UPDATE SKIP LOCKED
-                
-                # Placeholder: Generate token based on current appointments count
+                # Step 6: Assign a sequential token for today
                 token_stmt = select(Appointment).where(
                     Appointment.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0)
                 )
                 token_result = await db.execute(token_stmt)
                 today_appointments = token_result.scalars().all()
                 token_assigned = len(today_appointments) + 1
-                slot_id = token_assigned  # Placeholder
+                slot_id = token_assigned  # Legacy token reference
                 
                 # Step 7: Encrypt sensitive fields
                 encrypted_name = self._encrypt_field(name)
@@ -715,6 +708,7 @@ class AppointmentService:
                     audio_url = await self._save_audio_recording(audio_recording, token_assigned)
                 
                 # Step 10: Create appointment record
+                initial_status = 'SCHEDULED' if schedule_meeting else 'COMPLETED'
                 appointment = Appointment(
                     citizen_id=citizen.id,
                     slot_id=slot_id,
@@ -722,12 +716,41 @@ class AppointmentService:
                     encrypted_grievance=encrypted_grievance,
                     audio_recording_url=audio_url,
                     grievance_category=None,  # TODO: Implement category classification
-                    status='SCHEDULED',
+                    status=initial_status,
                     schedule_meeting=schedule_meeting,
                     created_at=current_time
                 )
                 db.add(appointment)
                 await db.flush()  # Get appointment.id
+
+                # Step 10b: For meeting requests, book a real slot or queue
+                if schedule_meeting:
+                    chosen_window = time_window_id
+                    if chosen_window:
+                        window = await db.get(TimeWindow, chosen_window)
+                        if not window or window.available_slots <= 0:
+                            chosen_window = None
+
+                    if not chosen_window:
+                        windows_data = await scheduling_service.get_available_time_windows(
+                            db, date.today()
+                        )
+                        if windows_data.get('available') and windows_data.get('windows'):
+                            chosen_window = windows_data['windows'][0]['id']
+
+                    if chosen_window:
+                        try:
+                            await scheduling_service.book_appointment_with_window(
+                                db, appointment, chosen_window, name, mobile, commit=False
+                            )
+                        except ValueError:
+                            await scheduling_service.move_to_waiting_queue(
+                                db, appointment, 'NO_AVAILABLE_SLOT', commit=False
+                            )
+                    else:
+                        await scheduling_service.move_to_waiting_queue(
+                            db, appointment, 'NO_AVAILABILITY_TODAY', commit=False
+                        )
                 
                 # Step 11: Save uploaded files and create attachment records
                 attachments_created = []
@@ -776,37 +799,42 @@ class AppointmentService:
             if session:
                 session.is_used = True
 
-            # Step 11b: Auto-create ticket for PA case-management tracking.
-            # Year-prefixed sequence per submission year. Built BEFORE commit so
-            # ticket lives or dies with the appointment.
-            from src.models.ticket_models import (
-                Ticket, TicketEvent, TicketStatus,
-                TicketEventType, generate_ticket_number,
-            )
-            from sqlalchemy import func as sa_func
-            year = current_time.year
-            count_q = await db.execute(
-                select(sa_func.count(Ticket.id))
-                .where(sa_func.extract("year", Ticket.created_at) == year)
-            )
-            year_count = (count_q.scalar() or 0) + 1
-            new_ticket = Ticket(
-                appointment_id=appointment.id,
-                ticket_number=generate_ticket_number(year, year_count),
-                status=TicketStatus.OPEN.value,
-                created_at=current_time,
-                updated_at=current_time,
-            )
-            db.add(new_ticket)
-            await db.flush()  # get ticket.id for the event
-            db.add(TicketEvent(
-                ticket_id=new_ticket.id,
-                event_type=TicketEventType.CREATED.value,
-                actor="system",
-                note=f"Ticket auto-created from appointment submission (token {token_assigned})",
-                payload={"token": token_assigned, "appointment_id": appointment.id},
-                created_at=current_time,
-            ))
+            # Step 11b: Auto-create a PA ticket *only* for submitted petitions
+            # (no meeting requested). Citizens who book a meeting are handled
+            # through the appointment lifecycle; the PA team only triages
+            # written grievances via the ticket system.
+            if not schedule_meeting:
+                from src.models.ticket_models import (
+                    Ticket, TicketEvent, TicketStatus,
+                    TicketEventType, generate_ticket_number,
+                )
+                from sqlalchemy import func as sa_func
+                year = current_time.year
+                count_q = await db.execute(
+                    select(sa_func.count(Ticket.id))
+                    .where(sa_func.extract("year", Ticket.created_at) == year)
+                )
+                year_count = (count_q.scalar() or 0) + 1
+                new_ticket = Ticket(
+                    appointment_id=appointment.id,
+                    ticket_number=generate_ticket_number(year, year_count),
+                    status=TicketStatus.OPEN.value,
+                    created_at=current_time,
+                    updated_at=current_time,
+                )
+                db.add(new_ticket)
+                await db.flush()  # get ticket.id for the event
+                db.add(TicketEvent(
+                    ticket_id=new_ticket.id,
+                    event_type=TicketEventType.CREATED.value,
+                    actor="system",
+                    note=f"Ticket auto-created from submitted petition (token {token_assigned})",
+                    payload={"token": token_assigned, "appointment_id": appointment.id},
+                    created_at=current_time,
+                ))
+
+            # Capture final status before commit so we can return it without an extra DB round-trip
+            final_status = appointment.status
 
             # Step 12: Commit transaction — citizen gets token NOW
             await db.commit()
@@ -830,13 +858,20 @@ class AppointmentService:
                 audio_recording_url=audio_url,
             ))
 
+            if final_status == 'WAITING':
+                message = f"No slots available right now. Your token number is {token_assigned} and you have been added to the waiting queue."
+            elif final_status == 'COMPLETED':
+                message = f"Petition submitted successfully. Your token number is {token_assigned}."
+            else:
+                message = f"Appointment scheduled successfully. Your token number is {token_assigned}."
+
             return {
                 "appointment_id": appointment.id,
                 "token_assigned": token_assigned,
                 "citizen_id": citizen.id,
                 "attachments_count": len(attachments_created),
-                "status": "SCHEDULED",
-                "message": f"Appointment created successfully. Your token number is {token_assigned}."
+                "status": final_status,
+                "message": message
             }
 
         except HTTPException:
@@ -907,10 +942,10 @@ class AppointmentService:
                                   f"Could not read document file {att.storage_url}: {read_err}")
                         break
 
-            # Priority 3: AUDIO — find from attachments or the dedicated mic recording.
-            # Audio is sent to Gemini summariser as multimodal bytes (same channel as
-            # image/document) AND transcribed via Gemini STT in parallel — the two
-            # calls are independent, so we run them concurrently to save wall time.
+            # Priority 3: AUDIO — collect from attachments or dedicated mic recording.
+            # Rule: if an image (or document) was already found above, audio is used
+            # ONLY for transcription (STT). If there is no image/document, audio is
+            # sent to the summariser as the primary multimodal input AND transcribed.
             audio_path: Optional[str] = None
             audio_mime: Optional[str] = None
             for att in attachments_created:
@@ -931,12 +966,16 @@ class AppointmentService:
                     print(f"[GEMINI WARN] appointment_id={appointment_id}: "
                           f"Could not read audio file {audio_path}: {read_err}")
 
-            # Build grievance_text from description only — the audio goes directly
-            # to Gemini as multimodal bytes (richer signal than just the transcript).
+            # When an image/document is present it becomes the sole summarisation
+            # input; audio is downgraded to transcript-only so the summariser does
+            # not try to handle two multimodal streams at once.
+            audio_for_summary: Optional[bytes] = None if attachment_bytes is not None else audio_bytes_for_gemini
+            audio_mime_for_summary: Optional[str] = None if attachment_bytes is not None else (audio_mime if audio_bytes_for_gemini else None)
+
             grievance_text = (description or "").strip()
 
             # Skip only when nothing at all to summarise.
-            if attachment_bytes is None and audio_bytes_for_gemini is None and not grievance_text:
+            if attachment_bytes is None and audio_for_summary is None and not grievance_text:
                 print(f"[GEMINI SKIP] appointment_id={appointment_id}: "
                       "No usable input — skipping summarisation.")
                 return
@@ -956,8 +995,8 @@ class AppointmentService:
                     attachment_bytes=attachment_bytes,
                     attachment_mime=attachment_mime,
                     attachment_filename=attachment_filename,
-                    audio_bytes=audio_bytes_for_gemini,
-                    audio_mime=audio_mime if audio_bytes_for_gemini else None,
+                    audio_bytes=audio_for_summary,
+                    audio_mime=audio_mime_for_summary,
                 ),
             )
 

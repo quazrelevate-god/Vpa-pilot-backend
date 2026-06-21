@@ -133,3 +133,16 @@ export async function updateAppointmentStatus(
   });
   if (!resp.ok) throw new Error(`status ${resp.status}`);
 }
+
+export async function updateAppointmentDetails(
+  id: number,
+  patch: { urgency?: string | null; category?: string | null; department?: string | null },
+): Promise<void> {
+  const resp = await fetch(`/api/appointments/${id}/details`, {
+    method: "PATCH",
+    headers: J,
+    credentials: "include",
+    body: JSON.stringify(patch),
+  });
+  if (!resp.ok) throw new Error(`details ${resp.status}`);
+}

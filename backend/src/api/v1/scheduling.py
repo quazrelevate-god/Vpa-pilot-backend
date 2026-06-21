@@ -126,9 +126,12 @@ async def set_mla_availability(
             window_duration_minutes=data.window_duration_minutes,
             created_by=user
         )
-        
+
         return JSONResponse(result)
-    
+
+    except ValueError as e:
+        return JSONResponse({'error': str(e)}, status_code=409)
+
     except Exception as e:
         print(f"[ERROR] Failed to set availability: {e}")
         return JSONResponse({
