@@ -13,7 +13,7 @@ Design notes
 ------------
 - One ticket per appointment (`appointment_id` is unique).
 - `status` is the case-management state, distinct from `Appointment.status`
-  (which is the queue/visit state — SCHEDULED, COMPLETED, etc.).
+  (which is the queue/visit state — SCHEDULED, REVIEWED, etc.).
 - Priority is auto-suggested from the AI urgency on first summarisation,
   but PA can manually override any time. SLA hours / due_date are manual —
   no auto-deadline.

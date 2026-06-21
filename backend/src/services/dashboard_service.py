@@ -28,19 +28,19 @@ def _category_label(value: Optional[str]) -> str:
 
 # DB status → display label
 _STATUS_DISPLAY = {
-    "CANCELLED":       "Closed",
     "RESCHEDULED":     "Rescheduled",
     "WAITING":         "Waiting",
     "IN_PROGRESS":     "Waiting",
     "AWAITING_REVIEW": "Awaiting Review",
-    "COMPLETED":       "Reviewed",
+    "REVIEWED":        "Reviewed",
+    "SCHEDULED":       "Scheduled",
 }
 
 
 def _resolve_display_status(appt) -> str:
     """
     Awaiting Review → direct-submit petition pending PA review (AWAITING_REVIEW)
-    Reviewed        → PA has reviewed it (COMPLETED, schedule_meeting=False)
+    Reviewed        → PA has reviewed it (REVIEWED, schedule_meeting=False)
     Scheduled       → citizen requested a meeting (schedule_meeting=True + SCHEDULED)
     """
     override = _STATUS_DISPLAY.get(appt.status)
@@ -88,19 +88,20 @@ async def get_stats(
     total      = await db.scalar(_count()) or 0
     scheduled  = await db.scalar(_count([
         Appointment.schedule_meeting == True,
-        Appointment.status.notin_(["CANCELLED", "RESCHEDULED"]),
+        Appointment.status == "SCHEDULED",
     ])) or 0
-    # "Reviewed" = COMPLETED petitions (PA has reviewed them)
-    submitted  = await db.scalar(_count([
-        Appointment.status == "COMPLETED",
+    reviewed   = await db.scalar(_count([
+        Appointment.status == "REVIEWED",
     ])) or 0
     awaiting_review = await db.scalar(_count([
         Appointment.status == "AWAITING_REVIEW",
     ])) or 0
-    closed     = await db.scalar(_count([Appointment.status == "CANCELLED"])) or 0
+    waiting    = await db.scalar(_count([
+        Appointment.status.in_(["WAITING", "IN_PROGRESS"]),
+    ])) or 0
     rescheduled = await db.scalar(_count([Appointment.status == "RESCHEDULED"])) or 0
 
-    resolution_rate = round((submitted / total * 100) if total else 0, 1)
+    resolution_rate = round((reviewed / total * 100) if total else 0, 1)
 
     # Category breakdown
     cat_q = (
@@ -193,7 +194,7 @@ async def get_stats(
         Appointment.schedule_meeting == True,
         Appointment.scheduled_date.isnot(None),
         Appointment.scheduled_date <= now.date(),
-        Appointment.status.notin_(["CANCELLED", "RESCHEDULED"]),
+        Appointment.status == "SCHEDULED",
     ])
     meetings_held = await db.scalar(meetings_held_q) or 0
 
@@ -288,8 +289,9 @@ async def get_stats(
     return {
         "total":             total,
         "scheduled":         scheduled,
-        "submitted":         submitted,
-        "closed":            closed,
+        "reviewed":          reviewed,
+        "awaiting_review":   awaiting_review,
+        "waiting":           waiting,
         "rescheduled":       rescheduled,
         "resolution_rate":   resolution_rate,
         "ai_coverage":       ai_coverage,
@@ -347,12 +349,10 @@ async def get_appointments(
         if status_filter == "Scheduled":
             stmt = stmt.where(
                 Appointment.schedule_meeting == True,
-                Appointment.status.notin_(["CANCELLED", "RESCHEDULED"])
+                Appointment.status == "SCHEDULED"
             )
-        elif status_filter in ("Reviewed", "Submitted"):
-            # "Reviewed" is the new name; keep "Submitted" as an alias for
-            # backwards-compatibility with any cached frontend state.
-            stmt = stmt.where(Appointment.status == "COMPLETED")
+        elif status_filter == "Reviewed":
+            stmt = stmt.where(Appointment.status == "REVIEWED")
         elif status_filter == "Awaiting Review":
             stmt = stmt.where(Appointment.status == "AWAITING_REVIEW")
         elif status_filter == "Rescheduled":
@@ -498,19 +498,17 @@ async def update_appointment_derived_fields(
 
 _DISPLAY_TO_DB_STATUS = {
     "Scheduled":       "SCHEDULED",
-    "Reviewed":        "COMPLETED",
-    "Submitted":       "COMPLETED",   # legacy alias
+    "Reviewed":        "REVIEWED",
     "Waiting":         "WAITING",
     "Rescheduled":     "RESCHEDULED",
     "Awaiting Review": "AWAITING_REVIEW",
-    "Closed":          "CANCELLED",
 }
 
 async def update_appointment_status(db: AsyncSession, appointment_id: int, new_status: str) -> dict:
     """
     Update appointment status and return appointment details for SMS notification.
 
-    Handles slot release/queueing for Waiting/Rescheduled/Closed and attempts to
+    Handles slot release/queueing for Waiting/Rescheduled and attempts to
     re-book a slot for Scheduled when availability exists.
 
     Returns:
@@ -552,11 +550,51 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
                 await scheduling_service.move_to_waiting_queue(
                     db, appt, "NO_AVAILABILITY_TODAY", commit=False
                 )
-    elif new_status in ("Reviewed", "Submitted"):
+    elif new_status == "Reviewed":
         # PA marks petition as reviewed — slot is released if any was held.
         await scheduling_service.release_appointment_slot(db, appt, commit=False)
-        appt.status = "COMPLETED"
+        appt.status = "REVIEWED"
         appt.schedule_meeting = False
+        
+        # Create ticket when petition is reviewed (if not already exists)
+        from src.models.ticket_models import (
+            Ticket, TicketEvent, TicketStatus,
+            TicketEventType, generate_ticket_number,
+        )
+        from sqlalchemy import func as sa_func
+        
+        # Check if ticket already exists for this appointment
+        existing_ticket = await db.execute(
+            select(Ticket).where(Ticket.appointment_id == appointment_id)
+        )
+        if not existing_ticket.scalar_one_or_none():
+            # Create new ticket
+            year = datetime.utcnow().year
+            count_q = await db.execute(
+                select(sa_func.count(Ticket.id))
+                .where(sa_func.extract("year", Ticket.created_at) == year)
+            )
+            year_count = (count_q.scalar() or 0) + 1
+            current_time = datetime.utcnow()
+            
+            new_ticket = Ticket(
+                appointment_id=appointment_id,
+                ticket_number=generate_ticket_number(year, year_count),
+                status=TicketStatus.OPEN.value,
+                created_at=current_time,
+                updated_at=current_time,
+            )
+            db.add(new_ticket)
+            await db.flush()  # get ticket.id for the event
+            
+            db.add(TicketEvent(
+                ticket_id=new_ticket.id,
+                event_type=TicketEventType.CREATED.value,
+                actor="pa_admin",
+                note=f"Ticket created after PA review (token {appt.token_assigned})",
+                payload={"token": appt.token_assigned, "appointment_id": appointment_id},
+                created_at=current_time,
+            ))
     elif new_status == "Awaiting Review":
         # Allow moving a record back into the review queue (PA correction).
         appt.status = "AWAITING_REVIEW"

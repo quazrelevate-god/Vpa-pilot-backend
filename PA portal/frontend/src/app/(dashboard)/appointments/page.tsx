@@ -92,7 +92,7 @@ export default function AppointmentsPage() {
 
   async function exportCSV() {
     const data = await fetchAppointments({ status: tab, search, page: 1 });
-    const out: (string | number)[][] = [["Token", "Name", "Mobile", "Category", "Status", "Submitted"]];
+    const out: (string | number)[][] = [["Token", "Name", "Mobile", "Category", "Status", "Created"]];
     data.items.forEach((r) => out.push([r.token, r.name, r.mobile, r.category, r.status, r.created_at]));
     const csv = out.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
@@ -184,7 +184,7 @@ export default function AppointmentsPage() {
                     <th className={cn(th, "w-28")}>Token</th>
                     <th className={cn(th, "w-40")}>Name</th>
                     <th className={cn(th, "w-36")}>Category</th>
-                    <th className={cn(th, "w-36")}>Submitted</th>
+                    <th className={cn(th, "w-36")}>Created</th>
                     <th className={cn(th, "w-36")}>Appt. Time</th>
                     <th className={cn(th, "w-24")}>Priority</th>
                     <th className={cn(th, "w-36")}>Status</th>

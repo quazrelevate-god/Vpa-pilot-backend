@@ -4,15 +4,15 @@ import "@/components/charts/chartSetup";
 import { Doughnut } from "react-chartjs-2";
 
 export default function StatusDoughnut({
-  scheduled, submitted, closed, rescheduled,
-}: { scheduled: number; submitted: number; closed: number; rescheduled: number }) {
+  scheduled, reviewed, awaiting_review, waiting, rescheduled,
+}: { scheduled: number; reviewed: number; awaiting_review: number; waiting: number; rescheduled: number }) {
   return (
     <Doughnut
       data={{
-        labels: ["Scheduled", "Submitted", "Closed", "Rescheduled"],
+        labels: ["Scheduled", "Reviewed", "Awaiting Review", "Waiting", "Rescheduled"],
         datasets: [{
-          data: [scheduled, submitted, closed, rescheduled],
-          backgroundColor: ["#f97316", "#10b981", "#94a3b8", "#eab308"],
+          data: [scheduled, reviewed, awaiting_review, waiting, rescheduled],
+          backgroundColor: ["#f97316", "#10b981", "#f59e0b", "#94a3b8", "#eab308"],
           borderWidth: 3,
           borderColor: "#fff",
           hoverOffset: 8,

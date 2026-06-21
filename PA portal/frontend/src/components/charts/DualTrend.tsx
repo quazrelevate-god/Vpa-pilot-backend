@@ -9,16 +9,16 @@ const RESOLVED = "#10b981";
 
 interface DualTrendProps {
   labels: string[];
-  submitted: number[];
+  incoming: number[];
   resolved?: number[];
 }
 
 /** Submissions vs Resolved daily trend — the political "are we keeping up?" chart. */
-export default function DualTrend({ labels, submitted, resolved }: DualTrendProps) {
+export default function DualTrend({ labels, incoming, resolved }: DualTrendProps) {
   const datasets: Parameters<typeof Line>[0]["data"]["datasets"] = [
     {
-      label: "Submissions",
-      data: submitted,
+      label: "Incoming",
+      data: incoming,
       borderColor: BRAND,
       borderWidth: 2.5,
       fill: true,

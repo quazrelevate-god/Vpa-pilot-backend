@@ -20,8 +20,9 @@ export interface SlaBucket {
 export interface StatsResponse {
   total: number;
   scheduled: number;
-  submitted: number;
-  closed: number;
+  reviewed: number;
+  awaiting_review: number;
+  waiting: number;
   rescheduled: number;
   ai_coverage: number;       // 0-100 (%)
   resolution_rate: number;   // 0-100 (%)

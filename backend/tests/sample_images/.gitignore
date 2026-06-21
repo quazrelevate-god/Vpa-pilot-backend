@@ -1,0 +1,4 @@
+# Don't commit personal/test images.
+*
+!README.md
+!.gitignore

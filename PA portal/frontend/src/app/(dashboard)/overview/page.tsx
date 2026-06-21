@@ -176,7 +176,7 @@ export default function OverviewPage() {
               <MetricTile
                 label="Resolution Rate"
                 value={`${stats.resolution_rate}%`}
-                caption="closed successfully"
+                caption="reviewed successfully"
                 icon={Heart}
                 tone="emerald"
               />
@@ -213,12 +213,12 @@ export default function OverviewPage() {
                 <div>
                   <div className="text-[13px] font-bold text-foreground">Petitions vs. Resolutions</div>
                   <div className="text-[11px] text-muted-foreground">
-                    Daily flow — incoming vs. closed
+                    Daily flow — incoming vs. reviewed
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-[11px] font-semibold text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-brand" /> Submissions
+                    <span className="h-2 w-2 rounded-full bg-brand" /> Incoming
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-500" /> Resolved
@@ -229,7 +229,7 @@ export default function OverviewPage() {
                 {stats ? (
                   <DualTrend
                     labels={stats.trend_labels}
-                    submitted={stats.trend_counts}
+                    incoming={stats.trend_counts}
                     resolved={stats.trend_resolved}
                   />
                 ) : (
@@ -360,8 +360,9 @@ export default function OverviewPage() {
                 {stats ? (
                   <StatusDoughnut
                     scheduled={stats.scheduled}
-                    submitted={stats.submitted}
-                    closed={stats.closed}
+                    reviewed={stats.reviewed}
+                    awaiting_review={stats.awaiting_review}
+                    waiting={stats.waiting}
                     rescheduled={stats.rescheduled}
                   />
                 ) : (

@@ -16,7 +16,7 @@ from src.core.database import Base
 # ── Ticket lifecycle states ───────────────────────────────────────────────────
 # The PA team moves a petition through these states manually.
 # NOTE: distinct from Appointment.status (which is queue-centric:
-# SCHEDULED / WAITING / COMPLETED). ticket_status is case-management:
+# SCHEDULED / WAITING / RESCHEDULED / AWAITING_REVIEW / REVIEWED). ticket_status is case-management:
 # "where is the petition's resolution".
 TICKET_STATUSES = (
     "OPEN",              # just submitted (auto)
@@ -255,7 +255,7 @@ class Appointment(Base):
         String(20),
         nullable=False,
         default='SCHEDULED',
-        comment="Appointment status: SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED"
+        comment="Appointment status: SCHEDULED, WAITING, RESCHEDULED, AWAITING_REVIEW, REVIEWED"
     )
     
     schedule_meeting = Column(

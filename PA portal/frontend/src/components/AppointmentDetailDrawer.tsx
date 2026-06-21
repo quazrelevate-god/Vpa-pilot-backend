@@ -24,12 +24,13 @@ interface AppointmentDetailDrawerProps {
   onStatusChange?: (row: AppointmentRow, next: AppointmentStatus) => void;
 }
 
-const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Waiting", "Rescheduled", "Submitted"];
+const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Waiting", "Rescheduled", "Awaiting Review", "Reviewed"];
 const STATUS_COLOR: Record<string, string> = {
-  Scheduled:   "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Waiting:     "bg-amber-100 text-amber-800 border-amber-200",
-  Rescheduled: "bg-violet-100 text-violet-700 border-violet-200",
-  Submitted:   "bg-blue-100 text-blue-700 border-blue-200",
+  Scheduled:        "bg-emerald-100 text-emerald-700 border-emerald-200",
+  Waiting:          "bg-amber-100 text-amber-800 border-amber-200",
+  Rescheduled:      "bg-violet-100 text-violet-700 border-violet-200",
+  "Awaiting Review": "bg-orange-100 text-orange-700 border-orange-200",
+  Reviewed:         "bg-blue-100 text-blue-700 border-blue-200",
 };
 
 export default function AppointmentDetailDrawer({

@@ -220,7 +220,7 @@ class AppointmentService:
             mobile_number: Citizen's mobile number
             token_number: Assigned token number
             citizen_name: Citizen's name
-            new_status: New status value (e.g., "Scheduled", "Submitted", "Closed")
+            new_status: New status value (e.g., "Scheduled", "Waiting", "Rescheduled", "Awaiting Review", "Reviewed")
             
         Returns:
             bool: True if sent successfully, False otherwise
@@ -709,7 +709,7 @@ class AppointmentService:
                 
                 # Step 10: Create appointment record.
                 # Direct-submit petitions land in AWAITING_REVIEW so the PA can
-                # check before moving them to COMPLETED ('Submitted').
+                # check before moving them to REVIEWED.
                 # Meeting requests stay on the SCHEDULED path.
                 initial_status = 'SCHEDULED' if schedule_meeting else 'AWAITING_REVIEW'
                 appointment = Appointment(
@@ -802,40 +802,6 @@ class AppointmentService:
             if session:
                 session.is_used = True
 
-            # Step 11b: Auto-create a PA ticket *only* for submitted petitions
-            # (no meeting requested). Citizens who book a meeting are handled
-            # through the appointment lifecycle; the PA team only triages
-            # written grievances via the ticket system.
-            if not schedule_meeting:
-                from src.models.ticket_models import (
-                    Ticket, TicketEvent, TicketStatus,
-                    TicketEventType, generate_ticket_number,
-                )
-                from sqlalchemy import func as sa_func
-                year = current_time.year
-                count_q = await db.execute(
-                    select(sa_func.count(Ticket.id))
-                    .where(sa_func.extract("year", Ticket.created_at) == year)
-                )
-                year_count = (count_q.scalar() or 0) + 1
-                new_ticket = Ticket(
-                    appointment_id=appointment.id,
-                    ticket_number=generate_ticket_number(year, year_count),
-                    status=TicketStatus.OPEN.value,
-                    created_at=current_time,
-                    updated_at=current_time,
-                )
-                db.add(new_ticket)
-                await db.flush()  # get ticket.id for the event
-                db.add(TicketEvent(
-                    ticket_id=new_ticket.id,
-                    event_type=TicketEventType.CREATED.value,
-                    actor="system",
-                    note=f"Ticket auto-created from submitted petition (token {token_assigned})",
-                    payload={"token": token_assigned, "appointment_id": appointment.id},
-                    created_at=current_time,
-                ))
-
             # Capture final status before commit so we can return it without an extra DB round-trip
             final_status = appointment.status
 
@@ -883,8 +849,8 @@ class AppointmentService:
                 message = f"No slots available right now. Your token number is {token_assigned} and you have been added to the waiting queue."
             elif final_status == 'AWAITING_REVIEW':
                 message = f"Petition submitted successfully. Your token number is {token_assigned}."
-            elif final_status == 'COMPLETED':
-                message = f"Petition submitted successfully. Your token number is {token_assigned}."
+            elif final_status == 'REVIEWED':
+                message = f"Petition reviewed successfully. Your token number is {token_assigned}."
             else:
                 message = f"Appointment scheduled successfully. Your token number is {token_assigned}."
 
