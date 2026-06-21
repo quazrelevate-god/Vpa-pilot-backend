@@ -577,9 +577,6 @@
                     <span class="lang-text">தமிழ்</span>
                 </div>
             </div>
-
-            <!-- Right Header Icon Emblem -->
-            <img src="/static/assets/CM-vijay.jpg" alt="Chief Minister" class="header-logo">
         </div>
 
         <!-- Dynamic Content Processing Form Form -->
@@ -811,45 +808,61 @@
             }
         };
 
+        // Null-safe text setter — silently skips missing elements so one
+        // absent id never kills the rest of the localization pass.
+        function _setText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = text;
+        }
+        function _setAttr(id, attr, text) {
+            const el = document.getElementById(id);
+            if (el) el[attr] = text;
+        }
+
         function switchLocalization(isChecked) {
             runtimeActiveLanguage = isChecked ? 'ta' : 'en';
             const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
 
-            document.getElementById('lbl-dist').innerText = copy.dist;
-            document.getElementById('lbl-portal-title').innerText = copy.portalTitle;
-            document.getElementById('lbl-sec-title').innerText = copy.secTitle;
-            document.getElementById('lbl-name').innerText = copy.name;
-            document.getElementById('lbl-phone').innerText = copy.phone;
-            document.getElementById('lbl-otp').innerText = copy.otp;
-            document.getElementById('lbl-desc').innerText = copy.desc;
-            document.getElementById('lbl-upload').innerText = copy.upload;
-            document.getElementById('lbl-upload-text').innerText = copy.uploadText;
-            document.getElementById('lbl-upload-hint').innerText = copy.uploadHint;
-            document.getElementById('lbl-btn-petition').innerText = copy.btnPetition;
-            document.getElementById('lbl-btn-meeting').innerText = copy.btnMeeting;
+            // Header & section titles
+            _setText('lbl-dist',         copy.dist);
+            _setText('lbl-portal-title', copy.portalTitle);
+            _setText('lbl-sec-title',    copy.secTitle);
+
+            // Field labels
+            _setText('lbl-name',        copy.name);
+            _setText('lbl-phone',       copy.phone);
+            _setText('lbl-otp',         copy.otp);
+            _setText('lbl-desc',        copy.desc);
+            _setText('lbl-upload',      copy.upload);
+            _setText('lbl-upload-text', copy.uploadText);
+            _setText('lbl-upload-hint', copy.uploadHint);
+
+            // Submit buttons
+            _setText('lbl-btn-petition', copy.btnPetition);
+            _setText('lbl-btn-meeting',  copy.btnMeeting);
 
             // Recording section
-            document.getElementById('lbl-audio').innerText = copy.audio;
-            document.getElementById('lbl-audio-hint').innerText = copy.audioHint;
-            document.getElementById('lbl-record').innerText = copy.record;
-            document.getElementById('lbl-stop').innerText = copy.stop;
-            document.getElementById('lbl-recording-saved').innerText = copy.recordingSaved;
-            document.getElementById('lbl-delete-rec').innerText = copy.deleteRec;
+            _setText('lbl-audio',           copy.audio);
+            _setText('lbl-audio-hint',      copy.audioHint);
+            _setText('lbl-record',          copy.record);
+            _setText('lbl-stop',            copy.stop);
+            _setText('lbl-recording-saved', copy.recordingSaved);
+            _setText('lbl-delete-rec',      copy.deleteRec);
 
-            // OTP buttons — only update if still in default (unsent/unverified) state
-            const sendOtpEl = document.getElementById('lbl-send-otp');
-            if (sendOtpEl) sendOtpEl.innerText = copy.sendOtp;
-            const verifyOtpEl = document.getElementById('lbl-verify-otp');
-            if (verifyOtpEl) verifyOtpEl.innerText = copy.verifyOtp;
+            // OTP action buttons
+            _setText('lbl-send-otp',   copy.sendOtp);
+            _setText('lbl-verify-otp', copy.verifyOtp);
 
-            document.getElementById('txtName').placeholder = copy.placeholderName;
-            document.getElementById('txtMobile').placeholder = copy.placeholderMobile;
-            document.getElementById('txtDesc').placeholder = copy.placeholderDesc;
+            // Input placeholders
+            _setAttr('txtName',   'placeholder', copy.placeholderName);
+            _setAttr('txtMobile', 'placeholder', copy.placeholderMobile);
+            _setAttr('txtDesc',   'placeholder', copy.placeholderDesc);
 
-            document.getElementById('lbl-modal-title').innerText = copy.modalTitle;
-            document.getElementById('lbl-modal-body').innerText = copy.modalBody;
-            document.getElementById('lbl-modal-id').innerText = copy.modalId;
-            document.getElementById('lbl-modal-date').innerText = copy.modalDate;
+            // Success modal
+            _setText('lbl-modal-title', copy.modalTitle);
+            _setText('lbl-modal-body',  copy.modalBody);
+            _setText('lbl-modal-id',    copy.modalId);
+            _setText('lbl-modal-date',  copy.modalDate);
         }
 
         async function generateVerificationOtp() {
@@ -1287,10 +1300,10 @@
             document.getElementById('btnSubmitMeeting').disabled = true;
         }
 
-        // Initialize Tamil as default language on page load
-        window.addEventListener('DOMContentLoaded', function() {
-            switchLocalization(true);  // true = Tamil
-        });
+        // Script is at the bottom of <body> — DOM is already fully parsed here,
+        // so we can call switchLocalization immediately without waiting for an event.
+        // This avoids a flash of English text on first render.
+        switchLocalization(true);
     </script>
 </body>
 </html>
