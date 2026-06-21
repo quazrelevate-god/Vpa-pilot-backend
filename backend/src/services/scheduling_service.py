@@ -732,8 +732,9 @@ class SchedulingService:
 
         await db.commit()
 
-        for p in payloads:
-            asyncio.create_task(self._send_schedule_notification(**p))
+        # SMS notifications disabled — only OTP SMS is sent
+        # for p in payloads:
+        #     asyncio.create_task(self._send_schedule_notification(**p))
         
         return scheduled_count
     
@@ -949,8 +950,9 @@ class SchedulingService:
 
         await db.commit()
 
-        for p in payloads:
-            asyncio.create_task(self._send_schedule_notification(**p))
+        # SMS notifications disabled — only OTP SMS is sent
+        # for p in payloads:
+        #     asyncio.create_task(self._send_schedule_notification(**p))
 
         return {"scheduled": scheduled_count, "skipped": skipped}
 
@@ -1032,7 +1034,8 @@ class SchedulingService:
 
         payload = self._notification_payload(appt)
         await db.commit()
-        asyncio.create_task(self._send_schedule_notification(**payload))
+        # SMS notification disabled — only OTP SMS is sent
+        # asyncio.create_task(self._send_schedule_notification(**payload))
 
         return {
             "appointment_id": appt.id,

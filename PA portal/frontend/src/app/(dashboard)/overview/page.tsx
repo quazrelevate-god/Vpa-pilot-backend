@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import TopBar from "@/components/TopBar";
 import MetricTile from "@/components/MetricTile";
+import { useLang } from "@/lib/lang-context";
 import DualTrend from "@/components/charts/DualTrend";
 import CategoryBar from "@/components/charts/CategoryBar";
 import StatusDoughnut from "@/components/charts/StatusDoughnut";
@@ -55,6 +56,7 @@ const URGENCY_TONE: Record<string, string> = {
 };
 
 export default function OverviewPage() {
+  const { t } = useLang();
   const [range, setRange] = useState<Range>("year");
   const [year, setYear] = useState<number>(CURRENT_YEAR);
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -110,10 +112,10 @@ export default function OverviewPage() {
           <div className="flex flex-shrink-0 flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
-                Performance
+                {t("overview.title")}
               </h1>
               <p className="text-[12.5px] text-muted-foreground">
-                {rangeLabel(range, year)} · live snapshot for office leadership
+                {rangeLabel(range, year)} · {t("overview.subtitle")}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -129,7 +131,7 @@ export default function OverviewPage() {
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
-                    {r === "all" ? "All time" : r.toUpperCase()}
+                    {r === "all" ? t("overview.allTime") : r.toUpperCase()}
                   </button>
                 ))}
               </div>
@@ -166,39 +168,39 @@ export default function OverviewPage() {
           ) : (
             <div className="grid flex-shrink-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <MetricTile
-                label="Citizens Served"
+                label={t("overview.citizens")}
                 value={fmt(stats.unique_citizens ?? stats.total)}
-                caption="distinct petitioners"
+                caption={t("overview.citizensSub")}
                 icon={Users}
                 tone="brand"
                 deltaPct={stats.growth_pct ?? undefined}
               />
               <MetricTile
-                label="Resolution Rate"
+                label={t("overview.resolution")}
                 value={`${stats.resolution_rate}%`}
-                caption="reviewed successfully"
+                caption={t("overview.resolutionSub")}
                 icon={Heart}
                 tone="emerald"
               />
               <MetricTile
-                label="Avg Response Time"
+                label={t("overview.avgResponse")}
                 value={stats.avg_response_hours ? `${stats.avg_response_hours}h` : "—"}
-                caption="creation → resolution"
+                caption={t("overview.avgResponseSub")}
                 icon={Clock4}
                 tone="violet"
                 invertDelta
               />
               <MetricTile
-                label="Meetings Held"
+                label={t("overview.meetings")}
                 value={fmt(stats.meetings_held)}
-                caption="face-to-face with citizens"
+                caption={t("overview.meetingsSub")}
                 icon={Handshake}
                 tone="amber"
               />
               <MetricTile
-                label="Active Cases"
+                label={t("overview.activeCases")}
                 value={fmt(stats.active_cases)}
-                caption="awaiting action"
+                caption={t("overview.activeCasesSub")}
                 icon={Briefcase}
                 tone={stats.active_cases && stats.active_cases > 50 ? "rose" : "slate"}
               />
@@ -211,17 +213,15 @@ export default function OverviewPage() {
             <Card className="flex min-h-0 flex-col p-4 lg:col-span-3">
               <div className="mb-2 flex flex-shrink-0 items-start justify-between">
                 <div>
-                  <div className="text-[13px] font-bold text-foreground">Petitions vs. Resolutions</div>
-                  <div className="text-[11px] text-muted-foreground">
-                    Daily flow — incoming vs. reviewed
-                  </div>
+                  <div className="text-[13px] font-bold text-foreground">{t("overview.trendTitle")}</div>
+                  <div className="text-[11px] text-muted-foreground">{t("overview.trendSub")}</div>
                 </div>
                 <div className="flex items-center gap-3 text-[11px] font-semibold text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-brand" /> Incoming
+                    <span className="h-2 w-2 rounded-full bg-brand" /> {t("overview.submissions")}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" /> Resolved
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" /> {t("overview.resolved")}
                   </span>
                 </div>
               </div>
@@ -244,11 +244,9 @@ export default function OverviewPage() {
                 <div>
                   <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
                     <Megaphone className="h-3.5 w-3.5 text-brand" />
-                    Voice of the People
+                    {t("overview.voiceTitle")}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    Top issues raised by citizens
-                  </div>
+                  <div className="text-[11px] text-muted-foreground">{t("overview.voiceSub")}</div>
                 </div>
               </div>
               <div className="min-h-0 flex-1">
@@ -269,11 +267,11 @@ export default function OverviewPage() {
                 <div>
                   <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
                     <Flame className="h-3.5 w-3.5 text-rose-500" />
-                    Urgency Pulse
+                    {t("overview.urgency")}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">How tense is the workload?</div>
+                  <div className="text-[11px] text-muted-foreground">{t("overview.urgencySub")}</div>
                 </div>
-                {stats && <span className="text-[11px] font-semibold text-muted-foreground">{urgencyMix.total} cases</span>}
+                {stats && <span className="text-[11px] font-semibold text-muted-foreground">{urgencyMix.total} {t("overview.cases")}</span>}
               </div>
               {stats ? (
                 <div className="flex-1 space-y-1.5">
@@ -309,13 +307,13 @@ export default function OverviewPage() {
                 <div>
                   <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
                     <Send className="h-3.5 w-3.5 text-cyan-600" />
-                    Forwarded to Departments
+                    {t("overview.forwarded")}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">Cases we routed externally</div>
+                  <div className="text-[11px] text-muted-foreground">{t("overview.forwardedSub")}</div>
                 </div>
                 {stats && (
                   <span className="rounded-md bg-cyan-50 px-1.5 py-0.5 text-[11px] font-bold text-cyan-700">
-                    {stats.total_forwarded ?? 0} total
+                    {stats.total_forwarded ?? 0} {t("overview.total")}
                   </span>
                 )}
               </div>
@@ -341,7 +339,7 @@ export default function OverviewPage() {
                   })}
                   {(!stats.forwarded_departments || stats.forwarded_departments.length === 0) && (
                     <div className="grid h-full place-items-center text-center text-[11px] italic text-muted-foreground">
-                      No external forwards yet
+                      {t("overview.noForwards")}
                     </div>
                   )}
                 </div>
@@ -353,8 +351,8 @@ export default function OverviewPage() {
             {/* Status mix — small donut */}
             <Card className="flex min-h-[180px] flex-col p-4 lg:col-span-1">
               <div className="mb-1">
-                <div className="text-[13px] font-bold text-foreground">Status Mix</div>
-                <div className="text-[11px] text-muted-foreground">All petitions</div>
+                <div className="text-[13px] font-bold text-foreground">{t("overview.statusMix")}</div>
+                <div className="text-[11px] text-muted-foreground">{t("overview.statusMixSub")}</div>
               </div>
               <div className="min-h-0 flex-1">
                 {stats ? (
@@ -374,9 +372,9 @@ export default function OverviewPage() {
 
           {/* Footer micro — link to operations */}
           <div className="flex flex-shrink-0 items-center justify-between rounded-lg border border-dashed border-border bg-card/40 px-3 py-1.5 text-[11px] text-muted-foreground">
-            <span>Numbers refresh on demand · drilldowns available on each section.</span>
+            <span>{t("overview.footer")}</span>
             <a href="/operations" className="inline-flex items-center gap-1 font-semibold text-brand hover:underline">
-              Operations view <ArrowRight className="h-3 w-3" />
+              {t("overview.goOps")} <ArrowRight className="h-3 w-3" />
             </a>
           </div>
         </div>

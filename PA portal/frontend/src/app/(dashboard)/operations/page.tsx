@@ -7,6 +7,7 @@ import {
 
 import TopBar from "@/components/TopBar";
 import MetricTile from "@/components/MetricTile";
+import { useLang } from "@/lib/lang-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +37,7 @@ const PRIORITY_TONE: Record<string, { bar: string; chip: string; label: string }
 };
 
 export default function OperationsPage() {
+  const { t } = useLang();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [waiting, setWaiting] = useState<WaitingItem[]>([]);
   const [today, setToday] = useState<TodaySchedule | null>(null);
@@ -45,14 +47,14 @@ export default function OperationsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, w, t] = await Promise.all([
+      const [s, w, sched] = await Promise.all([
         fetchStats().catch(() => null),
         fetch("/api/v1/scheduling/admin/waiting-queue?limit=10").then((r) => r.json()).catch(() => []),
         fetch("/api/v1/scheduling/admin/today-schedule").then((r) => r.json()).catch(() => null),
       ]);
       if (s) setStats(s);
       if (Array.isArray(w)) setWaiting(w);
-      if (t) setToday(t);
+      if (sched) setToday(sched);
       setUpdated(new Date().toLocaleTimeString());
     } finally {
       setLoading(false);
@@ -97,15 +99,15 @@ export default function OperationsPage() {
           <div className="flex flex-shrink-0 flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
-                Operations Center
+                {t("ops.title")}
               </h1>
               <p className="text-[12.5px] text-muted-foreground">
-                Backlog health, SLA performance and capacity for the PA team
+                {t("ops.subtitle")}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <a href="/overview" className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-brand hover:bg-muted">
-                <ArrowLeft className="h-3 w-3" /> Performance view
+                <ArrowLeft className="h-3 w-3" /> {t("ops.goPerf")}
               </a>
               <Button variant="outline" size="sm" onClick={load} disabled={loading}>
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
@@ -117,33 +119,33 @@ export default function OperationsPage() {
           {/* KPI strip — operations focus */}
           <div className="grid flex-shrink-0 grid-cols-2 gap-3 sm:grid-cols-4">
             <MetricTile
-              label="Open Backlog"
+              label={t("ops.backlog")}
               value={fmt(stats?.active_cases)}
               icon={Activity}
               tone="brand"
-              caption="actionable cases"
+              caption={t("ops.backlogSub")}
             />
             <MetricTile
-              label="SLA Breach Rate"
+              label={t("ops.slaBreachRate")}
               value={`${slaBreachPct}%`}
               icon={AlertTriangle}
               tone={slaBreachPct >= 25 ? "rose" : slaBreachPct >= 10 ? "amber" : "emerald"}
-              caption={`${slaBreached} of ${slaTotal} cases`}
+              caption={`${slaBreached} of ${slaTotal} ${t("overview.cases")}`}
               invertDelta
             />
             <MetricTile
-              label="Citizens Waiting"
+              label={t("ops.waiting")}
               value={fmt(waiting.length)}
               icon={Hourglass}
               tone={waiting.length >= 20 ? "rose" : waiting.length >= 5 ? "amber" : "slate"}
-              caption={oldestWaitingDays ? `oldest: ${oldestWaitingDays}d` : "queue is clear"}
+              caption={oldestWaitingDays ? `${t("ops.oldest")}: ${oldestWaitingDays}d` : t("ops.queueClearCaption")}
             />
             <MetricTile
-              label="Today's Meeting Slots"
+              label={t("ops.slots")}
               value={today?.has_availability ? `${today.booked_slots ?? 0}/${today.total_slots ?? 0}` : "—"}
               icon={CalendarCheck}
               tone={meetingFillPct >= 80 ? "rose" : meetingFillPct >= 50 ? "amber" : "emerald"}
-              caption={today?.has_availability ? `${meetingFillPct}% booked` : "no availability set"}
+              caption={today?.has_availability ? `${meetingFillPct}% ${t("ops.booked")}` : t("ops.noAvailability")}
             />
           </div>
 
@@ -155,10 +157,10 @@ export default function OperationsPage() {
                 <div>
                   <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
                     <GaugeIcon className="h-3.5 w-3.5 text-violet-600" />
-                    Today's Meeting Capacity
+                    {t("ops.capacity")}
                   </div>
                   <div className="text-[11px] text-muted-foreground">
-                    {today?.has_availability ? today.time_range : "MLA has not set availability"}
+                    {today?.has_availability ? today.time_range : t("ops.noAvailability")}
                   </div>
                 </div>
               </div>
@@ -172,7 +174,7 @@ export default function OperationsPage() {
                       <span className="text-lg font-bold text-muted-foreground">%</span>
                     </div>
                     <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      slots booked
+                      {t("ops.booked")}
                     </div>
                   </div>
                   <div className="space-y-1.5">
@@ -189,17 +191,17 @@ export default function OperationsPage() {
                       />
                     </div>
                     <div className="flex justify-between text-[11px] font-semibold text-muted-foreground">
-                      <span>{today.booked_slots ?? 0} booked</span>
-                      <span>{today.remaining_slots ?? 0} remaining</span>
+                      <span>{today.booked_slots ?? 0} {t("ops.booked")}</span>
+                      <span>{today.remaining_slots ?? 0} {t("ops.remaining")}</span>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">
                   <Clock className="mb-2 h-8 w-8 text-muted-foreground/30" />
-                  <p className="text-[12px] font-semibold text-foreground">No meeting slots today</p>
+                  <p className="text-[12px] font-semibold text-foreground">{t("ops.noSlotsToday")}</p>
                   <a href="/scheduling" className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-brand hover:underline">
-                    Set MLA availability →
+                    {t("ops.setAvailability")}
                   </a>
                 </div>
               )}
@@ -211,21 +213,19 @@ export default function OperationsPage() {
                 <div>
                   <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
                     <Hourglass className="h-3.5 w-3.5 text-amber-600" />
-                    Next In Line
+                    {t("ops.nextInLine")}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    Waiting for an MLA slot
-                  </div>
+                  <div className="text-[11px] text-muted-foreground">{t("ops.nextInLineSub")}</div>
                 </div>
                 <a href="/waiting-queue" className="text-[10px] font-semibold text-brand hover:underline">
-                  All →
+                  {t("ops.viewAll")}
                 </a>
               </div>
               {waiting.length === 0 ? (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">
                   <CalendarCheck className="mb-1 h-7 w-7 text-emerald-500/40" />
-                  <p className="text-[11.5px] font-semibold text-foreground">Queue is clear</p>
-                  <p className="text-[10.5px] text-muted-foreground">All meetings scheduled.</p>
+                  <p className="text-[11.5px] font-semibold text-foreground">{t("ops.queueClear")}</p>
+                  <p className="text-[10.5px] text-muted-foreground">{t("ops.allScheduled")}</p>
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
@@ -260,18 +260,16 @@ export default function OperationsPage() {
               <div>
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
                   <Timer className="h-3.5 w-3.5 text-brand" />
-                  SLA Performance by Priority
+                  {t("ops.slaTitle")}
                 </div>
-                <div className="text-[11px] text-muted-foreground">
-                  On-track vs. breached for every priority tier
-                </div>
+                <div className="text-[11px] text-muted-foreground">{t("ops.slaSub")}</div>
               </div>
               <div className="flex items-center gap-3 text-[11px] font-semibold text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> On track
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> {t("ops.onTrack")}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-rose-500" /> Breached
+                  <span className="h-2 w-2 rounded-full bg-rose-500" /> {t("ops.breached")}
                 </span>
               </div>
             </div>

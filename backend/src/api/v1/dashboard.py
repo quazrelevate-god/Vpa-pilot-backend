@@ -151,14 +151,14 @@ async def api_update_status(
     if not result.get("success"):
         return JSONResponse({"error": "Appointment not found"}, status_code=404)
     
-    # Fire-and-forget SMS notification
-    if result.get("mobile") and result.get("name"):
-        asyncio.create_task(appointment_service.send_status_update_sms(
-            mobile_number=result["mobile"],
-            token_number=result["token"],
-            citizen_name=result["name"],
-            new_status=result["status"],
-        ))
+    # SMS notification disabled — only OTP SMS is sent
+    # if result.get("mobile") and result.get("name"):
+    #     asyncio.create_task(appointment_service.send_status_update_sms(
+    #         mobile_number=result["mobile"],
+    #         token_number=result["token"],
+    #         citizen_name=result["name"],
+    #         new_status=result["status"],
+    #     ))
 
     return JSONResponse({"ok": True})
 

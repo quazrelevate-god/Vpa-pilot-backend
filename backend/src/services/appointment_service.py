@@ -789,12 +789,12 @@ class AppointmentService:
             # Step 12: Commit transaction — citizen gets token NOW
             await db.commit()
 
-            # Step 13: Fire-and-forget confirmation SMS
-            asyncio.create_task(self._send_confirmation_sms(
-                mobile_number=mobile,
-                token_number=token_assigned,
-                citizen_name=name,
-            ))
+            # Step 13: Confirmation SMS disabled — only OTP SMS is sent
+            # asyncio.create_task(self._send_confirmation_sms(
+            #     mobile_number=mobile,
+            #     token_number=token_assigned,
+            #     citizen_name=name,
+            # ))
 
             # Step 14: Fire-and-forget Gemini summarisation.
             # Snapshot attachments to plain dicts BEFORE the background task

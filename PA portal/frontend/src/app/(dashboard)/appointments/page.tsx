@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import TopBar from "@/components/TopBar";
 import PriorityBadge from "@/components/PriorityBadge";
+import { useLang } from "@/lib/lang-context";
 import RescheduleModal from "@/components/RescheduleModal";
 import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
 import FilterStrip from "@/components/FilterStrip";
@@ -32,6 +33,7 @@ function statusClass(s: string) {
 }
 
 export default function AppointmentsPage() {
+  const { t } = useLang();
   const [tab, setTab] = useState<(typeof TABS)[number]>("All");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -118,13 +120,13 @@ export default function AppointmentsPage() {
           {/* Page header */}
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Appointments</h1>
+              <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{t("appts.title")}</h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                Citizens who have submitted petitions via the QR flow.
+                {t("appts.subtitle")}
               </p>
             </div>
             <Button variant="outline" onClick={exportCSV}>
-              <Download className="h-4 w-4 text-brand" /> Export
+              <Download className="h-4 w-4 text-brand" /> {t("action.export")}
             </Button>
           </div>
 
@@ -143,12 +145,17 @@ export default function AppointmentsPage() {
               </div>
 
               <div className="flex items-center gap-1 overflow-x-auto">
-                {TABS.map((t) => {
-                  const active = t === tab;
+                {TABS.map((tabItem) => {
+                  const active = tabItem === tab;
+                  const TAB_KEYS: Record<string, string> = {
+                    "All": "appts.tabAll", "Awaiting Review": "appts.tabAwaiting",
+                    "Scheduled": "appts.tabScheduled", "Waiting": "appts.tabWaiting",
+                    "Rescheduled": "appts.tabRescheduled", "Reviewed": "appts.tabReviewed",
+                  };
                   return (
                     <button
-                      key={t}
-                      onClick={() => { setTab(t); setPage(1); }}
+                      key={tabItem}
+                      onClick={() => { setTab(tabItem); setPage(1); }}
                       className={cn(
                         "whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors",
                         active
@@ -156,7 +163,7 @@ export default function AppointmentsPage() {
                           : "text-muted-foreground hover:bg-muted hover:text-foreground"
                       )}
                     >
-                      {t}
+                      {t(TAB_KEYS[tabItem] ?? tabItem)}
                     </button>
                   );
                 })}
@@ -168,9 +175,9 @@ export default function AppointmentsPage() {
               <FilterStrip
                 onClearAll={() => { setUrgency(""); setDepartment(""); setCategory(""); setPage(1); }}
                 groups={[
-                  { key: "urgency",    label: "Urgency",    value: urgency,    onChange: v => { setPage(1); setUrgency(v); },    options: urgencyOptions },
-                  { key: "department", label: "Department", value: department, onChange: v => { setPage(1); setDepartment(v); }, options: deptOptions },
-                  { key: "category",   label: "Category",   value: category,   onChange: v => { setPage(1); setCategory(v); },   options: categoryOptions },
+                  { key: "urgency",    label: t("label.urgency"),    value: urgency,    onChange: v => { setPage(1); setUrgency(v); },    options: urgencyOptions },
+                  { key: "department", label: t("label.department"), value: department, onChange: v => { setPage(1); setDepartment(v); }, options: deptOptions },
+                  { key: "category",   label: t("label.category"),   value: category,   onChange: v => { setPage(1); setCategory(v); },   options: categoryOptions },
                 ]}
               />
             </div>
@@ -181,21 +188,21 @@ export default function AppointmentsPage() {
                 <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur">
                   <tr className="border-b border-border">
                     <th className={cn(th, "w-10")}>#</th>
-                    <th className={cn(th, "w-28")}>Token</th>
-                    <th className={cn(th, "w-40")}>Name</th>
-                    <th className={cn(th, "w-36")}>Category</th>
-                    <th className={cn(th, "w-36")}>Created</th>
-                    <th className={cn(th, "w-36")}>Appt. Time</th>
-                    <th className={cn(th, "w-24")}>Priority</th>
-                    <th className={cn(th, "w-36")}>Status</th>
+                    <th className={cn(th, "w-28")}>{t("appts.colToken")}</th>
+                    <th className={cn(th, "w-40")}>{t("appts.colName")}</th>
+                    <th className={cn(th, "w-36")}>{t("appts.colCategory")}</th>
+                    <th className={cn(th, "w-36")}>{t("label.date")}</th>
+                    <th className={cn(th, "w-36")}>{t("appts.colTime")}</th>
+                    <th className={cn(th, "w-24")}>{t("appts.colUrgency")}</th>
+                    <th className={cn(th, "w-36")}>{t("appts.colStatus")}</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={9} className="py-12 text-center text-sm text-muted-foreground">Loading…</td></tr>
+                    <tr><td colSpan={9} className="py-12 text-center text-sm text-muted-foreground">{t("label.loading")}</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={9} className="py-12 text-center text-sm text-muted-foreground">No appointments found.</td></tr>
+                    <tr><td colSpan={9} className="py-12 text-center text-sm text-muted-foreground">{t("appts.noAppts")}</td></tr>
                   ) : rows.map((row, idx) => (
                     <tr
                       key={row.id}

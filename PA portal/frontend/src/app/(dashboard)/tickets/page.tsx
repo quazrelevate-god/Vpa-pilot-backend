@@ -5,6 +5,7 @@ import { Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron, Ticket a
 
 import TopBar from "@/components/TopBar";
 import FilterStrip from "@/components/FilterStrip";
+import { useLang } from "@/lib/lang-context";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,13 +23,13 @@ import {
 const PAGE_SIZE = 25;
 
 // Primary status segments (double as the main filter + live-count overview).
-const SEGMENTS: { key: string; label: string }[] = [
-  { key: "",                  label: "All" },
-  { key: "open",              label: "Open" },
-  { key: "in_progress",       label: "In Progress" },
-  { key: "forwarded_to_dept", label: "Forwarded" },
-  { key: "resolved",          label: "Resolved" },
-  { key: "closed",            label: "Closed" },
+const SEGMENTS: { key: string; tKey: string }[] = [
+  { key: "",                  tKey: "tickets.segAll" },
+  { key: "open",              tKey: "tickets.segOpen" },
+  { key: "in_progress",       tKey: "tickets.segProgress" },
+  { key: "forwarded_to_dept", tKey: "tickets.segFwd" },
+  { key: "resolved",          tKey: "tickets.segResolved" },
+  { key: "closed",            tKey: "tickets.segClosed" },
 ];
 
 const PRIORITY_RAIL: Record<string, string> = {
@@ -63,6 +64,7 @@ function slaLabel(priority: string | null | undefined): string {
 }
 
 export default function TicketsPage() {
+  const { t } = useLang();
   const [rows, setRows] = useState<TicketRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -137,10 +139,10 @@ export default function TicketsPage() {
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand/10 text-brand">
                   <TicketIcon className="h-5 w-5" />
                 </span>
-                Tickets
+                {t("tickets.title")}
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Case-management tracking for every petition.
+                {t("tickets.subtitle")}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -197,7 +199,7 @@ export default function TicketsPage() {
                     active ? "bg-brand text-brand-foreground shadow-card" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
-                  {s.label}
+                  {t(s.tKey)}
                   <span className={cn(
                     "min-w-[20px] rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums",
                     active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
@@ -213,10 +215,10 @@ export default function TicketsPage() {
           <FilterStrip
             onClearAll={clearAll}
             groups={[
-              { key: "priority",   label: "Priority",   value: priority,   onChange: v => { setPage(1); setPriority(v); },   options: priorityOptions },
-              { key: "urgency",    label: "Urgency",    value: urgency,    onChange: v => { setPage(1); setUrgency(v); },    options: urgencyOptions },
-              { key: "department", label: "Department", value: department, onChange: v => { setPage(1); setDepartment(v); }, options: deptOptions },
-              { key: "category",   label: "Category",   value: category,   onChange: v => { setPage(1); setCategory(v); },   options: categoryOptions },
+              { key: "priority",   label: t("label.priority"),   value: priority,   onChange: v => { setPage(1); setPriority(v); },   options: priorityOptions },
+              { key: "urgency",    label: t("label.urgency"),    value: urgency,    onChange: v => { setPage(1); setUrgency(v); },    options: urgencyOptions },
+              { key: "department", label: t("label.department"), value: department, onChange: v => { setPage(1); setDepartment(v); }, options: deptOptions },
+              { key: "category",   label: t("label.category"),   value: category,   onChange: v => { setPage(1); setCategory(v); },   options: categoryOptions },
             ]}
           />
 
@@ -226,14 +228,14 @@ export default function TicketsPage() {
               <table className="w-full min-w-[980px] text-sm">
                 <thead className="bg-muted/60">
                   <tr className="border-b border-border">
-                    <th className={cn(th, "w-[150px]")}>Ticket</th>
-                    <th className={th}>Citizen</th>
-                    <th className={th}>Headline</th>
-                    <th className={th}>Department</th>
-                    <th className={cn(th, "w-20")}>Priority</th>
-                    <th className={cn(th, "w-32")}>Status</th>
-                    <th className={cn(th, "w-28")}>Assignee</th>
-                    <th className={cn(th, "w-28 text-right")}>Open for</th>
+                    <th className={cn(th, "w-[150px]")}>{t("tickets.colTicket")}</th>
+                    <th className={th}>{t("tickets.colCitizen")}</th>
+                    <th className={th}>{t("label.summary")}</th>
+                    <th className={th}>{t("label.department")}</th>
+                    <th className={cn(th, "w-20")}>{t("tickets.colPriority")}</th>
+                    <th className={cn(th, "w-32")}>{t("tickets.colStatus")}</th>
+                    <th className={cn(th, "w-28")}>{t("drawer.assignedTo")}</th>
+                    <th className={cn(th, "w-28 text-right")}>{t("tickets.colOpenFor")}</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -255,7 +257,7 @@ export default function TicketsPage() {
                   ) : rows.length === 0 ? (
                     <tr><td colSpan={9} className="px-4 py-16 text-center">
                       <TicketIcon className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
-                      <div className="text-sm font-medium text-foreground">No tickets match the current filters.</div>
+                      <div className="text-sm font-medium text-foreground">{t("tickets.noTickets")}</div>
                       <div className="text-xs text-muted-foreground">Try clearing filters or switching status.</div>
                     </td></tr>
                   ) : rows.map((r) => (
@@ -317,8 +319,8 @@ export default function TicketsPage() {
 
             <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
               <div className="text-muted-foreground">
-                {total > 0 ? `${total} ticket${total === 1 ? "" : "s"}` : "No tickets"}
-                {total > PAGE_SIZE && ` · page ${page} of ${lastPage}`}
+                {total > 0 ? `${total} ${t("tickets.colTicket")}` : t("tickets.noTickets")}
+                {total > PAGE_SIZE && ` · ${t("tickets.page")} ${page} ${t("tickets.of")} ${lastPage}`}
               </div>
               {total > PAGE_SIZE && (
                 <div className="flex gap-2">
