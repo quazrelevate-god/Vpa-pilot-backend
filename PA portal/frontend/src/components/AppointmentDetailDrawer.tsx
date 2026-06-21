@@ -224,11 +224,11 @@ export default function AppointmentDetailDrawer({
                   </section>
                 )}
 
-                {/* Citizen's original description */}
-                {a.description && (
+                {/* Citizen's description / Audio transcript */}
+                {(a.description || a.audio_transcript) && (
                   <Panel icon={FileText} title="Citizen's description">
                     <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground/85">
-                      {a.description}
+                      {a.audio_transcript || a.description}
                     </p>
                   </Panel>
                 )}
@@ -242,7 +242,6 @@ export default function AppointmentDetailDrawer({
                         : []),
                       ...(a.attachments ?? []),
                     ]}
-                    audioTranscript={a.audio_transcript}
                   />
                 </Panel>
 
