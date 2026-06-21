@@ -236,12 +236,7 @@ export default function AppointmentDetailDrawer({
                 {/* Attachments + audio */}
                 <Panel icon={Mic} title="Attachments & recordings">
                   <AttachmentGallery
-                    attachments={[
-                      ...(a.audio_url
-                        ? [{ name: "Voice recording", url: a.audio_url, type: "AUDIO" as const }]
-                        : []),
-                      ...(a.attachments ?? []),
-                    ]}
+                    attachments={a.attachments ?? []}
                   />
                 </Panel>
 

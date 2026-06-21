@@ -18,11 +18,17 @@ import type { AppointmentRow, AppointmentStatus } from "@/lib/types";
 import { urgencyOptions, deptOptions, categoryOptions } from "@/lib/enums";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const TABS = ["All", "Scheduled", "Waiting", "Rescheduled", "Submitted"] as const;
+const TABS = ["All", "Awaiting Review", "Scheduled", "Waiting", "Rescheduled", "Reviewed"] as const;
 const PAGE_SIZE = 25;
 
 function statusClass(s: string) {
-  return ({ Scheduled: "s-Scheduled", Rescheduled: "s-Rescheduled", Submitted: "s-Submitted", Waiting: "s-Waiting" } as Record<string, string>)[s] ?? "";
+  return ({
+    Scheduled: "s-Scheduled",
+    Rescheduled: "s-Rescheduled",
+    Reviewed: "s-Reviewed",
+    Waiting: "s-Waiting",
+    "Awaiting Review": "s-AwaitingReview",
+  } as Record<string, string>)[s] ?? "";
 }
 
 export default function AppointmentsPage() {
@@ -211,10 +217,11 @@ export default function AppointmentsPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="Awaiting Review">Awaiting Review</SelectItem>
+                            <SelectItem value="Reviewed">Reviewed</SelectItem>
                             <SelectItem value="Scheduled">Scheduled</SelectItem>
                             <SelectItem value="Waiting">Waiting</SelectItem>
                             <SelectItem value="Rescheduled">Rescheduled</SelectItem>
-                            <SelectItem value="Submitted">Submitted</SelectItem>
                           </SelectContent>
                         </Select>
                       </td>

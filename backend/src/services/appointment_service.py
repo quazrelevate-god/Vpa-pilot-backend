@@ -707,8 +707,11 @@ class AppointmentService:
                 if audio_recording:
                     audio_url = await self._save_audio_recording(audio_recording, token_assigned)
                 
-                # Step 10: Create appointment record
-                initial_status = 'SCHEDULED' if schedule_meeting else 'COMPLETED'
+                # Step 10: Create appointment record.
+                # Direct-submit petitions land in AWAITING_REVIEW so the PA can
+                # check before moving them to COMPLETED ('Submitted').
+                # Meeting requests stay on the SCHEDULED path.
+                initial_status = 'SCHEDULED' if schedule_meeting else 'AWAITING_REVIEW'
                 appointment = Appointment(
                     citizen_id=citizen.id,
                     slot_id=slot_id,
@@ -847,19 +850,39 @@ class AppointmentService:
             ))
 
             # Step 14: Fire-and-forget Gemini summarisation.
-            # Uses its own DB session so it runs completely independently of
-            # the request lifecycle — citizen gets the response immediately.
+            # Snapshot attachments to plain dicts BEFORE the background task
+            # starts. Once db.commit() expires the ORM instances, reading
+            # `.attachment_type` etc. would trigger a lazy-load on a closed
+            # session and silently fail — which previously caused summarisation
+            # to never run for some submissions.
+            attachment_snapshots = [
+                {
+                    "attachment_type": att.attachment_type,
+                    "storage_url": att.storage_url,
+                    "mime_type": att.mime_type,
+                }
+                for att in attachments_created
+            ]
+            print(
+                f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
+                f"schedule_meeting={schedule_meeting} | "
+                f"attachments={len(attachment_snapshots)} | "
+                f"audio_url={'yes' if audio_url else 'no'} | "
+                f"desc_chars={len(description or '')}"
+            )
             asyncio.create_task(self._trigger_summarisation(
                 appointment_id=appointment.id,
                 citizen_name=name,
                 constituency=constituency,
                 description=description,
-                attachments_created=attachments_created,
+                attachments_created=attachment_snapshots,
                 audio_recording_url=audio_url,
             ))
 
             if final_status == 'WAITING':
                 message = f"No slots available right now. Your token number is {token_assigned} and you have been added to the waiting queue."
+            elif final_status == 'AWAITING_REVIEW':
+                message = f"Petition submitted successfully. Your token number is {token_assigned}."
             elif final_status == 'COMPLETED':
                 message = f"Petition submitted successfully. Your token number is {token_assigned}."
             else:
@@ -890,7 +913,7 @@ class AppointmentService:
         citizen_name: str,
         constituency: str,
         description: str,
-        attachments_created: List[AppointmentAttachment],
+        attachments_created: List[Dict[str, Any]],
         audio_recording_url: Optional[str] = None,
     ) -> None:
         """
@@ -917,29 +940,29 @@ class AppointmentService:
 
             # Priority 1: first IMAGE attachment
             for att in attachments_created:
-                if att.attachment_type == "IMAGE":
+                if att["attachment_type"] == "IMAGE":
                     try:
-                        with open(att.storage_url, "rb") as fh:
+                        with open(att["storage_url"], "rb") as fh:
                             attachment_bytes = fh.read()
-                        attachment_mime = att.mime_type
-                        attachment_filename = Path(att.storage_url).name
+                        attachment_mime = att["mime_type"]
+                        attachment_filename = Path(att["storage_url"]).name
                     except OSError as read_err:
                         print(f"[GEMINI WARN] appointment_id={appointment_id}: "
-                              f"Could not read image file {att.storage_url}: {read_err}")
+                              f"Could not read image file {att['storage_url']}: {read_err}")
                     break
 
             # Priority 2: first DOCUMENT (PDF / Word) if no image found
             if attachment_bytes is None:
                 for att in attachments_created:
-                    if att.attachment_type == "DOCUMENT":
+                    if att["attachment_type"] == "DOCUMENT":
                         try:
-                            with open(att.storage_url, "rb") as fh:
+                            with open(att["storage_url"], "rb") as fh:
                                 attachment_bytes = fh.read()
-                            attachment_mime = att.mime_type
-                            attachment_filename = Path(att.storage_url).name
+                            attachment_mime = att["mime_type"]
+                            attachment_filename = Path(att["storage_url"]).name
                         except OSError as read_err:
                             print(f"[GEMINI WARN] appointment_id={appointment_id}: "
-                                  f"Could not read document file {att.storage_url}: {read_err}")
+                                  f"Could not read document file {att['storage_url']}: {read_err}")
                         break
 
             # Priority 3: AUDIO — collect from attachments or dedicated mic recording.
@@ -949,9 +972,9 @@ class AppointmentService:
             audio_path: Optional[str] = None
             audio_mime: Optional[str] = None
             for att in attachments_created:
-                if att.attachment_type == "AUDIO":
-                    audio_path = att.storage_url
-                    audio_mime = att.mime_type or "audio/webm"
+                if att["attachment_type"] == "AUDIO":
+                    audio_path = att["storage_url"]
+                    audio_mime = att["mime_type"] or "audio/webm"
                     break
             if audio_path is None and audio_recording_url:
                 audio_path = audio_recording_url

@@ -26,25 +26,28 @@ def _category_label(value: Optional[str]) -> str:
     return CATEGORY_DISPLAY.get(value, value.replace("_", " ").title())
 
 
-# DB status → display label (used only for non-appointment-type statuses like Closed/Rescheduled)
+# DB status → display label
 _STATUS_DISPLAY = {
-    "CANCELLED":   "Closed",
-    "RESCHEDULED": "Rescheduled",
-    "WAITING":     "Waiting",
-    "IN_PROGRESS": "Waiting",
+    "CANCELLED":       "Closed",
+    "RESCHEDULED":     "Rescheduled",
+    "WAITING":         "Waiting",
+    "IN_PROGRESS":     "Waiting",
+    "AWAITING_REVIEW": "Awaiting Review",
+    "COMPLETED":       "Reviewed",
 }
 
 
 def _resolve_display_status(appt) -> str:
     """
-    Scheduled  → citizen requested a meeting (schedule_meeting=True)
-    Submitted  → citizen submitted a written petition (schedule_meeting=False)
-    Other DB statuses (CANCELLED, RESCHEDULED, WAITING) pass through _STATUS_DISPLAY.
+    Awaiting Review → direct-submit petition pending PA review (AWAITING_REVIEW)
+    Reviewed        → PA has reviewed it (COMPLETED, schedule_meeting=False)
+    Scheduled       → citizen requested a meeting (schedule_meeting=True + SCHEDULED)
     """
     override = _STATUS_DISPLAY.get(appt.status)
     if override:
         return override
-    return "Scheduled" if appt.schedule_meeting else "Submitted"
+    # SCHEDULED status — meeting requests only
+    return "Scheduled" if appt.schedule_meeting else "Reviewed"
 
 
 def _decode(value: str) -> str:
@@ -87,9 +90,12 @@ async def get_stats(
         Appointment.schedule_meeting == True,
         Appointment.status.notin_(["CANCELLED", "RESCHEDULED"]),
     ])) or 0
+    # "Reviewed" = COMPLETED petitions (PA has reviewed them)
     submitted  = await db.scalar(_count([
-        Appointment.schedule_meeting == False,
-        Appointment.status.notin_(["CANCELLED", "RESCHEDULED"]),
+        Appointment.status == "COMPLETED",
+    ])) or 0
+    awaiting_review = await db.scalar(_count([
+        Appointment.status == "AWAITING_REVIEW",
     ])) or 0
     closed     = await db.scalar(_count([Appointment.status == "CANCELLED"])) or 0
     rescheduled = await db.scalar(_count([Appointment.status == "RESCHEDULED"])) or 0
@@ -343,11 +349,12 @@ async def get_appointments(
                 Appointment.schedule_meeting == True,
                 Appointment.status.notin_(["CANCELLED", "RESCHEDULED"])
             )
-        elif status_filter == "Submitted":
-            stmt = stmt.where(
-                Appointment.schedule_meeting == False,
-                Appointment.status.notin_(["CANCELLED", "RESCHEDULED"])
-            )
+        elif status_filter in ("Reviewed", "Submitted"):
+            # "Reviewed" is the new name; keep "Submitted" as an alias for
+            # backwards-compatibility with any cached frontend state.
+            stmt = stmt.where(Appointment.status == "COMPLETED")
+        elif status_filter == "Awaiting Review":
+            stmt = stmt.where(Appointment.status == "AWAITING_REVIEW")
         elif status_filter == "Rescheduled":
             stmt = stmt.where(Appointment.status == "RESCHEDULED")
         elif status_filter == "Waiting":
@@ -490,10 +497,13 @@ async def update_appointment_derived_fields(
 
 
 _DISPLAY_TO_DB_STATUS = {
-    "Scheduled":   "SCHEDULED",
-    "Submitted":   "COMPLETED",
-    "Waiting":     "WAITING",
-    "Rescheduled": "RESCHEDULED",
+    "Scheduled":       "SCHEDULED",
+    "Reviewed":        "COMPLETED",
+    "Submitted":       "COMPLETED",   # legacy alias
+    "Waiting":         "WAITING",
+    "Rescheduled":     "RESCHEDULED",
+    "Awaiting Review": "AWAITING_REVIEW",
+    "Closed":          "CANCELLED",
 }
 
 async def update_appointment_status(db: AsyncSession, appointment_id: int, new_status: str) -> dict:
@@ -542,9 +552,14 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
                 await scheduling_service.move_to_waiting_queue(
                     db, appt, "NO_AVAILABILITY_TODAY", commit=False
                 )
-    elif new_status == "Submitted":
+    elif new_status in ("Reviewed", "Submitted"):
+        # PA marks petition as reviewed — slot is released if any was held.
         await scheduling_service.release_appointment_slot(db, appt, commit=False)
         appt.status = "COMPLETED"
+        appt.schedule_meeting = False
+    elif new_status == "Awaiting Review":
+        # Allow moving a record back into the review queue (PA correction).
+        appt.status = "AWAITING_REVIEW"
         appt.schedule_meeting = False
     else:
         appt.status = _DISPLAY_TO_DB_STATUS.get(new_status, new_status.upper())

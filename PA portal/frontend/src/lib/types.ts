@@ -7,7 +7,8 @@ export type AppointmentStatus =
   | "Scheduled"
   | "Waiting"
   | "Rescheduled"
-  | "Submitted";
+  | "Awaiting Review"
+  | "Reviewed";
 
 export interface SlaBucket {
   priority: "P0" | "P1" | "P2" | "P3";

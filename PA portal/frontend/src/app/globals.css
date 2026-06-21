@@ -117,7 +117,9 @@
 .s-Rescheduled { background: #fef9c3; color: #854d0e; }
 .s-Submitted   { background: #dbeafe; color: #1d4ed8; }
 .s-Closed      { background: #f1f5f9; color: #475569; }
-.s-Waiting     { background: #ffedd5; color: #c2410c; }
+.s-Waiting        { background: #ffedd5; color: #c2410c; }
+.s-AwaitingReview { background: #fae8ff; color: #86198f; }
+.s-Reviewed       { background: #dbeafe; color: #1d4ed8; }
 
 /* ── Fade/slide entrance for content ─────────────────────────────────────── */
 @keyframes fade-in-up {
