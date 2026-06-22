@@ -17,31 +17,32 @@
 
         body {
             font-family: 'Inter', 'Mukta Malar', sans-serif;
-            background: #ffffff;
+            background: #f0fdf4;
             min-height: 100vh;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
-            padding: 2rem 1rem;
+            padding: 1rem 0.75rem 2rem;
         }
 
         .container {
             width: 100%;
-            max-width: 600px;
-            background: rgba(255, 255, 255, 0.65);
-            backdrop-filter: blur(40px) saturate(200%);
-            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            max-width: 520px;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.8);
-            border-radius: 24px;
+            border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 1);
-            padding: 3rem 2rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+            padding: 1.5rem 1.25rem 2rem;
             text-align: center;
+            margin-top: 0.5rem;
         }
 
         .success-icon {
-            width: 80px;
-            height: 80px;
+            width: 64px;
+            height: 64px;
             border-radius: 50%;
             background: rgba(16, 185, 129, 0.15);
             border: 2px solid rgba(16, 185, 129, 0.3);
@@ -49,60 +50,91 @@
             align-items: center;
             justify-content: center;
             color: #10b981;
-            font-size: 2.5rem;
-            margin: 0 auto 1.5rem;
+            font-size: 2rem;
+            margin: 0 auto 1rem;
         }
 
         h1 {
             color: #1f2937;
-            font-size: 2rem;
+            font-size: 1.5rem;
             font-weight: 800;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.35rem;
+            line-height: 1.3;
         }
 
         .subtitle {
             color: #6b7280;
-            font-size: 1rem;
-            margin-bottom: 2rem;
+            font-size: 0.9rem;
+            margin-bottom: 1.25rem;
         }
 
         .token-display {
-            background: rgba(0, 135, 4, 0.85);
-            backdrop-filter: blur(10px);
+            background: rgba(0, 135, 4, 0.88);
             color: white;
-            padding: 2rem;
-            border-radius: 16px;
-            margin: 2rem 0;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 1.25rem;
+            border-radius: 14px;
+            margin: 1.25rem 0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .token-label {
-            font-size: 0.9rem;
+            font-size: 0.82rem;
             opacity: 0.9;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.35rem;
             font-weight: 600;
         }
 
         .token-number {
-            font-size: 2rem;
+            font-size: 1.8rem;
             font-weight: 900;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.04em;
+        }
+
+        /* Highlighted meeting time card */
+        .time-highlight {
+            background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%);
+            color: white;
+            padding: 1rem 1.25rem;
+            border-radius: 14px;
+            margin: 0.75rem 0 1.25rem;
+            display: none;
+        }
+
+        .time-highlight .time-label {
+            font-size: 0.78rem;
+            opacity: 0.85;
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+        }
+
+        .time-highlight .time-value {
+            font-size: 1.6rem;
+            font-weight: 900;
+            letter-spacing: 0.02em;
+        }
+
+        .time-highlight .time-date {
+            font-size: 0.82rem;
+            opacity: 0.85;
+            margin-top: 0.15rem;
         }
 
         .info-card {
-            background: rgba(255, 255, 255, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.7);
+            background: rgba(248, 250, 252, 0.8);
+            border: 1px solid rgba(226, 232, 240, 0.8);
             border-radius: 12px;
-            padding: 1.5rem;
-            margin: 1.5rem 0;
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
             text-align: left;
         }
 
         .info-row {
             display: flex;
             justify-content: space-between;
-            padding: 0.75rem 0;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            align-items: center;
+            padding: 0.55rem 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+            gap: 0.5rem;
         }
 
         .info-row:last-child {
@@ -112,13 +144,15 @@
         .info-label {
             color: #6b7280;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.82rem;
+            flex-shrink: 0;
         }
 
         .info-value {
             color: #1f2937;
             font-weight: 700;
-            font-size: 0.9rem;
+            font-size: 0.82rem;
+            text-align: right;
         }
 
         .instructions {
@@ -264,7 +298,15 @@
             <div class="token-label tamil">உங்கள் டோக்கன் எண்</div>
             <div class="token-number" id="token-number">TKN-000</div>
         </div>
-        
+
+        <!-- Shown only for SCHEDULED appointments -->
+        <div class="time-highlight" id="time-highlight-card">
+            <div class="time-label english">Your Meeting Time</div>
+            <div class="time-label tamil">உங்கள் சந்திப்பு நேரம்</div>
+            <div class="time-value" id="meeting-time-display">—</div>
+            <div class="time-date" id="meeting-date-display"></div>
+        </div>
+
         <div class="info-card">
             <div class="info-row">
                 <span class="info-label english">Name</span>
@@ -408,23 +450,36 @@
             document.getElementById('instructions-submitted').style.display = 'none';
             document.getElementById('slot-row').style.display = 'flex';
 
-            if (scheduledDate) {
-                const dateObj = new Date(scheduledDate);
-                document.getElementById('slot-datetime-en').textContent = dateObj.toLocaleDateString('en-IN', dateOptions);
-                document.getElementById('slot-datetime-ta').textContent = dateObj.toLocaleDateString('ta-IN', dateOptions);
-            }
+            // Prominent meeting time card
+            const timeCard = document.getElementById('time-highlight-card');
+            timeCard.style.display = 'block';
+
+            let meetingTimeStr = '—';
+            let meetingDateStr = '';
 
             if (scheduledTime) {
                 const [h, m] = scheduledTime.split(':').map(Number);
-                const timeObj = new Date();
-                timeObj.setHours(h, m, 0);
-                const timeStrEn = timeObj.toLocaleTimeString('en-IN', timeOptions);
-                const timeStrTa = timeObj.toLocaleTimeString('ta-IN', timeOptions);
-                const dateEn = document.getElementById('slot-datetime-en').textContent;
-                const dateTa = document.getElementById('slot-datetime-ta').textContent;
-                document.getElementById('slot-datetime-en').textContent = `${dateEn}, ${timeStrEn}`;
-                document.getElementById('slot-datetime-ta').textContent = `${dateTa}, ${timeStrTa}`;
+                const tObj = new Date();
+                tObj.setHours(h, m, 0);
+                meetingTimeStr = tObj.toLocaleTimeString('en-IN', timeOptions);
             }
+
+            if (scheduledDate) {
+                const dObj = new Date(scheduledDate);
+                meetingDateStr = dObj.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                // Also fill info-row
+                const dateEn = dObj.toLocaleDateString('en-IN', dateOptions);
+                const dateTa = dObj.toLocaleDateString('ta-IN', dateOptions);
+                document.getElementById('slot-datetime-en').textContent = scheduledTime
+                    ? `${dateEn}, ${meetingTimeStr}`
+                    : dateEn;
+                document.getElementById('slot-datetime-ta').textContent = scheduledTime
+                    ? `${dateTa}, ${new Date().setHours(...scheduledTime.split(':').map(Number)), new Date().toLocaleTimeString('ta-IN', timeOptions)}`
+                    : dateTa;
+            }
+
+            document.getElementById('meeting-time-display').textContent = meetingTimeStr;
+            document.getElementById('meeting-date-display').textContent  = meetingDateStr;
 
             document.getElementById('status-en').textContent = 'SCHEDULED';
             document.getElementById('status-ta').textContent = 'திட்டமிடப்பட்டது';

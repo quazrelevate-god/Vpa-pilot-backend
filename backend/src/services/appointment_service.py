@@ -750,12 +750,15 @@ class AppointmentService:
                             await scheduling_service.book_slot(
                                 db, appointment, slot_id, commit=False
                             )
-                        except ValueError:
+                            print(f"[SLOT OK] appointment_id={appointment.id} | slot_id={slot_id} | status=SCHEDULED")
+                        except ValueError as slot_err:
                             # Slot just filled or blocked — put in waiting queue
+                            print(f"[SLOT WARN] appointment_id={appointment.id} | slot_id={slot_id} | err={slot_err} → WAITING")
                             await scheduling_service.move_to_waiting_queue(
                                 db, appointment, 'SLOT_UNAVAILABLE', commit=False
                             )
                     else:
+                        print(f"[SLOT WARN] appointment_id={appointment.id} | no slot_id → WAITING")
                         await scheduling_service.move_to_waiting_queue(
                             db, appointment, 'NO_SLOT_SELECTED', commit=False
                         )
@@ -774,7 +777,7 @@ class AppointmentService:
                         attachment_type='AUDIO',
                         storage_url=audio_url,
                         file_size_bytes=audio_size,
-                        mime_type='audio/webm',
+                        mime_type='audio/mp4',   # iOS records mp4; webm saved with .webm ext but mp4 for iOS compat
                         created_at=current_time
                     )
                     db.add(audio_attachment)

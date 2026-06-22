@@ -222,6 +222,13 @@ class SchedulingService:
         if slot.booked_count >= slot.max_capacity:
             raise ValueError("Slot full, kindly select another slot.")
 
+        # Calculate personal 5-min sub-slot BEFORE incrementing booked_count.
+        # Person 1 → slot_start + 0 min, Person 2 → +5 min, ... Person 6 → +25 min.
+        sub_index     = slot.booked_count  # 0-based before increment
+        assigned_time = (
+            datetime.combine(date.min, slot.start_time) + timedelta(minutes=sub_index * 5)
+        ).time()
+
         # Reserve the seat
         slot.booked_count += 1
         if slot.booked_count >= slot.max_capacity:
@@ -232,7 +239,7 @@ class SchedulingService:
         avail = await db.get(MLADailyAvailability, slot.availability_id)
         appointment.status               = "SCHEDULED"
         appointment.scheduled_date       = avail.date
-        appointment.scheduled_start_time = slot.start_time
+        appointment.scheduled_start_time = assigned_time   # personal 5-min slot
         appointment.scheduled_end_time   = slot.end_time
         appointment.appointment_slot_id  = slot.id
 
@@ -243,9 +250,10 @@ class SchedulingService:
 
         return {
             "scheduled_date":  avail.date.isoformat(),
-            "scheduled_time":  slot.start_time.strftime("%H:%M"),
+            "scheduled_time":  assigned_time.strftime("%H:%M"),
+            "assigned_time":   assigned_time.strftime("%I:%M %p"),
+            "slot_window":     f"{slot.start_time.strftime('%I:%M %p')} – {slot.end_time.strftime('%I:%M %p')}",
             "slot_id":         slot.id,
-            "label":           f"{slot.start_time.strftime('%I:%M %p')} – {slot.end_time.strftime('%I:%M %p')}",
             "remaining_seats": slot.max_capacity - slot.booked_count,
         }
 

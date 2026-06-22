@@ -1256,26 +1256,36 @@
 
         // ── Slot picker ────────────────────────────────────────────────────
 
+        let slotRefreshInterval = null;
+
         async function openSlotPicker() {
             document.getElementById('slotPickerSection').style.display = 'block';
             document.getElementById('selectedSlotId').value = '';
             document.getElementById('selectedSlotLabel').style.display = 'none';
             document.getElementById('btnConfirmMeeting').disabled = true;
             await loadSlots();
-            // Scroll into view
+            // Auto-refresh every 5 s so admin block/full changes reflect immediately
+            slotRefreshInterval = setInterval(loadSlots, 5000);
             document.getElementById('slotPickerSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         function closeSlotPicker() {
             document.getElementById('slotPickerSection').style.display = 'none';
             document.getElementById('selectedSlotId').value = '';
+            if (slotRefreshInterval) { clearInterval(slotRefreshInterval); slotRefreshInterval = null; }
         }
 
         async function loadSlots() {
             const msg  = document.getElementById('slotPickerMsg');
             const grid = document.getElementById('slotGrid');
-            msg.textContent  = 'Loading available slots…';
-            grid.innerHTML   = '';
+            const selectedId = document.getElementById('selectedSlotId').value;
+
+            // Silent refresh — don't blank the grid while polling
+            const isFirstLoad = grid.innerHTML === '';
+            if (isFirstLoad) {
+                msg.textContent = 'Loading available slots…';
+                grid.innerHTML  = '';
+            }
 
             try {
                 const today = new Date().toISOString().split('T')[0];
@@ -1283,65 +1293,78 @@
                 const data  = await res.json();
 
                 if (!data.available || !data.slots || data.slots.length === 0) {
-                    msg.textContent = 'No meeting slots available today. Your request will be added to the waiting queue.';
-                    // Allow submission without a slot — will land in waiting queue
+                    msg.innerHTML = '<span style="color:#b45309;">⚠ No meeting slots available today.</span> You can still submit — your request will join the waiting queue.';
+                    grid.innerHTML = '';
                     document.getElementById('btnConfirmMeeting').disabled = false;
                     return;
                 }
 
-                msg.textContent = 'Select a time slot (green = available, red = full/blocked):';
+                msg.textContent = 'Select a time — green = available, red = full or blocked';
+                grid.innerHTML  = '';
 
                 data.slots.forEach(slot => {
                     const card    = document.createElement('div');
                     const isAvail = slot.available;
                     const isFull  = slot.remaining === 0 && slot.status !== 'BLOCKED';
                     const isBlock = slot.status === 'BLOCKED';
+                    const isSelected = String(slot.id) === String(selectedId);
+
+                    // Color only — no numbers shown
+                    const bg      = isBlock ? '#f1f5f9' : isFull ? '#fee2e2' : '#dcfce7';
+                    const border  = isSelected ? '#7c3aed'
+                                  : isBlock    ? '#cbd5e1'
+                                  : isFull     ? '#fca5a5'
+                                  :              '#86efac';
 
                     card.style.cssText = `
-                        border-radius:8px; padding:0.5rem 0.6rem; border:1.5px solid;
-                        cursor:${isAvail ? 'pointer' : 'default'};
-                        transition:all 0.15s;
-                        background:${isBlock ? '#f1f5f9' : isFull ? '#fee2e2' : '#d1fae5'};
-                        border-color:${isBlock ? '#cbd5e1' : isFull ? '#fca5a5' : '#6ee7b7'};
-                        opacity:${isAvail ? '1' : '0.6'};
+                        border-radius:8px; padding:0.55rem 0.5rem; border:2px solid ${border};
+                        cursor:${isAvail ? 'pointer' : 'not-allowed'};
+                        background:${bg};
+                        opacity:${isAvail ? '1' : '0.55'};
+                        text-align:center;
+                        transition:border-color 0.15s;
+                        ${isSelected ? 'outline:2.5px solid #7c3aed; outline-offset:1px;' : ''}
                     `;
 
-                    const timeLabel   = slot.label;
-                    const countLabel  = isBlock ? 'Blocked' : `${slot.booked_count}/${slot.max_capacity}`;
-                    const statusColor = isBlock ? '#94a3b8' : isFull ? '#dc2626' : '#059669';
-
-                    card.innerHTML = `
-                        <div style="font-size:0.78rem; font-weight:700; color:#1e293b;">${timeLabel}</div>
-                        <div style="font-size:0.72rem; color:${statusColor}; margin-top:1px;">${countLabel}</div>
-                        <div style="height:3px; background:#e2e8f0; border-radius:2px; margin-top:4px; overflow:hidden;">
-                            <div style="height:100%; width:${Math.round((slot.booked_count/slot.max_capacity)*100)}%; background:${isFull?'#ef4444':'#10b981'}; border-radius:2px;"></div>
-                        </div>
-                    `;
+                    // Time label only
+                    const shortLabel = slot.start + ' – ' + slot.end;
+                    const statusDot  = isBlock ? '🔒' : isFull ? '🔴' : '🟢';
+                    card.innerHTML   = `<div style="font-size:0.78rem;font-weight:700;color:#1e293b;">${statusDot} ${shortLabel}</div>`;
 
                     if (isAvail) {
-                        card.addEventListener('click', () => selectSlot(slot.id, timeLabel, card));
+                        card.addEventListener('click', () => selectSlot(slot.id, slot.label, card));
+                    } else if (isBlock || isFull) {
+                        // If previously selected slot became blocked/full during polling, deselect it
+                        if (isSelected) {
+                            document.getElementById('selectedSlotId').value = '';
+                            document.getElementById('selectedSlotLabel').style.display = 'none';
+                            document.getElementById('btnConfirmMeeting').disabled = true;
+                            msg.innerHTML = '<span style="color:#dc2626;">⚠ Your selected slot is no longer available. Please choose another.</span>';
+                        }
                     }
                     grid.appendChild(card);
                 });
 
             } catch (e) {
-                msg.textContent = 'Failed to load slots. You can still submit — your request will join the waiting queue.';
-                document.getElementById('btnConfirmMeeting').disabled = false;
+                if (isFirstLoad) {
+                    msg.textContent = 'Failed to load slots. You can still submit — your request will join the waiting queue.';
+                    document.getElementById('btnConfirmMeeting').disabled = false;
+                }
             }
         }
 
         function selectSlot(slotId, label, cardEl) {
-            // Deselect all cards
             document.querySelectorAll('#slotGrid > div').forEach(c => {
                 c.style.outline = 'none';
+                c.style.borderColor = c.style.borderColor; // keep existing color
             });
-            // Highlight selected
             cardEl.style.outline = '2.5px solid #7c3aed';
+            cardEl.style.outlineOffset = '1px';
 
-            document.getElementById('selectedSlotId').value   = slotId;
-            document.getElementById('selectedSlotText').textContent = label;
+            document.getElementById('selectedSlotId').value         = slotId;
+            document.getElementById('selectedSlotText').textContent  = label;
             document.getElementById('selectedSlotLabel').style.display = 'block';
-            document.getElementById('btnConfirmMeeting').disabled = false;
+            document.getElementById('btnConfirmMeeting').disabled    = false;
         }
 
         // Audio recording variables
@@ -1349,11 +1372,30 @@
         let audioChunks = [];
         let recordingStartTime;
         let timerInterval;
+        let currentAudioMime = 'audio/webm';
+
+        // iOS Safari supports audio/mp4; Android/Chrome supports audio/webm.
+        // Detect at runtime so playback works on all devices.
+        function getAudioMimeType() {
+            const types = [
+                'audio/mp4;codecs=mp4a.40.2',
+                'audio/mp4',
+                'audio/webm;codecs=opus',
+                'audio/webm',
+            ];
+            if (typeof MediaRecorder === 'undefined') return 'audio/webm';
+            for (const t of types) {
+                if (MediaRecorder.isTypeSupported(t)) return t;
+            }
+            return '';
+        }
 
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
+                currentAudioMime = getAudioMimeType();
+                const options = currentAudioMime ? { mimeType: currentAudioMime } : {};
+                mediaRecorder = new MediaRecorder(stream, options);
                 audioChunks = [];
 
                 mediaRecorder.ondataavailable = (event) => {
@@ -1361,7 +1403,8 @@
                 };
 
                 mediaRecorder.onstop = () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const blobMime = currentAudioMime || 'audio/webm';
+                    const audioBlob = new Blob(audioChunks, { type: blobMime });
                     const audioUrl = URL.createObjectURL(audioBlob);
                     
                     // Show preview
