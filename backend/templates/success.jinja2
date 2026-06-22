@@ -85,9 +85,12 @@
         }
 
         .token-number {
-            font-size: 1.8rem;
+            font-size: clamp(1.1rem, 5vw, 1.8rem);
             font-weight: 900;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.02em;
+            word-break: break-all;
+            overflow-wrap: break-word;
+            line-height: 1.2;
         }
 
         /* Highlighted meeting time card */
@@ -156,26 +159,47 @@
         }
 
         .instructions {
-            background: rgba(59, 130, 246, 0.1);
+            background: rgba(59, 130, 246, 0.07);
             border-left: 4px solid #3b82f6;
-            padding: 1rem 1.5rem;
+            padding: 1rem 1rem 1rem 1.1rem;
             border-radius: 8px;
-            margin: 1.5rem 0;
+            margin: 1.25rem 0;
             text-align: left;
         }
 
         .instructions h3 {
             color: #1e40af;
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 700;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.75rem;
         }
 
-        .instructions ul {
-            margin-left: 1.5rem;
-            color: #4b5563;
-            font-size: 0.9rem;
-            line-height: 1.8;
+        .instructions .step {
+            display: flex;
+            gap: 0.6rem;
+            margin-bottom: 0.85rem;
+            align-items: flex-start;
+        }
+
+        .instructions .step:last-child { margin-bottom: 0; }
+
+        .instructions .step-icon {
+            font-size: 1.05rem;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .instructions .step-body {
+            color: #374151;
+            font-size: 0.84rem;
+            line-height: 1.6;
+        }
+
+        .instructions .step-title {
+            font-weight: 700;
+            color: #1e40af;
+            display: block;
+            margin-bottom: 0.15rem;
         }
 
         .btn {
@@ -337,31 +361,94 @@
         
         <div class="instructions" id="instructions-scheduled">
             <h3 class="english">📋 Next Steps</h3>
-            <h3 class="tamil">📋 அடுத்த படிகள்</h3>
-            <ul class="english">
-                <li>Please save your token number <strong id="token-ref-en">TKN-000</strong> for future reference</li>
-                <li>Bring a valid ID proof when visiting the office</li>
-                <li>Arrive 10 minutes before your scheduled time</li>
-            </ul>
-            <ul class="tamil">
-                <li>எதிர்கால குறிப்புக்காக உங்கள் டோக்கன் எண் <strong id="token-ref-ta">TKN-000</strong> ஐ சேமிக்கவும்</li>
-                <li>அலுவலகத்திற்கு வரும்போது செல்லுபடியாகும் அடையாள ஆதாரத்தை கொண்டு வாருங்கள்</li>
-            </ul>
+            <h3 class="tamil">📋 கீழ்க்கண்ட வழிமுறைகளைத் தயவுசெய்து பின்பற்றவும்</h3>
+
+            <!-- English steps -->
+            <div class="english">
+                <div class="step">
+                    <span class="step-icon">🎫</span>
+                    <div class="step-body">
+                        <span class="step-title">Keep your Token</span>
+                        Kindly save this token number / reference <strong id="token-ref-en">TKN-000</strong> for all your future reference and verification.
+                    </div>
+                </div>
+                <div class="step">
+                    <span class="step-icon">📄</span>
+                    <div class="step-body">
+                        <span class="step-title">Bring Documents</span>
+                        Please bring a valid ID proof along with a written copy of your petition, grievance, or memorandum (மனு).
+                    </div>
+                </div>
+                <div class="step">
+                    <span class="step-icon">⏰</span>
+                    <div class="step-body">
+                        <span class="step-title">Arrive Early</span>
+                        Please arrive at least 10 minutes prior to your scheduled booking time to ensure a smooth meeting.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tamil steps -->
+            <div class="tamil">
+                <div class="step">
+                    <span class="step-icon">🎫</span>
+                    <div class="step-body">
+                        <span class="step-title">டோக்கன் எண்</span>
+                        எதிர்காலப் பயன்பாட்டிற்கு இந்த டோக்கன் எண்ணை / குறிப்பை <strong id="token-ref-ta">TKN-000</strong> பத்திரமாகச் சேமித்து வைத்துக்கொள்ளவும்.
+                    </div>
+                </div>
+                <div class="step">
+                    <span class="step-icon">📄</span>
+                    <div class="step-body">
+                        <span class="step-title">தேவையான ஆவணங்கள்</span>
+                        உங்களுடைய செல்லுபடியாகும் அடையாளச் சான்று (ID Proof) மற்றும் உங்கள் கோரிக்கை மனுவின் (Petition / Grievance) எழுதப்பட்ட நகலை மறவாமல் உடன் எடுத்து வரவும்.
+                    </div>
+                </div>
+                <div class="step">
+                    <span class="step-icon">⏰</span>
+                    <div class="step-body">
+                        <span class="step-title">முன்கூட்டியே வருகை தரவும்</span>
+                        சந்திப்பு தடையின்றி நடப்பதை உறுதி செய்ய, உங்களுக்கு ஒதுக்கப்பட்ட நேரத்திற்கு 10 நிமிடங்களுக்கு முன்பாகவே வர வேண்டுகிறோம்.
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="instructions" id="instructions-waiting" style="display:none; border-left-color:#f59e0b;">
             <h3 class="english" style="color:#b45309;">⏳ Waiting Queue</h3>
             <h3 class="tamil" style="color:#b45309;">⏳ காத்திருப்பு வரிசை</h3>
-            <ul class="english">
-                <li>Please save your token number <strong id="token-ref-en-w">TKN-000</strong> for future reference</li>
-                <li>No slots are available right now — you have been added to the waiting queue</li>
-                <li>Your appointment time will be sent via SMS shortly once slots become available</li>
-            </ul>
-            <ul class="tamil">
-                <li>எதிர்கால குறிப்புக்காக உங்கள் டோக்கன் எண் <strong id="token-ref-ta-w">TKN-000</strong> ஐ சேமிக்கவும்</li>
-                <li>தற்போது இடங்கள் கிடைக்கவில்லை — நீங்கள் காத்திருப்பு வரிசையில் சேர்க்கப்பட்டுள்ளீர்கள்</li>
-                <li>இடங்கள் கிடைத்தவுடன் உங்கள் சந்திப்பு நேரம் SMS மூலம் அனுப்பப்படும்</li>
-            </ul>
+            <div class="english">
+                <div class="step">
+                    <span class="step-icon">🎫</span>
+                    <div class="step-body">
+                        <span class="step-title" style="color:#b45309;">Keep your Token</span>
+                        Save token <strong id="token-ref-en-w">TKN-000</strong> for all future reference and verification.
+                    </div>
+                </div>
+                <div class="step">
+                    <span class="step-icon">📲</span>
+                    <div class="step-body">
+                        <span class="step-title" style="color:#b45309;">Stay Alert</span>
+                        No slots were available at this time. You have been added to the waiting queue and will be notified via SMS once a slot opens.
+                    </div>
+                </div>
+            </div>
+            <div class="tamil">
+                <div class="step">
+                    <span class="step-icon">🎫</span>
+                    <div class="step-body">
+                        <span class="step-title" style="color:#b45309;">டோக்கன் எண்</span>
+                        <strong id="token-ref-ta-w">TKN-000</strong> என்ற டோக்கன் எண்ணை எதிர்காலப் பயன்பாட்டிற்காக சேமிக்கவும்.
+                    </div>
+                </div>
+                <div class="step">
+                    <span class="step-icon">📲</span>
+                    <div class="step-body">
+                        <span class="step-title" style="color:#b45309;">தகவலுக்கு காத்திருக்கவும்</span>
+                        தற்போது இடங்கள் கிடைக்கவில்லை. நீங்கள் காத்திருப்பு வரிசையில் சேர்க்கப்பட்டுள்ளீர்கள். இடம் கிடைத்தவுடன் SMS மூலம் அறிவிக்கப்படும்.
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="instructions" id="instructions-submitted" style="display:none; border-left-color:#3b82f6;">
