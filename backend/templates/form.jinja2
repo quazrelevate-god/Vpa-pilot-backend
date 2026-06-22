@@ -902,6 +902,8 @@
 
         function switchLocalization(isChecked) {
             runtimeActiveLanguage = isChecked ? 'ta' : 'en';
+            // Persist choice so the success page can read it and stay in sync
+            try { localStorage.setItem('vpa_lang', runtimeActiveLanguage); } catch(e) {}
             const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
 
             // Header & section titles
@@ -1363,10 +1365,12 @@
                 data.slots.forEach(slot => {
                     const card    = document.createElement('div');
 
-                    // Parse slot start "HH:MM" to minutes
-                    const [sh, sm] = slot.start.split(':').map(Number);
-                    const slotStart = sh * 60 + sm;
-                    const isPast  = slotStart <= nowMinutes;   // slot already started → grey
+                    // A slot is past only when it has FULLY ended (slot_end <= now).
+                    // If the slot is still in progress (started but not ended) it remains
+                    // bookable — e.g. at 16:37 the 16:30–17:00 slot is still open.
+                    const [eh, em] = slot.end.split(':').map(Number);
+                    const slotEnd = eh * 60 + em;
+                    const isPast  = slotEnd <= nowMinutes;
 
                     const isAvail = !isPast && slot.available;
                     const isFull  = !isPast && slot.remaining === 0 && slot.status !== 'BLOCKED';
@@ -1595,7 +1599,7 @@
         }
 
         const MAX_RECORDING_SECONDS = {{ audio_max_seconds | default(300) }}; // configurable via .env
-        const MIN_RECORDING_SECONDS = {{ audio_min_seconds | default(10) }};  // configurable via .env
+        const MIN_RECORDING_SECONDS = {{ audio_min_seconds | default(2) }};   // configurable via .env
 
         function updateTimer() {
             const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
@@ -1659,10 +1663,15 @@
             document.getElementById('btnSubmitMeeting').disabled = true;
         }
 
-        // Script is at the bottom of <body> — DOM is already fully parsed here,
-        // so we can call switchLocalization immediately without waiting for an event.
-        // This avoids a flash of English text on first render.
-        switchLocalization(true);
+        // Apply saved language preference (or default Tamil).
+        // switchLocalization(true) = Tamil, switchLocalization(false) = English.
+        (function() {
+            let savedLang = 'ta';
+            try { savedLang = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
+            const isTamil = savedLang === 'ta';
+            document.getElementById('languageToggle').checked = isTamil;
+            switchLocalization(isTamil);
+        })();
     </script>
 </body>
 </html>

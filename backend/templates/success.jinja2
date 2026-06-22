@@ -575,18 +575,27 @@
             document.getElementById('token-ref-ta').textContent = tokenDisplay;
         }
 
-        function toggleLanguage() {
-            const isChecked = document.getElementById('languageToggle').checked;
-            if (isChecked) {
+        function applyLang(isTamil) {
+            document.getElementById('languageToggle').checked = isTamil;
+            if (isTamil) {
                 document.body.classList.add('tamil-mode');
             } else {
                 document.body.classList.remove('tamil-mode');
             }
+            try { localStorage.setItem('vpa_lang', isTamil ? 'ta' : 'en'); } catch(e) {}
         }
 
-        // Initialize Tamil as default on page load
+        function toggleLanguage() {
+            const isTamil = document.getElementById('languageToggle').checked;
+            applyLang(isTamil);
+        }
+
+        // On load: read the language the citizen chose on the form page.
+        // Falls back to Tamil if nothing is saved.
         window.addEventListener('DOMContentLoaded', function() {
-            document.body.classList.add('tamil-mode');
+            let savedLang = 'ta';
+            try { savedLang = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
+            applyLang(savedLang === 'ta');
         });
     </script>
 </body>
