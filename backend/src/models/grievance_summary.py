@@ -14,39 +14,35 @@ from pydantic import BaseModel, Field
 
 class GrievanceCategory(str, Enum):
     """
-    Pattern-based grievance categories — describe WHAT KIND of grievance the
-    citizen is raising, independent of which department owns it. Use the
-    `department` field for routing; use this for cross-department analytics
-    (e.g. "how much corruption did we see this month, across all depts?").
+    Minister PA office categories — reflects what TYPE of petition the citizen
+    is raising. Used for analytics and PA team routing.
     """
-    SERVICE_DELAY_NONRESPONSE      = "service_delay_nonresponse"        # application stuck, no reply, inter-dept hand-off failure
-    DENIAL_OF_ENTITLEMENT          = "denial_of_entitlement"            # eligible but rejected from scheme / benefit / enrolment
-    CORRUPTION_BRIBERY             = "corruption_bribery"               # demand for illegal payment, misuse of office
-    OFFICIAL_MISCONDUCT_HARASSMENT = "official_misconduct_harassment"   # rude, negligent, intimidating, or abusive officials
-    CERTIFICATE_DOCUMENT_ISSUES    = "certificate_document_issues"      # patta, certificate, ID, ration card errors / delays / refusals
-    FINANCIAL_IRREGULARITY         = "financial_irregularity"           # wrong billing, payment dues, fund misuse, deductions
-    INFRASTRUCTURE_MAINTENANCE     = "infrastructure_maintenance"       # broken roads, lights, water lines, drainage, public assets
-    EMERGENCY_DISASTER_RELIEF      = "emergency_disaster_relief"        # flood, fire, cyclone, crop loss, medical emergency — needs urgent aid
-    LAND_PROPERTY_DISPUTE          = "land_property_dispute"            # encroachment, boundary, govt-land conflict, survey disputes
-    INFORMATION_RTI                = "information_rti"                  # refused information, RTI Act delays, lack of transparency
-    APPEAL_LEGAL_COMPLIANCE        = "appeal_legal_compliance"          # challenging decision; rule/policy violation; policy gap
-    OTHER                          = "other"
+    ACTION_REQUIRED         = "action_required"          # உடனடி நடவடிக்கை தேவை — urgent, time-sensitive
+    PROPOSALS               = "proposals"                # முன்மொழிவுகள் — suggestions, scheme ideas
+    TRANSFER_REQUESTS       = "transfer_requests"        # பணியிட மாற்றக் கோரிக்கைகள் — job/posting transfers
+    PENSION_REQUESTS        = "pension_requests"         # ஓய்வூதியக் கோரிக்கைகள் — pension delays, rejections
+    SCHOOL_ADMISSION        = "school_admission"         # பள்ளி சேர்க்கை — school admission issues
+    JOB_REQUESTS            = "job_requests"             # வேலைவாய்ப்பு கோரிக்கைகள் — employment, job cards
+    RTI                     = "rti"                      # தகவல் அறியும் உரிமை மனுக்கள் — RTI petitions
+    ASSOCIATIONS_UNIONS     = "associations_unions"      # சங்கங்கள் / தொழிற்சங்கங்கள் — union / association matters
+    OTHER_DEPARTMENTS       = "other_departments"        # பிற துறைகள் — other department referrals
+    GENERAL                 = "general"                  # பொது மனுக்கள் — general petitions
+    GREETINGS               = "greetings"                # வாழ்த்து மற்றும் மரியாதைச் செய்திகள் — greetings/appreciation
 
 
-# Human-readable category labels — used by PA portal & dashboard analytics.
+# Human-readable category labels (bilingual) — used by PA portal & dashboard.
 CATEGORY_DISPLAY: dict[str, str] = {
-    "service_delay_nonresponse":      "Service Delay & Non-response",
-    "denial_of_entitlement":          "Denial of Entitlement",
-    "corruption_bribery":             "Corruption & Bribery",
-    "official_misconduct_harassment": "Official Misconduct / Harassment",
-    "certificate_document_issues":    "Certificate & Document Issues",
-    "financial_irregularity":         "Financial Irregularity",
-    "infrastructure_maintenance":     "Infrastructure & Maintenance",
-    "emergency_disaster_relief":      "Emergency / Disaster Relief",
-    "land_property_dispute":          "Land & Property Dispute",
-    "information_rti":                "Information / RTI",
-    "appeal_legal_compliance":        "Appeal / Legal Compliance",
-    "other":                          "Other / Unclassified",
+    "action_required":    "உடனடி நடவடிக்கை தேவை (Action Required)",
+    "proposals":          "முன்மொழிவுகள் (Proposals)",
+    "transfer_requests":  "பணியிட மாற்றக் கோரிக்கைகள் (Transfer Requests)",
+    "pension_requests":   "ஓய்வூதியக் கோரிக்கைகள் (Pension Requests)",
+    "school_admission":   "பள்ளி சேர்க்கை (School Admission)",
+    "job_requests":       "வேலைவாய்ப்பு கோரிக்கைகள் (Job Requests)",
+    "rti":                "தகவல் அறியும் உரிமை (RTI)",
+    "associations_unions":"சங்கங்கள் / தொழிற்சங்கங்கள் (Associations / Unions)",
+    "other_departments":  "பிற துறைகள் (Other Departments)",
+    "general":            "பொது மனுக்கள் (General)",
+    "greetings":          "வாழ்த்து செய்திகள் (Greetings)",
 }
 
 

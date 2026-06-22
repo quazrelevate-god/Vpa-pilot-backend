@@ -111,48 +111,48 @@ CORE RULES — follow every one without exception:
    whether it corroborates the written complaint. Provide notes in English
    (attachment_notes) and Tamil (attachment_notes_ta). Omit both if no attachment.
 
-9. CATEGORY — STRICT ROOT-CAUSE CLASSIFICATION (no scattershot):
-   Categories describe the KIND of grievance pattern, NOT the subject (that's
-   `department`'s job). Pick the SINGLE category that matches the ROOT problem.
-   Do NOT pick a category just because a word appears in the text.
-     - service_delay_nonresponse       → application stuck; no reply to letters/calls;
-                                          tossed between depts; SLA blown
-     - denial_of_entitlement           → eligible citizen rejected from a scheme,
-                                          pension, scholarship, or welfare benefit
-     - corruption_bribery              → demand for illegal payment to do a job
-                                          that is supposed to be free
-     - official_misconduct_harassment  → rude/abusive/threatening behaviour by
-                                          government staff (NO money involved)
-     - certificate_document_issues     → patta, ration card, certificate, ID errors,
-                                          delays in issuing, or wrongful rejection
-     - financial_irregularity          → wrong billing, payment dues unpaid,
-                                          deductions disputes, fund misuse
-     - infrastructure_maintenance      → broken/damaged physical assets — roads,
-                                          street lights, drainage, water lines,
-                                          school/hospital buildings, public toilets
-     - emergency_disaster_relief       → flood, fire, cyclone, crop loss, medical
-                                          emergency — citizen needs URGENT AID NOW
-     - land_property_dispute           → encroachment, boundary, survey dispute,
-                                          government-land conflict
-     - information_rti                 → RTI request unanswered, info refused,
-                                          lack of transparency about decisions
-     - appeal_legal_compliance         → challenging an official decision; rule
-                                          or court-order violation by the dept;
-                                          policy announced but not implemented
-     - other                           → ONLY when none of the above truly fit
+9. CATEGORY — CLASSIFY THE TYPE OF PETITION (not the subject):
+   These categories reflect how the Minister's PA office organises incoming petitions.
+   Pick the SINGLE best-fit category based on what the citizen is actually asking for.
 
-   ROOT-CAUSE TEST for category:
-   • "Doctor demanded ₹500 to give injection" → corruption_bribery (money demand
-     is the root). NOT health-related infrastructure.
-   • "Pothole on my street has been there 6 months, no one comes" →
-     infrastructure_maintenance (broken asset is root). NOT service_delay_nonresponse
-     even though it's also a delay.
-   • "Filed RTI 90 days back about land record, no reply" → information_rti
-     (RTI Act timeline blown is the specific grievance). NOT generic
-     service_delay_nonresponse.
-   • "Got pension once, never again — please restart" → service_delay_nonresponse
-     if the citizen says payment is stuck; denial_of_entitlement if they were
-     told they're now ineligible. Read carefully.
+     - action_required       → Any petition requiring URGENT or TIME-SENSITIVE action:
+                                evictions, demolitions, medical emergencies, imminent
+                                harm, or any crisis that cannot wait. Pick this when
+                                urgency is critical or high AND immediate intervention
+                                is needed.
+     - proposals             → Citizen is suggesting an idea, scheme, improvement,
+                                or policy change. They are proposing, not complaining.
+     - transfer_requests     → Government employee asking for a transfer/posting change
+                                (to a different location, school, office, etc.).
+     - pension_requests      → Pension not started, stopped, delayed, or wrongly
+                                calculated — for government employees or family pensioners.
+     - school_admission      → School admission issue: seat denied, TC problems,
+                                age waiver, school closure, admission committee matters.
+     - job_requests          → Seeking government employment, job card, MGNREGA work,
+                                scheme-based employment, or employment certificate.
+     - rti                   → Filed under the RTI Act; requesting official information
+                                or transparency on a government decision/record.
+     - associations_unions   → Petition from a registered association, union, or
+                                collective body representing a group's interests.
+     - other_departments     → The petition clearly belongs to a different government
+                                department and is being forwarded for their action.
+     - general               → General petition or grievance that does not fit any
+                                of the above specific categories.
+     - greetings             → Thank-you note, congratulations, birthday/festival
+                                greetings, or appreciation message — no action needed.
+
+   DECISION EXAMPLES:
+   • "My pension stopped 3 months ago, please restart" → pension_requests
+   • "I suggest building a bus shelter near the hospital" → proposals
+   • "My son was denied admission despite valid documents" → school_admission
+   • "Requesting transfer to Chennai school — father is ill" → transfer_requests
+   • "RTI filed 60 days ago, no reply received" → rti
+   • "Flood damaged our crops — need compensation urgently" → action_required
+   • "Need MGNREGA job card renewed" → job_requests
+   • "Teachers' union requesting DA arrears" → associations_unions
+   • "This road issue belongs to Highways dept" → other_departments
+   • "Wishing you happy Pongal, Minister sir" → greetings
+   • Anything else → general
 
 10. DEPARTMENT — STRICT, ROOT-CAUSE-DRIVEN, NEVER SCATTERSHOT:
 

@@ -40,18 +40,17 @@ export const DEPT_DISPLAY: Record<string, string> = {
 };
 
 export const CATEGORY_DISPLAY: Record<string, string> = {
-  service_delay_nonresponse:      "Service Delay & Non-response",
-  denial_of_entitlement:          "Denial of Entitlement",
-  corruption_bribery:             "Corruption & Bribery",
-  official_misconduct_harassment: "Official Misconduct / Harassment",
-  certificate_document_issues:    "Certificate & Document Issues",
-  financial_irregularity:         "Financial Irregularity",
-  infrastructure_maintenance:     "Infrastructure & Maintenance",
-  emergency_disaster_relief:      "Emergency / Disaster Relief",
-  land_property_dispute:          "Land & Property Dispute",
-  information_rti:                "Information / RTI",
-  appeal_legal_compliance:        "Appeal / Legal Compliance",
-  other:                          "Other / Unclassified",
+  action_required:    "உடனடி நடவடிக்கை தேவை (Action Required)",
+  proposals:          "முன்மொழிவுகள் (Proposals)",
+  transfer_requests:  "பணியிட மாற்றக் கோரிக்கைகள் (Transfer Requests)",
+  pension_requests:   "ஓய்வூதியக் கோரிக்கைகள் (Pension Requests)",
+  school_admission:   "பள்ளி சேர்க்கை (School Admission)",
+  job_requests:       "வேலைவாய்ப்பு கோரிக்கைகள் (Job Requests)",
+  rti:                "தகவல் அறியும் உரிமை (RTI)",
+  associations_unions:"சங்கங்கள் / தொழிற்சங்கங்கள் (Associations / Unions)",
+  other_departments:  "பிற துறைகள் (Other Departments)",
+  general:            "பொது மனுக்கள் (General)",
+  greetings:          "வாழ்த்து செய்திகள் (Greetings)",
 };
 
 export const TICKET_STATUS_DISPLAY: Record<string, string> = {
