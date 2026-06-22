@@ -49,7 +49,6 @@ async def init_database():
     from src.models.scheduling_models import (
         MLA,
         MLADailyAvailability,
-        TimeWindow,
         AppointmentSlot,
         RescheduleLog,
     )
@@ -110,7 +109,6 @@ async def init_database():
         'grievance_summary_records',
         'mlas',
         'mla_daily_availability',
-        'time_windows',
         'appointment_slots',
         'reschedule_logs',
         'tickets',
