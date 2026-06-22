@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import {
   Phone, Hash, CalendarDays, X, User, Languages, FileText, Mic, Pencil, Check, ShieldAlert,
+  Clock, GitBranch, Flag, ArrowRight, Activity as ActivityIcon,
 } from "lucide-react";
-import type { AppointmentRow, AppointmentStatus } from "@/lib/types";
-import { updateAppointmentStatus, updateAppointmentDetails } from "@/lib/api";
+import type { AppointmentRow, AppointmentStatus, AppointmentActivityEvent } from "@/lib/types";
+import { updateAppointmentStatus, updateAppointmentDetails, fetchAppointmentActivity } from "@/lib/api";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { InitialsAvatar } from "@/components/ui/avatar";
@@ -24,7 +26,7 @@ interface AppointmentDetailDrawerProps {
   onStatusChange?: (row: AppointmentRow, next: AppointmentStatus) => void;
 }
 
-const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Waiting", "Rescheduled", "Awaiting Review", "Reviewed"];
+const STATUS_OPTIONS: AppointmentStatus[] = ["Waiting", "Scheduled", "Awaiting Review", "Reviewed", "Rescheduled"];
 const STATUS_COLOR: Record<string, string> = {
   Scheduled:        "bg-emerald-100 text-emerald-700 border-emerald-200",
   Waiting:          "bg-amber-100 text-amber-800 border-amber-200",
@@ -38,6 +40,8 @@ export default function AppointmentDetailDrawer({
 }: AppointmentDetailDrawerProps) {
   const [lang, setLang] = useState<Lang>("en");
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState("details");
+  const [activity, setActivity] = useState<AppointmentActivityEvent[]>([]);
   // Local overlay so the UI reflects PA admin edits without a refetch.
   const [overrides, setOverrides] = useState<{ urgency?: string | null; category?: string | null; department?: string | null }>({});
   const [editCategory, setEditCategory] = useState(false);
@@ -51,6 +55,13 @@ export default function AppointmentDetailDrawer({
     setOverrides({});
     setEditCategory(false);
     setEditDepartment(false);
+    setTab("details");
+  }, [row?.id]);
+
+  // Fetch activity events when row opens
+  useEffect(() => {
+    if (row?.id == null) return;
+    fetchAppointmentActivity(row.id).then((r) => setActivity(r.items)).catch(() => setActivity([]));
   }, [row?.id]);
 
   const currentUrgency = overrides.urgency !== undefined ? overrides.urgency : a?.urgency ?? null;
@@ -74,6 +85,7 @@ export default function AppointmentDetailDrawer({
       await updateAppointmentStatus(a.id, next);
       onStatusChange?.(a, next);
       toast.success("Status updated", { description: `Marked as “${next}”.` });
+      fetchAppointmentActivity(a.id).then((r) => setActivity(r.items)).catch(() => {});
     } catch (e) {
       toast.error("Update failed", { description: (e as Error).message });
     } finally {
@@ -88,6 +100,7 @@ export default function AppointmentDetailDrawer({
       await updateAppointmentDetails(a.id, patch);
       setOverrides((o) => ({ ...o, ...patch }));
       toast.success("Updated", { description: "Classification overridden." });
+      fetchAppointmentActivity(a.id).then((r) => setActivity(r.items)).catch(() => {});
     } catch (e) {
       toast.error("Update failed", { description: (e as Error).message });
     } finally {
@@ -133,9 +146,25 @@ export default function AppointmentDetailDrawer({
               </SheetClose>
             </div>
 
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="space-y-4 p-6">
+            <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+              {/* Tab bar */}
+              <div className="border-b border-border bg-card px-6 pt-3">
+                <TabsList className="bg-muted">
+                  <TabsTrigger value="details">Details</TabsTrigger>
+                  <TabsTrigger value="activity">
+                    Activity
+                    {activity.length > 0 && (
+                      <span className="ml-1.5 rounded-full bg-background px-1.5 text-[10px] font-bold text-muted-foreground">
+                        {activity.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              {/* ── Details tab ─────────────────────────────────────────── */}
+              <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
+                <div className="space-y-4 p-6">
                 {/* Citizen strip — urgency chip pinned top-right */}
                 <div className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
                   <InitialsAvatar name={a.name} className="h-10 w-10 text-sm" />
@@ -356,7 +385,43 @@ export default function AppointmentDetailDrawer({
                   </div>
                 </Panel>
               </div>
-            </div>
+            </TabsContent>
+
+              {/* ── Activity tab ────────────────────────────────────────── */}
+              <TabsContent value="activity" className="m-0 min-h-0 flex-1 overflow-y-auto">
+                <div className="space-y-4 p-6">
+                  {activity.length === 0 ? (
+                    <div className="py-10 text-center text-sm italic text-muted-foreground">No activity yet.</div>
+                  ) : (
+                    <ol className="space-y-1">
+                      {activity.map((e, idx) => {
+                        const Icon = APPT_EVENT_ICON[e.event_type] ?? Clock;
+                        const last = idx === activity.length - 1;
+                        const title = formatApptEventTitle(e.event_type);
+                        const renderedBody = renderApptEventBody(e);
+                        return (
+                          <li key={e.id} className="flex gap-3">
+                            <div className="flex flex-col items-center">
+                              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand/10 text-brand ring-1 ring-brand/15">
+                                <Icon className="h-3.5 w-3.5" />
+                              </span>
+                              {!last && <span className="my-1 w-px flex-1 bg-border" />}
+                            </div>
+                            <div className="min-w-0 flex-1 pb-4">
+                              <div className="text-sm font-medium text-foreground">{title}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                by <b className="font-semibold text-foreground/80">{e.actor}</b> · {formatDateTime(e.created_at)}
+                              </div>
+                              {renderedBody}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </>
         )}
       </SheetContent>
@@ -393,4 +458,61 @@ function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => voi
       ))}
     </div>
   );
+}
+
+// ── Activity rendering ──────────────────────────────────────────────────────
+
+const APPT_EVENT_ICON: Record<string, React.ElementType> = {
+  created: ActivityIcon,
+  status_changed: GitBranch,
+  urgency_changed: ShieldAlert,
+  category_changed: Flag,
+  department_changed: ArrowRight,
+  rescheduled: CalendarDays,
+  slot_blocked: Clock,
+  slot_unblocked: Clock,
+  moved_to_waiting: Clock,
+  auto_allocated: Check,
+};
+
+const APPT_PRETTY_EVENT: Record<string, string> = {
+  created: "Appointment created",
+  status_changed: "Status changed",
+  urgency_changed: "Urgency changed",
+  category_changed: "Category changed",
+  department_changed: "Department changed",
+  rescheduled: "Rescheduled",
+  slot_blocked: "Slot blocked",
+  slot_unblocked: "Slot unblocked",
+  moved_to_waiting: "Moved to waiting queue",
+  auto_allocated: "Auto-allocated to slot",
+};
+
+function formatApptEventTitle(eventType: string): string {
+  return APPT_PRETTY_EVENT[eventType] ?? eventType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function ApptChangeArrow({ from, to }: { from: unknown; to: unknown }) {
+  const fmt = (v: unknown) => {
+    if (v == null || v === "") return "—";
+    return String(v).replace(/_/g, " ");
+  };
+  return (
+    <div className="mt-1 inline-flex items-center gap-2 rounded-lg bg-muted/60 px-2.5 py-1 text-[12.5px]">
+      <span className="rounded bg-background px-1.5 py-0.5 font-medium text-muted-foreground">{fmt(from)}</span>
+      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+      <span className="rounded bg-brand/10 px-1.5 py-0.5 font-semibold capitalize text-brand">{fmt(to)}</span>
+    </div>
+  );
+}
+
+function renderApptEventBody(e: { event_type: string; note?: string | null; payload?: Record<string, unknown> | null }) {
+  const p = e.payload ?? {};
+
+  if (e.event_type === "status_changed" || e.event_type === "urgency_changed" ||
+      e.event_type === "category_changed" || e.event_type === "department_changed") {
+    return <ApptChangeArrow from={p.from} to={p.to} />;
+  }
+
+  return e.note ? <p className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/60 p-2 text-sm text-foreground/80">{e.note}</p> : null;
 }

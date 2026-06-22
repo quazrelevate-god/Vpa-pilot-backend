@@ -1,6 +1,7 @@
 import type {
   AppointmentsResponse,
   AppointmentStatus,
+  AppointmentActivityResponse,
   StatsResponse,
   TicketDetail,
   TicketsResponse,
@@ -145,4 +146,13 @@ export async function updateAppointmentDetails(
     body: JSON.stringify(patch),
   });
   if (!resp.ok) throw new Error(`details ${resp.status}`);
+}
+
+export async function fetchAppointmentActivity(id: number): Promise<AppointmentActivityResponse> {
+  const resp = await fetch(`/api/appointments/${id}/activity`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!resp.ok) throw new Error(`activity ${resp.status}`);
+  return resp.json();
 }

@@ -1,15 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Calendar, Users, Clock, CheckCircle, AlertCircle,
-  Lock, Unlock, RefreshCw, Plus,
+  Lock, Unlock, RefreshCw, Plus, CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, DialogClose,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -54,15 +59,16 @@ interface OpenDate {
 interface Stats {
   waiting_count: number;
   scheduled_today: number;
+  rescheduled_today: number;
   oldest_waiting_days: number;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function slotColor(s: Slot): string {
-  if (s.status === "BLOCKED")        return "border-slate-300 bg-slate-100 text-slate-400";
+  if (s.status === "BLOCKED")        return "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 cursor-pointer";
   if (s.booked_count === 0)          return "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 cursor-pointer";
-  if (s.remaining === 0)             return "border-red-300 bg-red-50 text-red-700";
+  if (s.remaining === 0)             return "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer";
   return "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 cursor-pointer";
 }
 
@@ -89,6 +95,9 @@ export default function SchedulingPage() {
   const [blockingId,   setBlockingId]   = useState<number | null>(null);
   const [showCancel,   setShowCancel]   = useState(false);
   const [cancelling,   setCancelling]   = useState(false);
+  const [confirmSlot,  setConfirmSlot]  = useState<Slot | null>(null);
+  const [showAllocate,  setShowAllocate]  = useState(false);
+  const [allocating,    setAllocating]    = useState(false);
 
   // ── Data loaders ──────────────────────────────────────────────────────────
 
@@ -147,20 +156,56 @@ export default function SchedulingPage() {
   }
 
   async function handleToggleBlock(slot: Slot) {
-    if (slot.status !== "BLOCKED" && slot.booked_count > 0) return; // can't block occupied
     setBlockingId(slot.id);
     const action = slot.status === "BLOCKED" ? "unblock" : "block";
     try {
       const res  = await fetch(`/api/v1/scheduling/admin/slots/${slot.id}/${action}`, { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        toast.success(action === "block" ? "Slot blocked." : "Slot unblocked.");
+        if (action === "block" && (data.relocated || data.moved_to_waiting)) {
+          const parts: string[] = [];
+          if (data.relocated)          parts.push(`${data.relocated} relocated`);
+          if (data.moved_to_waiting)   parts.push(`${data.moved_to_waiting} to waiting queue`);
+          toast.success("Slot blocked.", { description: parts.join(", ") });
+        } else {
+          toast.success(action === "block" ? "Slot blocked." : "Slot unblocked.");
+        }
         loadGrid(selectedDate);
+        loadStats();
       } else {
         toast.error(data.error || `Failed to ${action} slot.`);
       }
     } catch { toast.error("Network error."); }
     finally  { setBlockingId(null); }
+  }
+
+  async function handleAutoAllocate() {
+    setAllocating(true);
+    try {
+      const res  = await fetch("/api/v1/scheduling/admin/auto-allocate", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Auto-allocate complete", {
+          description: `${data.allocated} allocated, ${data.remaining_in_queue} remaining in queue.`,
+        });
+        loadGrid(selectedDate);
+        loadStats();
+      } else {
+        toast.error(data.error || "Failed to auto-allocate.");
+      }
+    } catch { toast.error("Network error."); }
+    finally  { setAllocating(false); setShowAllocate(false); }
+  }
+
+  function onSlotClick(slot: Slot) {
+    setConfirmSlot(slot);
+  }
+
+  async function confirmToggleBlock() {
+    if (!confirmSlot) return;
+    const slot = confirmSlot;
+    setConfirmSlot(null);
+    await handleToggleBlock(slot);
   }
 
   async function handleCancelAll() {
@@ -182,11 +227,14 @@ export default function SchedulingPage() {
 
   // ── Derived stats ─────────────────────────────────────────────────────────
 
+  const router = useRouter();
+
   const statCards = stats
     ? [
-        { icon: Users,        value: stats.waiting_count,       label: "Waiting in Queue",       color: "text-amber-600",   bg: "bg-amber-50" },
-        { icon: CheckCircle,  value: stats.scheduled_today,     label: "Scheduled Today",         color: "text-emerald-600", bg: "bg-emerald-50" },
-        { icon: AlertCircle,  value: stats.oldest_waiting_days, label: "Oldest Waiting (days)",   color: "text-red-600",     bg: "bg-red-50" },
+        { icon: Users,        value: stats.waiting_count,       label: "Waiting in Queue",       color: "text-amber-600",   bg: "bg-amber-50",   tab: "Waiting" },
+        { icon: CheckCircle,  value: stats.scheduled_today,     label: "Scheduled Today",         color: "text-emerald-600", bg: "bg-emerald-50", tab: "Scheduled" },
+        { icon: CalendarClock, value: stats.rescheduled_today,  label: "Rescheduled Today",       color: "text-violet-600",  bg: "bg-violet-50",  tab: "Rescheduled" },
+        { icon: AlertCircle,  value: stats.oldest_waiting_days, label: "Oldest Waiting (days)",   color: "text-red-600",     bg: "bg-red-50",     tab: null },
       ]
     : [];
 
@@ -225,16 +273,32 @@ export default function SchedulingPage() {
 
           {/* Stats */}
           {statCards.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {statCards.map(s => (
-                <Card key={s.label} className="flex items-center gap-3 p-4">
+                <Card
+                  key={s.label}
+                  className={cn("flex items-center gap-3 p-4", s.tab && "cursor-pointer hover:shadow-md transition-shadow")}
+                  onClick={() => s.tab && router.push(`/appointments?tab=${s.tab}`)}
+                >
                   <div className={cn("grid h-10 w-10 place-items-center rounded-xl", s.bg)}>
                     <s.icon className={cn("h-5 w-5", s.color)} />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <div className="text-2xl font-extrabold tabular-nums">{s.value}</div>
                     <div className="text-xs text-muted-foreground">{s.label}</div>
                   </div>
+                  {s.label === "Waiting in Queue" && s.value > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="ml-auto border-amber-300 text-amber-700 hover:bg-amber-50"
+                      disabled={allocating}
+                      onClick={(e) => { e.stopPropagation(); setShowAllocate(true); }}
+                    >
+                      <RefreshCw className={cn("h-3.5 w-3.5 mr-1", allocating && "animate-spin")} />
+                      Allocate
+                    </Button>
+                  )}
                 </Card>
               ))}
             </div>
@@ -337,7 +401,7 @@ export default function SchedulingPage() {
                     {l.label}
                   </span>
                 ))}
-                <span className="text-muted-foreground ml-2">Click available/blocked slot to toggle block</span>
+                <span className="text-muted-foreground ml-2">Click any slot to block/unblock</span>
               </div>
 
               {/* Slot grid */}
@@ -353,12 +417,12 @@ export default function SchedulingPage() {
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {(grid.slots ?? []).map(slot => {
                     const badge     = slotBadge(slot);
-                    const canToggle = slot.status === "BLOCKED" || slot.booked_count === 0;
+                    const canToggle = slot.status === "BLOCKED" || slot.status === "AVAILABLE" || slot.status === "FULL" || slot.booked_count >= 0;
                     const isLoading = blockingId === slot.id;
                     return (
                       <div
                         key={slot.id}
-                        onClick={() => canToggle && handleToggleBlock(slot)}
+                        onClick={() => canToggle && onSlotClick(slot)}
                         className={cn(
                           "relative flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 transition-all",
                           slotColor(slot),
@@ -415,6 +479,74 @@ export default function SchedulingPage() {
           </div>
         </div>
       </main>
+
+      {/* Block / Unblock confirmation dialog */}
+      <Dialog open={confirmSlot !== null} onOpenChange={(o) => { if (!o) setConfirmSlot(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {confirmSlot?.status === "BLOCKED" ? (
+                <><Unlock className="h-5 w-5 text-emerald-600" /> Unblock Slot?</>
+              ) : (
+                <><Lock className="h-5 w-5 text-slate-600" /> Block Slot?</>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmSlot && (
+                <>
+                  Slot <strong>{confirmSlot.start} – {confirmSlot.end}</strong>
+                  {confirmSlot.status === "BLOCKED"
+                    ? " will be unblocked and available for booking again."
+                    : confirmSlot.booked_count > 0
+                      ? ` has ${confirmSlot.booked_count} booking(s). They will be moved to other available slots today, or to the waiting queue if no slots are free.`
+                      : " will be blocked and unavailable for booking."}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              className={confirmSlot?.status === "BLOCKED"
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                : "bg-slate-700 hover:bg-slate-800 text-white"}
+              onClick={confirmToggleBlock}
+            >
+              {confirmSlot?.status === "BLOCKED" ? "Yes, unblock" : "Yes, block"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Auto-allocate confirmation dialog */}
+      <Dialog open={showAllocate} onOpenChange={(o) => { if (!o) setShowAllocate(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-amber-600" /> Auto-Allocate Waiting Queue?
+            </DialogTitle>
+            <DialogDescription>
+              All {stats?.waiting_count ?? 0} waiting appointments will be allocated to free slots from the current time until the end of today. Appointments are assigned in priority order. Any remaining appointments without an available slot will stay in the waiting queue.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={allocating}
+              onClick={handleAutoAllocate}
+            >
+              {allocating ? "Allocating…" : "Yes, allocate all"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

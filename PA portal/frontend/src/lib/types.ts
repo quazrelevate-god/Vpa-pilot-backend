@@ -83,6 +83,20 @@ export interface AppointmentsResponse {
   total: number;
 }
 
+export interface AppointmentActivityEvent {
+  id: number;
+  event_type: string;
+  actor: string;
+  note?: string | null;
+  payload?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AppointmentActivityResponse {
+  items: AppointmentActivityEvent[];
+  total: number;
+}
+
 // ── Ticketing (PA team only) ────────────────────────────────────────────────
 
 export type TicketStatus =

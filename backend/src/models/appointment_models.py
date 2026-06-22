@@ -342,6 +342,12 @@ class Appointment(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    events = relationship(
+        "AppointmentEvent",
+        back_populates="appointment",
+        cascade="all, delete-orphan",
+        order_by="AppointmentEvent.created_at.desc()",
+    )
     scheduled_slot = relationship(
         "AppointmentSlot",
         foreign_keys=[appointment_slot_id],
@@ -426,4 +432,64 @@ class AppointmentAttachment(Base):
     __table_args__ = (
         Index('ix_attachments_appointment_id', 'appointment_id'),
         Index('ix_attachments_type', 'attachment_type'),
+    )
+
+
+# ── Appointment event types ─────────────────────────────────────────────────
+APPOINTMENT_EVENT_TYPES = (
+    "created",
+    "status_changed",
+    "urgency_changed",
+    "category_changed",
+    "department_changed",
+    "rescheduled",
+    "slot_blocked",
+    "slot_unblocked",
+    "moved_to_waiting",
+    "auto_allocated",
+)
+
+
+class AppointmentEvent(Base):
+    """
+    Audit log for appointment-level changes (status, urgency, category, etc.).
+    Mirrors the TicketEvent pattern so the PA portal can show a timeline.
+    """
+    __tablename__ = "appointment_events"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    appointment_id = Column(
+        Integer,
+        ForeignKey("appointments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    event_type = Column(
+        String(40),
+        nullable=False,
+        comment="Event type: status_changed, urgency_changed, etc.",
+    )
+
+    actor = Column(
+        String(100),
+        nullable=False,
+        comment="PA username or 'system'",
+    )
+
+    note = Column(Text, nullable=True)
+
+    payload = Column(JSONB, nullable=True, comment="Structured event data, e.g. {from: 'SCHEDULED', to: 'WAITING'}")
+
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    appointment = relationship("Appointment", back_populates="events")
+
+    __table_args__ = (
+        Index("ix_appt_events_appt_created", "appointment_id", "created_at"),
     )

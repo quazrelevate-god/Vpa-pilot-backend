@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     DASHBOARD_USERNAME: str = "admin"
     DASHBOARD_PASSWORD: str = "admin123"
 
+    # Display Board Credentials (separate login)
+    DISPLAY_USERNAME: str = "display"
+    DISPLAY_PASSWORD: str = "display123"
+
     # Frontend Configuration
     FRONTEND_FORM_BASE_URL: str = "http://localhost:8000/form"
 

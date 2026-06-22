@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Today's Appointments — Display Board</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { brand: '#0f62fe', sidebar: '#0c2e59' } } }
+        }
+    </script>
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 0.8s linear infinite; }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-50 font-sans">
+    <!-- Header -->
+    <header class="bg-sidebar text-white shadow-lg sticky top-0 z-10">
+        <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div>
+                <div class="text-xl font-bold" id="headerTitle">Today's Appointments</div>
+            </div>
+            <div class="flex items-center gap-4">
+                <button id="langToggle" class="bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5 text-sm transition-colors">தமிழ்</button>
+                <div id="dateLabel" class="text-sm opacity-70"></div>
+                <div id="clock" class="text-lg font-mono font-semibold"></div>
+                <button id="refreshBtn" class="bg-white/10 hover:bg-white/20 rounded-lg p-2 transition-colors" title="Refresh">
+                    <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                </button>
+                <a href="/display/logout" class="text-xs bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5 transition-colors">Logout</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Stats -->
+    <div class="max-w-6xl mx-auto px-6 py-6">
+        <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center gap-3">
+                <div class="bg-emerald-50 rounded-xl w-12 h-12 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <div>
+                    <div id="statScheduled" class="text-2xl font-extrabold text-slate-800">0</div>
+                    <div class="text-xs text-slate-500" id="lblScheduled">Scheduled</div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center gap-3">
+                <div class="bg-violet-50 rounded-xl w-12 h-12 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                </div>
+                <div>
+                    <div id="statRescheduled" class="text-2xl font-extrabold text-slate-800">0</div>
+                    <div class="text-xs text-slate-500" id="lblRescheduled">Rescheduled</div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center gap-3">
+                <div class="bg-amber-50 rounded-xl w-12 h-12 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                </div>
+                <div>
+                    <div id="statTotal" class="text-2xl font-extrabold text-slate-800">0</div>
+                    <div class="text-xs text-slate-500" id="lblTotal">Total Today</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search -->
+        <div class="mb-4 relative max-w-md">
+            <svg class="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input id="searchInput" type="text" placeholder="Search by name, phone, or token..."
+                class="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition bg-white">
+        </div>
+
+        <!-- Table -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <table class="w-full">
+                <thead class="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colTime">Time</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colToken">Token</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colName">Name</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colMobile">Mobile</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colCategory">Category</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colStatus">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="divide-y divide-slate-100">
+                    <tr><td colspan="6" class="px-4 py-12 text-center text-slate-400 text-sm" id="loadingText">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="emptyState" class="hidden text-center py-12 text-slate-400 text-sm">
+            No appointments found.
+        </div>
+    </div>
+
+    <script>
+        let allItems = [];
+        let searchTimeout = null;
+        let currentLang = 'en';
+
+        const i18n = {
+            en: {
+                title: "Today's Appointments",
+                scheduled: "Scheduled",
+                rescheduled: "Rescheduled",
+                total: "Total Today",
+                searchPlaceholder: "Search by name, phone, or token...",
+                colTime: "Time",
+                colToken: "Token",
+                colName: "Name",
+                colMobile: "Mobile",
+                colCategory: "Category",
+                colStatus: "Status",
+                loading: "Loading...",
+                empty: "No appointments found.",
+                langBtn: "தமிழ்",
+                logout: "Logout",
+            },
+            ta: {
+                title: "இன்றைய சந்திப்புகள்",
+                scheduled: "திட்டமிடப்பட்டது",
+                rescheduled: "மறுவரவேற்பு",
+                total: "மொத்தம் இன்று",
+                searchPlaceholder: "பெயர், தொலைபேசி, அல்லது டோக்கன் மூலம் தேடவும்...",
+                colTime: "நேரம்",
+                colToken: "டோக்கன்",
+                colName: "பெயர்",
+                colMobile: "தொலைபேசி",
+                colCategory: "பிரிவு",
+                colStatus: "நிலை",
+                loading: "ஏற்றுகிறது...",
+                empty: "சந்திப்புகள் இல்லை.",
+                langBtn: "English",
+                logout: "வெளியேறு",
+            }
+        };
+
+        function applyLang() {
+            const t = i18n[currentLang];
+            document.getElementById('headerTitle').textContent = t.title;
+            document.getElementById('lblScheduled').textContent = t.scheduled;
+            document.getElementById('lblRescheduled').textContent = t.rescheduled;
+            document.getElementById('lblTotal').textContent = t.total;
+            document.getElementById('searchInput').placeholder = t.searchPlaceholder;
+            document.getElementById('colTime').textContent = t.colTime;
+            document.getElementById('colToken').textContent = t.colToken;
+            document.getElementById('colName').textContent = t.colName;
+            document.getElementById('colMobile').textContent = t.colMobile;
+            document.getElementById('colCategory').textContent = t.colCategory;
+            document.getElementById('colStatus').textContent = t.colStatus;
+            document.getElementById('loadingText').textContent = t.loading;
+            document.getElementById('emptyState').textContent = t.empty;
+            document.getElementById('langToggle').textContent = t.langBtn;
+            document.querySelector('a[href="/display/logout"]').textContent = t.logout;
+            renderTable();
+        }
+
+        document.getElementById('langToggle').addEventListener('click', function() {
+            currentLang = currentLang === 'en' ? 'ta' : 'en';
+            applyLang();
+        });
+
+        // ── Clock ──────────────────────────────────────────────────────────────
+        function updateClock() {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // ── Status badge ───────────────────────────────────────────────────────
+        function statusBadge(status) {
+            const map = {
+                'Scheduled':   'bg-emerald-100 text-emerald-700',
+                'Rescheduled': 'bg-violet-100 text-violet-700',
+            };
+            const cls = map[status] || 'bg-slate-100 text-slate-600';
+            return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}">${status}</span>`;
+        }
+
+        // ── Render table ───────────────────────────────────────────────────────
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            const empty = document.getElementById('emptyState');
+            const t = i18n[currentLang];
+
+            if (allItems.length === 0) {
+                tbody.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+
+            tbody.innerHTML = allItems.map(item => `
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="px-4 py-3 text-sm font-semibold text-slate-700">${item.time || '—'}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600 font-mono">${item.token}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-slate-800">${item.name}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600 font-mono">${item.mobile}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600">${item.category || '—'}</td>
+                    <td class="px-4 py-3">${statusBadge(item.status)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // ── Fetch data ─────────────────────────────────────────────────────────
+        async function loadData(search) {
+            const params = new URLSearchParams();
+            if (search) params.set('search', search);
+
+            try {
+                const res = await fetch(`/display/api/today?${params.toString()}`, { credentials: 'include' });
+                if (res.status === 302 || res.redirected) {
+                    window.location.href = '/display/login';
+                    return;
+                }
+                const data = await res.json();
+                allItems = data.items || [];
+
+                document.getElementById('statScheduled').textContent = data.scheduled || 0;
+                document.getElementById('statRescheduled').textContent = data.rescheduled || 0;
+                document.getElementById('statTotal').textContent = data.total || 0;
+                document.getElementById('dateLabel').textContent = data.date || '';
+
+                renderTable();
+            } catch (e) {
+                console.error('Failed to load data:', e);
+            }
+        }
+
+        // ── Search ─────────────────────────────────────────────────────────────
+        document.getElementById('searchInput').addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const val = this.value.trim();
+            searchTimeout = setTimeout(() => loadData(val), 300);
+        });
+
+        // ── Refresh button ─────────────────────────────────────────────────────
+        document.getElementById('refreshBtn').addEventListener('click', async function() {
+            const icon = document.getElementById('refreshIcon');
+            icon.classList.add('spin');
+            const search = document.getElementById('searchInput').value.trim();
+            await loadData(search);
+            setTimeout(() => icon.classList.remove('spin'), 500);
+        });
+
+        // ── Auto-refresh every 60 seconds ──────────────────────────────────────
+        setInterval(() => {
+            const search = document.getElementById('searchInput').value.trim();
+            loadData(search);
+        }, 60000);
+
+        // ── Initial load ───────────────────────────────────────────────────────
+        loadData();
+    </script>
+</body>
+</html>

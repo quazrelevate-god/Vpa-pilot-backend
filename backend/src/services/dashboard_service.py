@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.utils import utc_iso
-from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment
+from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment, AppointmentEvent
 from src.services.scheduling_service import scheduling_service
 from src.models.grievance_summary_record import GrievanceSummaryRecord
 from src.models.grievance_summary import CATEGORY_DISPLAY, DEPARTMENT_DISPLAY
@@ -24,6 +24,18 @@ def _category_label(value: Optional[str]) -> str:
     if not value:
         return "—"
     return CATEGORY_DISPLAY.get(value, value.replace("_", " ").title())
+
+
+def _log_appt_event(db: AsyncSession, appointment_id: int, event_type: str, actor: str = "pa_admin",
+                     note: Optional[str] = None, payload: Optional[dict] = None) -> None:
+    """Append an AppointmentEvent audit row."""
+    db.add(AppointmentEvent(
+        appointment_id=appointment_id,
+        event_type=event_type,
+        actor=actor,
+        note=note,
+        payload=payload,
+    ))
 
 
 # DB status → display label
@@ -478,7 +490,11 @@ async def update_appointment_derived_fields(
         return {"success": False}
 
     if category is not None:
+        old_category = appt.grievance_category
         appt.grievance_category = category or None
+        if old_category != appt.grievance_category:
+            _log_appt_event(db, appointment_id, "category_changed",
+                            payload={"from": old_category, "to": appt.grievance_category})
 
     summary = await db.scalar(
         select(GrievanceSummaryRecord)
@@ -488,9 +504,17 @@ async def update_appointment_derived_fields(
     )
     if summary:
         if urgency is not None:
+            old_urgency = summary.urgency
             summary.urgency = urgency or None
+            if old_urgency != summary.urgency:
+                _log_appt_event(db, appointment_id, "urgency_changed",
+                                payload={"from": old_urgency, "to": summary.urgency})
         if department is not None:
+            old_dept = summary.department
             summary.department = department or None
+            if old_dept != summary.department:
+                _log_appt_event(db, appointment_id, "department_changed",
+                                payload={"from": old_dept, "to": summary.department})
 
     await db.commit()
     return {"success": True}
@@ -525,6 +549,8 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
     appt = result.scalar_one_or_none()
     if not appt:
         return {"success": False}
+
+    old_status = appt.status
 
     if new_status in ("Waiting", "Rescheduled"):
         # Release the slot booking and move to waiting queue
@@ -589,6 +615,11 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         appt.schedule_meeting = False
     else:
         appt.status = _DISPLAY_TO_DB_STATUS.get(new_status, new_status.upper())
+
+    # Log the status change
+    if old_status != appt.status:
+        _log_appt_event(db, appointment_id, "status_changed",
+                        payload={"from": old_status, "to": appt.status})
 
     await db.commit()
 

@@ -14,6 +14,7 @@ Admin endpoints (auth required):
   GET  /api/v1/scheduling/admin/statistics
   GET  /api/v1/scheduling/admin/mlas
   POST /api/v1/scheduling/admin/cancel-all-scheduled
+  POST /api/v1/scheduling/admin/auto-allocate
   PATCH /api/v1/scheduling/admin/reschedule/{appointment_id}
 """
 import base64
@@ -41,7 +42,8 @@ class OpenDateRequest(BaseModel):
 
 
 class RescheduleRequest(BaseModel):
-    new_slot_id: int = Field(..., description="Target slot ID to move the appointment to")
+    new_datetime: str = Field(..., description="New datetime in ISO format (YYYY-MM-DDTHH:MM)")
+    sms_text: Optional[str] = Field(None, description="SMS text to send to the citizen")
 
 
 # ── Citizen-facing ────────────────────────────────────────────────────────────
@@ -132,7 +134,7 @@ async def block_slot(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    """Block a slot — only allowed when booked_count == 0."""
+    """Block a slot — if bookings exist, appointments are relocated to other available slots today or moved to waiting queue."""
     try:
         result = await scheduling_service.block_slot(db, slot_id)
         return JSONResponse(result)
@@ -183,14 +185,14 @@ async def reschedule_appointment(
     user: str = Depends(require_auth),
 ):
     """
-    Move a SCHEDULED appointment to a different slot.
-    Releases the old SlotBooking and books the new slot (FOR UPDATE concurrency).
+    Move an appointment to a different slot based on the selected datetime.
+    Opens the target date if needed, finds the matching slot, and books it.
     """
     try:
         result = await scheduling_service.reschedule_appointment(
             db=db,
             appointment_id=appointment_id,
-            new_slot_id=data.new_slot_id,
+            new_datetime=data.new_datetime,
         )
         return JSONResponse(result)
     except ValueError as e:
@@ -211,6 +213,21 @@ async def get_waiting_queue(
     try:
         result = await scheduling_service.get_waiting_queue(db, limit)
         return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/admin/auto-allocate")
+async def auto_allocate_waiting_queue(
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Assign all waiting queue appointments to available slots today from current time."""
+    try:
+        result = await scheduling_service.auto_allocate_waiting_queue(db)
+        return JSONResponse(result)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

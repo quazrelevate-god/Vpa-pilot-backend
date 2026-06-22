@@ -100,6 +100,12 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
           <a
             href="/auth/logout"
             title="Sign out"
+            onClick={(e) => {
+              e.preventDefault();
+              fetch("/auth/logout", { credentials: "include" }).finally(() => {
+                window.location.href = "/login";
+              });
+            }}
             className="grid h-8 w-8 place-items-center rounded-md text-sidebar-foreground/60 transition-colors hover:bg-sidebar-hover hover:text-white"
           >
             <LogOut className="h-4 w-4" />

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Download, Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,8 +34,21 @@ function statusClass(s: string) {
 }
 
 export default function AppointmentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AppointmentsPageInner />
+    </Suspense>
+  );
+}
+
+function AppointmentsPageInner() {
   const { t } = useLang();
-  const [tab, setTab] = useState<(typeof TABS)[number]>("All");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as (typeof TABS)[number]) || "All";
+  const [tab, setTab] = useState<(typeof TABS)[number]>(
+    TABS.includes(initialTab as (typeof TABS)[number]) ? initialTab : "All"
+  );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<AppointmentRow[]>([]);
@@ -155,7 +169,7 @@ export default function AppointmentsPage() {
                   return (
                     <button
                       key={tabItem}
-                      onClick={() => { setTab(tabItem); setPage(1); }}
+                      onClick={() => { setTab(tabItem); setPage(1); router.replace("/appointments"); }}
                       className={cn(
                         "whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors",
                         active
@@ -224,10 +238,10 @@ export default function AppointmentsPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="Waiting">Waiting</SelectItem>
+                            <SelectItem value="Scheduled">Scheduled</SelectItem>
                             <SelectItem value="Awaiting Review">Awaiting Review</SelectItem>
                             <SelectItem value="Reviewed">Reviewed</SelectItem>
-                            <SelectItem value="Scheduled">Scheduled</SelectItem>
-                            <SelectItem value="Waiting">Waiting</SelectItem>
                             <SelectItem value="Rescheduled">Rescheduled</SelectItem>
                           </SelectContent>
                         </Select>

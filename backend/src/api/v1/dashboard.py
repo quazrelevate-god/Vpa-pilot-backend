@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from pathlib import Path
 
 from src.core.database import get_db
@@ -161,6 +162,36 @@ async def api_update_status(
     #     ))
 
     return JSONResponse({"ok": True})
+
+
+@router.get("/api/appointments/{appointment_id}/activity")
+async def api_appointment_activity(
+    appointment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Return the activity timeline for an appointment."""
+    from src.models.appointment_models import AppointmentEvent
+    result = await db.execute(
+        select(AppointmentEvent)
+        .where(AppointmentEvent.appointment_id == appointment_id)
+        .order_by(AppointmentEvent.created_at.desc())
+    )
+    events = result.scalars().all()
+    return JSONResponse({
+        "items": [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "actor": e.actor,
+                "note": e.note,
+                "payload": e.payload,
+                "created_at": e.created_at.isoformat() + "Z" if e.created_at else None,
+            }
+            for e in events
+        ],
+        "total": len(events),
+    })
 
 
 # ══ Ticketing endpoints — PA team only ════════════════════════════════════════
