@@ -703,7 +703,7 @@
                             <i class="fa-solid fa-check-circle"></i> <span id="selectedSlotText"></span>
                         </div>
                         <button type="button" id="btnConfirmMeeting" disabled
-                            onclick="submitForm(true)"
+                            onclick="openConsentDialog()"
                             style="margin-top:0.85rem; width:100%; padding:0.65rem; background:rgba(139,92,246,0.85); color:#fff; border:none; border-radius:8px; font-weight:700; font-size:0.9rem; cursor:pointer; transition:opacity 0.2s;">
                             <i class="fa-solid fa-handshake"></i> <span>Confirm &amp; Submit</span>
                         </button>
@@ -721,6 +721,57 @@
                 </div>
 
             </form>
+        </div>
+    </div>
+
+    <!-- Consent Dialog — shown before meeting submission -->
+    <div id="consentOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; display:none; align-items:center; justify-content:center; padding:1rem;">
+        <div style="background:#fff; border-radius:16px; max-width:420px; width:100%; padding:1.5rem; box-shadow:0 20px 60px rgba(0,0,0,0.25); max-height:90vh; overflow-y:auto;">
+            <!-- Header -->
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                <span style="font-size:1.3rem;">📋</span>
+                <span class="consent-en" style="font-weight:800; font-size:1rem; color:#1e293b;">Declaration</span>
+                <span class="consent-ta" style="font-weight:800; font-size:1rem; color:#1e293b; display:none;">அறிவிப்பு</span>
+            </div>
+
+            <!-- English text -->
+            <div class="consent-en" style="font-size:0.88rem; color:#374151; line-height:1.7; margin-bottom:1.25rem;">
+                <p style="margin-bottom:0.75rem;">I kindly accept that:</p>
+                <ul style="margin-left:1.25rem; margin-bottom:0;">
+                    <li style="margin-bottom:0.5rem;">Appointment schedules are subject to the Hon'ble Minister's official commitments.</li>
+                    <li>The allotted date and time may be rescheduled, postponed, or cancelled due to administrative or official requirements.</li>
+                </ul>
+            </div>
+
+            <!-- Tamil text -->
+            <div class="consent-ta" style="font-size:0.88rem; color:#374151; line-height:1.8; margin-bottom:1.25rem; display:none;">
+                <p style="margin-bottom:0.75rem;">கீழ்க்கண்ட நிபந்தனைகளை நான் கனிவுடன் ஏற்றுக் கொள்கிறேன்:</p>
+                <ul style="margin-left:1.25rem; margin-bottom:0;">
+                    <li style="margin-bottom:0.5rem;">மதிப்பிற்குரிய அமைச்சரின் அரசுப் பணிகள் மற்றும் அலுவல்சார்ந்த காரணங்களால், இந்தச் சந்திப்பு நேரம் மாற்றியமைக்கப்படலாம் என்பதை அறிகிறேன்.</li>
+                    <li>நிர்வாகக் காரணங்களினால் எனக்கு ஒதுக்கப்பட்ட தேதியும் நேரமும் மாற்றப்படவோ, ஒத்திவைக்கப்படவோ அல்லது ரத்து செய்யப்படவோ வாய்ப்புள்ளது என்பதை ஏற்றுக் கொள்கிறேன்.</li>
+                </ul>
+            </div>
+
+            <!-- Checkbox -->
+            <label style="display:flex; align-items:flex-start; gap:0.65rem; cursor:pointer; margin-bottom:1.25rem; padding:0.75rem; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
+                <input type="checkbox" id="consentCheck" onchange="onConsentChange()" style="margin-top:2px; width:18px; height:18px; accent-color:#7c3aed; flex-shrink:0;">
+                <span class="consent-en" style="font-size:0.83rem; color:#4b5563; font-weight:600;">I have read and agree to the above conditions.</span>
+                <span class="consent-ta" style="font-size:0.83rem; color:#4b5563; font-weight:600; display:none;">மேற்கண்ட நிபந்தனைகளை படித்து ஏற்றுக்கொள்கிறேன்.</span>
+            </label>
+
+            <!-- Buttons -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                <button type="button" onclick="closeConsentDialog()"
+                    style="padding:0.7rem; border:1.5px solid #e2e8f0; border-radius:8px; background:#fff; color:#374151; font-weight:700; font-size:0.88rem; cursor:pointer;">
+                    <span class="consent-en">Cancel</span>
+                    <span class="consent-ta" style="display:none;">ரத்து செய்</span>
+                </button>
+                <button type="button" id="btnConsentConfirm" onclick="submitForm(true)" disabled
+                    style="padding:0.7rem; border:none; border-radius:8px; background:rgba(139,92,246,0.85); color:#fff; font-weight:700; font-size:0.88rem; cursor:pointer; opacity:0.45; transition:opacity 0.2s;">
+                    <span class="consent-en">Confirm &amp; Submit</span>
+                    <span class="consent-ta" style="display:none;">உறுதிசெய் &amp; சமர்ப்பி</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1202,6 +1253,9 @@
                 formData.append('files', file);
             });
 
+            // Close consent dialog immediately when submission starts
+            document.getElementById('consentOverlay').style.display = 'none';
+
             const btnPetition = document.getElementById('btnPetition');
             const btnMeeting  = document.getElementById('btnMeeting');
             const btnConfirm  = document.getElementById('btnConfirmMeeting');
@@ -1299,48 +1353,77 @@
                     return;
                 }
 
-                msg.textContent = 'Select a time — green = available, red = full or blocked';
+                msg.textContent = 'Select a time — green = available, red = full or blocked, grey = past';
                 grid.innerHTML  = '';
+
+                // Current time in minutes since midnight (local time) for past-slot filtering
+                const nowLocal   = new Date();
+                const nowMinutes = nowLocal.getHours() * 60 + nowLocal.getMinutes();
 
                 data.slots.forEach(slot => {
                     const card    = document.createElement('div');
-                    const isAvail = slot.available;
-                    const isFull  = slot.remaining === 0 && slot.status !== 'BLOCKED';
-                    const isBlock = slot.status === 'BLOCKED';
+
+                    // Parse slot start "HH:MM" to minutes
+                    const [sh, sm] = slot.start.split(':').map(Number);
+                    const slotStart = sh * 60 + sm;
+                    const isPast  = slotStart <= nowMinutes;   // slot already started → grey
+
+                    const isAvail = !isPast && slot.available;
+                    const isFull  = !isPast && slot.remaining === 0 && slot.status !== 'BLOCKED';
+                    const isBlock = !isPast && slot.status === 'BLOCKED';
                     const isSelected = String(slot.id) === String(selectedId);
 
-                    // Color only — no numbers shown
-                    const bg      = isBlock ? '#f1f5f9' : isFull ? '#fee2e2' : '#dcfce7';
-                    const border  = isSelected ? '#7c3aed'
-                                  : isBlock    ? '#cbd5e1'
-                                  : isFull     ? '#fca5a5'
-                                  :              '#86efac';
+                    let bg, border, cursor, opacity, statusDot;
+                    if (isPast) {
+                        bg       = '#f1f5f9';
+                        border   = '#cbd5e1';
+                        cursor   = 'not-allowed';
+                        opacity  = '0.4';
+                        statusDot= '⬜';
+                    } else if (isBlock) {
+                        bg       = '#f1f5f9';
+                        border   = '#cbd5e1';
+                        cursor   = 'not-allowed';
+                        opacity  = '0.55';
+                        statusDot= '🔒';
+                    } else if (isFull) {
+                        bg       = '#fee2e2';
+                        border   = '#fca5a5';
+                        cursor   = 'not-allowed';
+                        opacity  = '0.55';
+                        statusDot= '🔴';
+                    } else {
+                        bg       = '#dcfce7';
+                        border   = isSelected ? '#7c3aed' : '#86efac';
+                        cursor   = 'pointer';
+                        opacity  = '1';
+                        statusDot= '🟢';
+                    }
 
                     card.style.cssText = `
                         border-radius:8px; padding:0.55rem 0.5rem; border:2px solid ${border};
-                        cursor:${isAvail ? 'pointer' : 'not-allowed'};
-                        background:${bg};
-                        opacity:${isAvail ? '1' : '0.55'};
-                        text-align:center;
-                        transition:border-color 0.15s;
-                        ${isSelected ? 'outline:2.5px solid #7c3aed; outline-offset:1px;' : ''}
+                        cursor:${cursor}; background:${bg}; opacity:${opacity};
+                        text-align:center; transition:border-color 0.15s;
+                        ${isSelected && !isPast ? 'outline:2.5px solid #7c3aed; outline-offset:1px;' : ''}
                     `;
 
-                    // Time label only
                     const shortLabel = slot.start + ' – ' + slot.end;
-                    const statusDot  = isBlock ? '🔒' : isFull ? '🔴' : '🟢';
-                    card.innerHTML   = `<div style="font-size:0.78rem;font-weight:700;color:#1e293b;">${statusDot} ${shortLabel}</div>`;
+                    card.innerHTML = `<div style="font-size:0.78rem;font-weight:700;color:#1e293b;">${statusDot} ${shortLabel}</div>`;
 
                     if (isAvail) {
                         card.addEventListener('click', () => selectSlot(slot.id, slot.label, card));
-                    } else if (isBlock || isFull) {
-                        // If previously selected slot became blocked/full during polling, deselect it
-                        if (isSelected) {
-                            document.getElementById('selectedSlotId').value = '';
-                            document.getElementById('selectedSlotLabel').style.display = 'none';
-                            document.getElementById('btnConfirmMeeting').disabled = true;
-                            msg.innerHTML = '<span style="color:#dc2626;">⚠ Your selected slot is no longer available. Please choose another.</span>';
-                        }
+                    } else if (!isPast && (isBlock || isFull) && isSelected) {
+                        // Selected slot became unavailable during polling
+                        document.getElementById('selectedSlotId').value = '';
+                        document.getElementById('selectedSlotLabel').style.display = 'none';
+                        document.getElementById('btnConfirmMeeting').disabled = true;
+                        msg.innerHTML = '<span style="color:#dc2626;">⚠ Your selected slot is no longer available. Please choose another.</span>';
+                    } else if (isPast && isSelected) {
+                        // Selected slot passed while user was still on the form
+                        document.getElementById('selectedSlotId').value = '';
+                        document.getElementById('selectedSlotLabel').style.display = 'none';
+                        document.getElementById('btnConfirmMeeting').disabled = true;
+                        msg.innerHTML = '<span style="color:#dc2626;">⚠ Your selected slot has passed. Please choose an upcoming slot.</span>';
                     }
                     grid.appendChild(card);
                 });
@@ -1356,15 +1439,43 @@
         function selectSlot(slotId, label, cardEl) {
             document.querySelectorAll('#slotGrid > div').forEach(c => {
                 c.style.outline = 'none';
-                c.style.borderColor = c.style.borderColor; // keep existing color
             });
             cardEl.style.outline = '2.5px solid #7c3aed';
             cardEl.style.outlineOffset = '1px';
 
-            document.getElementById('selectedSlotId').value         = slotId;
-            document.getElementById('selectedSlotText').textContent  = label;
+            document.getElementById('selectedSlotId').value          = slotId;
+            document.getElementById('selectedSlotText').textContent   = label;
             document.getElementById('selectedSlotLabel').style.display = 'block';
-            document.getElementById('btnConfirmMeeting').disabled    = false;
+            document.getElementById('btnConfirmMeeting').disabled     = false;
+        }
+
+        // ── Consent dialog ─────────────────────────────────────────────────
+
+        function openConsentDialog() {
+            const isTamil   = runtimeActiveLanguage === 'ta';
+            const overlay   = document.getElementById('consentOverlay');
+
+            // Show the right language
+            document.querySelectorAll('.consent-en').forEach(el => el.style.display = isTamil ? 'none' : '');
+            document.querySelectorAll('.consent-ta').forEach(el => el.style.display = isTamil ? '' : 'none');
+
+            // Reset checkbox + confirm button on every open
+            document.getElementById('consentCheck').checked     = false;
+            document.getElementById('btnConsentConfirm').disabled = true;
+            document.getElementById('btnConsentConfirm').style.opacity = '0.45';
+
+            overlay.style.display = 'flex';
+        }
+
+        function closeConsentDialog() {
+            document.getElementById('consentOverlay').style.display = 'none';
+        }
+
+        function onConsentChange() {
+            const checked = document.getElementById('consentCheck').checked;
+            const btn     = document.getElementById('btnConsentConfirm');
+            btn.disabled  = !checked;
+            btn.style.opacity = checked ? '1' : '0.45';
         }
 
         // Audio recording — module-level variables
