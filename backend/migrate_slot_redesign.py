@@ -93,6 +93,10 @@ SQL_STATEMENTS = [
     ALTER TABLE IF EXISTS mla_daily_availability
         DROP CONSTRAINT IF EXISTS uq_mla_date_start;
     """,
+    # Truncate stale data BEFORE adding unique constraint (avoids duplicate key errors)
+    """
+    TRUNCATE TABLE mla_daily_availability CASCADE;
+    """,
     """
     DO $$
     BEGIN
@@ -116,14 +120,12 @@ SQL_STATEMENTS = [
 
     # ── 7. Truncate stale 5-min slot data (incompatible with 30-min design) ─
     # slot_bookings was just created so truncate order is safe
+    # mla_daily_availability was already truncated in step 5
     """
     TRUNCATE TABLE slot_bookings CASCADE;
     """,
     """
     TRUNCATE TABLE appointment_slots CASCADE;
-    """,
-    """
-    TRUNCATE TABLE mla_daily_availability CASCADE;
     """,
 
     # ── 8. Add 'FULL' as valid status comment (VARCHAR — no enum to alter) ───
