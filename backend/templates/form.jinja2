@@ -1372,38 +1372,31 @@
         let audioChunks = [];
         let recordingStartTime;
         let timerInterval;
-        let currentAudioMime = 'audio/webm';
-
-        // iOS Safari supports audio/mp4; Android/Chrome supports audio/webm.
-        // Detect at runtime so playback works on all devices.
-        function getAudioMimeType() {
-            const types = [
-                'audio/mp4;codecs=mp4a.40.2',
-                'audio/mp4',
-                'audio/webm;codecs=opus',
-                'audio/webm',
-            ];
-            if (typeof MediaRecorder === 'undefined') return 'audio/webm';
-            for (const t of types) {
-                if (MediaRecorder.isTypeSupported(t)) return t;
-            }
-            return '';
-        }
+        let currentAudioMime = '';
 
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                currentAudioMime = getAudioMimeType();
-                const options = currentAudioMime ? { mimeType: currentAudioMime } : {};
-                mediaRecorder = new MediaRecorder(stream, options);
+                // Do NOT force a MIME type — let each browser use its native format:
+                //   iOS Safari  → records audio/mp4  automatically (plays fine on iOS)
+                //   Chrome/Android → records audio/webm (plays fine on Android)
+                // Forcing a codec string breaks iOS Safari MediaRecorder.
+                mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
 
+                // Read the actual MIME type the recorder chose after it starts
+                mediaRecorder.onstart = () => {
+                    currentAudioMime = mediaRecorder.mimeType || 'audio/webm';
+                };
+
                 mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
+                    if (event.data && event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
                 };
 
                 mediaRecorder.onstop = () => {
-                    const blobMime = currentAudioMime || 'audio/webm';
+                    const blobMime = currentAudioMime || mediaRecorder.mimeType || 'audio/webm';
                     const audioBlob = new Blob(audioChunks, { type: blobMime });
                     const audioUrl = URL.createObjectURL(audioBlob);
                     
