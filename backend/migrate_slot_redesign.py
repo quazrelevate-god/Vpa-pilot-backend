@@ -27,8 +27,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
-# asyncpg uses postgres:// not postgresql+asyncpg://
-ASYNCPG_URL = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace("postgresql://", "postgres://")
+
+# Strip any SQLAlchemy driver suffix (+asyncpg, +psycopg, +psycopg2, etc.)
+# then normalise to the postgres:// scheme asyncpg expects.
+import re as _re
+ASYNCPG_URL = _re.sub(r"^postgresql\+\w+://", "postgresql://", DATABASE_URL)
+ASYNCPG_URL = ASYNCPG_URL.replace("postgresql://", "postgres://")
 
 SQL_STATEMENTS = [
     # ── 1. Drop time_windows table ───────────────────────────────────────────
