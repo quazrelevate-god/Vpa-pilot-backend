@@ -1599,7 +1599,7 @@
         }
 
         const MAX_RECORDING_SECONDS = {{ audio_max_seconds | default(300) }}; // configurable via .env
-        const MIN_RECORDING_SECONDS = {{ audio_min_seconds | default(2) }};   // configurable via .env
+        const MIN_RECORDING_SECONDS = 2;  // minimum 2 seconds
 
         function updateTimer() {
             const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
