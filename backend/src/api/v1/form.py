@@ -92,11 +92,13 @@ async def display_form(
             )
 
         # Step 3: Verify device fingerprint matches
-        if session.device_fingerprint != current_fingerprint:
-            return RedirectResponse(
-                url="/form/error?" + urlencode({"type": "device_mismatch"}),
-                status_code=302,
-            )
+        # TEMPORARILY DISABLED: Railway/proxy changes client IP between QR scan
+        # and form load, causing false device_mismatch errors.
+        # if session.device_fingerprint != current_fingerprint:
+        #     return RedirectResponse(
+        #         url="/form/error?" + urlencode({"type": "device_mismatch"}),
+        #         status_code=302,
+        #     )
 
         # Step 4: Check if token has expired
         current_time = datetime.utcnow()
