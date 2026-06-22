@@ -49,7 +49,7 @@ export const CATEGORY_DISPLAY_EN: Record<string, string> = {
   job_requests:        "Job Requests",
   rti:                 "RTI",
   associations_unions: "Associations / Unions",
-  other_departments:   "Other Departments",
+  other:               "Other",
   general:             "General",
   greetings:           "Greetings",
 };
@@ -64,7 +64,7 @@ export const CATEGORY_DISPLAY_TA: Record<string, string> = {
   job_requests:        "வேலைவாய்ப்பு கோரிக்கைகள்",
   rti:                 "தகவல் அறியும் உரிமை",
   associations_unions: "சங்கங்கள் / தொழிற்சங்கங்கள்",
-  other_departments:   "பிற துறைகள்",
+  other:               "பிற",
   general:             "பொது மனுக்கள்",
   greetings:           "வாழ்த்து செய்திகள்",
 };

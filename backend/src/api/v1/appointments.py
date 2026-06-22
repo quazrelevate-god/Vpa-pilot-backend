@@ -227,6 +227,10 @@ async def submit_appointment(
         min_length=6,
         max_length=6
     ),
+    grievance_category: Optional[str] = Form(
+        default=None,
+        description="Citizen-selected grievance category"
+    ),
     schedule_meeting: str = Form(
         default="false",
         description="Whether to schedule a meeting (true/false)"
@@ -304,8 +308,8 @@ async def submit_appointment(
         - Composite indexes optimize OTP lookup
     
     File Upload:
-        - Supported types: audio, images, documents (PDF, Word), video
-        - Max file size: 10MB per file
+        - Supported types: images (JPG, PNG) and PDF documents
+        - Max file size: configurable via MAX_FILE_SIZE_MB in .env (default 5MB)
         - Files stored in: uploads/attachments/{appointment_id}/
     
     Args:
@@ -366,6 +370,7 @@ async def submit_appointment(
             audio_recording=audio_recording,
             files=files,
             db=db,
+            grievance_category=grievance_category,
         )
         
         return AppointmentResponseModel(**result)

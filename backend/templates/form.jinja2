@@ -404,6 +404,51 @@
             resize: none;
         }
 
+        select.glass-field {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            padding-right: 2.5rem;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.5);
+            border: 1.5px solid rgba(59, 130, 246, 0.45);
+            border-radius: 0.75rem;
+            color: #1f2937;
+        }
+        select.glass-field:focus {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.02);
+            outline: none;
+        }
+        select.glass-field option {
+            background-color: #ffffff;
+            color: #1f2937;
+            font-size: 0.95rem;
+            padding: 0.6rem 1rem;
+        }
+        select.glass-field option:checked,
+        select.glass-field option:hover {
+            background-color: #eff6ff;
+            color: #1d4ed8;
+        }
+        .category-select-wrapper {
+            position: relative;
+        }
+        .category-select-wrapper::after {
+            content: '';
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0.6rem;
+            height: 0.6rem;
+            border-right: 2px solid #3b82f6;
+            border-bottom: 2px solid #3b82f6;
+            transform: translateY(-65%) rotate(45deg);
+            pointer-events: none;
+        }
+
         /* Layout Block for Phone + OTP Generation Trigger */
         .phone-otp-row {
             display: grid;
@@ -809,6 +854,18 @@
                     <input type="text" id="txtName" required placeholder="Enter full legal name" class="glass-field">
                 </div>
 
+                <!-- Category Field -->
+                <div class="field-group">
+                    <div class="label-container">
+                        <label for="ddlCategory"><span id="lbl-category">Category</span> <span class="req-star">*</span></label>
+                    </div>
+                    <div class="category-select-wrapper">
+                        <select id="ddlCategory" class="glass-field">
+                            <option value="" id="opt-category-default">— Select —</option>
+                        </select>
+                    </div>
+                </div>
+
                 <!-- Multi-format Application Upload Target Wrapper -->
                 <div class="field-group">
                     <div class="label-container">
@@ -817,8 +874,8 @@
                     <div class="upload-container">
                         <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
                         <div class="upload-text" id="lbl-upload-text">Click or drag file to upload</div>
-                        <div class="upload-hint" id="lbl-upload-hint">Supported formats: CSV, PDF, JPG, PNG, DOC, DOCX (Max 5MB)</div>
-                        <input type="file" id="fileAttachments" class="file-input-hidden" multiple accept=".csv, .pdf, image/*, .doc, .docx" onchange="renderUploadedFiles(this)">
+                        <div class="upload-hint" id="lbl-upload-hint">Supported formats: PDF, JPG, PNG (Max {{ max_file_size_mb }}MB)</div>
+                        <input type="file" id="fileAttachments" class="file-input-hidden" multiple accept="{{ allowed_file_extensions }}" onchange="renderUploadedFiles(this)">
                     </div>
                     <div class="file-preview-list" id="filePreviews"></div>
                 </div>
@@ -1031,9 +1088,10 @@
             const description = document.getElementById('txtDesc').value.trim();
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
+            const hasCategory = document.getElementById('ddlCategory').value !== '';
             
-            // All fields must be filled: name, mobile, and (description OR files OR audio)
-            const isValid = name && mobile && (description || hasFiles || hasAudio);
+            // All fields must be filled: name, mobile, category, and (description OR files OR audio)
+            const isValid = name && mobile && hasCategory && (description || hasFiles || hasAudio);
             
             // Enable/disable OTP button based on validation
             document.getElementById('btnGenOtp').disabled = !isValid;
@@ -1046,7 +1104,7 @@
                 portalTitle: "Grievance Registration", secTitle: "Grievance Form",
                 name: "Full Name", phone: "Mobile Number", otp: "Enter OTP", desc: "Grievance Description",
                 upload: "Upload Attachments", uploadText: "Click or drag file to upload",
-                uploadHint: "Supported formats: CSV, PDF, JPG, PNG, DOC, DOCX (Max 5MB)",
+                uploadHint: "Supported formats: PDF, JPG, PNG (Max {{ max_file_size_mb }}MB)",
                 btnSubmit: "Submit Grievance Application", btnPetition: "Submit Petition", btnMeeting: "Submit & Request Meeting",
                 errMob: "Invalid 10-digit number", errOtp: "Invalid 6-digit OTP",
                 modalTitle: "Submission Successful",
@@ -1084,13 +1142,28 @@
                 slotSelectedGone: "Your selected slot is no longer available. Please choose another.",
                 slotSelectedPast: "Your selected slot has passed. Please choose an upcoming slot.",
                 slotSelectDate: "Select a date",
+                // Category
+                category: "Category",
+                categorySelect: "— Select —",
+                catActionRequired: "Action Required",
+                catProposals: "Proposals",
+                catTransferRequests: "Transfer Requests",
+                catPensionRequests: "Pension Requests",
+                catSchoolAdmission: "School Admission",
+                catJobRequests: "Job Requests",
+                catRti: "RTI",
+                catAssociationsUnions: "Associations / Unions",
+                catOther: "Other",
+                catGeneral: "General",
+                catGreetings: "Greetings",
+                alertSelectCategory: "Please select a category.",
             },
             ta: {
                 portalTitle: "குறைதீர்க்கும் பதிவு", secTitle: "புகார் படிவம்",
                 name: "முழு பெயர்", phone: "அலைபேசி எண்", otp: "ஒடிபி (OTP) உள்ளிடவும்",
                 desc: "புகார் விவரம் (அல்லது கோப்புகளை பதிவேற்றவும்)",
                 upload: "ஆவணங்களை பதிவேற்றவும்", uploadText: "கோப்புகளைத் தேர்ந்தெடுக்க இங்கே கிளிக் செய்யவும்",
-                uploadHint: "ஆதரிக்கப்படும் வடிவங்கள்: CSV, PDF, JPG, PNG, DOC, DOCX (அதிகபட்சம் 5MB)",
+                uploadHint: "ஆதரிக்கப்படும் வடிவங்கள்: PDF, JPG, PNG (அதிகபட்சம் {{ max_file_size_mb }}MB)",
                 btnSubmit: "புகாரைப் பதிவு செய்க", btnPetition: "மனுவை சமர்ப்பிக்கவும்", btnMeeting: "மனு & சந்திப்பு கோரிக்கை",
                 errMob: "சரியான 10 இலக்க எண் தேவை", errOtp: "தவறான ஒடிபி எண்",
                 modalTitle: "வெற்றிகரமாக சமர்ப்பிக்கப்பட்டது!",
@@ -1127,7 +1200,22 @@
                 slotSelectFirst: "முதலில் சந்திப்பு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectedGone: "நீங்கள் தேர்ந்தெடுத்த நேரம் இனி கிடைக்கவில்லை. வேறு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectedPast: "நீங்கள் தேர்ந்தெடுத்த நேரம் கடந்துவிட்டது. வரவிருக்கும் நேரத்தைத் தேர்ந்தெடுக்கவும்.",
-                slotSelectDate: "தேதியைத் தேர்ந்தெடுக்கவும்"
+                slotSelectDate: "தேதியைத் தேர்ந்தெடுக்கவும்",
+                // Category
+                category: "பிரிவு",
+                categorySelect: "— தேர்ந்தெடுக்கவும் —",
+                catActionRequired: "உடனடி நடவடிக்கை தேவை",
+                catProposals: "முன்மொழிவுகள்",
+                catTransferRequests: "பணியிட மாற்றக் கோரிக்கைகள்",
+                catPensionRequests: "ஓய்வூதியக் கோரிக்கைகள்",
+                catSchoolAdmission: "பள்ளி சேர்க்கை",
+                catJobRequests: "வேலைவாய்ப்பு கோரிக்கைகள்",
+                catRti: "தகவல் அறியும் உரிமை",
+                catAssociationsUnions: "சங்கங்கள் / தொழிற்சங்கங்கள்",
+                catOther: "பிற",
+                catGeneral: "பொது மனுக்கள்",
+                catGreetings: "வாழ்த்து செய்திகள்",
+                alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
             }
         };
 
@@ -1140,6 +1228,44 @@
         function _setAttr(id, attr, text) {
             const el = document.getElementById(id);
             if (el) el[attr] = text;
+        }
+
+        const CATEGORY_KEYS = [
+            'action_required', 'proposals', 'transfer_requests', 'pension_requests',
+            'school_admission', 'job_requests', 'rti', 'associations_unions',
+            'other', 'general', 'greetings',
+        ];
+        const CATEGORY_LABEL_KEYS = {
+            action_required:      'catActionRequired',
+            proposals:            'catProposals',
+            transfer_requests:    'catTransferRequests',
+            pension_requests:     'catPensionRequests',
+            school_admission:     'catSchoolAdmission',
+            job_requests:         'catJobRequests',
+            rti:                  'catRti',
+            associations_unions:  'catAssociationsUnions',
+            other:                'catOther',
+            general:              'catGeneral',
+            greetings:            'catGreetings',
+        };
+
+        function _populateCategoryDropdown() {
+            const ddl = document.getElementById('ddlCategory');
+            if (!ddl) return;
+            const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
+            const prevValue = ddl.value;
+            ddl.innerHTML = '';
+            const defaultOpt = document.createElement('option');
+            defaultOpt.value = '';
+            defaultOpt.textContent = copy.categorySelect;
+            ddl.appendChild(defaultOpt);
+            CATEGORY_KEYS.forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = copy[CATEGORY_LABEL_KEYS[key]];
+                ddl.appendChild(opt);
+            });
+            ddl.value = prevValue;
         }
 
         function switchLocalization(isChecked) {
@@ -1165,6 +1291,10 @@
             // Submit buttons
             _setText('lbl-btn-petition', copy.btnPetition);
             _setText('lbl-btn-meeting',  copy.btnMeeting);
+
+            // Category dropdown
+            _setText('lbl-category', copy.category);
+            _populateCategoryDropdown();
 
             // Slot picker
             _setText('lbl-slot-title',   copy.slotTitle);
@@ -1434,6 +1564,7 @@
         // Initialize form validation on page load
         document.addEventListener('DOMContentLoaded', function() {
             initOtpBoxes();
+            _populateCategoryDropdown();
 
             // Disable OTP button initially
             document.getElementById('btnGenOtp').disabled = true;
@@ -1442,6 +1573,7 @@
             document.getElementById('txtName').addEventListener('input', validateFormForOTP);
             document.getElementById('txtMobile').addEventListener('input', validateFormForOTP);
             document.getElementById('txtDesc').addEventListener('input', validateFormForOTP);
+            document.getElementById('ddlCategory').addEventListener('change', validateFormForOTP);
             document.getElementById('fileAttachments').addEventListener('change', function(e) {
                 renderUploadedFiles(e.target);
                 validateFormForOTP();
@@ -1483,6 +1615,12 @@
                 return;
             }
 
+            const category = document.getElementById('ddlCategory').value;
+            if (!category) {
+                alert(copy.alertSelectCategory);
+                return;
+            }
+
             // Validate audio recording size (max duration from .env)
             if (hasAudio) {
                 const audioData = document.getElementById('audioRecordingData').value;
@@ -1509,6 +1647,7 @@
             formData.append('constituency', 'Tamil Nadu');
             formData.append('description', description || 'See attachments or audio');
             formData.append('otp_code', document.getElementById('txtOtp').value);
+            formData.append('grievance_category', category);
             formData.append('schedule_meeting', scheduleMeeting.toString());
             if (scheduleMeeting && slotId) {
                 formData.append('slot_id', slotId);

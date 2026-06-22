@@ -25,7 +25,7 @@ class GrievanceCategory(str, Enum):
     JOB_REQUESTS            = "job_requests"             # வேலைவாய்ப்பு கோரிக்கைகள் — employment, job cards
     RTI                     = "rti"                      # தகவல் அறியும் உரிமை மனுக்கள் — RTI petitions
     ASSOCIATIONS_UNIONS     = "associations_unions"      # சங்கங்கள் / தொழிற்சங்கங்கள் — union / association matters
-    OTHER_DEPARTMENTS       = "other_departments"        # பிற துறைகள் — other department referrals
+    OTHER                           = "other"                    # பிற — other / unclassified
     GENERAL                 = "general"                  # பொது மனுக்கள் — general petitions
     GREETINGS               = "greetings"                # வாழ்த்து மற்றும் மரியாதைச் செய்திகள் — greetings/appreciation
 
@@ -40,7 +40,7 @@ CATEGORY_DISPLAY_EN: dict[str, str] = {
     "job_requests":        "Job Requests",
     "rti":                 "RTI",
     "associations_unions": "Associations / Unions",
-    "other_departments":   "Other Departments",
+    "other":               "Other",
     "general":             "General",
     "greetings":           "Greetings",
 }
@@ -55,7 +55,7 @@ CATEGORY_DISPLAY_TA: dict[str, str] = {
     "job_requests":        "வேலைவாய்ப்பு கோரிக்கைகள்",
     "rti":                 "தகவல் அறியும் உரிமை",
     "associations_unions": "சங்கங்கள் / தொழிற்சங்கங்கள்",
-    "other_departments":   "பிற துறைகள்",
+    "other":               "பிற",
     "general":             "பொது மனுக்கள்",
     "greetings":           "வாழ்த்து செய்திகள்",
 }

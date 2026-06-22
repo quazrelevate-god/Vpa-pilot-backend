@@ -44,15 +44,9 @@ class AppointmentService:
     
     # File Upload Configuration
     UPLOAD_DIR = Path("uploads/attachments")
-    MAX_FILE_SIZE_MB = 10
     ALLOWED_MIME_TYPES = {
-        'AUDIO': ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/webm'],
-        'IMAGE': ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'],
-        'DOCUMENT': ['application/pdf', 'application/msword', 
-                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                     'application/vnd.ms-excel',
-                     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-        'VIDEO': ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime']
+        'IMAGE': ['image/jpeg', 'image/png'],
+        'DOCUMENT': ['application/pdf'],
     }
     
     def __init__(self):
@@ -462,6 +456,11 @@ class AppointmentService:
         from src.core.config import settings
         return int(settings.AUDIO_MAX_DURATION_SECONDS * 16 * 1024 * 1.2)
 
+    @property
+    def MAX_FILE_SIZE_MB(self) -> int:
+        from src.core.config import settings
+        return settings.MAX_FILE_SIZE_MB
+
     async def _save_audio_recording(self, audio_base64: str, token_number: int) -> str:
         """
         Save base64 encoded audio recording to disk.
@@ -599,6 +598,7 @@ class AppointmentService:
         files: List[UploadFile],
         db: AsyncSession,
         slot_id: Optional[int] = None,
+        grievance_category: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Atomically verify OTP and create appointment with attachments.
@@ -733,7 +733,7 @@ class AppointmentService:
                     encrypted_grievance=encrypted_grievance,
                     encrypted_name=encrypted_name,
                     audio_recording_url=audio_url,
-                    grievance_category=None,
+                    grievance_category=grievance_category,
                     status=initial_status,
                     schedule_meeting=schedule_meeting,
                     created_at=current_time
@@ -1052,7 +1052,8 @@ class AppointmentService:
                 )
                 appt = appt_result.scalar_one_or_none()
                 if appt:
-                    appt.grievance_category = summary.category.value
+                    # Category is now citizen-selected in the form — don't overwrite with AI.
+                    pass
 
                 # Auto-suggest ticket priority from AI urgency (PA can override).
                 # Only set if not already set manually by a PA.

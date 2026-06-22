@@ -121,6 +121,8 @@ async def display_form(
                 "session_token": token,
                 "audio_min_seconds": settings.AUDIO_MIN_DURATION_SECONDS,
                 "audio_max_seconds": settings.AUDIO_MAX_DURATION_SECONDS,
+                "max_file_size_mb": settings.MAX_FILE_SIZE_MB,
+                "allowed_file_extensions": settings.ALLOWED_FILE_EXTENSIONS,
             },
         )
         # Prevent browser from caching the form page — so back-button

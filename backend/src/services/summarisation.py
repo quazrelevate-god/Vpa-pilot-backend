@@ -134,7 +134,7 @@ CORE RULES — follow every one without exception:
                                 or transparency on a government decision/record.
      - associations_unions   → Petition from a registered association, union, or
                                 collective body representing a group's interests.
-     - other_departments     → The petition clearly belongs to a different government
+     - other                 → The petition clearly belongs to a different government
                                 department and is being forwarded for their action.
      - general               → General petition or grievance that does not fit any
                                 of the above specific categories.
@@ -150,7 +150,7 @@ CORE RULES — follow every one without exception:
    • "Flood damaged our crops — need compensation urgently" → action_required
    • "Need MGNREGA job card renewed" → job_requests
    • "Teachers' union requesting DA arrears" → associations_unions
-   • "This road issue belongs to Highways dept" → other_departments
+   • "This road issue belongs to Highways dept" → other
    • "Wishing you happy Pongal, Minister sir" → greetings
    • Anything else → general
 

@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     AUDIO_MIN_DURATION_SECONDS: int = 10   # minimum recording length
     AUDIO_MAX_DURATION_SECONDS: int = 300  # maximum recording length (5 minutes)
 
+    # File Upload Configuration
+    MAX_FILE_SIZE_MB: int = 5              # max size per uploaded attachment
+    ALLOWED_FILE_EXTENSIONS: str = ".pdf,.jpg,.jpeg,.png"  # comma-separated
+
     # MLA Profile (used by seed_mla.py for initial production setup)
     MLA_NAME: str = "Default MLA"
     MLA_CONSTITUENCY: str = "Default Constituency"
