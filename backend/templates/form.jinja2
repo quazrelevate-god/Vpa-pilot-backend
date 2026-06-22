@@ -1449,6 +1449,15 @@
 
         });
 
+        // Detect back-button (bfcache restore) and force a server round-trip
+        // so the backend re-validates the session token and redirects to
+        // the error page if it's already been used.
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
+
         async function submitForm(scheduleMeeting) {
             const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
 

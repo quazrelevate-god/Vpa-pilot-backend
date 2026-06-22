@@ -53,17 +53,14 @@ def generate_device_fingerprint(request: Request) -> str:
         'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'
     """
     components = [
-        # Network layer - Client IP address
-        request.client.host if request.client else "unknown",
-        
-        # Browser identification
+        # Browser identification (differentiates browsers/OS)
         request.headers.get("user-agent", ""),
-        
+
         # Locale and preferences
         request.headers.get("accept-language", ""),
         request.headers.get("accept-encoding", ""),
         request.headers.get("accept", ""),
-        
+
         # Optional: Chrome User-Agent Client Hints (modern browsers)
         request.headers.get("sec-ch-ua", ""),
         request.headers.get("sec-ch-ua-platform", ""),

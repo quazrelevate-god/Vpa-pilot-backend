@@ -92,13 +92,11 @@ async def display_form(
             )
 
         # Step 3: Verify device fingerprint matches
-        # TEMPORARILY DISABLED: Railway/proxy changes client IP between QR scan
-        # and form load, causing false device_mismatch errors.
-        # if session.device_fingerprint != current_fingerprint:
-        #     return RedirectResponse(
-        #         url="/form/error?" + urlencode({"type": "device_mismatch"}),
-        #         status_code=302,
-        #     )
+        if session.device_fingerprint != current_fingerprint:
+            return RedirectResponse(
+                url="/form/error?" + urlencode({"type": "device_mismatch"}),
+                status_code=302,
+            )
 
         # Step 4: Check if token has expired
         current_time = datetime.utcnow()
@@ -116,7 +114,7 @@ async def display_form(
             )
         
         # Render HTML form from template
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             "form.jinja2",
             {
                 "request": request,
@@ -125,6 +123,13 @@ async def display_form(
                 "audio_max_seconds": settings.AUDIO_MAX_DURATION_SECONDS,
             },
         )
+        # Prevent browser from caching the form page — so back-button
+        # after submission triggers a fresh server request instead of
+        # loading a stale cached page.
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     
     except HTTPException:
