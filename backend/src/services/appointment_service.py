@@ -688,7 +688,7 @@ class AppointmentService:
                 )
                 daily_count = await db.scalar(daily_counter_stmt) or 0
                 token_assigned = int(today_date.strftime("%Y%m%d")) * 100000 + daily_count + 1
-                slot_id = daily_count + 1  # Legacy slot reference
+                legacy_slot_ref = daily_count + 1  # sequential counter for legacy slot_id column only
                 
                 # Step 7: Encrypt sensitive fields
                 encrypted_name = self._encrypt_field(name)
@@ -728,7 +728,7 @@ class AppointmentService:
                 initial_status = 'SCHEDULED' if schedule_meeting else 'AWAITING_REVIEW'
                 appointment = Appointment(
                     citizen_id=citizen.id,
-                    slot_id=slot_id,
+                    slot_id=legacy_slot_ref,
                     token_assigned=token_assigned,
                     encrypted_grievance=encrypted_grievance,
                     encrypted_name=encrypted_name,
