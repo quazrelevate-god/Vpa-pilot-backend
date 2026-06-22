@@ -155,20 +155,22 @@ class QRService:
         # The itsdangerous library already verified the signature and timestamp
         # Database QR log is just for audit trail, not security enforcement
         
-        # Step 3: Check if this device has already scanned this specific QR
-        # Hash the signature to create a unique identifier for this QR code
+        # Step 3: Check if this device has an ACTIVE (unused + unexpired) session
+        # for this specific QR. If the previous session was used or expired,
+        # allow a new scan so the citizen can submit another grievance.
         qr_signature_hash = hashlib.sha256(signature_string.encode('utf-8')).hexdigest()
-        
-        # Check if this (QR signature, device) pair already exists
+
         current_time = datetime.utcnow()
         duplicate_scan_stmt = (
             select(GatekeeperSession)
             .where(GatekeeperSession.qr_signature_hash == qr_signature_hash)
             .where(GatekeeperSession.device_fingerprint == device_fingerprint)
+            .where(GatekeeperSession.is_used == False)
+            .where(GatekeeperSession.expires_at > current_time)
         )
         duplicate_scan_result = await db.execute(duplicate_scan_stmt)
         duplicate_scan = duplicate_scan_result.scalar_one_or_none()
-        
+
         if duplicate_scan:
             raise ValueError(
                 "This QR code has already been scanned on this device. "

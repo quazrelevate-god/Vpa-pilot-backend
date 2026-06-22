@@ -380,7 +380,7 @@
                 if (countdown <= 5) refreshMsg.classList.add('show');
                 
                 if (countdown === 0) {
-                    setTimeout(() => window.location.reload(), 1000);
+                    setTimeout(() => window.location.href = window.location.pathname + '?venue_id=' + encodeURIComponent('{{ venue_id }}') + '&_t=' + Date.now(), 1000);
                 }
             }
         }, 1000);

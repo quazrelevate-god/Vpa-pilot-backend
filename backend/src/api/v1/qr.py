@@ -50,7 +50,7 @@ async def display_qr(
         base_url = str(request.base_url).rstrip("/")
     qr_url = base_url + qr_data["verification_url"]
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "qr_display.jinja2",
         {
             "request": request,
@@ -59,6 +59,11 @@ async def display_qr(
             "expiry_seconds": qr_data["qr_expiry_seconds"],
         },
     )
+    # Prevent browser caching so every reload generates a fresh QR code
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @router.get(
