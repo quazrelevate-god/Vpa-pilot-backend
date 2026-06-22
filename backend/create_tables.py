@@ -16,6 +16,7 @@ from src.models.appointment_models import (
     Citizen,
     Appointment,
     AppointmentAttachment,
+    AppointmentEvent,
 )
 from src.models.grievance_summary_record import GrievanceSummaryRecord
 from src.models.scheduling_models import (

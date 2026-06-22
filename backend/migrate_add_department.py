@@ -184,6 +184,20 @@ SQL_STATEMENTS = [
         'employment','legal_justice','health','education'
      )
     """,
+    # ── Appointment events (audit log for appointment activity tab) ──────────
+    """
+    CREATE TABLE IF NOT EXISTS appointment_events (
+        id              BIGSERIAL PRIMARY KEY,
+        appointment_id  INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+        event_type      VARCHAR(40) NOT NULL,
+        actor           VARCHAR(100) NOT NULL,
+        note            TEXT,
+        payload         JSONB,
+        created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_appointment_events_appointment_id ON appointment_events (appointment_id)",
+    "CREATE INDEX IF NOT EXISTS ix_appt_events_appt_created ON appointment_events (appointment_id, created_at)",
 ]
 
 

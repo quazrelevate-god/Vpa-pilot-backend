@@ -43,6 +43,7 @@ async def init_database():
         Citizen,
         Appointment,
         AppointmentAttachment,
+        AppointmentEvent,
     )
     from src.models.grievance_summary_record import GrievanceSummaryRecord
     from src.models.scheduling_models import (
@@ -105,6 +106,7 @@ async def init_database():
         'citizens',
         'appointments',
         'appointment_attachments',
+        'appointment_events',
         'grievance_summary_records',
         'mlas',
         'mla_daily_availability',
