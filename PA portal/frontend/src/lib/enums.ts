@@ -39,19 +39,38 @@ export const DEPT_DISPLAY: Record<string, string> = {
   other:                                     "Other / Unclassified",
 };
 
-export const CATEGORY_DISPLAY: Record<string, string> = {
-  action_required:    "உடனடி நடவடிக்கை தேவை (Action Required)",
-  proposals:          "முன்மொழிவுகள் (Proposals)",
-  transfer_requests:  "பணியிட மாற்றக் கோரிக்கைகள் (Transfer Requests)",
-  pension_requests:   "ஓய்வூதியக் கோரிக்கைகள் (Pension Requests)",
-  school_admission:   "பள்ளி சேர்க்கை (School Admission)",
-  job_requests:       "வேலைவாய்ப்பு கோரிக்கைகள் (Job Requests)",
-  rti:                "தகவல் அறியும் உரிமை (RTI)",
-  associations_unions:"சங்கங்கள் / தொழிற்சங்கங்கள் (Associations / Unions)",
-  other_departments:  "பிற துறைகள் (Other Departments)",
-  general:            "பொது மனுக்கள் (General)",
-  greetings:          "வாழ்த்து செய்திகள் (Greetings)",
+// English-only category labels — used in PA portal (English UI)
+export const CATEGORY_DISPLAY_EN: Record<string, string> = {
+  action_required:     "Action Required",
+  proposals:           "Proposals",
+  transfer_requests:   "Transfer Requests",
+  pension_requests:    "Pension Requests",
+  school_admission:    "School Admission",
+  job_requests:        "Job Requests",
+  rti:                 "RTI",
+  associations_unions: "Associations / Unions",
+  other_departments:   "Other Departments",
+  general:             "General",
+  greetings:           "Greetings",
 };
+
+// Tamil-only category labels — used where Tamil display is needed
+export const CATEGORY_DISPLAY_TA: Record<string, string> = {
+  action_required:     "உடனடி நடவடிக்கை தேவை",
+  proposals:           "முன்மொழிவுகள்",
+  transfer_requests:   "பணியிட மாற்றக் கோரிக்கைகள்",
+  pension_requests:    "ஓய்வூதியக் கோரிக்கைகள்",
+  school_admission:    "பள்ளி சேர்க்கை",
+  job_requests:        "வேலைவாய்ப்பு கோரிக்கைகள்",
+  rti:                 "தகவல் அறியும் உரிமை",
+  associations_unions: "சங்கங்கள் / தொழிற்சங்கங்கள்",
+  other_departments:   "பிற துறைகள்",
+  general:             "பொது மனுக்கள்",
+  greetings:           "வாழ்த்து செய்திகள்",
+};
+
+// Default alias — PA portal is English-first
+export const CATEGORY_DISPLAY = CATEGORY_DISPLAY_EN;
 
 export const TICKET_STATUS_DISPLAY: Record<string, string> = {
   open:               "Open",
