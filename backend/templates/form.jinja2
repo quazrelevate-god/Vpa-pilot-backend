@@ -1365,12 +1365,11 @@
                 data.slots.forEach(slot => {
                     const card    = document.createElement('div');
 
-                    // A slot is past only when it has FULLY ended (slot_end <= now).
-                    // If the slot is still in progress (started but not ended) it remains
-                    // bookable — e.g. at 16:37 the 16:30–17:00 slot is still open.
-                    const [eh, em] = slot.end.split(':').map(Number);
-                    const slotEnd = eh * 60 + em;
-                    const isPast  = slotEnd <= nowMinutes;
+                    // Grey out any slot that has already started (slotStart <= now).
+                    // At 4:07 the 4:00–4:30 slot is grey; first available is 4:30.
+                    const [sh, sm] = slot.start.split(':').map(Number);
+                    const slotStart = sh * 60 + sm;
+                    const isPast    = slotStart <= nowMinutes;
 
                     const isAvail = !isPast && slot.available;
                     const isFull  = !isPast && slot.remaining === 0 && slot.status !== 'BLOCKED';
