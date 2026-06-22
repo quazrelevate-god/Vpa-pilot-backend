@@ -1367,26 +1367,45 @@
             document.getElementById('btnConfirmMeeting').disabled    = false;
         }
 
-        // Audio recording variables
+        // Audio recording — module-level variables
         let mediaRecorder;
-        let audioChunks = [];
+        let audioChunks    = [];
         let recordingStartTime;
         let timerInterval;
         let currentAudioMime = '';
+        let activeStream   = null;   // kept here so stopRecording() can stop tracks
+
+        function _resetRecordingUI() {
+            document.getElementById('btnStartRecording').style.display = 'block';
+            document.getElementById('btnStopRecording').style.display  = 'none';
+            document.getElementById('recordingTimer').style.display    = 'none';
+            document.getElementById('recordingTimer').textContent      = '0:00';
+            document.getElementById('recordingTimer').style.color      = '';
+        }
+
+        function _stopActiveTracks() {
+            if (activeStream) {
+                activeStream.getTracks().forEach(t => t.stop());
+                activeStream = null;
+            }
+        }
 
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                // Do NOT force a MIME type — let each browser use its native format:
-                //   iOS Safari  → records audio/mp4  automatically (plays fine on iOS)
-                //   Chrome/Android → records audio/webm (plays fine on Android)
-                // Forcing a codec string breaks iOS Safari MediaRecorder.
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
+                activeStream  = stream;   // save at module level
+                audioChunks   = [];
+                currentAudioMime = '';
 
-                // Read the actual MIME type the recorder chose after it starts
+                // Do NOT pass a mimeType option — each browser uses its native format:
+                //   iOS Safari   → audio/mp4  (readable natively on iPhone)
+                //   Chrome/Android → audio/webm (readable natively on Android)
+                // Passing a forced codec string breaks iOS Safari's recorder.
+                mediaRecorder = new MediaRecorder(stream);
+
+                // Capture the actual MIME type the recorder chose
                 mediaRecorder.onstart = () => {
-                    currentAudioMime = mediaRecorder.mimeType || 'audio/webm';
+                    currentAudioMime = mediaRecorder.mimeType || '';
                 };
 
                 mediaRecorder.ondataavailable = (event) => {
@@ -1396,38 +1415,46 @@
                 };
 
                 mediaRecorder.onstop = () => {
-                    const blobMime = currentAudioMime || mediaRecorder.mimeType || 'audio/webm';
-                    const audioBlob = new Blob(audioChunks, { type: blobMime });
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    
-                    // Show preview
-                    document.getElementById('audioPlayer').src = audioUrl;
-                    document.getElementById('audioPreview').style.display = 'block';
-                    
-                    // Convert to base64 for submission
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
-                    reader.onloadend = () => {
-                        document.getElementById('audioRecordingData').value = reader.result;
-                        // Trigger validation to enable OTP button
-                        validateFormForOTP();
-                    };
-                    
-                    // Stop all tracks
-                    stream.getTracks().forEach(track => track.stop());
+                    // iOS Safari: ondataavailable may arrive slightly after onstop.
+                    // A 150 ms delay ensures the last chunk lands before we build the blob.
+                    setTimeout(() => {
+                        const blobMime = currentAudioMime || 'audio/webm';
+                        if (audioChunks.length === 0) {
+                            console.warn('[Audio] No data chunks — recording may have failed.');
+                            _resetRecordingUI();
+                            _stopActiveTracks();
+                            return;
+                        }
+                        const audioBlob = new Blob(audioChunks, { type: blobMime });
+                        const audioUrl  = URL.createObjectURL(audioBlob);
+
+                        document.getElementById('audioPlayer').src              = audioUrl;
+                        document.getElementById('audioPreview').style.display   = 'block';
+
+                        const reader = new FileReader();
+                        reader.readAsDataURL(audioBlob);
+                        reader.onloadend = () => {
+                            document.getElementById('audioRecordingData').value = reader.result;
+                            validateFormForOTP();
+                        };
+
+                        // Release mic AFTER blob is ready
+                        _stopActiveTracks();
+                    }, 150);
                 };
 
-                mediaRecorder.start();
+                // timeslice = 1000 ms — forces ondataavailable to fire every second.
+                // Without this, iOS Safari delivers NO data at all until stop() is called,
+                // and then the timing between ondataavailable and onstop is unreliable.
+                mediaRecorder.start(1000);
                 recordingStartTime = Date.now();
-                
-                // Update UI
+
                 document.getElementById('btnStartRecording').style.display = 'none';
-                document.getElementById('btnStopRecording').style.display = 'block';
-                document.getElementById('recordingTimer').style.display = 'block';
-                
-                // Start timer
+                document.getElementById('btnStopRecording').style.display  = 'block';
+                document.getElementById('recordingTimer').style.display    = 'block';
+
                 timerInterval = setInterval(updateTimer, 1000);
-                
+
             } catch (error) {
                 alert(dynamicLocalizationDictionary[runtimeActiveLanguage].micError);
                 console.error('Error accessing microphone:', error);
@@ -1435,37 +1462,25 @@
         }
 
         function stopRecording() {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
 
-                // Check minimum duration
-                if (elapsed < MIN_RECORDING_SECONDS) {
-                    mediaRecorder.onstop = null; // prevent saving
-                    mediaRecorder.stop();
-                    clearInterval(timerInterval);
-                    stream.getTracks().forEach(track => track.stop());
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            clearInterval(timerInterval);
 
-                    document.getElementById('btnStartRecording').style.display = 'block';
-                    document.getElementById('btnStopRecording').style.display = 'none';
-                    document.getElementById('recordingTimer').style.display = 'none';
-                    document.getElementById('recordingTimer').textContent = '0:00';
-                    document.getElementById('recordingTimer').style.color = '';
-
-                    alert(dynamicLocalizationDictionary[runtimeActiveLanguage].recordingTooShort || 
-                          `Recording too short. Minimum is ${MIN_RECORDING_SECONDS} seconds.`);
-                    return;
-                }
-
+            if (elapsed < MIN_RECORDING_SECONDS) {
+                // Too short — discard recording
+                mediaRecorder.onstop = null;
                 mediaRecorder.stop();
-                clearInterval(timerInterval);
-                
-                // Reset UI
-                document.getElementById('btnStartRecording').style.display = 'block';
-                document.getElementById('btnStopRecording').style.display = 'none';
-                document.getElementById('recordingTimer').style.display = 'none';
-                document.getElementById('recordingTimer').textContent = '0:00';
-                document.getElementById('recordingTimer').style.color = '';
+                _stopActiveTracks();
+                _resetRecordingUI();
+                alert(dynamicLocalizationDictionary[runtimeActiveLanguage].recordingTooShort ||
+                      `Recording too short. Minimum is ${MIN_RECORDING_SECONDS} seconds.`);
+                return;
             }
+
+            // Normal stop — onstop handler will build blob and show preview
+            mediaRecorder.stop();
+            _resetRecordingUI();
         }
 
         const MAX_RECORDING_SECONDS = {{ audio_max_seconds | default(300) }}; // configurable via .env
