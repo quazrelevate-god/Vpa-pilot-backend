@@ -45,13 +45,13 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
     summary_rec: Optional[GrievanceSummaryRecord] = next(
         (s for s in (appt.grievance_summary if appt else []) if s.is_latest), None
     )
-    name = _decode(citizen.encrypted_name) if citizen else None
+    name = _decode(appt.encrypted_name) if appt and appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else None)
     mobile = _decode(citizen.encrypted_mobile) if citizen else None
 
     return {
         "id":              t.id,
         "ticket_number":   t.ticket_number,
-        "token":           f"TKN{appt.token_assigned:05d}" if appt else None,
+        "token":           f"TKN{appt.token_assigned}" if appt else None,
         "appointment_id":  t.appointment_id,
         "citizen_name":    name,
         "citizen_mobile":  mobile,

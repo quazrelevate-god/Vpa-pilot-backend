@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.dialects.postgresql import UUID
 
 from src.core.config import settings
@@ -455,6 +455,13 @@ class AppointmentService:
                 return attachment_type
         return None
     
+    # Max audio recording: configurable via .env AUDIO_MAX_DURATION_SECONDS
+    # webm/opus at ~128kbps ≈ 16 KB/sec → seconds * 16 KB + 20% safety margin
+    @property
+    def MAX_AUDIO_SIZE_BYTES(self) -> int:
+        from src.core.config import settings
+        return int(settings.AUDIO_MAX_DURATION_SECONDS * 16 * 1024 * 1.2)
+
     async def _save_audio_recording(self, audio_base64: str, token_number: int) -> str:
         """
         Save base64 encoded audio recording to disk.
@@ -478,6 +485,14 @@ class AppointmentService:
             
             # Decode base64
             audio_bytes = base64.b64decode(encoded)
+            
+            # Validate audio size (configurable via .env AUDIO_MAX_DURATION_SECONDS)
+            if len(audio_bytes) > self.MAX_AUDIO_SIZE_BYTES:
+                from src.core.config import settings
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Audio recording too long. Maximum allowed is {settings.AUDIO_MAX_DURATION_SECONDS // 60} minutes."
+                )
             
             # Create directory
             audio_dir = Path("uploads/audio")
@@ -665,14 +680,14 @@ class AppointmentService:
                 # Step 5: Mark OTP as used
                 otp_record.is_used = True
                 
-                # Step 6: Assign a sequential token for today
-                token_stmt = select(Appointment).where(
-                    Appointment.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0)
+                # Step 6: Assign token in YYYYMMDDNNNNN format (e.g. 2026062200001)
+                today_date = current_time.date()
+                daily_counter_stmt = select(func.count(Appointment.id)).where(
+                    Appointment.created_at >= current_time.replace(hour=0, minute=0, second=0)
                 )
-                token_result = await db.execute(token_stmt)
-                today_appointments = token_result.scalars().all()
-                token_assigned = len(today_appointments) + 1
-                slot_id = token_assigned  # Legacy token reference
+                daily_count = await db.scalar(daily_counter_stmt) or 0
+                token_assigned = int(today_date.strftime("%Y%m%d")) * 100000 + daily_count + 1
+                slot_id = daily_count + 1  # Legacy slot reference
                 
                 # Step 7: Encrypt sensitive fields
                 encrypted_name = self._encrypt_field(name)
@@ -835,12 +850,24 @@ class AppointmentService:
             else:
                 message = f"Appointment scheduled successfully. Your token number is {token_assigned}."
 
+            scheduled_date_str = None
+            scheduled_time_str = None
+            if final_status == 'SCHEDULED' and appointment.scheduled_date:
+                scheduled_date_str = appointment.scheduled_date.isoformat()
+            if final_status == 'SCHEDULED' and appointment.scheduled_start_time:
+                scheduled_time_str = appointment.scheduled_start_time.strftime("%H:%M")
+
+            submitted_at_str = current_time.isoformat()
+
             return {
                 "appointment_id": appointment.id,
                 "token_assigned": token_assigned,
                 "citizen_id": citizen.id,
                 "attachments_count": len(attachments_created),
                 "status": final_status,
+                "submitted_at": submitted_at_str,
+                "scheduled_date": scheduled_date_str,
+                "scheduled_time": scheduled_time_str,
                 "message": message
             }
 

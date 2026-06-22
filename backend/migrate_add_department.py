@@ -123,23 +123,41 @@ SQL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS ix_ticket_events_ticket_created ON ticket_events (ticket_id, created_at)",
 
     # ── Backfill: create an OPEN ticket for every existing appointment ───────
-    # Uses a windowed row_number per year so ticket numbers are deterministic
-    # and contiguous. ON CONFLICT DO NOTHING makes this safe to re-run.
+    # Uses a windowed row_number per year offset by existing ticket count
+    # so ticket numbers don't collide with already-created tickets.
     """
+    WITH existing_counts AS (
+        SELECT
+            EXTRACT(YEAR FROM created_at)::int AS yr,
+            COUNT(*) AS cnt
+        FROM tickets
+        GROUP BY EXTRACT(YEAR FROM created_at)
+    ),
+    to_insert AS (
+        SELECT
+            a.id,
+            'TKT-' || TO_CHAR(a.created_at, 'YYYY') || '-' ||
+                LPAD(
+                    (COALESCE((SELECT cnt FROM existing_counts WHERE yr = EXTRACT(YEAR FROM a.created_at)), 0)
+                     + ROW_NUMBER() OVER (
+                        PARTITION BY EXTRACT(YEAR FROM a.created_at)
+                        ORDER BY a.id
+                    ))::text,
+                    5, '0'
+                ) AS ticket_number,
+            'open' AS status,
+            a.created_at,
+            a.created_at AS updated_at
+        FROM appointments a
+        LEFT JOIN tickets t ON t.appointment_id = a.id
+        WHERE t.id IS NULL
+    )
     INSERT INTO tickets (appointment_id, ticket_number, status, created_at, updated_at)
-    SELECT
-        a.id,
-        'TKT-' || TO_CHAR(a.created_at, 'YYYY') || '-' ||
-            LPAD(ROW_NUMBER() OVER (
-                PARTITION BY EXTRACT(YEAR FROM a.created_at)
-                ORDER BY a.id
-            )::text, 5, '0'),
-        'open',
-        a.created_at,
-        a.created_at
-    FROM appointments a
-    LEFT JOIN tickets t ON t.appointment_id = a.id
-    WHERE t.id IS NULL
+    SELECT id, ticket_number, status, created_at, updated_at
+    FROM to_insert
+    WHERE NOT EXISTS (
+        SELECT 1 FROM tickets t2 WHERE t2.ticket_number = to_insert.ticket_number
+    )
     ON CONFLICT (appointment_id) DO NOTHING
     """,
     # Same remap on the appointments.grievance_category mirror column

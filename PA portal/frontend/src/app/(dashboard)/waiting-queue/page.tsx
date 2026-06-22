@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useLang } from "@/lib/lang-context";
 import { Users, Clock, AlertCircle, RefreshCw, Info } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -14,6 +15,7 @@ interface WaitingAppointment {
 }
 
 export default function WaitingQueuePage() {
+  const { t } = useLang();
   const [appointments, setAppointments] = useState<WaitingAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,7 +50,7 @@ export default function WaitingQueuePage() {
       <TopBar
         rightSlot={
           <Button variant="outline" size="sm" onClick={loadQueue} disabled={refreshing}>
-            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} /> Refresh
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} /> {t("action.refresh")}
           </Button>
         }
       />
@@ -57,10 +59,10 @@ export default function WaitingQueuePage() {
           {/* Title */}
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-foreground">
-              <Users className="h-6 w-6 text-brand" /> Waiting Queue
+              <Users className="h-6 w-6 text-brand" /> {t("sched.queueTitle")}
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {appointments.length} appointments waiting for scheduling.
+              {appointments.length} {t("sched.queueSubtitle")}
             </p>
           </div>
 
@@ -73,12 +75,12 @@ export default function WaitingQueuePage() {
               </div>
               <div>
                 <div className="text-3xl font-extrabold tabular-nums">{appointments.length}</div>
-                <div className="text-sm text-white/90">Citizens waiting in queue</div>
+                <div className="text-sm text-white/90">{t("ops.waiting")}</div>
               </div>
               {appointments.length > 0 && (
                 <div className="ml-auto rounded-xl bg-white/15 px-4 py-2 text-sm ring-1 ring-white/20">
-                  <span className="opacity-80">Oldest waiting</span>{" "}
-                  <span className="font-bold">{getDaysWaiting(appointments[0].waiting_since)} days</span>
+                  <span className="opacity-80">{t("ops.oldest")}</span>{" "}
+                  <span className="font-bold">{getDaysWaiting(appointments[0].waiting_since)}d</span>
                 </div>
               )}
             </div>
@@ -88,13 +90,13 @@ export default function WaitingQueuePage() {
           {loading ? (
             <Card className="p-12 text-center">
               <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Loading queue…</p>
+              <p className="text-sm text-muted-foreground">{t("label.loading")}</p>
             </Card>
           ) : appointments.length === 0 ? (
             <Card className="p-12 text-center">
               <AlertCircle className="mx-auto mb-3 h-12 w-12 text-muted-foreground/30" />
-              <h3 className="mb-1 text-lg font-semibold text-foreground">No Waiting Appointments</h3>
-              <p className="text-sm text-muted-foreground">All appointments have been scheduled!</p>
+              <h3 className="mb-1 text-lg font-semibold text-foreground">{t("sched.noQueue")}</h3>
+              <p className="text-sm text-muted-foreground">{t("sched.noQueueSub")}</p>
             </Card>
           ) : (
             <Card className="overflow-hidden p-0">
@@ -102,14 +104,14 @@ export default function WaitingQueuePage() {
                 <table className="w-full min-w-[820px]">
                   <thead className="bg-muted/60">
                     <tr className="border-b border-border">
-                      <th className={th}>Queue #</th>
-                      <th className={th}>Token</th>
-                      <th className={th}>Name</th>
-                      <th className={th}>Mobile</th>
-                      <th className={th}>Category</th>
-                      <th className={th}>Waiting Since</th>
-                      <th className={th}>Days</th>
-                      <th className={th}>Priority</th>
+                      <th className={th}>#</th>
+                      <th className={th}>{t("sched.colToken")}</th>
+                      <th className={th}>{t("sched.colName")}</th>
+                      <th className={th}>{t("sched.colMobile")}</th>
+                      <th className={th}>{t("sched.colCategory")}</th>
+                      <th className={th}>{t("sched.colWaitSince")}</th>
+                      <th className={th}>{t("label.age")}</th>
+                      <th className={th}>{t("sched.colPriority")}</th>
                     </tr>
                   </thead>
                   <tbody>

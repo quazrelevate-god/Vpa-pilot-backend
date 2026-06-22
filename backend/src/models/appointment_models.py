@@ -228,9 +228,9 @@ class Appointment(Base):
     )
     
     token_assigned = Column(
-        Integer,
+        BigInteger,
         nullable=False,
-        comment="Sequential token number assigned to citizen for queue management"
+        comment="Token number in YYYYMMDDNNNNN format (e.g. 2026062200001) for queue management"
     )
     
     encrypted_grievance = Column(

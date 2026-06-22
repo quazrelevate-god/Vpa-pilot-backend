@@ -72,6 +72,17 @@ class Settings(BaseSettings):
     # Frontend Configuration
     FRONTEND_FORM_BASE_URL: str = "http://localhost:8000/form"
 
+    # Audio Recording Configuration (seconds)
+    AUDIO_MIN_DURATION_SECONDS: int = 10   # minimum recording length
+    AUDIO_MAX_DURATION_SECONDS: int = 300  # maximum recording length (5 minutes)
+
+    # MLA Profile (used by seed_mla.py for initial production setup)
+    MLA_NAME: str = "Default MLA"
+    MLA_CONSTITUENCY: str = "Default Constituency"
+    MLA_CONTACT_MOBILE: str = ""
+    MLA_CONTACT_EMAIL: str = ""
+    MLA_OFFICE_ADDRESS: str = ""
+
     # Public base URL used when constructing QR codes that must be reachable
     # from mobile devices on the same network (e.g. http://192.168.1.x:8000).
     # Defaults to localhost; override in .env for LAN/mobile testing.

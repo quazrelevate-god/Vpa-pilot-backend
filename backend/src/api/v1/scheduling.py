@@ -403,3 +403,24 @@ async def reschedule_appointment(
     except Exception as e:
         print(f"[ERROR] Failed to reschedule: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.post("/admin/cancel-all-scheduled")
+async def cancel_all_scheduled(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """
+    Admin: Emergency — move ALL scheduled appointments (today + future)
+    back to the waiting queue and cancel all active availabilities.
+
+    Use when the MLA is unexpectedly unavailable (emergency, urgent meeting, etc.).
+    Appointments can be re-scheduled later by setting new availability.
+    """
+    try:
+        result = await scheduling_service.cancel_all_scheduled(db)
+        return JSONResponse(result)
+    except Exception as e:
+        print(f"[ERROR] Failed to cancel scheduled appointments: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)

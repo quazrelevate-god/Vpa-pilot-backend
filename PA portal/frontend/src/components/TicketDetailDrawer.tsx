@@ -109,7 +109,7 @@ export default function TicketDetailDrawer({
       <SheetContent
         side="right"
         hideClose
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[60vw]"
       >
         {/* Header */}
         <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">

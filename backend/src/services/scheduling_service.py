@@ -784,6 +784,77 @@ class SchedulingService:
         except Exception as e:
             print(f"[SMS NOTIFICATION ERROR] Failed to send schedule SMS: {e}")
 
+    async def cancel_all_scheduled(
+        self,
+        db: AsyncSession,
+    ) -> Dict:
+        """
+        Emergency: Move today's scheduled appointments back to the waiting
+        queue and cancel today's active availabilities.
+
+        Only affects TODAY — future availabilities and future scheduled
+        appointments are left untouched.
+
+        Returns:
+            {"cancelled_appointments": N, "cancelled_availabilities": M}
+        """
+        today = date.today()
+        now = datetime.now()
+
+        # 1. Fetch SCHEDULED appointments for TODAY with upcoming start times
+        appt_result = await db.execute(
+            select(Appointment)
+            .where(Appointment.status == 'SCHEDULED')
+            .where(Appointment.scheduled_date == today)
+            .where(Appointment.scheduled_start_time >= now.time())
+            .order_by(Appointment.scheduled_start_time.asc())
+        )
+        appointments = appt_result.scalars().all()
+
+        cancelled_appointments = 0
+        for appt in appointments:
+            # Release the slot back to the pool
+            await self.release_appointment_slot(db, appt, commit=False)
+
+            # Move to waiting queue
+            appt.status = 'WAITING'
+            appt.waiting_since = datetime.utcnow()
+            appt.priority_score = 0
+
+            # Compute queue position incrementally
+            queue_count = await db.scalar(
+                select(func.count(Appointment.id))
+                .where(Appointment.status == 'WAITING')
+                .where(Appointment.schedule_meeting == True)
+            )
+            appt.queue_position = (queue_count or 0) + 1
+
+            cancelled_appointments += 1
+
+        # 2. Mark TODAY's ACTIVE availabilities as CANCELLED
+        avail_result = await db.execute(
+            select(MLADailyAvailability)
+            .where(MLADailyAvailability.date == today)
+            .where(MLADailyAvailability.status == 'ACTIVE')
+        )
+        availabilities = avail_result.scalars().all()
+
+        cancelled_availabilities = 0
+        for avail in availabilities:
+            avail.status = 'CANCELLED'
+            cancelled_availabilities += 1
+
+        await db.commit()
+
+        return {
+            "cancelled_appointments": cancelled_appointments,
+            "cancelled_availabilities": cancelled_availabilities,
+            "message": (
+                f"Moved {cancelled_appointments} scheduled appointment(s) to waiting queue. "
+                f"Cancelled {cancelled_availabilities} availability block(s) for today."
+            ),
+        }
+
     def _notification_payload(self, appt: Appointment) -> dict:
         """
         Extract all SMS-relevant data from a loaded Appointment while the

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  CalendarDays, LayoutDashboard, LogOut, Clock, Users, Ticket, Landmark, Activity,
+  CalendarDays, LayoutDashboard, LogOut, Clock, Ticket, Landmark, Activity,
 } from "lucide-react";
 import { fetchTicketsOpenCount } from "@/lib/api";
 import { useLang } from "@/lib/lang-context";
@@ -16,7 +16,6 @@ const NAV_ITEMS = [
   { href: "/tickets",       tKey: "nav.tickets",      icon: Ticket, badge: "openTickets" as const },
   { href: "/appointments",  tKey: "nav.appointments", icon: CalendarDays },
   { href: "/scheduling",    tKey: "nav.scheduling",   icon: Clock },
-  { href: "/waiting-queue", tKey: "nav.waitingQueue", icon: Users },
 ];
 
 export default function Sidebar({ user = "admin" }: { user?: string }) {

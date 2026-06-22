@@ -100,7 +100,7 @@ export default function AppointmentDetailDrawer({
       <SheetContent
         side="right"
         hideClose
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[60vw]"
       >
         {!a ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground">Loading…</div>
@@ -110,7 +110,7 @@ export default function AppointmentDetailDrawer({
             <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-brand">{String(a.token).startsWith("TKN") ? a.token : `TKN${String(a.token).padStart(5, "0")}`}</span>
+                  <span className="font-mono text-xs font-semibold text-brand">{String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}</span>
                   <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", STATUS_COLOR[a.status])}>
                     {a.status}
                   </span>
@@ -143,7 +143,7 @@ export default function AppointmentDetailDrawer({
                     <div className="font-semibold text-foreground">{a.name ?? "—"}</div>
                     <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{a.mobile ?? "—"}</span>
-                      <span className="inline-flex items-center gap-1"><Hash className="h-3 w-3" />{String(a.token).startsWith("TKN") ? a.token : `TKN${String(a.token).padStart(5, "0")}`}</span>
+                      <span className="inline-flex items-center gap-1"><Hash className="h-3 w-3" />{String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}</span>
                       <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDate(a.created_at)}</span>
                       {a.appointment_time && (
                         <span className="inline-flex items-center gap-1 text-emerald-600">

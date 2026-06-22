@@ -28,13 +28,13 @@ export default function TopBar({ rightSlot }: { rightSlot?: React.ReactNode }) {
         {/* Right — lang toggle + page slot */}
         <div className="flex items-center gap-3">
           {/* EN / த pill toggle */}
-          <div className="flex items-center rounded-full border border-border bg-muted/60 p-0.5 text-xs font-semibold">
+          <div className="flex items-center rounded-full border border-border bg-muted/50 p-0.5 text-xs font-bold">
             <button
               onClick={() => setLang("en")}
               className={cn(
-                "rounded-full px-2.5 py-1 transition-colors",
+                "rounded-full px-3 py-1 transition-all",
                 lang === "en"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-[#0f62fe] text-white shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -43,9 +43,9 @@ export default function TopBar({ rightSlot }: { rightSlot?: React.ReactNode }) {
             <button
               onClick={() => setLang("ta")}
               className={cn(
-                "rounded-full px-2.5 py-1 transition-colors",
+                "rounded-full px-3 py-1 transition-all",
                 lang === "ta"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-[#0f62fe] text-white shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >

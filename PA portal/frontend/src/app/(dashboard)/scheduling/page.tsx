@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Calendar, Clock, Users, AlertCircle, CheckCircle, ChevronRight, RefreshCw } from "lucide-react";
+import { Calendar, Clock, Users, AlertCircle, CheckCircle, RefreshCw, AlertTriangle } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
@@ -37,6 +37,9 @@ export default function SchedulingPage() {
   const [todaySchedule, setTodaySchedule] = useState<TodaySchedule | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   // Waiting queue
   const [waitingAppts, setWaitingAppts] = useState<WaitingAppointment[]>([]);
@@ -83,6 +86,26 @@ export default function SchedulingPage() {
       if (Array.isArray(data)) { setWaitingAppts(data); }
     } catch (e) { console.error("Failed to load waiting queue:", e); }
     finally { setQueueLoading(false); }
+  };
+
+  const handleCancelAll = async () => {
+    setCancelLoading(true);
+    try {
+      const res = await fetch("/api/v1/scheduling/admin/cancel-all-scheduled", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: "success", text: `⚠ ${data.message}` });
+        loadData();
+        loadWaitingQueue();
+      } else {
+        setMessage({ type: "error", text: data.error || "Failed to cancel appointments" });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Network error" });
+    } finally {
+      setCancelLoading(false);
+      setShowCancelConfirm(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -281,6 +304,41 @@ export default function SchedulingPage() {
             </Card>
           </div>
 
+          {/* Emergency Cancel */}
+          <Card className={cn("p-6", showCancelConfirm && "border-red-300")}>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="grid h-11 w-11 place-items-center rounded-xl bg-red-100">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground">Emergency Unavailable</h3>
+                  <p className="text-sm text-muted-foreground">Cancel all scheduled appointments and reset the queue.</p>
+                </div>
+              </div>
+              {!showCancelConfirm ? (
+                <Button variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={() => setShowCancelConfirm(true)}>
+                  <AlertTriangle className="h-4 w-4" />
+                  Cancel All Scheduled
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowCancelConfirm(false)} disabled={cancelLoading}>
+                    No, keep them
+                  </Button>
+                  <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={handleCancelAll} disabled={cancelLoading}>
+                    {cancelLoading ? "..." : "Yes, cancel all"}
+                  </Button>
+                </div>
+              )}
+            </div>
+            {showCancelConfirm && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                This will cancel all scheduled appointments for today and move them back to the waiting queue. This action cannot be undone.
+              </div>
+            )}
+          </Card>
+
           {/* Scheduled Today Queue */}
           <Card className="overflow-hidden p-0">
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -421,25 +479,6 @@ export default function SchedulingPage() {
             )}
           </Card>
 
-          {/* Quick actions */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-1">
-            <a href="/appointments" className="group">
-              <Card className="p-6 transition-all hover:-translate-y-0.5 hover:shadow-card-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
-                      <Calendar className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-foreground">View All Appointments</h3>
-                      <p className="text-sm text-muted-foreground">See {statistics?.scheduled_today || 0} scheduled today</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
-                </div>
-              </Card>
-            </a>
-          </div>
         </div>
       </main>
     </>

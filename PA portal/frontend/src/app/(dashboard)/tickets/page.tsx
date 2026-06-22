@@ -131,7 +131,7 @@ export default function TicketsPage() {
     <>
       <TopBar />
       <main className="flex-1 overflow-y-auto bg-background">
-        <div className="mx-auto max-w-[1400px] space-y-4 p-6 animate-in-up">
+        <div className="space-y-4 px-4 py-6 animate-in-up">
           {/* Header */}
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>

@@ -25,6 +25,7 @@ from src.models.scheduling_models import (
     AppointmentSlot,
     RescheduleLog,
 )
+from src.models.ticket_models import Ticket, TicketEvent
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':

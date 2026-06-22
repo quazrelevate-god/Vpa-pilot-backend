@@ -69,6 +69,9 @@ class AppointmentResponseModel(BaseModel):
     citizen_id: int
     attachments_count: int
     status: str
+    submitted_at: Optional[str] = None
+    scheduled_date: Optional[str] = None
+    scheduled_time: Optional[str] = None
     message: str
 
 

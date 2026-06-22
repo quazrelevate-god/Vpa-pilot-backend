@@ -15,6 +15,7 @@ from datetime import datetime
 
 from src.core.database import get_db
 from src.core.utils import generate_device_fingerprint
+from src.core.config import settings
 from src.models.qr_models import GatekeeperSession
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
@@ -115,7 +116,12 @@ async def display_form(
         # Render HTML form from template
         return templates.TemplateResponse(
             "form.jinja2",
-            {"request": request, "session_token": token},
+            {
+                "request": request,
+                "session_token": token,
+                "audio_min_seconds": settings.AUDIO_MIN_DURATION_SECONDS,
+                "audio_max_seconds": settings.AUDIO_MAX_DURATION_SECONDS,
+            },
         )
 
     

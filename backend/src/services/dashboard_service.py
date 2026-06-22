@@ -218,7 +218,7 @@ async def get_stats(
         .where(Ticket.status.in_(closed_statuses))
     )
     avg_response_seconds = await db.scalar(avg_resolved_q)
-    avg_response_hours = round(avg_response_seconds / 3600, 1) if avg_response_seconds else 0
+    avg_response_hours = round(float(avg_response_seconds) / 3600, 1) if avg_response_seconds else 0
 
     # Period-over-period — same window length, immediately prior
     growth_pct = None
@@ -424,7 +424,7 @@ async def get_appointments(
         
         items.append({
             "id": appt.id,
-            "token": f"TKN{appt.token_assigned:05d}",
+            "token": f"TKN{appt.token_assigned}",
             "name": name,
             "mobile": mobile,
             "category": _category_label(appt.grievance_category),

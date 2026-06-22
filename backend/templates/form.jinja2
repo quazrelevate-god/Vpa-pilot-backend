@@ -1141,6 +1141,18 @@
                 return;
             }
 
+            // Validate audio recording size (max duration from .env)
+            if (hasAudio) {
+                const audioData = document.getElementById('audioRecordingData').value;
+                // base64 encoding inflates size by ~33%
+                // max bytes = seconds * 16 KB * 1.2, encoded ≈ *1.33
+                const maxEncodedSize = {{ audio_max_seconds | default(300) }} * 16 * 1024 * 1.2 * 1.33;
+                if (audioData.length > maxEncodedSize) {
+                    alert(copy.recordingLimit || 'Audio recording exceeds maximum duration. Please re-record.');
+                    return;
+                }
+            }
+
             const formData = new FormData();
             formData.append('session_token', sessionToken);
             formData.append('name', name);
@@ -1173,7 +1185,15 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    window.location.href = `/form/success?token=${data.token_assigned}&name=${encodeURIComponent(name)}`;
+                    const params = new URLSearchParams({
+                        token: data.token_assigned,
+                        name: name,
+                        status: data.status || 'SCHEDULED'
+                    });
+                    if (data.submitted_at) params.set('submitted_at', data.submitted_at);
+                    if (data.scheduled_date) params.set('date', data.scheduled_date);
+                    if (data.scheduled_time) params.set('time', data.scheduled_time);
+                    window.location.href = `/form/success?${params.toString()}`;
                 } else {
                     const error = await response.json();
                     showOtpFieldError(error.detail || copy.submitError);
@@ -1245,6 +1265,26 @@
 
         function stopRecording() {
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+
+                // Check minimum duration
+                if (elapsed < MIN_RECORDING_SECONDS) {
+                    mediaRecorder.onstop = null; // prevent saving
+                    mediaRecorder.stop();
+                    clearInterval(timerInterval);
+                    stream.getTracks().forEach(track => track.stop());
+
+                    document.getElementById('btnStartRecording').style.display = 'block';
+                    document.getElementById('btnStopRecording').style.display = 'none';
+                    document.getElementById('recordingTimer').style.display = 'none';
+                    document.getElementById('recordingTimer').textContent = '0:00';
+                    document.getElementById('recordingTimer').style.color = '';
+
+                    alert(dynamicLocalizationDictionary[runtimeActiveLanguage].recordingTooShort || 
+                          `Recording too short. Minimum is ${MIN_RECORDING_SECONDS} seconds.`);
+                    return;
+                }
+
                 mediaRecorder.stop();
                 clearInterval(timerInterval);
                 
@@ -1253,15 +1293,30 @@
                 document.getElementById('btnStopRecording').style.display = 'none';
                 document.getElementById('recordingTimer').style.display = 'none';
                 document.getElementById('recordingTimer').textContent = '0:00';
+                document.getElementById('recordingTimer').style.color = '';
             }
         }
+
+        const MAX_RECORDING_SECONDS = {{ audio_max_seconds | default(300) }}; // configurable via .env
+        const MIN_RECORDING_SECONDS = {{ audio_min_seconds | default(10) }};  // configurable via .env
 
         function updateTimer() {
             const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
             const minutes = Math.floor(elapsed / 60);
             const seconds = elapsed % 60;
-            document.getElementById('recordingTimer').textContent = 
-                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            const timerEl = document.getElementById('recordingTimer');
+            timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            // Turn red in last 30 seconds
+            if (elapsed >= MAX_RECORDING_SECONDS - 30) {
+                timerEl.style.color = '#dc2626';
+            }
+
+            if (elapsed >= MAX_RECORDING_SECONDS) {
+                stopRecording();
+                timerEl.style.color = '';
+                alert(dynamicLocalizationDictionary[runtimeActiveLanguage].recordingLimit || 'Recording stopped at 5 minutes maximum.');
+            }
         }
 
         function deleteRecording() {

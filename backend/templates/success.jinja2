@@ -84,7 +84,7 @@
         }
 
         .token-number {
-            font-size: 3.5rem;
+            font-size: 2rem;
             font-weight: 900;
             letter-spacing: 0.05em;
         }
@@ -253,11 +253,11 @@
 
         <div class="success-icon">✓</div>
         
-        <h1 class="english">Appointment Confirmed!</h1>
-        <h1 class="tamil">சந்திப்பு உறுதி செய்யப்பட்டது!</h1>
+        <h1 class="english" id="title-en">Appointment Confirmed!</h1>
+        <h1 class="tamil" id="title-ta">சந்திப்பு உறுதி செய்யப்பட்டது!</h1>
         
-        <p class="subtitle english">Your grievance has been successfully registered</p>
-        <p class="subtitle tamil">உங்கள் புகார் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது</p>
+        <p class="subtitle english" id="subtitle-en">Your grievance has been successfully registered</p>
+        <p class="subtitle tamil" id="subtitle-ta">உங்கள் புகார் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது</p>
         
         <div class="token-display">
             <div class="token-label english">Your Token Number</div>
@@ -272,41 +272,68 @@
                 <span class="info-value" id="citizen-name">-</span>
             </div>
             <div class="info-row">
-                <span class="info-label english">Date</span>
-                <span class="info-label tamil">தேதி</span>
-                <span class="info-value english" id="appointment-date-en">-</span>
-                <span class="info-value tamil" id="appointment-date-ta">-</span>
+                <span class="info-label english">Submitted On</span>
+                <span class="info-label tamil">சமர்ப்பித்த நேரம்</span>
+                <span class="info-value english" id="submitted-datetime-en">-</span>
+                <span class="info-value tamil" id="submitted-datetime-ta">-</span>
             </div>
-            <div class="info-row">
-                <span class="info-label english">Time</span>
-                <span class="info-label tamil">நேரம்</span>
-                <span class="info-value english" id="appointment-time-en">-</span>
-                <span class="info-value tamil" id="appointment-time-ta">-</span>
+            <div class="info-row" id="slot-row" style="display:none;">
+                <span class="info-label english">Scheduled Slot</span>
+                <span class="info-label tamil">ஒதுக்கப்பட்ட நேரம்</span>
+                <span class="info-value english" id="slot-datetime-en">-</span>
+                <span class="info-value tamil" id="slot-datetime-ta">-</span>
             </div>
             <div class="info-row">
                 <span class="info-label english">Status</span>
                 <span class="info-label tamil">நிலை</span>
                 <span class="info-value">
-                    <span class="english">SCHEDULED</span>
-                    <span class="tamil">திட்டமிடப்பட்டது</span>
+                    <span class="english" id="status-en">SCHEDULED</span>
+                    <span class="tamil" id="status-ta">திட்டமிடப்பட்டது</span>
                 </span>
             </div>
         </div>
         
-        <div class="instructions">
+        <div class="instructions" id="instructions-scheduled">
             <h3 class="english">📋 Next Steps</h3>
             <h3 class="tamil">📋 அடுத்த படிகள்</h3>
             <ul class="english">
                 <li>Please save your token number <strong id="token-ref-en">TKN-000</strong> for future reference</li>
-                <li>You will be notified via SMS about your appointment details</li>
                 <li>Bring a valid ID proof when visiting the office</li>
                 <li>Arrive 10 minutes before your scheduled time</li>
             </ul>
             <ul class="tamil">
                 <li>எதிர்கால குறிப்புக்காக உங்கள் டோக்கன் எண் <strong id="token-ref-ta">TKN-000</strong> ஐ சேமிக்கவும்</li>
-                <li>உங்கள் சந்திப்பு விவரங்கள் குறித்து SMS மூலம் அறிவிக்கப்படும்</li>
                 <li>அலுவலகத்திற்கு வரும்போது செல்லுபடியாகும் அடையாள ஆதாரத்தை கொண்டு வாருங்கள்</li>
-                <li>திட்டமிடப்பட்ட நேரத்திற்கு 10 நிமிடங்களுக்கு முன்பு வாருங்கள்</li>
+            </ul>
+        </div>
+
+        <div class="instructions" id="instructions-waiting" style="display:none; border-left-color:#f59e0b;">
+            <h3 class="english" style="color:#b45309;">⏳ Waiting Queue</h3>
+            <h3 class="tamil" style="color:#b45309;">⏳ காத்திருப்பு வரிசை</h3>
+            <ul class="english">
+                <li>Please save your token number <strong id="token-ref-en-w">TKN-000</strong> for future reference</li>
+                <li>No slots are available right now — you have been added to the waiting queue</li>
+                <li>Your appointment time will be sent via SMS shortly once slots become available</li>
+            </ul>
+            <ul class="tamil">
+                <li>எதிர்கால குறிப்புக்காக உங்கள் டோக்கன் எண் <strong id="token-ref-ta-w">TKN-000</strong> ஐ சேமிக்கவும்</li>
+                <li>தற்போது இடங்கள் கிடைக்கவில்லை — நீங்கள் காத்திருப்பு வரிசையில் சேர்க்கப்பட்டுள்ளீர்கள்</li>
+                <li>இடங்கள் கிடைத்தவுடன் உங்கள் சந்திப்பு நேரம் SMS மூலம் அனுப்பப்படும்</li>
+            </ul>
+        </div>
+
+        <div class="instructions" id="instructions-submitted" style="display:none; border-left-color:#3b82f6;">
+            <h3 class="english" style="color:#1e40af;">📝 Petition Submitted</h3>
+            <h3 class="tamil" style="color:#1e40af;">📝 மனு சமர்ப்பிக்கப்பட்டது</h3>
+            <ul class="english">
+                <li>Please save your token number <strong id="token-ref-en-s">TKN-000</strong> for future reference</li>
+                <li>Your petition has been submitted and will be reviewed by the PA team</li>
+                <li>You will be notified via SMS when your petition is reviewed</li>
+            </ul>
+            <ul class="tamil">
+                <li>எதிர்கால குறிப்புக்காக உங்கள் டோக்கன் எண் <strong id="token-ref-ta-s">TKN-000</strong> ஐ சேமிக்கவும்</li>
+                <li>உங்கள் மனு சமர்ப்பிக்கப்பட்டது, PA குழுவால் பரிசீலிக்கப்படும்</li>
+                <li>உங்கள் மனு பரிசீலிக்கப்பட்டவுடன் SMS மூலம் அறிவிக்கப்படும்</li>
             </ul>
         </div>
         
@@ -323,25 +350,88 @@
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token') || '000';
         const name = urlParams.get('name') || 'Citizen';
+        const status = (urlParams.get('status') || 'SCHEDULED').toUpperCase();
+        const scheduledDate = urlParams.get('date');
+        const scheduledTime = urlParams.get('time');
+        const submittedAt = urlParams.get('submitted_at');
 
         // Set token number
-        const tokenDisplay = `TKN-${token}`;
+        const tokenDisplay = `TKN${token}`;
         document.getElementById('token-number').textContent = tokenDisplay;
-        document.getElementById('token-ref-en').textContent = tokenDisplay;
-        document.getElementById('token-ref-ta').textContent = tokenDisplay;
 
-        // Set name
-        document.getElementById('citizen-name').textContent = decodeURIComponent(name);
+        // Set name (URLSearchParams already decodes, no need for decodeURIComponent)
+        document.getElementById('citizen-name').textContent = name;
 
-        // Set date and time in both locales
-        const now = new Date();
         const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
         const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
 
-        document.getElementById('appointment-date-en').textContent = now.toLocaleDateString('en-IN', dateOptions);
-        document.getElementById('appointment-time-en').textContent = now.toLocaleTimeString('en-IN', timeOptions);
-        document.getElementById('appointment-date-ta').textContent = now.toLocaleDateString('ta-IN', dateOptions);
-        document.getElementById('appointment-time-ta').textContent = now.toLocaleTimeString('ta-IN', timeOptions);
+        // Use submitted_at from backend, fall back to now
+        const submittedDate = submittedAt ? new Date(submittedAt + 'Z') : new Date();
+        document.getElementById('submitted-datetime-en').textContent = submittedDate.toLocaleString('en-IN', { ...dateOptions, ...timeOptions });
+        document.getElementById('submitted-datetime-ta').textContent = submittedDate.toLocaleString('ta-IN', { ...dateOptions, ...timeOptions });
+
+        if (status === 'WAITING') {
+            // Waiting — no slot, show waiting instructions
+            document.getElementById('instructions-scheduled').style.display = 'none';
+            document.getElementById('instructions-waiting').style.display = 'block';
+
+            document.getElementById('title-en').textContent = 'Added to Waiting Queue';
+            document.getElementById('title-ta').textContent = 'காத்திருப்பு வரிசையில் சேர்க்கப்பட்டது';
+            document.getElementById('subtitle-en').textContent = 'Your grievance has been registered. You are in the waiting queue.';
+            document.getElementById('subtitle-ta').textContent = 'உங்கள் புகார் பதிவு செய்யப்பட்டது. நீங்கள் காத்திருப்பு வரிசையில் உள்ளீர்கள்.';
+
+            document.getElementById('status-en').textContent = 'WAITING';
+            document.getElementById('status-ta').textContent = 'காத்திருப்பு';
+
+            document.getElementById('token-ref-en-w').textContent = tokenDisplay;
+            document.getElementById('token-ref-ta-w').textContent = tokenDisplay;
+
+        } else if (status === 'AWAITING_REVIEW') {
+            // Petition submitted (no meeting requested) — no slot, show submitted instructions
+            document.getElementById('instructions-scheduled').style.display = 'none';
+            document.getElementById('instructions-submitted').style.display = 'block';
+
+            document.getElementById('title-en').textContent = 'Petition Submitted';
+            document.getElementById('title-ta').textContent = 'மனு சமர்ப்பிக்கப்பட்டது';
+            document.getElementById('subtitle-en').textContent = 'Your petition has been submitted for review.';
+            document.getElementById('subtitle-ta').textContent = 'உங்கள் மனு பரிசீலனைக்காக சமர்ப்பிக்கப்பட்டது.';
+
+            document.getElementById('status-en').textContent = 'SUBMITTED';
+            document.getElementById('status-ta').textContent = 'சமர்ப்பிக்கப்பட்டது';
+
+            document.getElementById('token-ref-en-s').textContent = tokenDisplay;
+            document.getElementById('token-ref-ta-s').textContent = tokenDisplay;
+
+        } else {
+            // SCHEDULED — show slot date/time
+            document.getElementById('instructions-waiting').style.display = 'none';
+            document.getElementById('instructions-submitted').style.display = 'none';
+            document.getElementById('slot-row').style.display = 'flex';
+
+            if (scheduledDate) {
+                const dateObj = new Date(scheduledDate);
+                document.getElementById('slot-datetime-en').textContent = dateObj.toLocaleDateString('en-IN', dateOptions);
+                document.getElementById('slot-datetime-ta').textContent = dateObj.toLocaleDateString('ta-IN', dateOptions);
+            }
+
+            if (scheduledTime) {
+                const [h, m] = scheduledTime.split(':').map(Number);
+                const timeObj = new Date();
+                timeObj.setHours(h, m, 0);
+                const timeStrEn = timeObj.toLocaleTimeString('en-IN', timeOptions);
+                const timeStrTa = timeObj.toLocaleTimeString('ta-IN', timeOptions);
+                const dateEn = document.getElementById('slot-datetime-en').textContent;
+                const dateTa = document.getElementById('slot-datetime-ta').textContent;
+                document.getElementById('slot-datetime-en').textContent = `${dateEn}, ${timeStrEn}`;
+                document.getElementById('slot-datetime-ta').textContent = `${dateTa}, ${timeStrTa}`;
+            }
+
+            document.getElementById('status-en').textContent = 'SCHEDULED';
+            document.getElementById('status-ta').textContent = 'திட்டமிடப்பட்டது';
+
+            document.getElementById('token-ref-en').textContent = tokenDisplay;
+            document.getElementById('token-ref-ta').textContent = tokenDisplay;
+        }
 
         function toggleLanguage() {
             const isChecked = document.getElementById('languageToggle').checked;
