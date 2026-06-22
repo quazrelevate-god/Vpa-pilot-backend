@@ -651,6 +651,41 @@
             box-shadow: none !important;
         }
 
+        /* ── Responsive / Mobile ── */
+        @media (max-width: 480px) {
+            /* Stack action buttons vertically on narrow screens */
+            .action-strip {
+                grid-template-columns: 1fr !important;
+            }
+            /* Slot grid: single column on small phones */
+            #slotGrid {
+                grid-template-columns: 1fr !important;
+            }
+            /* Date chips: smaller min-width so more fit without scroll */
+            .date-chip {
+                min-width: 52px;
+                padding: 0.4rem 0.5rem;
+            }
+            .date-chip .dc-day {
+                font-size: 0.95rem;
+            }
+            .date-chip .dc-weekday {
+                font-size: 0.62rem;
+            }
+            .date-chip .dc-month {
+                font-size: 0.58rem;
+            }
+            /* OTP boxes slightly smaller */
+            .otp-box {
+                max-width: 42px;
+                font-size: 1.2rem;
+            }
+            /* Consent dialog padding tighter */
+            #consentOverlay > div {
+                padding: 1.1rem !important;
+            }
+        }
+
         /* Success Message Layout Modal */
         .modal-overlay {
             position: fixed;
