@@ -687,12 +687,35 @@
                     <div id="otpStatusMsg" class="otp-status-msg"></div>
                 </div>
 
+                <!-- Slot picker — shown when citizen clicks "Request Meeting" -->
+                <div id="slotPickerSection" style="display:none; margin-top:1.25rem;">
+                    <div style="background:rgba(139,92,246,0.06); border:1px solid rgba(139,92,246,0.25); border-radius:10px; padding:1rem;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+                            <span style="font-weight:700; font-size:0.9rem; color:#5b21b6;">
+                                <i class="fa-solid fa-calendar-check"></i>&nbsp;Select Meeting Slot
+                            </span>
+                            <button type="button" onclick="closeSlotPicker()" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:1.1rem;">&#x2715;</button>
+                        </div>
+                        <div id="slotPickerMsg" style="font-size:0.82rem; color:#6b7280; margin-bottom:0.5rem;">Loading available slots…</div>
+                        <div id="slotGrid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:0.5rem;"></div>
+                        <input type="hidden" id="selectedSlotId">
+                        <div id="selectedSlotLabel" style="margin-top:0.6rem; font-size:0.82rem; color:#5b21b6; font-weight:600; display:none;">
+                            <i class="fa-solid fa-check-circle"></i> <span id="selectedSlotText"></span>
+                        </div>
+                        <button type="button" id="btnConfirmMeeting" disabled
+                            onclick="submitForm(true)"
+                            style="margin-top:0.85rem; width:100%; padding:0.65rem; background:rgba(139,92,246,0.85); color:#fff; border:none; border-radius:8px; font-weight:700; font-size:0.9rem; cursor:pointer; transition:opacity 0.2s;">
+                            <i class="fa-solid fa-handshake"></i> <span>Confirm &amp; Submit</span>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Form Final Target Actions Pipeline Interface -->
                 <div class="action-strip" style="margin-top: 1.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
                     <button type="button" id="btnPetition" disabled class="base-btn btn-submit-main" onclick="submitForm(false)" style="background: rgba(59, 130, 246, 0.85);">
                         <i class="fa-solid fa-paper-plane"></i> <span id="lbl-btn-petition">Submit Petition</span>
                     </button>
-                    <button type="button" id="btnMeeting" disabled class="base-btn btn-submit-main" onclick="submitForm(true)" style="background: rgba(139, 92, 246, 0.85);">
+                    <button type="button" id="btnMeeting" disabled class="base-btn btn-submit-main" onclick="openSlotPicker()" style="background: rgba(139, 92, 246, 0.85);">
                         <i class="fa-solid fa-handshake"></i> <span id="lbl-btn-meeting">Request Meeting</span>
                     </button>
                 </div>
@@ -1153,6 +1176,13 @@
                 }
             }
 
+            // For meeting requests, validate a slot was selected
+            const slotId = document.getElementById('selectedSlotId').value;
+            if (scheduleMeeting && !slotId) {
+                showOtpFieldError('Please select a meeting time slot first.');
+                return;
+            }
+
             const formData = new FormData();
             formData.append('session_token', sessionToken);
             formData.append('name', name);
@@ -1161,6 +1191,9 @@
             formData.append('description', description || 'See attachments or audio');
             formData.append('otp_code', document.getElementById('txtOtp').value);
             formData.append('schedule_meeting', scheduleMeeting.toString());
+            if (scheduleMeeting && slotId) {
+                formData.append('slot_id', slotId);
+            }
 
             const audioData = document.getElementById('audioRecordingData').value;
             formData.append('audio_recording', audioData || '');
@@ -1170,10 +1203,12 @@
             });
 
             const btnPetition = document.getElementById('btnPetition');
-            const btnMeeting = document.getElementById('btnMeeting');
+            const btnMeeting  = document.getElementById('btnMeeting');
+            const btnConfirm  = document.getElementById('btnConfirmMeeting');
             btnPetition.disabled = true;
-            btnMeeting.disabled = true;
-            const clickedBtn = scheduleMeeting ? btnMeeting : btnPetition;
+            btnMeeting.disabled  = true;
+            if (btnConfirm) btnConfirm.disabled = true;
+            const clickedBtn = scheduleMeeting ? (btnConfirm || btnMeeting) : btnPetition;
             const originalHTML = clickedBtn.innerHTML;
             clickedBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + copy.submitting;
 
@@ -1196,17 +1231,117 @@
                     window.location.href = `/form/success?${params.toString()}`;
                 } else {
                     const error = await response.json();
-                    showOtpFieldError(error.detail || copy.submitError);
+                    const errMsg = error.detail || copy.submitError;
+                    showOtpFieldError(errMsg);
+                    // If slot filled up mid-submit, re-fetch slots so citizen can pick another
+                    if (scheduleMeeting && errMsg && errMsg.toLowerCase().includes('slot')) {
+                        document.getElementById('selectedSlotId').value = '';
+                        document.getElementById('selectedSlotLabel').style.display = 'none';
+                        if (btnConfirm) { btnConfirm.disabled = true; }
+                        await loadSlots();
+                    }
                     btnPetition.disabled = false;
-                    btnMeeting.disabled = false;
+                    btnMeeting.disabled  = false;
+                    if (btnConfirm) { btnConfirm.disabled = false; }
                     clickedBtn.innerHTML = originalHTML;
                 }
             } catch (error) {
                 showOtpFieldError(copy.networkError);
                 btnPetition.disabled = false;
-                btnMeeting.disabled = false;
+                btnMeeting.disabled  = false;
+                if (btnConfirm) { btnConfirm.disabled = false; }
                 clickedBtn.innerHTML = originalHTML;
             }
+        }
+
+        // ── Slot picker ────────────────────────────────────────────────────
+
+        async function openSlotPicker() {
+            document.getElementById('slotPickerSection').style.display = 'block';
+            document.getElementById('selectedSlotId').value = '';
+            document.getElementById('selectedSlotLabel').style.display = 'none';
+            document.getElementById('btnConfirmMeeting').disabled = true;
+            await loadSlots();
+            // Scroll into view
+            document.getElementById('slotPickerSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function closeSlotPicker() {
+            document.getElementById('slotPickerSection').style.display = 'none';
+            document.getElementById('selectedSlotId').value = '';
+        }
+
+        async function loadSlots() {
+            const msg  = document.getElementById('slotPickerMsg');
+            const grid = document.getElementById('slotGrid');
+            msg.textContent  = 'Loading available slots…';
+            grid.innerHTML   = '';
+
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const res   = await fetch('/api/v1/scheduling/slots/available?target_date=' + today);
+                const data  = await res.json();
+
+                if (!data.available || !data.slots || data.slots.length === 0) {
+                    msg.textContent = 'No meeting slots available today. Your request will be added to the waiting queue.';
+                    // Allow submission without a slot — will land in waiting queue
+                    document.getElementById('btnConfirmMeeting').disabled = false;
+                    return;
+                }
+
+                msg.textContent = 'Select a time slot (green = available, red = full/blocked):';
+
+                data.slots.forEach(slot => {
+                    const card    = document.createElement('div');
+                    const isAvail = slot.available;
+                    const isFull  = slot.remaining === 0 && slot.status !== 'BLOCKED';
+                    const isBlock = slot.status === 'BLOCKED';
+
+                    card.style.cssText = `
+                        border-radius:8px; padding:0.5rem 0.6rem; border:1.5px solid;
+                        cursor:${isAvail ? 'pointer' : 'default'};
+                        transition:all 0.15s;
+                        background:${isBlock ? '#f1f5f9' : isFull ? '#fee2e2' : '#d1fae5'};
+                        border-color:${isBlock ? '#cbd5e1' : isFull ? '#fca5a5' : '#6ee7b7'};
+                        opacity:${isAvail ? '1' : '0.6'};
+                    `;
+
+                    const timeLabel   = slot.label;
+                    const countLabel  = isBlock ? 'Blocked' : `${slot.booked_count}/${slot.max_capacity}`;
+                    const statusColor = isBlock ? '#94a3b8' : isFull ? '#dc2626' : '#059669';
+
+                    card.innerHTML = `
+                        <div style="font-size:0.78rem; font-weight:700; color:#1e293b;">${timeLabel}</div>
+                        <div style="font-size:0.72rem; color:${statusColor}; margin-top:1px;">${countLabel}</div>
+                        <div style="height:3px; background:#e2e8f0; border-radius:2px; margin-top:4px; overflow:hidden;">
+                            <div style="height:100%; width:${Math.round((slot.booked_count/slot.max_capacity)*100)}%; background:${isFull?'#ef4444':'#10b981'}; border-radius:2px;"></div>
+                        </div>
+                    `;
+
+                    if (isAvail) {
+                        card.addEventListener('click', () => selectSlot(slot.id, timeLabel, card));
+                    }
+                    grid.appendChild(card);
+                });
+
+            } catch (e) {
+                msg.textContent = 'Failed to load slots. You can still submit — your request will join the waiting queue.';
+                document.getElementById('btnConfirmMeeting').disabled = false;
+            }
+        }
+
+        function selectSlot(slotId, label, cardEl) {
+            // Deselect all cards
+            document.querySelectorAll('#slotGrid > div').forEach(c => {
+                c.style.outline = 'none';
+            });
+            // Highlight selected
+            cardEl.style.outline = '2.5px solid #7c3aed';
+
+            document.getElementById('selectedSlotId').value   = slotId;
+            document.getElementById('selectedSlotText').textContent = label;
+            document.getElementById('selectedSlotLabel').style.display = 'block';
+            document.getElementById('btnConfirmMeeting').disabled = false;
         }
 
         // Audio recording variables

@@ -231,6 +231,10 @@ async def submit_appointment(
         default="false",
         description="Whether to schedule a meeting (true/false)"
     ),
+    slot_id: Optional[int] = Form(
+        default=None,
+        description="Selected 30-minute slot ID (required when schedule_meeting=true)"
+    ),
     audio_recording: str = Form(
         default="",
         description="Base64 encoded audio recording (optional)"
@@ -358,9 +362,10 @@ async def submit_appointment(
             description=description,
             otp_code=otp_code,
             schedule_meeting=schedule_meeting_bool,
+            slot_id=slot_id,
             audio_recording=audio_recording,
             files=files,
-            db=db
+            db=db,
         )
         
         return AppointmentResponseModel(**result)

@@ -304,13 +304,6 @@ class Appointment(Base):
         comment="Foreign key to appointment_slots table"
     )
     
-    preferred_window_id = Column(
-        Integer,
-        ForeignKey('time_windows.id', ondelete='SET NULL'),
-        nullable=True,
-        comment="Citizen's preferred time window selection"
-    )
-    
     queue_position = Column(
         Integer,
         nullable=True,
@@ -352,11 +345,6 @@ class Appointment(Base):
     scheduled_slot = relationship(
         "AppointmentSlot",
         foreign_keys=[appointment_slot_id],
-        back_populates="appointment"
-    )
-    preferred_window = relationship(
-        "TimeWindow",
-        foreign_keys=[preferred_window_id]
     )
     
     __table_args__ = (

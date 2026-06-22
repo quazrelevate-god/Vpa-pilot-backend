@@ -597,7 +597,8 @@ class AppointmentService:
         schedule_meeting: bool,
         audio_recording: str,
         files: List[UploadFile],
-        db: AsyncSession
+        db: AsyncSession,
+        slot_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Atomically verify OTP and create appointment with attachments.
@@ -740,15 +741,23 @@ class AppointmentService:
                 db.add(appointment)
                 await db.flush()  # Get appointment.id
 
-                # Step 10b: Meeting requests — try to assign to an available slot today,
-                # only fall back to waiting queue if no slots are available
+                # Step 10b: Meeting requests — book the citizen-selected slot.
+                # Falls back to waiting queue if no slot was selected or the slot
+                # filled up between the form load and submission.
                 if schedule_meeting:
-                    assigned = await scheduling_service.try_auto_assign_slot(
-                        db, appointment, commit=False
-                    )
-                    if not assigned:
+                    if slot_id:
+                        try:
+                            await scheduling_service.book_slot(
+                                db, appointment, slot_id, commit=False
+                            )
+                        except ValueError:
+                            # Slot just filled or blocked — put in waiting queue
+                            await scheduling_service.move_to_waiting_queue(
+                                db, appointment, 'SLOT_UNAVAILABLE', commit=False
+                            )
+                    else:
                         await scheduling_service.move_to_waiting_queue(
-                            db, appointment, 'NO_AVAILABILITY_TODAY', commit=False
+                            db, appointment, 'NO_SLOT_SELECTED', commit=False
                         )
                 
                 # Step 11: Save uploaded files and create attachment records

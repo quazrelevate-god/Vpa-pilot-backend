@@ -1,484 +1,418 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Calendar, Clock, Users, AlertCircle, CheckCircle, RefreshCw, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import {
+  Calendar, Users, Clock, CheckCircle, AlertCircle,
+  Lock, Unlock, RefreshCw, Plus,
+} from "lucide-react";
+import { toast } from "sonner";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn, formatDateTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
-interface MLA { id: number; name: string; constituency: string; is_active: boolean; }
-interface Statistics { waiting_count: number; scheduled_today: number; oldest_waiting_days: number; }
-interface ScheduledAppointment {
-  id: number; token: number; name: string; mobile: string;
-  category: string; scheduled_time: string;
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface Slot {
+  id: number;
+  slot_number: number;
+  label: string;
+  start: string;
+  end: string;
+  status: "AVAILABLE" | "FULL" | "BLOCKED";
+  booked_count: number;
+  max_capacity: number;
+  remaining: number;
+  available: boolean;
 }
-interface AvailabilityBlock {
-  id: number; time_range: string; total_slots: number;
-  booked_slots: number; remaining_slots: number;
-}
-interface TodaySchedule {
+
+interface SlotGrid {
   has_availability: boolean;
-  total_slots?: number; booked_slots?: number; remaining_slots?: number;
-  date?: string; message?: string;
-  blocks?: AvailabilityBlock[];
-  appointments?: ScheduledAppointment[];
+  availability_id?: number;
+  date?: string;
+  date_label?: string;
+  total_slots?: number;
+  total_capacity?: number;
+  booked_total?: number;
+  blocked_slots?: number;
+  remaining_total?: number;
+  slots: Slot[];
 }
-interface WaitingAppointment {
-  id: number; token: number; name: string; mobile: string; category: string;
-  queue_position: number; waiting_since: string; priority_score: number;
+
+interface OpenDate {
+  id: number;
+  date: string;
+  date_label: string;
+  total_slots: number;
+  total_capacity: number;
+  booked: number;
+  blocked_slots: number;
+  remaining: number;
 }
+
+interface Stats {
+  waiting_count: number;
+  scheduled_today: number;
+  oldest_waiting_days: number;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function slotColor(s: Slot): string {
+  if (s.status === "BLOCKED")        return "border-slate-300 bg-slate-100 text-slate-400";
+  if (s.booked_count === 0)          return "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 cursor-pointer";
+  if (s.remaining === 0)             return "border-red-300 bg-red-50 text-red-700";
+  return "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 cursor-pointer";
+}
+
+function slotBadge(s: Slot): { label: string; cls: string } {
+  if (s.status === "BLOCKED") return { label: "Blocked",   cls: "bg-slate-200 text-slate-500" };
+  if (s.remaining === 0)      return { label: "Full",      cls: "bg-red-100 text-red-600" };
+  if (s.booked_count > 0)     return { label: `${s.remaining} left`, cls: "bg-amber-100 text-amber-700" };
+  return                             { label: "Open",      cls: "bg-emerald-100 text-emerald-700" };
+}
+
+function todayIso(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SchedulingPage() {
-  const [, setMlas] = useState<MLA[]>([]);
-  const [statistics, setStatistics] = useState<Statistics | null>(null);
-  const [todaySchedule, setTodaySchedule] = useState<TodaySchedule | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const [grid,         setGrid]         = useState<SlotGrid | null>(null);
+  const [openDates,    setOpenDates]    = useState<OpenDate[]>([]);
+  const [stats,        setStats]        = useState<Stats | null>(null);
+  const [loadingGrid,  setLoadingGrid]  = useState(false);
+  const [openingDate,  setOpeningDate]  = useState(false);
+  const [blockingId,   setBlockingId]   = useState<number | null>(null);
+  const [showCancel,   setShowCancel]   = useState(false);
+  const [cancelling,   setCancelling]   = useState(false);
 
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [cancelLoading, setCancelLoading] = useState(false);
+  // ── Data loaders ──────────────────────────────────────────────────────────
 
-  // Waiting queue
-  const [waitingAppts, setWaitingAppts] = useState<WaitingAppointment[]>([]);
-  const [queueLoading, setQueueLoading] = useState(false);
-
-  const [formData, setFormData] = useState({
-    mla_id: "1",
-    date: new Date().toISOString().split("T")[0],
-    start_time: "16:00",
-    end_time: "18:00",
-    slot_duration_minutes: 5,
-    window_duration_minutes: 30,
-  });
-
-  useEffect(() => { loadData(); loadWaitingQueue(); }, []);
-
-  const loadData = async () => {
+  const loadGrid = useCallback(async (d: string) => {
+    setLoadingGrid(true);
     try {
-      const mlasRes = await fetch("/api/v1/scheduling/admin/mlas");
-      const mlasData = await mlasRes.json();
-      if (Array.isArray(mlasData)) {
-        setMlas(mlasData);
-        if (mlasData.length > 0 && !formData.mla_id) {
-          setFormData((prev) => ({ ...prev, mla_id: mlasData[0].id.toString() }));
-        }
-      }
-      const statsRes = await fetch("/api/v1/scheduling/admin/statistics");
-      const statsData = await statsRes.json();
-      if (statsData && !statsData.error) setStatistics(statsData);
+      const res  = await fetch(`/api/v1/scheduling/admin/slots?target_date=${d}`);
+      const data = await res.json() as SlotGrid;
+      setGrid(data);
+    } catch { toast.error("Failed to load slot grid."); }
+    finally   { setLoadingGrid(false); }
+  }, []);
 
-      const scheduleRes = await fetch("/api/v1/scheduling/admin/today-schedule");
-      const scheduleData = await scheduleRes.json();
-      if (scheduleData && !scheduleData.error) setTodaySchedule(scheduleData);
-    } catch (error) {
-      console.error("Failed to load data:", error);
-    }
-  };
-
-  const loadWaitingQueue = async () => {
-    setQueueLoading(true);
+  const loadOpenDates = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/scheduling/admin/waiting-queue?limit=100");
+      const res  = await fetch("/api/v1/scheduling/admin/dates");
       const data = await res.json();
-      if (Array.isArray(data)) { setWaitingAppts(data); }
-    } catch (e) { console.error("Failed to load waiting queue:", e); }
-    finally { setQueueLoading(false); }
-  };
+      if (Array.isArray(data)) setOpenDates(data);
+    } catch { /* silent */ }
+  }, []);
 
-  const handleCancelAll = async () => {
-    setCancelLoading(true);
+  const loadStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/scheduling/admin/cancel-all-scheduled", { method: "POST" });
+      const res  = await fetch("/api/v1/scheduling/admin/statistics");
       const data = await res.json();
-      if (res.ok) {
-        setMessage({ type: "success", text: `⚠ ${data.message}` });
-        loadData();
-        loadWaitingQueue();
-      } else {
-        setMessage({ type: "error", text: data.error || "Failed to cancel appointments" });
-      }
-    } catch {
-      setMessage({ type: "error", text: "Network error" });
-    } finally {
-      setCancelLoading(false);
-      setShowCancelConfirm(false);
-    }
-  };
+      if (!data.error) setStats(data);
+    } catch { /* silent */ }
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage(null);
+  useEffect(() => {
+    loadGrid(selectedDate);
+    loadOpenDates();
+    loadStats();
+  }, [selectedDate, loadGrid, loadOpenDates, loadStats]);
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  async function handleOpenDate() {
+    setOpeningDate(true);
     try {
-      const response = await fetch("/api/v1/scheduling/admin/set-availability", {
+      const res  = await fetch("/api/v1/scheduling/admin/open-date", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          mla_id: parseInt(formData.mla_id),
-          start_time: `${formData.start_time}:00`,
-          end_time: `${formData.end_time}:00`,
-        }),
+        body: JSON.stringify({ mla_id: 1, date: selectedDate }),
       });
-      const data = await response.json();
-      if (response.ok) {
-        setMessage({ type: "success", text: `Success! ${data.message}` });
-        loadData();
-        loadWaitingQueue();
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Date opened!", { description: data.message });
+        loadGrid(selectedDate);
+        loadOpenDates();
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to set availability" });
+        toast.error(data.error || "Failed to open date.");
       }
-    } catch {
-      setMessage({ type: "error", text: "Network error. Please try again." });
-    } finally {
-      setLoading(false);
-    }
-  };
+    } catch { toast.error("Network error."); }
+    finally  { setOpeningDate(false); }
+  }
 
-  const calculateTotalSlots = () => {
-    const [startHour, startMin] = formData.start_time.split(":").map(Number);
-    const [endHour, endMin] = formData.end_time.split(":").map(Number);
-    const totalMinutes = endHour * 60 + endMin - (startHour * 60 + startMin);
-    return Math.floor(totalMinutes / formData.slot_duration_minutes);
-  };
+  async function handleToggleBlock(slot: Slot) {
+    if (slot.status !== "BLOCKED" && slot.booked_count > 0) return; // can't block occupied
+    setBlockingId(slot.id);
+    const action = slot.status === "BLOCKED" ? "unblock" : "block";
+    try {
+      const res  = await fetch(`/api/v1/scheduling/admin/slots/${slot.id}/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(action === "block" ? "Slot blocked." : "Slot unblocked.");
+        loadGrid(selectedDate);
+      } else {
+        toast.error(data.error || `Failed to ${action} slot.`);
+      }
+    } catch { toast.error("Network error."); }
+    finally  { setBlockingId(null); }
+  }
 
-  const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground";
-  const selectCls = "h-10 w-full rounded-lg border border-input bg-card px-3 text-sm shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
+  async function handleCancelAll() {
+    setCancelling(true);
+    try {
+      const res  = await fetch("/api/v1/scheduling/admin/cancel-all-scheduled", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Cancelled", { description: data.message });
+        loadGrid(selectedDate);
+        loadOpenDates();
+        loadStats();
+      } else {
+        toast.error(data.error || "Failed.");
+      }
+    } catch { toast.error("Network error."); }
+    finally  { setCancelling(false); setShowCancel(false); }
+  }
 
-  const stats = statistics
+  // ── Derived stats ─────────────────────────────────────────────────────────
+
+  const statCards = stats
     ? [
-        { icon: Users,       value: statistics.waiting_count,      label: "Waiting in Queue",   color: "text-amber-600",   bg: "bg-amber-100" },
-        { icon: CheckCircle, value: statistics.scheduled_today,    label: "Scheduled Today",    color: "text-emerald-600", bg: "bg-emerald-100" },
-        { icon: AlertCircle, value: statistics.oldest_waiting_days, label: "Oldest Waiting (days)", color: "text-red-600",  bg: "bg-red-100" },
+        { icon: Users,        value: stats.waiting_count,       label: "Waiting in Queue",       color: "text-amber-600",   bg: "bg-amber-50" },
+        { icon: CheckCircle,  value: stats.scheduled_today,     label: "Scheduled Today",         color: "text-emerald-600", bg: "bg-emerald-50" },
+        { icon: AlertCircle,  value: stats.oldest_waiting_days, label: "Oldest Waiting (days)",   color: "text-red-600",     bg: "bg-red-50" },
       ]
     : [];
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
       <TopBar />
       <main className="flex-1 overflow-y-auto bg-background">
-        <div className="mx-auto max-w-[1100px] space-y-6 p-6 animate-in-up">
-          {/* Title */}
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-foreground">
-              <Clock className="h-6 w-6 text-brand" /> Availability &amp; Scheduling
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Set time-slot availability — waiting queue is auto-scheduled in bulk.
-            </p>
+        <div className="mx-auto max-w-[1200px] space-y-6 p-6 animate-in-up">
+
+          {/* Header */}
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
+                <Clock className="h-6 w-6 text-brand" /> Slot Management
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Fixed slots: 08:00 – 18:00 · 20 slots/day · 6 citizens/slot
+              </p>
+            </div>
+            {showCancel ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-red-600 font-medium">Cancel all today's bookings?</span>
+                <Button size="sm" variant="outline" onClick={() => setShowCancel(false)}>No</Button>
+                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={handleCancelAll} disabled={cancelling}>
+                  {cancelling ? "Cancelling…" : "Yes, cancel all"}
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => setShowCancel(true)}>
+                <AlertCircle className="h-4 w-4 mr-1" /> Cancel All Today
+              </Button>
+            )}
           </div>
 
           {/* Stats */}
-          {stats.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {stats.map((s) => (
-                <Card key={s.label} className="p-5">
-                  <div className="flex items-center gap-3">
-                    <div className={cn("grid h-11 w-11 place-items-center rounded-xl", s.bg)}>
-                      <s.icon className={cn("h-5 w-5", s.color)} />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-extrabold tabular-nums text-foreground">{s.value}</div>
-                      <div className="text-xs text-muted-foreground">{s.label}</div>
-                    </div>
+          {statCards.length > 0 && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {statCards.map(s => (
+                <Card key={s.label} className="flex items-center gap-3 p-4">
+                  <div className={cn("grid h-10 w-10 place-items-center rounded-xl", s.bg)}>
+                    <s.icon className={cn("h-5 w-5", s.color)} />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-extrabold tabular-nums">{s.value}</div>
+                    <div className="text-xs text-muted-foreground">{s.label}</div>
                   </div>
                 </Card>
               ))}
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-            {/* Set Availability Form */}
-            <Card className="p-6 lg:col-span-3">
-              <h2 className="mb-4 text-lg font-bold text-foreground">Set Availability</h2>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
 
-              {message && (
-                <div className={cn(
-                  "mb-4 rounded-lg border px-4 py-3 text-sm",
-                  message.type === "success"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border-red-200 bg-red-50 text-red-800"
-                )}>
-                  {message.text}
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className={labelCls}>Date</label>
-                    <Input type="date" value={formData.date} min={new Date().toISOString().split("T")[0]}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })} required />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Start Time</label>
-                    <Input type="time" value={formData.start_time}
-                      onChange={(e) => setFormData({ ...formData, start_time: e.target.value })} required />
-                  </div>
-                  <div>
-                    <label className={labelCls}>End Time</label>
-                    <Input type="time" value={formData.end_time}
-                      onChange={(e) => setFormData({ ...formData, end_time: e.target.value })} required />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Slot Duration</label>
-                    <select className={selectCls} value={formData.slot_duration_minutes}
-                      onChange={(e) => setFormData({ ...formData, slot_duration_minutes: parseInt(e.target.value) })}>
-                      <option value="5">5 minutes</option>
-                      <option value="10">10 minutes</option>
-                      <option value="15">15 minutes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Window Duration</label>
-                    <select className={selectCls} value={formData.window_duration_minutes}
-                      onChange={(e) => setFormData({ ...formData, window_duration_minutes: parseInt(e.target.value) })}>
-                      <option value="30">30 minutes</option>
-                      <option value="60">60 minutes</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 rounded-lg border border-brand/20 bg-brand/5 px-4 py-3 text-sm text-brand">
-                  <Clock className="h-4 w-4" />
-                  <span className="font-semibold">Calculated:</span>
-                  <span>{calculateTotalSlots()} slots ({formData.slot_duration_minutes} min each)</span>
-                </div>
-
-                <Button type="submit" size="lg" disabled={loading} className="w-full">
-                  {loading ? "Setting Availability…" : "Set Availability & Auto-Schedule Queue"}
+            {/* Left panel — date picker + open dates list */}
+            <div className="space-y-4 lg:col-span-1">
+              <Card className="p-4">
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Select Date</h2>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  min={todayIso()}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
+                <Button
+                  className="mt-3 w-full"
+                  onClick={handleOpenDate}
+                  disabled={openingDate || !selectedDate}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {openingDate ? "Opening…" : "Open This Date"}
                 </Button>
-              </form>
-            </Card>
+              </Card>
 
-            {/* Today's schedule summary */}
-            <Card className="p-6 lg:col-span-2">
-              <h2 className="mb-4 text-lg font-bold text-foreground">Today's Schedule</h2>
-              {todaySchedule?.has_availability ? (
-                <div className="space-y-3">
-                  {/* Aggregate stats */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Total Slots</span>
-                    <span className="text-sm font-semibold text-foreground">{todaySchedule.total_slots}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Booked</span>
-                    <span className="text-sm font-semibold text-emerald-600">{todaySchedule.booked_slots}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Remaining</span>
-                    <span className="text-sm font-semibold text-amber-600">{todaySchedule.remaining_slots}</span>
-                  </div>
-                  <div className="border-t border-border pt-4">
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-emerald-500 transition-all"
-                        style={{ width: `${((todaySchedule.booked_slots || 0) / (todaySchedule.total_slots || 1)) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  {/* Individual blocks */}
-                  {todaySchedule.blocks && todaySchedule.blocks.length > 0 && (
-                    <div className="border-t border-border pt-3 space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Availability Blocks</p>
-                      {todaySchedule.blocks.map((b) => (
-                        <div key={b.id} className="flex items-center justify-between text-xs">
-                          <span className="text-foreground font-medium">{b.time_range}</span>
-                          <span className="text-muted-foreground">
-                            {b.booked_slots}/{b.total_slots} booked
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+              {/* Open dates list */}
+              <Card className="p-4">
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-4 w-4" /> Open Dates
+                </h2>
+                {openDates.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No upcoming open dates.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {openDates.map(d => (
+                      <li key={d.id}>
+                        <button
+                          onClick={() => setSelectedDate(d.date)}
+                          className={cn(
+                            "w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                            selectedDate === d.date
+                              ? "border-brand bg-brand/5 font-semibold text-brand"
+                              : "border-slate-200 hover:border-brand/40 hover:bg-slate-50"
+                          )}
+                        >
+                          <div className="font-medium">{d.date_label}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {d.booked}/{d.total_capacity} booked · {d.remaining} left
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+
+            {/* Right panel — 20-slot grid */}
+            <Card className="p-5 lg:col-span-3">
+              {/* Grid header */}
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold">
+                    {grid?.date_label ?? selectedDate}
+                  </h2>
+                  {grid?.has_availability ? (
+                    <p className="text-xs text-muted-foreground">
+                      {grid.booked_total ?? 0}/{grid.total_capacity ?? 120} booked ·{" "}
+                      {grid.blocked_slots ?? 0} blocked ·{" "}
+                      {grid.remaining_total ?? 120} remaining
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-600">
+                      {loadingGrid ? "Loading…" : "Date not open — click \"Open This Date\" to create slots."}
+                    </p>
                   )}
                 </div>
+                <button
+                  onClick={() => loadGrid(selectedDate)}
+                  className="rounded-lg p-2 hover:bg-muted"
+                  title="Refresh"
+                >
+                  <RefreshCw className={cn("h-4 w-4 text-muted-foreground", loadingGrid && "animate-spin")} />
+                </button>
+              </div>
+
+              {/* Legend */}
+              <div className="mb-4 flex flex-wrap gap-3 text-[11px]">
+                {[
+                  { cls: "bg-emerald-100 border border-emerald-300", label: "Available" },
+                  { cls: "bg-amber-100 border border-amber-300",     label: "Partially booked" },
+                  { cls: "bg-red-100 border border-red-300",         label: "Full" },
+                  { cls: "bg-slate-100 border border-slate-300",     label: "Blocked" },
+                ].map(l => (
+                  <span key={l.label} className="flex items-center gap-1">
+                    <span className={cn("inline-block h-3 w-3 rounded-sm", l.cls)} />
+                    {l.label}
+                  </span>
+                ))}
+                <span className="text-muted-foreground ml-2">Click available/blocked slot to toggle block</span>
+              </div>
+
+              {/* Slot grid */}
+              {!grid?.has_availability ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {Array.from({ length: 20 }).map((_, i) => (
+                    <div key={i} className="flex h-16 items-center justify-center rounded-lg border border-dashed border-slate-200 text-xs text-slate-300">
+                      {String(8 + Math.floor(i / 2)).padStart(2, "0")}:{i % 2 === 0 ? "00" : "30"}
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <div className="py-10 text-center">
-                  <AlertCircle className="mx-auto mb-3 h-12 w-12 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">No availability set for today.</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {(grid.slots ?? []).map(slot => {
+                    const badge     = slotBadge(slot);
+                    const canToggle = slot.status === "BLOCKED" || slot.booked_count === 0;
+                    const isLoading = blockingId === slot.id;
+                    return (
+                      <div
+                        key={slot.id}
+                        onClick={() => canToggle && handleToggleBlock(slot)}
+                        className={cn(
+                          "relative flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 transition-all",
+                          slotColor(slot),
+                          !canToggle && "cursor-default",
+                          isLoading && "opacity-60 pointer-events-none"
+                        )}
+                      >
+                        {/* Time label */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold">{slot.start} – {slot.end}</span>
+                          {slot.status === "BLOCKED" ? (
+                            <Lock    className="h-3 w-3 shrink-0 opacity-60" />
+                          ) : (
+                            <Unlock  className="h-3 w-3 shrink-0 opacity-30" />
+                          )}
+                        </div>
+
+                        {/* Capacity bar */}
+                        <div className="h-1.5 w-full rounded-full bg-black/10 overflow-hidden">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all",
+                              slot.booked_count === slot.max_capacity
+                                ? "bg-red-500"
+                                : slot.booked_count > 0
+                                  ? "bg-amber-500"
+                                  : "bg-emerald-500"
+                            )}
+                            style={{ width: `${(slot.booked_count / slot.max_capacity) * 100}%` }}
+                          />
+                        </div>
+
+                        {/* Status badge */}
+                        <span className={cn("mt-0.5 self-start rounded px-1.5 py-0.5 text-[10px] font-semibold", badge.cls)}>
+                          {badge.label}
+                        </span>
+
+                        {/* Seat count */}
+                        <div className="text-[10px] opacity-70">
+                          {slot.booked_count}/{slot.max_capacity} booked
+                        </div>
+
+                        {isLoading && (
+                          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/60">
+                            <RefreshCw className="h-4 w-4 animate-spin text-brand" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </Card>
           </div>
-
-          {/* Emergency Cancel */}
-          <Card className={cn("p-6", showCancelConfirm && "border-red-300")}>
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="grid h-11 w-11 place-items-center rounded-xl bg-red-100">
-                  <AlertTriangle className="h-5 w-5 text-red-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-foreground">Emergency Unavailable</h3>
-                  <p className="text-sm text-muted-foreground">Cancel all scheduled appointments and reset the queue.</p>
-                </div>
-              </div>
-              {!showCancelConfirm ? (
-                <Button variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={() => setShowCancelConfirm(true)}>
-                  <AlertTriangle className="h-4 w-4" />
-                  Cancel All Scheduled
-                </Button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setShowCancelConfirm(false)} disabled={cancelLoading}>
-                    No, keep them
-                  </Button>
-                  <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={handleCancelAll} disabled={cancelLoading}>
-                    {cancelLoading ? "..." : "Yes, cancel all"}
-                  </Button>
-                </div>
-              )}
-            </div>
-            {showCancelConfirm && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                This will cancel all scheduled appointments for today and move them back to the waiting queue. This action cannot be undone.
-              </div>
-            )}
-          </Card>
-
-          {/* Scheduled Today Queue */}
-          <Card className="overflow-hidden p-0">
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
-                  <CheckCircle className="h-5 w-5 text-emerald-500" />
-                  Scheduled Today
-                  {todaySchedule?.appointments && todaySchedule.appointments.length > 0 && (
-                    <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
-                      {todaySchedule.appointments.length}
-                    </span>
-                  )}
-                </h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Appointments auto-scheduled from the waiting queue.
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={loadData}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {todaySchedule?.appointments && todaySchedule.appointments.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px]">
-                  <thead className="bg-muted/50">
-                    <tr className="border-b border-border">
-                      {["Token", "Name", "Mobile", "Category", "Scheduled Time"].map((h) => (
-                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {todaySchedule.appointments.map((appt) => (
-                      <tr key={appt.id} className="border-b border-border/70 transition-colors hover:bg-muted/40">
-                        <td className="px-4 py-3 text-sm font-semibold text-foreground">#{appt.token}</td>
-                        <td className="px-4 py-3 text-sm text-foreground">{appt.name}</td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">{appt.mobile}</td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-medium text-brand">
-                            {appt.category || "General"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-foreground">{appt.scheduled_time}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="py-16 text-center">
-                <Calendar className="mx-auto mb-3 h-12 w-12 text-muted-foreground/30" />
-                <p className="text-sm font-medium text-foreground">No appointments scheduled today</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Set availability to auto-schedule from the waiting queue.</p>
-              </div>
-            )}
-          </Card>
-
-          {/* Waiting Queue (Read-Only) */}
-          <Card className="overflow-hidden p-0">
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
-                  <Users className="h-5 w-5 text-amber-500" />
-                  Waiting Queue
-                  {waitingAppts.length > 0 && (
-                    <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">
-                      {waitingAppts.length}
-                    </span>
-                  )}
-                </h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Citizens waiting for a meeting — auto-scheduled when you set availability.
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={loadWaitingQueue} disabled={queueLoading}>
-                <RefreshCw className={cn("h-4 w-4", queueLoading && "animate-spin")} />
-              </Button>
-            </div>
-
-            {queueLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : waitingAppts.length === 0 ? (
-              <div className="py-16 text-center">
-                <CheckCircle className="mx-auto mb-3 h-12 w-12 text-emerald-400/40" />
-                <p className="text-sm font-medium text-foreground">No waiting petitions</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">All meeting requests have been scheduled.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px]">
-                  <thead className="bg-muted/50">
-                    <tr className="border-b border-border">
-                      {["#", "Token", "Name", "Mobile", "Category", "Waiting Since", "Priority"].map((h) => (
-                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {waitingAppts.map((appt) => {
-                      const daysWaiting = Math.floor(Math.abs(Date.now() - new Date(appt.waiting_since).getTime()) / 86400000);
-                      const isUrgent = daysWaiting >= 3;
-                      return (
-                        <tr
-                          key={appt.id}
-                          className={cn(
-                            "border-b border-border/70 transition-colors hover:bg-muted/40",
-                            isUrgent && "bg-red-50/60"
-                          )}
-                        >
-                          <td className="px-4 py-3">
-                            <div className="grid h-7 w-7 place-items-center rounded-full bg-amber-100 text-xs font-bold text-amber-700">
-                              {appt.queue_position}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-sm font-semibold text-foreground">#{appt.token}</td>
-                          <td className="px-4 py-3 text-sm text-foreground">{appt.name}</td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">{appt.mobile}</td>
-                          <td className="px-4 py-3">
-                            <span className="inline-flex rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-medium text-brand">
-                              {appt.category || "General"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">
-                            <span className={cn(isUrgent && "font-semibold text-red-600")}>
-                              {formatDateTime(appt.waiting_since)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm font-bold tabular-nums text-foreground">{appt.priority_score}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-
         </div>
       </main>
     </>

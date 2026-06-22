@@ -527,32 +527,20 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         return {"success": False}
 
     if new_status in ("Waiting", "Rescheduled"):
-        await scheduling_service.release_appointment_slot(db, appt, commit=False)
+        # Release the slot booking and move to waiting queue
+        await scheduling_service.release_slot(db, appt, commit=False)
         await scheduling_service.move_to_waiting_queue(
             db, appt, "MANUAL_RESCHEDULE", commit=False
         )
         appt.schedule_meeting = True
     elif new_status == "Scheduled":
+        # PA manually marks as Scheduled — slot assignment handled separately
+        # via the scheduling page reschedule flow; just set the flag here.
         appt.schedule_meeting = True
-        if not appt.appointment_slot_id:
-            windows_data = await scheduling_service.get_available_time_windows(db, date.today())
-            if windows_data.get("available") and windows_data.get("windows"):
-                chosen_window = windows_data["windows"][0]["id"]
-                try:
-                    await scheduling_service.book_appointment_with_window(
-                        db, appt, chosen_window, "", "", commit=False
-                    )
-                except ValueError:
-                    await scheduling_service.move_to_waiting_queue(
-                        db, appt, "NO_AVAILABLE_SLOT", commit=False
-                    )
-            else:
-                await scheduling_service.move_to_waiting_queue(
-                    db, appt, "NO_AVAILABILITY_TODAY", commit=False
-                )
+        appt.status = "SCHEDULED"
     elif new_status == "Reviewed":
-        # PA marks petition as reviewed — slot is released if any was held.
-        await scheduling_service.release_appointment_slot(db, appt, commit=False)
+        # PA marks petition as reviewed — release slot booking if any was held.
+        await scheduling_service.release_slot(db, appt, commit=False)
         appt.status = "REVIEWED"
         appt.schedule_meeting = False
         
