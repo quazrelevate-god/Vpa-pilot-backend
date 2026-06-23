@@ -30,7 +30,7 @@ async def login_page(request: Request) -> HTMLResponse:
 @router.post("/login", include_in_schema=False)
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == settings.DASHBOARD_USERNAME and password == settings.DASHBOARD_PASSWORD:
-        response = RedirectResponse(url="/dashboard/appointments", status_code=302)
+        response = RedirectResponse(url="/appointments", status_code=302)
         create_session_cookie(response, username)
         return response
     return templates.TemplateResponse(
@@ -42,7 +42,7 @@ async def login_submit(request: Request, username: str = Form(...), password: st
 
 @router.get("/logout", include_in_schema=False)
 async def logout():
-    response = RedirectResponse(url="/dashboard/login", status_code=302)
+    response = RedirectResponse(url="/auth/login", status_code=302)
     response.delete_cookie("dash_session")
     return response
 
@@ -51,7 +51,7 @@ async def logout():
 
 @router.get("/", include_in_schema=False)
 async def root_redirect():
-    return RedirectResponse(url="/dashboard/appointments", status_code=302)
+    return RedirectResponse(url="/appointments", status_code=302)
 
 
 @router.get("/overview", include_in_schema=False)

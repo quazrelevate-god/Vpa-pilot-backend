@@ -21,18 +21,19 @@ def create_session_cookie(response, username: str):
         max_age=_COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
+        path="/",
     )
 
 
 def verify_session(request: Request) -> str:
     token = request.cookies.get(_COOKIE_NAME)
     if not token:
-        raise HTTPException(status_code=302, headers={"Location": "/dashboard/login"})
+        raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
     try:
         username = _signer.unsign(token, max_age=_COOKIE_MAX_AGE).decode()
         return username
     except (BadSignature, SignatureExpired):
-        raise HTTPException(status_code=302, headers={"Location": "/dashboard/login"})
+        raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
 
 
 def require_auth(request: Request) -> str:
@@ -41,4 +42,4 @@ def require_auth(request: Request) -> str:
         return verify_session(request)
     except HTTPException:
         # Return redirect instead of raising so Depends works cleanly
-        raise HTTPException(status_code=302, headers={"Location": "/dashboard/login"})
+        raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
