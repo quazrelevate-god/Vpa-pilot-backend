@@ -75,11 +75,14 @@ class SchedulingService:
                 "Only today or future dates are allowed."
             )
 
-        existing = await db.scalar(
+        # Use SELECT ... FOR UPDATE to prevent race condition between concurrent workers
+        existing_result = await db.execute(
             select(MLADailyAvailability)
             .where(MLADailyAvailability.mla_id == mla_id)
             .where(MLADailyAvailability.date    == target_date)
+            .with_for_update()
         )
+        existing = existing_result.scalar_one_or_none()
         if existing:
             total_booked = await db.scalar(
                 select(func.sum(AppointmentSlot.booked_count))

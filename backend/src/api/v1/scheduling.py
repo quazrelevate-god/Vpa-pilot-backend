@@ -101,8 +101,16 @@ async def open_date(
         )
         return JSONResponse(result)
     except ValueError as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=409)
     except Exception as e:
+        await db.rollback()
+        err_msg = str(e).lower()
+        if "unique" in err_msg or "duplicate" in err_msg or "uq_mla_date" in err_msg:
+            return JSONResponse(
+                {"error": f"{data.date.strftime('%d %b %Y')} is already open. Refresh and try again."},
+                status_code=409,
+            )
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -123,6 +131,7 @@ async def get_slots(
         result = await scheduling_service.get_slots_for_date(db, parsed)
         return JSONResponse(result)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -139,8 +148,10 @@ async def block_slot(
         result = await scheduling_service.block_slot(db, slot_id)
         return JSONResponse(result)
     except ValueError as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=409)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -155,8 +166,10 @@ async def unblock_slot(
         result = await scheduling_service.unblock_slot(db, slot_id)
         return JSONResponse(result)
     except ValueError as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=404)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -172,6 +185,7 @@ async def get_open_dates(
         result = await scheduling_service.get_open_dates(db)
         return JSONResponse(result)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -196,8 +210,10 @@ async def reschedule_appointment(
         )
         return JSONResponse(result)
     except ValueError as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=404)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -214,6 +230,7 @@ async def get_waiting_queue(
         result = await scheduling_service.get_waiting_queue(db, limit)
         return JSONResponse(result)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -227,8 +244,10 @@ async def auto_allocate_waiting_queue(
         result = await scheduling_service.auto_allocate_waiting_queue(db)
         return JSONResponse(result)
     except ValueError as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=409)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -244,6 +263,7 @@ async def get_statistics(
         result = await scheduling_service.get_statistics(db)
         return JSONResponse(result)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -264,6 +284,7 @@ async def get_mlas(
             for m in mlas
         ])
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -283,6 +304,7 @@ async def cancel_all_scheduled(
         result = await scheduling_service.cancel_all_scheduled(db)
         return JSONResponse(result)
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -315,4 +337,5 @@ async def get_available_time_windows_legacy(
             "windows":    windows,
         })
     except Exception as e:
+        await db.rollback()
         return JSONResponse({"available": False, "reason": "ERROR", "windows": []}, status_code=500)

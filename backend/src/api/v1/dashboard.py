@@ -273,6 +273,7 @@ async def api_ticket_patch(
             due_date=body.get("due_date"),
         )
     except ValueError as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=400)
     if data is None:
         return JSONResponse({"error": "Ticket not found"}, status_code=404)
@@ -311,6 +312,7 @@ async def api_ticket_comment(
             db, ticket_id, actor=user, text=body.get("text", ""),
         )
     except ValueError as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=400)
     if data is None:
         return JSONResponse({"error": "Ticket not found"}, status_code=404)
@@ -331,6 +333,7 @@ async def api_ticket_resolve(
             resolution_notes=body.get("resolution_notes", ""),
         )
     except ValueError as e:
+        await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=400)
     if data is None:
         return JSONResponse({"error": "Ticket not found"}, status_code=404)
