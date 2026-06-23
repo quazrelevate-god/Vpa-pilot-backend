@@ -22,6 +22,7 @@ def create_session_cookie(response, username: str):
         httponly=True,
         samesite="lax",
         path="/",
+        secure=True,
     )
 
 
