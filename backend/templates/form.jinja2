@@ -1879,18 +1879,22 @@
                 msg.textContent = copy.slotHint;
                 grid.innerHTML  = '';
 
-                // Current time in minutes since midnight (local time) for past-slot filtering
+                // Current time in minutes since midnight (local time) for past-slot filtering.
+                // Past-slot greying only applies when the selected date IS today —
+                // future dates should never have any slots greyed out.
                 const nowLocal   = new Date();
                 const nowMinutes = nowLocal.getHours() * 60 + nowLocal.getMinutes();
+                const todayStr   = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
+                const isToday    = targetDate === todayStr;
 
                 data.slots.forEach(slot => {
                     const card    = document.createElement('div');
 
-                    // Grey out any slot that has already started (slotStart <= now).
-                    // At 4:07 the 4:00–4:30 slot is grey; first available is 4:30.
+                    // Grey out any slot that has already started (slotStart <= now),
+                    // but ONLY when the selected date is today.
                     const [sh, sm] = slot.start.split(':').map(Number);
                     const slotStart = sh * 60 + sm;
-                    const isPast    = slotStart <= nowMinutes;
+                    const isPast    = isToday && (slotStart <= nowMinutes);
 
                     const isAvail = !isPast && slot.available;
                     const isFull  = !isPast && slot.remaining === 0 && slot.status !== 'BLOCKED';
