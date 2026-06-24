@@ -860,7 +860,7 @@
                         <label for="ddlCategory"><span id="lbl-category">Category</span> <span class="req-star">*</span></label>
                     </div>
                     <div class="category-select-wrapper">
-                        <select id="ddlCategory" class="glass-field">
+                        <select id="ddlCategory" name="grievance_category" class="glass-field">
                             <option value="" id="opt-category-default">— Select —</option>
                         </select>
                     </div>
@@ -924,33 +924,6 @@
                     <textarea id="txtDesc" rows="4" placeholder="Describe your issue or application details clearly..." class="glass-field"></textarea>
                 </div>
 
-                <!-- Category Selector (optional — AI uses this if provided) -->
-                <div class="field-group">
-                    <div class="label-container">
-                        <label for="selCategory">
-                            <span id="lbl-category">Category</span>
-                            <span style="color:#6b7280; font-size:0.82rem; font-weight:400;">
-                                <span id="lbl-cat-hint"> (optional — AI will auto-detect if not selected)</span>
-                            </span>
-                        </label>
-                    </div>
-                    <select id="ddlCategory" name="grievance_category" class="glass-field" style="appearance:auto;">
-                        <option value="">-- Select category / வகையைத் தேர்ந்தெடுக்கவும் --</option>
-                        <option value="action_required">உடனடி நடவடிக்கை தேவை / Action Required</option>
-                        <option value="proposals">முன்மொழிவுகள் / Proposals</option>
-                        <option value="transfer_requests">பணியிட மாற்றக் கோரிக்கைகள் / Transfer Requests</option>
-                        <option value="pension_requests">ஓய்வூதியக் கோரிக்கைகள் / Pension Requests</option>
-                        <option value="school_admission">பள்ளி சேர்க்கை / School Admission</option>
-                        <option value="school_upgradation">பள்ளி தரம் உயர்த்துதல் / School Upgradation</option>
-                        <option value="job_requests">வேலைவாய்ப்பு கோரிக்கைகள் / Job Requests</option>
-                        <option value="rti">தகவல் அறியும் உரிமை / RTI</option>
-                        <option value="associations_unions">சங்கங்கள் / Associations & Unions</option>
-                        <option value="other_departments">பிற துறைகள் / Other Departments</option>
-                        <option value="general">பொது மனுக்கள் / General</option>
-                        <option value="greetings">வாழ்த்து செய்திகள் / Greetings</option>
-                        <option value="invitation">அழைப்பிதழ் / Invitation</option>
-                    </select>
-                </div>
 
                 <!-- Mobile Field and OTP Processing Container -->
                 <div class="field-group">
@@ -1005,6 +978,20 @@
                         <div id="selectedSlotLabel" style="margin-top:0.6rem; font-size:0.82rem; color:#5b21b6; font-weight:600; display:none;">
                             <i class="fa-solid fa-check-circle"></i> <span id="selectedSlotText"></span>
                         </div>
+
+                        <!-- Number of persons attending (shown after a slot is picked) -->
+                        <div id="numPersonsSection" style="display:none; margin-top:0.85rem;">
+                            <label for="selNumPersons" style="font-size:0.8rem; font-weight:600; color:#5b21b6; display:block; margin-bottom:0.4rem;">
+                                <i class="fa-solid fa-users"></i> <span id="lbl-num-persons">Number of Persons Attending</span>
+                            </label>
+                            <select id="selNumPersons" style="width:100%; padding:0.5rem 0.75rem; border:1.5px solid rgba(139,92,246,0.35); border-radius:8px; font-size:0.9rem; background:#fff; color:#374151; cursor:pointer;">
+                                <option value="1" id="opt-persons-1">1 — Just me</option>
+                                <option value="2" id="opt-persons-2">2 Persons</option>
+                                <option value="3" id="opt-persons-3">3 Persons</option>
+                                <option value="4" id="opt-persons-4">4 Persons (maximum)</option>
+                            </select>
+                        </div>
+
                         <button type="button" id="btnConfirmMeeting" disabled
                             onclick="openConsentDialog()"
                             style="margin-top:0.85rem; width:100%; padding:0.65rem; background:rgba(139,92,246,0.85); color:#fff; border:none; border-radius:8px; font-weight:700; font-size:0.9rem; cursor:pointer; transition:opacity 0.2s;">
@@ -1185,6 +1172,12 @@
                 catGeneral: "General",
                 catGreetings: "Greetings",
                 alertSelectCategory: "Please select a category.",
+                // Persons attending
+                numPersonsLabel: "Number of Persons Attending",
+                optPersons1: "1 — Just me",
+                optPersons2: "2 Persons",
+                optPersons3: "3 Persons",
+                optPersons4: "4 Persons (maximum)",
             },
             ta: {
                 portalTitle: "குறைதீர்க்கும் பதிவு", secTitle: "புகார் படிவம்",
@@ -1244,6 +1237,12 @@
                 catGeneral: "பொது மனுக்கள்",
                 catGreetings: "வாழ்த்து செய்திகள்",
                 alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
+                // Persons attending
+                numPersonsLabel: "சந்திப்பிற்கு வரும் நபர்களின் எண்ணிக்கை",
+                optPersons1: "1 — நான் மட்டும்",
+                optPersons2: "2 நபர்கள்",
+                optPersons3: "3 நபர்கள்",
+                optPersons4: "4 நபர்கள் (அதிகபட்சம்)",
             }
         };
 
@@ -1329,6 +1328,13 @@
             _setText('lbl-slot-loading', copy.slotLoading);
             _setText('lbl-slot-confirm', copy.slotConfirm);
             _setText('lbl-slot-date',    copy.slotSelectDate);
+
+            // Persons attending dropdown
+            _setText('lbl-num-persons', copy.numPersonsLabel);
+            _setText('opt-persons-1',   copy.optPersons1);
+            _setText('opt-persons-2',   copy.optPersons2);
+            _setText('opt-persons-3',   copy.optPersons3);
+            _setText('opt-persons-4',   copy.optPersons4);
             // Rebuild date picker chips with new language if picker is visible
             if (document.getElementById('slotPickerSection').style.display !== 'none') {
                 _buildDatePicker();
@@ -1693,6 +1699,8 @@
             formData.append('schedule_meeting', scheduleMeeting.toString());
             if (scheduleMeeting && slotId) {
                 formData.append('slot_id', slotId);
+                const numPersons = parseInt(document.getElementById('selNumPersons').value) || 1;
+                formData.append('num_persons', numPersons.toString());
             }
 
             const audioData = document.getElementById('audioRecordingData').value;
@@ -1833,6 +1841,8 @@
         function closeSlotPicker() {
             document.getElementById('slotPickerSection').style.display = 'none';
             document.getElementById('selectedSlotId').value = '';
+            document.getElementById('numPersonsSection').style.display = 'none';
+            document.getElementById('selNumPersons').value = '1';
             if (slotRefreshInterval) { clearInterval(slotRefreshInterval); slotRefreshInterval = null; }
         }
 
@@ -1961,6 +1971,8 @@
             document.getElementById('selectedSlotId').value          = slotId;
             document.getElementById('selectedSlotText').textContent   = label;
             document.getElementById('selectedSlotLabel').style.display = 'block';
+            document.getElementById('numPersonsSection').style.display = 'block';
+            document.getElementById('selNumPersons').value             = '1';
             document.getElementById('btnConfirmMeeting').disabled     = false;
         }
 

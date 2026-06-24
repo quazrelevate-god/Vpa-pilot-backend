@@ -270,6 +270,13 @@ class Appointment(Base):
         default=False,
         comment="Whether citizen requested a scheduled meeting with official"
     )
+
+    num_persons = Column(
+        Integer,
+        nullable=False,
+        default=1,
+        comment="Number of persons attending the meeting (1-4, citizen-selected at booking)"
+    )
     
     created_at = Column(
         DateTime,

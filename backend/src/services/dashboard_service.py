@@ -449,6 +449,7 @@ async def get_appointments(
                 datetime.combine(appt.scheduled_date, appt.scheduled_start_time).isoformat()
                 if appt.scheduled_date and appt.scheduled_start_time else None
             ),
+            "num_persons": appt.num_persons,
             "description": _decode(appt.encrypted_grievance) if appt.encrypted_grievance else None,
             "audio_url": audio_url,
             "headline": summary_rec.headline if summary_rec else None,

@@ -239,6 +239,12 @@ async def submit_appointment(
         default=None,
         description="Selected 30-minute slot ID (required when schedule_meeting=true)"
     ),
+    num_persons: int = Form(
+        default=1,
+        ge=1,
+        le=4,
+        description="Number of persons attending the meeting (1–4, only relevant when schedule_meeting=true)"
+    ),
     audio_recording: str = Form(
         default="",
         description="Base64 encoded audio recording (optional)"
@@ -367,6 +373,7 @@ async def submit_appointment(
             otp_code=otp_code,
             schedule_meeting=schedule_meeting_bool,
             slot_id=slot_id,
+            num_persons=num_persons,
             audio_recording=audio_recording,
             files=files,
             db=db,

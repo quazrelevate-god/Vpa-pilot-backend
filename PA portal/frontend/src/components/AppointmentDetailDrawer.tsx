@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Phone, Hash, CalendarDays, X, User, Languages, FileText, Mic, Pencil, Check, ShieldAlert,
+  Phone, Hash, CalendarDays, X, User, Users, Languages, FileText, Mic, Pencil, Check, ShieldAlert,
   Clock, GitBranch, Flag, ArrowRight, Activity as ActivityIcon,
 } from "lucide-react";
 import type { AppointmentRow, AppointmentStatus, AppointmentActivityEvent } from "@/lib/types";
@@ -177,6 +177,11 @@ export default function AppointmentDetailDrawer({
                       {a.appointment_time && (
                         <span className="inline-flex items-center gap-1 text-emerald-600">
                           <CalendarDays className="h-3 w-3" />{formatDateTime(a.appointment_time)}
+                        </span>
+                      )}
+                      {a.appointment_time && a.num_persons && a.num_persons > 0 && (
+                        <span className="inline-flex items-center gap-1 text-violet-600">
+                          <Users className="h-3 w-3" />{a.num_persons} {a.num_persons === 1 ? "person" : "persons"}
                         </span>
                       )}
                     </div>

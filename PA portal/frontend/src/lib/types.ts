@@ -76,6 +76,7 @@ export interface AppointmentRow {
   category_label?: string | null;
   department_label?: string | null;
   priority?: TicketPriority | null;
+  num_persons?: number | null;
 }
 
 export interface AppointmentsResponse {

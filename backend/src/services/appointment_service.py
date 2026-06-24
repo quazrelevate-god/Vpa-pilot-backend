@@ -628,6 +628,7 @@ class AppointmentService:
         files: List[UploadFile],
         db: AsyncSession,
         slot_id: Optional[int] = None,
+        num_persons: int = 1,
         grievance_category: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
@@ -766,6 +767,7 @@ class AppointmentService:
                     grievance_category=grievance_category,
                     status=initial_status,
                     schedule_meeting=schedule_meeting,
+                    num_persons=max(1, min(4, num_persons)),
                     created_at=current_time
                 )
                 db.add(appointment)
