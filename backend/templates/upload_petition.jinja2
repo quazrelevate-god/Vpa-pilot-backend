@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Scan Petition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Mukta+Malar:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', 'Mukta Malar', sans-serif;
+            background: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        /* ── Header ── */
+        .header {
+            background: linear-gradient(135deg, #0f62fe, #6d28d9);
+            color: white;
+            border-radius: 14px;
+            padding: 1.1rem 1.25rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header-title { font-size: 1rem; font-weight: 800; }
+        .header-sub   { font-size: 0.75rem; opacity: 0.85; margin-top: 0.1rem; }
+
+        .lang-pill {
+            display: flex; align-items: center; gap: 0.4rem;
+            background: rgba(255,255,255,0.18);
+            border-radius: 50px; padding: 0.25rem 0.65rem;
+            font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
+        }
+        .sw { position:relative; display:inline-block; width:30px; height:16px; }
+        .sw input { opacity:0; width:0; height:0; }
+        .sl {
+            position:absolute; cursor:pointer; top:0;left:0;right:0;bottom:0;
+            background:rgba(255,255,255,0.35); border-radius:16px; transition:.25s;
+        }
+        .sl:before {
+            position:absolute; content:""; height:10px; width:10px;
+            left:3px; bottom:3px; background:white; border-radius:50%; transition:.25s;
+        }
+        input:checked + .sl { background:rgba(255,255,255,0.55); }
+        input:checked + .sl:before { transform:translateX(14px); }
+
+        /* ── Card ── */
+        .card {
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .card-label {
+            font-size: 0.78rem; font-weight: 700;
+            color: #6d28d9; text-transform: uppercase;
+            letter-spacing: 0.04em; margin-bottom: 0.6rem;
+            display: flex; align-items: center; gap: 0.4rem;
+        }
+
+        /* ── Name field ── */
+        .name-input {
+            width: 100%; padding: 0.75rem 0.9rem;
+            border: 1.5px solid #e2e8f0; border-radius: 10px;
+            font-size: 0.95rem; font-family: inherit; color: #1e293b;
+            background: #f8fafc; outline: none; transition: border-color .15s;
+        }
+        .name-input:focus { border-color: #6d28d9; background: white; }
+
+        /* ── Upload zone ── */
+        .upload-zone {
+            border: 2px dashed #c4b5fd;
+            border-radius: 12px;
+            padding: 1.75rem 1rem;
+            text-align: center;
+            cursor: pointer;
+            background: #faf5ff;
+            transition: all .2s;
+            position: relative;
+        }
+        .upload-zone.active { border-color: #6d28d9; background: #ede9fe; }
+        .upload-zone input {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            opacity: 0; cursor: pointer; font-size: 16px; /* prevents iOS zoom */
+        }
+        .uz-icon { font-size: 2.2rem; color: #7c3aed; margin-bottom: 0.5rem; }
+        .uz-title { font-size: 0.9rem; font-weight: 700; color: #4c1d95; }
+        .uz-hint  { font-size: 0.75rem; color: #7c3aed; margin-top: 0.25rem; }
+
+        /* ── Camera button ── */
+        .cam-btn {
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            width: 100%; margin-top: 0.75rem; padding: 0.7rem;
+            border: 1.5px solid #c4b5fd; border-radius: 10px;
+            background: white; color: #6d28d9;
+            font-size: 0.88rem; font-weight: 700;
+            cursor: pointer; position: relative;
+            font-family: inherit;
+        }
+        .cam-btn input {
+            position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%;
+            cursor: pointer; font-size: 16px;
+        }
+
+        /* ── Preview thumbnails ── */
+        .preview-row {
+            display: flex; gap: 0.5rem; overflow-x: auto;
+            padding: 0.65rem 0 0.25rem; scrollbar-width: none;
+        }
+        .preview-row::-webkit-scrollbar { display: none; }
+        .thumb {
+            flex-shrink: 0; width: 72px; height: 90px;
+            border-radius: 8px; overflow: hidden;
+            border: 1.5px solid #e2e8f0; position: relative;
+            background: #f1f5f9;
+        }
+        .thumb img { width:100%; height:100%; object-fit:cover; }
+        .thumb .pdf-ph {
+            width:100%; height:100%; display:flex; flex-direction:column;
+            align-items:center; justify-content:center;
+            color:#dc2626; font-size:1.4rem; gap:0.2rem;
+        }
+        .thumb .pdf-ph span { font-size:0.55rem; color:#64748b; font-weight:600; padding:0 4px; text-align:center; }
+        .thumb .pg-lbl {
+            position:absolute; bottom:2px; left:3px;
+            background:rgba(0,0,0,0.5); color:white;
+            font-size:0.55rem; font-weight:700;
+            border-radius:3px; padding:1px 3px;
+        }
+        .thumb .del-btn {
+            position:absolute; top:2px; right:2px;
+            width:18px; height:18px; border-radius:50%;
+            background:rgba(239,68,68,0.9); color:white;
+            border:none; cursor:pointer; font-size:0.6rem;
+            display:flex; align-items:center; justify-content:center;
+        }
+        .page-count {
+            font-size:0.78rem; font-weight:700; color:#5b21b6;
+            background:#ede9fe; border-radius:20px;
+            padding:0.2rem 0.65rem; display:inline-block;
+            margin-top:0.4rem;
+        }
+
+        /* ── Submit ── */
+        .submit-btn {
+            width: 100%; padding: 0.9rem;
+            background: linear-gradient(135deg, #0f62fe, #6d28d9);
+            color: white; border: none; border-radius: 12px;
+            font-size: 1rem; font-weight: 800; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            transition: opacity .2s; font-family: inherit;
+        }
+        .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── Error / Success ── */
+        .err-box {
+            background: #fee2e2; color: #991b1b;
+            border-radius: 8px; padding: 0.65rem 0.9rem;
+            font-size: 0.8rem; font-weight: 600;
+            margin-bottom: 0.75rem; display: none;
+        }
+        .success-box {
+            background: linear-gradient(135deg, #059669, #0d9488);
+            color: white; border-radius: 14px;
+            padding: 1.5rem; text-align: center; display: none;
+        }
+        .success-box .s-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+        .success-box .s-token {
+            font-size: 1.5rem; font-weight: 900;
+            letter-spacing: 0.02em; word-break: break-all;
+            margin: 0.4rem 0 0.2rem;
+        }
+        .success-box .s-note { font-size: 0.8rem; opacity: 0.9; line-height: 1.5; }
+        .another-btn {
+            margin-top: 1rem; padding: 0.55rem 1.2rem;
+            border-radius: 8px; border: none;
+            background: rgba(255,255,255,0.25); color: white;
+            font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.88rem;
+        }
+
+        /* ── i18n ── */
+        .ta { display: none; }
+        body.ta-mode .en { display: none; }
+        body.ta-mode .ta { display: initial; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <div>
+            <div class="header-title">
+                <span class="en">📋 Scan Petition</span>
+                <span class="ta">📋 மனு பதிவேற்றம்</span>
+            </div>
+            <div class="header-sub">
+                <span class="en">Upload handwritten petition for AI processing</span>
+                <span class="ta">கையால் எழுதிய மனுவை AI செயல்முறைக்கு பதிவேற்றவும்</span>
+            </div>
+        </div>
+        <div class="lang-pill">
+            <span>EN</span>
+            <label class="sw">
+                <input type="checkbox" id="lt" onchange="setLang(this.checked)" checked>
+                <span class="sl"></span>
+            </label>
+            <span>த</span>
+        </div>
+    </div>
+
+    <!-- Error box -->
+    <div class="err-box" id="errBox"></div>
+
+    <!-- Success box -->
+    <div class="success-box" id="successBox">
+        <div class="s-icon">✅</div>
+        <div class="en" style="font-weight:800; font-size:1rem;">Petition Registered!</div>
+        <div class="ta" style="font-weight:800; font-size:1rem;">மனு பதிவு செய்யப்பட்டது!</div>
+        <div class="s-token" id="sToken">TKN—</div>
+        <div class="s-note en">AI summary generating in background (~30 sec).<br>Check Appointments → Awaiting Review.</div>
+        <div class="s-note ta">AI சுருக்கம் தயாராகிறது (~30 விநாடி).<br>சந்திப்புகள் → Awaiting Review பார்க்கவும்.</div>
+        <button class="another-btn" onclick="resetAll()">
+            <span class="en">Upload Another</span>
+            <span class="ta">மேலும் பதிவேற்று</span>
+        </button>
+    </div>
+
+    <!-- Main form -->
+    <div id="mainForm">
+
+        <!-- Name -->
+        <div class="card">
+            <div class="card-label">
+                <i class="fa-solid fa-user"></i>
+                <span class="en">Citizen Name</span>
+                <span class="ta">குடிமகன் பெயர்</span>
+            </div>
+            <input type="text" id="fName" class="name-input"
+                placeholder="Enter full name / முழு பெயர் உள்ளிடவும்"
+                oninput="validate()" autocomplete="off">
+        </div>
+
+        <!-- Upload -->
+        <div class="card">
+            <div class="card-label">
+                <i class="fa-solid fa-file-image"></i>
+                <span class="en">Petition Pages</span>
+                <span class="ta">மனு பக்கங்கள்</span>
+            </div>
+
+            <!-- Drop zone -->
+            <div class="upload-zone" id="dz"
+                ondragover="ev(event,'active')" ondragleave="dz.classList.remove('active')"
+                ondrop="drop(event)">
+                <input type="file" id="fi" multiple accept="image/*,application/pdf"
+                    onchange="addFiles(this.files)">
+                <div class="uz-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                <div class="uz-title">
+                    <span class="en">Tap to upload or drag here</span>
+                    <span class="ta">தட்டவும் அல்லது இங்கே இழுக்கவும்</span>
+                </div>
+                <div class="uz-hint">
+                    <span class="en">Images or PDF · max 10 files · 10 MB each</span>
+                    <span class="ta">படங்கள் அல்லது PDF · அதிகபட்சம் 10 · தலா 10 MB</span>
+                </div>
+            </div>
+
+            <!-- Camera capture -->
+            <label class="cam-btn">
+                <i class="fa-solid fa-camera"></i>
+                <span class="en">Take Photo with Camera</span>
+                <span class="ta">கேமராவில் படம் எடுக்கவும்</span>
+                <input type="file" accept="image/*" capture="environment"
+                    onchange="addFiles(this.files)">
+            </label>
+
+            <!-- Thumbnails -->
+            <div id="thumbRow" class="preview-row"></div>
+            <div id="pgCount" class="page-count" style="display:none;"></div>
+        </div>
+
+        <button class="submit-btn" id="subBtn" disabled onclick="submit()">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span class="en">Register Petition</span>
+            <span class="ta">மனுவை பதிவு செய்யவும்</span>
+        </button>
+
+    </div><!-- /mainForm -->
+
+    <script>
+    const MAX = 10, MB = 10 * 1024 * 1024;
+    let files = [];
+    const dz = document.getElementById('dz');
+
+    function setLang(ta) {
+        document.body.classList.toggle('ta-mode', ta);
+        try { localStorage.setItem('vpa_lang', ta ? 'ta' : 'en'); } catch(e) {}
+    }
+    (function() {
+        let l = 'ta'; try { l = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
+        document.getElementById('lt').checked = l === 'ta';
+        setLang(l === 'ta');
+    })();
+
+    function ev(e, cls) { e.preventDefault(); dz.classList.add(cls); }
+    function drop(e)     { e.preventDefault(); dz.classList.remove('active'); addFiles(e.dataTransfer.files); }
+
+    function addFiles(incoming) {
+        const ok = ['image/jpeg','image/png','image/gif','image/webp','image/bmp','application/pdf'];
+        Array.from(incoming).forEach(f => {
+            if (files.length >= MAX) return showErr(`Max ${MAX} files allowed.`);
+            if (!ok.includes(f.type))  return showErr(`'${f.name}' not supported.`);
+            if (f.size > MB)           return showErr(`'${f.name}' exceeds 10 MB.`);
+            if (!files.find(x => x.name===f.name && x.size===f.size)) files.push(f);
+        });
+        render(); validate();
+    }
+
+    function rmFile(i) { files.splice(i, 1); render(); validate(); }
+
+    function render() {
+        const row = document.getElementById('thumbRow');
+        const cnt = document.getElementById('pgCount');
+        const ta  = document.body.classList.contains('ta-mode');
+        row.innerHTML = '';
+        if (!files.length) { cnt.style.display = 'none'; return; }
+        cnt.style.display = 'inline-block';
+        cnt.textContent = ta ? `${files.length} பக்கங்கள்` : `${files.length} page${files.length>1?'s':''}`;
+        files.forEach((f, i) => {
+            const d = document.createElement('div');
+            d.className = 'thumb';
+            if (f.type === 'application/pdf') {
+                d.innerHTML = `<div class="pdf-ph"><i class="fa-solid fa-file-pdf"></i><span>${f.name.slice(0,10)}</span></div>`;
+            } else {
+                const url = URL.createObjectURL(f);
+                d.innerHTML = `<img src="${url}" alt="p${i+1}">`;
+            }
+            d.innerHTML += `<div class="pg-lbl">P${i+1}</div><button class="del-btn" onclick="rmFile(${i})">✕</button>`;
+            row.appendChild(d);
+        });
+    }
+
+    function validate() {
+        document.getElementById('subBtn').disabled =
+            !(document.getElementById('fName').value.trim() && files.length > 0);
+    }
+
+    function showErr(m) {
+        const e = document.getElementById('errBox');
+        e.textContent = m; e.style.display = 'block';
+        setTimeout(() => e.style.display = 'none', 5000);
+    }
+
+    async function submit() {
+        const btn  = document.getElementById('subBtn');
+        const name = document.getElementById('fName').value.trim();
+        if (!name || !files.length) return;
+        btn.disabled = true;
+        const ta = document.body.classList.contains('ta-mode');
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${ta ? 'பதிவேற்றுகிறது…' : 'Uploading…'}`;
+        try {
+            const fd = new FormData();
+            fd.append('name', name);
+            fd.append('mobile', '');
+            fd.append('constituency', 'Tamil Nadu');
+            files.forEach(f => fd.append('files', f));
+            const r = await fetch('/petition/scan/submit', { method:'POST', body:fd });
+            const d = await r.json();
+            if (r.ok) {
+                document.getElementById('sToken').textContent = d.token_display || `TKN${d.token_assigned}`;
+                document.getElementById('mainForm').style.display  = 'none';
+                document.getElementById('successBox').style.display = 'block';
+            } else {
+                showErr(d.detail || d.error || 'Submission failed.');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> ${ta ? 'மனுவை பதிவு செய்யவும்' : 'Register Petition'}`;
+            }
+        } catch(e) {
+            showErr('Network error. Try again.');
+            btn.disabled = false;
+            const isTa = document.body.classList.contains('ta-mode');
+            btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> ${isTa ? 'மனுவை பதிவு செய்யவும்' : 'Register Petition'}`;
+        }
+    }
+
+    function resetAll() {
+        files = [];
+        document.getElementById('fName').value = '';
+        render(); validate();
+        document.getElementById('errBox').style.display    = 'none';
+        document.getElementById('mainForm').style.display  = 'block';
+        document.getElementById('successBox').style.display = 'none';
+        const ta = document.body.classList.contains('ta-mode');
+        document.getElementById('subBtn').innerHTML = `<i class="fa-solid fa-paper-plane"></i> ${ta ? 'மனுவை பதிவு செய்யவும்' : 'Register Petition'}`;
+    }
+    </script>
+</body>
+</html>

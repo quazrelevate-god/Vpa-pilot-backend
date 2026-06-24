@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # / `settings.GEMINI_FALLBACK_MODEL` when the service is constructed via the
 # `from_settings()` factory below.
 PRIMARY_MODEL   = "gemini-2.5-flash"
-FALLBACK_MODEL  = "gemini-2.5-flash-lite"
+FALLBACK_MODEL  = "gemini-3.1-flash-lite"
 FALLBACK_MODEL2 = "gemini-2.0-flash"
 
 # Transient errors (server busy / rate limited) are retried on the SAME model
@@ -315,6 +315,58 @@ class GrievanceSummarisationService:
         )
 
     # ── Main entry point ───────────────────────────────────────────────────────
+
+    def summarise_manual(
+        self,
+        *,
+        citizen_name: str,
+        constituency: str,
+        attachments: list,  # List of (bytes, mime_type, filename_or_None) tuples
+    ) -> "GrievanceSummary":
+        """
+        Summarise a handwritten / scanned petition with multiple pages.
+
+        All images/PDFs are sent as separate Part objects in one Gemini call —
+        the model reads all pages as one unified visual context.
+        Uses the same flat-list format as _build_contents() for SDK compatibility.
+        Fallback chain: gemini-2.5-flash → gemini-3.1-flash-lite → gemini-2.0-flash.
+        """
+        t0 = time.monotonic()
+
+        # Flat list of strings + Part objects — same pattern as _build_contents()
+        contents: list = [
+            f"CITIZEN NAME: {citizen_name}\n"
+            f"CONSTITUENCY: {constituency}\n\n"
+            f"HANDWRITTEN PETITION — {len(attachments)} page(s) scanned by a PA officer.\n"
+            f"Read every page carefully before producing the summary."
+        ]
+        for i, (att_bytes, mime, fname) in enumerate(attachments, 1):
+            label = f"\nPAGE {i}" + (f"  [{fname}]" if fname else "")
+            contents.append(label)
+            contents.append(types.Part.from_bytes(data=att_bytes, mime_type=mime))
+
+        contents.append(
+            "\n[End of petition pages. Now produce a complete bilingual summary "
+            "covering all pages above.]"
+        )
+
+        config = types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.1,
+            top_p=0.9,
+            response_mime_type="application/json",
+            response_schema=GrievanceSummary,
+            service_tier=self._service_tier,
+        )
+
+        summary = self._call_with_fallback(contents=contents, config=config)
+
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        logger.info(
+            "Manual summarisation complete in %dms | pages=%d | citizen=%s",
+            elapsed_ms, len(attachments), citizen_name,
+        )
+        return summary
 
     def summarise(
         self,

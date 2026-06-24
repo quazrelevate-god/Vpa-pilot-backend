@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from src.core.config import settings
-from src.api.v1 import qr, form, appointments, dashboard, scheduling, display
+from src.api.v1 import qr, form, appointments, dashboard, scheduling, display, scan_petition
 
 # Import all ORM models so SQLAlchemy can resolve cross-model relationships
 # (e.g. Appointment → GrievanceSummaryRecord) before the mapper is configured.
@@ -54,6 +54,7 @@ app.include_router(appointments.router)
 app.include_router(dashboard.router)
 app.include_router(scheduling.router)
 app.include_router(display.router)
+app.include_router(scan_petition.router)
 
 
 @app.get("/health", tags=["Health Check"])

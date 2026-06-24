@@ -1102,5 +1102,243 @@ class AppointmentService:
                   f"Summarisation failed (appointment unaffected): {exc}")
 
 
+    # ── Manual / scan petition (staff-operated, no OTP) ─────────────────────
+
+    async def process_manual_petition(
+        self,
+        name: str,
+        mobile: str,
+        constituency: str,
+        files: List[UploadFile],
+        db: AsyncSession,
+        submitted_by: str = "pa_staff",
+    ) -> Dict[str, Any]:
+        """
+        Create an appointment from a handwritten / scanned petition uploaded by PA staff.
+        No OTP, no QR session — auth is handled at the route level (dash_session).
+
+        Steps:
+          1. Validate + save files to disk
+          2. Create Citizen + Appointment (AWAITING_REVIEW) atomically
+          3. Fire background Gemini multi-image summarisation
+          4. Return token immediately
+        """
+        MAX_FILES      = 10
+        MAX_BYTES      = 10 * 1024 * 1024   # 10 MB per file
+        ALLOWED_MIMES  = {
+            "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp",
+            "application/pdf",
+        }
+
+        # ── Validate files ────────────────────────────────────────────────────
+        valid_files: List[UploadFile] = [f for f in files if f.filename]
+        if not valid_files:
+            raise HTTPException(status_code=400, detail="At least one file is required.")
+        if len(valid_files) > MAX_FILES:
+            valid_files = valid_files[:MAX_FILES]   # silently cap
+
+        file_contents: List[tuple] = []   # (bytes, mime_type, filename)
+        for f in valid_files:
+            mime = f.content_type or "application/octet-stream"
+            if mime not in ALLOWED_MIMES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file type '{mime}' ({f.filename}). "
+                           f"Only images and PDF are accepted.",
+                )
+            raw = await f.read()
+            if len(raw) > MAX_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"'{f.filename}' exceeds 10 MB limit.",
+                )
+            file_contents.append((raw, mime, f.filename))
+
+        try:
+            current_time = datetime.utcnow()
+
+            # ── Token assignment ──────────────────────────────────────────────
+            today_date = current_time.date()
+            daily_count = await db.scalar(
+                select(func.count(Appointment.id)).where(
+                    Appointment.created_at >= current_time.replace(hour=0, minute=0, second=0)
+                )
+            ) or 0
+            token_assigned = int(today_date.strftime("%Y%m%d")) * 100000 + daily_count + 1
+            legacy_slot_ref = daily_count + 1
+
+            # ── Encrypt PII ───────────────────────────────────────────────────
+            encrypted_name   = self._encrypt_field(name)
+            encrypted_mobile = self._encrypt_field(mobile or "")
+            description_text = f"Handwritten petition scanned by {submitted_by}. {len(valid_files)} page(s) uploaded."
+
+            # ── Citizen ───────────────────────────────────────────────────────
+            citizen = None
+            if mobile:
+                citizen_stmt = select(Citizen).where(
+                    Citizen.encrypted_mobile == encrypted_mobile
+                )
+                result = await db.execute(citizen_stmt)
+                citizen = result.scalar_one_or_none()
+
+            if not citizen:
+                citizen = Citizen(
+                    encrypted_name=encrypted_name,
+                    encrypted_mobile=encrypted_mobile,
+                    ward_or_region=constituency,
+                    created_at=current_time,
+                )
+                db.add(citizen)
+                await db.flush()
+            else:
+                citizen.encrypted_name = encrypted_name
+
+            # ── Appointment (AWAITING_REVIEW — same as direct-submit) ─────────
+            appointment = Appointment(
+                citizen_id=citizen.id,
+                slot_id=legacy_slot_ref,
+                token_assigned=token_assigned,
+                encrypted_grievance=self._encrypt_field(description_text),
+                encrypted_name=encrypted_name,
+                audio_recording_url=None,
+                grievance_category=None,
+                status="AWAITING_REVIEW",
+                schedule_meeting=False,
+                created_at=current_time,
+            )
+            db.add(appointment)
+            await db.flush()
+
+            # ── Save files to disk + create attachment records ────────────────
+            upload_dir = Path("uploads/manual_petitions") / str(appointment.id)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+
+            attachment_snapshots: List[Dict[str, Any]] = []
+            for raw, mime, fname in file_contents:
+                safe_name = f"{appointment.id}_{len(attachment_snapshots)+1}_{fname}"
+                fpath = upload_dir / safe_name
+                with open(fpath, "wb") as fh:
+                    fh.write(raw)
+                att = AppointmentAttachment(
+                    appointment_id=appointment.id,
+                    attachment_type="IMAGE" if mime.startswith("image/") else "DOCUMENT",
+                    storage_url=str(fpath),
+                    file_size_bytes=len(raw),
+                    mime_type=mime,
+                    created_at=current_time,
+                )
+                db.add(att)
+                attachment_snapshots.append({
+                    "storage_url": str(fpath),
+                    "mime_type":   mime,
+                    "filename":    fname,
+                })
+
+            await db.commit()
+
+            # ── Fire background Gemini summarisation ──────────────────────────
+            asyncio.create_task(self._trigger_manual_summarisation(
+                appointment_id=appointment.id,
+                citizen_name=name,
+                constituency=constituency,
+                attachment_snapshots=attachment_snapshots,
+            ))
+
+            print(
+                f"[MANUAL PETITION] appointment_id={appointment.id} | "
+                f"token={token_assigned} | pages={len(valid_files)} | "
+                f"submitted_by={submitted_by}"
+            )
+
+            return {
+                "appointment_id": appointment.id,
+                "token_assigned": token_assigned,
+                "token_display":  f"TKN{token_assigned}",
+                "status":         "AWAITING_REVIEW",
+                "pages_uploaded": len(valid_files),
+                "message":        f"Petition registered. Token: TKN{token_assigned}. "
+                                  f"AI summary will be ready in ~30 seconds.",
+            }
+
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to process petition: {e}")
+
+    async def _trigger_manual_summarisation(
+        self,
+        appointment_id: int,
+        citizen_name: str,
+        constituency: str,
+        attachment_snapshots: List[Dict[str, Any]],
+    ) -> None:
+        """Background: read all scanned pages → Gemini → save summary."""
+        from src.core.database import AsyncSessionLocal
+        print(f"[MANUAL GEMINI START] appointment_id={appointment_id} | "
+              f"pages={len(attachment_snapshots)}")
+        try:
+            from src.services.summarisation import GrievanceSummarisationService
+            from src.models.grievance_summary_record import GrievanceSummaryRecord
+
+            svc = GrievanceSummarisationService.from_settings()
+
+            # Read all pages from disk
+            attachments: List[tuple] = []
+            for snap in attachment_snapshots:
+                try:
+                    with open(snap["storage_url"], "rb") as fh:
+                        raw = fh.read()
+                    attachments.append((raw, snap["mime_type"], snap.get("filename")))
+                except OSError as e:
+                    print(f"[MANUAL GEMINI WARN] Could not read {snap['storage_url']}: {e}")
+
+            if not attachments:
+                print(f"[MANUAL GEMINI SKIP] appointment_id={appointment_id}: no readable files.")
+                return
+
+            loop = asyncio.get_event_loop()
+            t0 = time.monotonic()
+            summary = await loop.run_in_executor(
+                None,
+                lambda: svc.summarise_manual(
+                    citizen_name=citizen_name,
+                    constituency=constituency,
+                    attachments=attachments,
+                ),
+            )
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+            async with AsyncSessionLocal() as db:
+                from src.models.ticket_models import URGENCY_TO_PRIORITY, Ticket, TicketEvent, TicketEventType
+                record = GrievanceSummaryRecord.from_gemini_response(
+                    appointment_id=appointment_id,
+                    summary=summary,
+                    gemini_model_used=svc._model_name,
+                    gemini_latency_ms=elapsed_ms,
+                )
+                db.add(record)
+
+                appt = await db.scalar(
+                    select(Appointment).where(Appointment.id == appointment_id)
+                )
+                if appt:
+                    appt.grievance_category = summary.category.value
+
+                # Auto-suggest ticket priority (no ticket yet for manual petitions)
+                await db.commit()
+
+            print(
+                f"[MANUAL GEMINI OK] appointment_id={appointment_id} | "
+                f"pages={len(attachments)} | urgency={summary.urgency.value} | "
+                f"category={summary.category.value} | latency={elapsed_ms}ms"
+            )
+
+        except Exception as exc:
+            print(f"[MANUAL GEMINI WARN] appointment_id={appointment_id}: "
+                  f"Summarisation failed (appointment unaffected): {exc}")
+
+
 # Singleton instance
 appointment_service = AppointmentService()
