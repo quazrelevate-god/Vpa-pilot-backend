@@ -140,6 +140,9 @@ CORE RULES — follow every one without exception:
                                 of the above specific categories.
      - greetings             → Thank-you note, congratulations, birthday/festival
                                 greetings, or appreciation message — no action needed.
+     - school_upgradation   → Request to upgrade a school's grade or type: Primary → Middle,
+                                Middle → High School, adding new classes or infrastructure
+                                to improve the school itself (not admission of a student).
 
    DECISION EXAMPLES:
    • "My pension stopped 3 months ago, please restart" → pension_requests
@@ -152,6 +155,7 @@ CORE RULES — follow every one without exception:
    • "Teachers' union requesting DA arrears" → associations_unions
    • "This road issue belongs to Highways dept" → other
    • "Wishing you happy Pongal, Minister sir" → greetings
+   • "Please upgrade our Primary school to Middle school" → school_upgradation
    • Anything else → general
 
 10. DEPARTMENT — STRICT, ROOT-CAUSE-DRIVEN, NEVER SCATTERSHOT:

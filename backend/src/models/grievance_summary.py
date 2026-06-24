@@ -27,7 +27,8 @@ class GrievanceCategory(str, Enum):
     ASSOCIATIONS_UNIONS     = "associations_unions"      # சங்கங்கள் / தொழிற்சங்கங்கள் — union / association matters
     OTHER                           = "other"                    # பிற — other / unclassified
     GENERAL                 = "general"                  # பொது மனுக்கள் — general petitions
-    GREETINGS               = "greetings"                # வாழ்த்து மற்றும் மரியாதைச் செய்திகள் — greetings/appreciation
+    GREETINGS               = "greetings"                # வாழ்த்து மற்றும் மரியாதைச் செய்திகள்
+    SCHOOL_UPGRADATION      = "school_upgradation"       # பள்ளி தரம் உயர்த்துதல் — greetings/appreciation
 
 
 # English-only labels — PA portal, dashboard analytics, API responses
@@ -43,6 +44,7 @@ CATEGORY_DISPLAY_EN: dict[str, str] = {
     "other":               "Other",
     "general":             "General",
     "greetings":           "Greetings",
+    "school_upgradation":  "School Upgradation",
 }
 
 # Tamil-only labels — citizen-facing outputs, SMS, form display
@@ -58,6 +60,7 @@ CATEGORY_DISPLAY_TA: dict[str, str] = {
     "other":               "பிற",
     "general":             "பொது மனுக்கள்",
     "greetings":           "வாழ்த்து செய்திகள்",
+    "school_upgradation":  "பள்ளி தரம் உயர்த்துதல்",
 }
 
 # Default alias — PA portal / dashboard use English

@@ -52,6 +52,7 @@ export const CATEGORY_DISPLAY_EN: Record<string, string> = {
   other:               "Other",
   general:             "General",
   greetings:           "Greetings",
+  school_upgradation:  "School Upgradation",
 };
 
 // Tamil-only category labels — used where Tamil display is needed
@@ -67,6 +68,7 @@ export const CATEGORY_DISPLAY_TA: Record<string, string> = {
   other:               "பிற",
   general:             "பொது மனுக்கள்",
   greetings:           "வாழ்த்து செய்திகள்",
+  school_upgradation:  "பள்ளி தரம் உயர்த்துதல்",
 };
 
 // Default alias — PA portal is English-first

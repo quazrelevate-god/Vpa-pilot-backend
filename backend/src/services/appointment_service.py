@@ -382,6 +382,36 @@ class AppointmentService:
                     detail="Invalid mobile number format. Must be 10-15 digits."
                 )
             
+            # Step 1b: Duplicate-submission guard — one petition per phone per day.
+            encrypted_mobile_check = self._encrypt_field(mobile_number)
+            today_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            existing_today = await db.scalar(
+                select(func.count(Appointment.id))
+                .join(Citizen, Citizen.id == Appointment.citizen_id)
+                .where(Citizen.encrypted_mobile == encrypted_mobile_check)
+                .where(Appointment.created_at >= today_start)
+                .where(Appointment.status.notin_(["CANCELLED"]))
+            ) or 0
+            if existing_today > 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "ALREADY_SUBMITTED_TODAY",
+                        "en": (
+                            "Your petition has already been submitted today. "
+                            "We have received your request and it is currently being processed by the PA office. "
+                            "You will be notified once it is reviewed. "
+                            "Please visit again tomorrow if you have a new grievance."
+                        ),
+                        "ta": (
+                            "உங்கள் மனு இன்று ஏற்கனவே சமர்ப்பிக்கப்பட்டுள்ளது. "
+                            "உங்கள் கோரிக்கை PA அலுவலகத்தால் பரிசீலிக்கப்படுகிறது. "
+                            "மதிப்பாய்வு செய்யப்பட்டவுடன் உங்களுக்கு தகவல் அனுப்பப்படும். "
+                            "புதிய புகார் இருந்தால் நாளை மீண்டும் வருகை தரவும்."
+                        ),
+                    }
+                )
+
             # Step 2: Call APM SMS API — it generates + sends the OTP and returns it.
             # In dummy mode (no API key) we fall back to local generation.
             otp_from_api = await self._send_otp_sms(mobile_number)
@@ -1052,8 +1082,9 @@ class AppointmentService:
                 )
                 appt = appt_result.scalar_one_or_none()
                 if appt:
-                    # Category is now citizen-selected in the form — don't overwrite with AI.
-                    pass
+                    # Use AI category only if citizen didn't pick one (or picked "others/general").
+                    if not appt.grievance_category or appt.grievance_category in ("others", "general", "other"):
+                        appt.grievance_category = summary.category.value
 
                 # Auto-suggest ticket priority from AI urgency (PA can override).
                 # Only set if not already set manually by a PA.
@@ -1237,12 +1268,14 @@ class AppointmentService:
             await db.commit()
 
             # ── Fire background Gemini summarisation ──────────────────────────
-            asyncio.create_task(self._trigger_manual_summarisation(
+            # Hold a strong reference — without it the task can be GC'd mid-run.
+            _task = asyncio.create_task(self._trigger_manual_summarisation(
                 appointment_id=appointment.id,
                 citizen_name=name,
                 constituency=constituency,
                 attachment_snapshots=attachment_snapshots,
             ))
+            _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             print(
                 f"[MANUAL PETITION] appointment_id={appointment.id} | "
@@ -1298,7 +1331,9 @@ class AppointmentService:
                 print(f"[MANUAL GEMINI SKIP] appointment_id={appointment_id}: no readable files.")
                 return
 
-            loop = asyncio.get_event_loop()
+            print(f"[MANUAL GEMINI CALL] appointment_id={appointment_id} | "
+                  f"pages={len(attachments)} | model={svc._model_name}")
+            loop = asyncio.get_running_loop()   # get_event_loop() deprecated in 3.10+
             t0 = time.monotonic()
             summary = await loop.run_in_executor(
                 None,

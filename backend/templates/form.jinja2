@@ -924,6 +924,33 @@
                     <textarea id="txtDesc" rows="4" placeholder="Describe your issue or application details clearly..." class="glass-field"></textarea>
                 </div>
 
+                <!-- Category Selector (optional — AI uses this if provided) -->
+                <div class="field-group">
+                    <div class="label-container">
+                        <label for="selCategory">
+                            <span id="lbl-category">Category</span>
+                            <span style="color:#6b7280; font-size:0.82rem; font-weight:400;">
+                                <span id="lbl-cat-hint"> (optional — AI will auto-detect if not selected)</span>
+                            </span>
+                        </label>
+                    </div>
+                    <select id="ddlCategory" name="grievance_category" class="glass-field" style="appearance:auto;">
+                        <option value="">-- Select category / வகையைத் தேர்ந்தெடுக்கவும் --</option>
+                        <option value="action_required">உடனடி நடவடிக்கை தேவை / Action Required</option>
+                        <option value="proposals">முன்மொழிவுகள் / Proposals</option>
+                        <option value="transfer_requests">பணியிட மாற்றக் கோரிக்கைகள் / Transfer Requests</option>
+                        <option value="pension_requests">ஓய்வூதியக் கோரிக்கைகள் / Pension Requests</option>
+                        <option value="school_admission">பள்ளி சேர்க்கை / School Admission</option>
+                        <option value="school_upgradation">பள்ளி தரம் உயர்த்துதல் / School Upgradation</option>
+                        <option value="job_requests">வேலைவாய்ப்பு கோரிக்கைகள் / Job Requests</option>
+                        <option value="rti">தகவல் அறியும் உரிமை / RTI</option>
+                        <option value="associations_unions">சங்கங்கள் / Associations & Unions</option>
+                        <option value="other_departments">பிற துறைகள் / Other Departments</option>
+                        <option value="general">பொது மனுக்கள் / General</option>
+                        <option value="greetings">வாழ்த்து செய்திகள் / Greetings</option>
+                    </select>
+                </div>
+
                 <!-- Mobile Field and OTP Processing Container -->
                 <div class="field-group">
                     <div class="label-container">
@@ -1390,8 +1417,22 @@
                 } else {
                     const error = await response.json();
                     const errEl = document.getElementById('errMobile');
-                    errEl.innerText = error.detail || copy.networkError;
-                    errEl.style.display = 'block';
+                    // Handle structured duplicate-submission error with bilingual messages
+                    const detail = error.detail;
+                    if (detail && typeof detail === 'object' && detail.code === 'ALREADY_SUBMITTED_TODAY') {
+                        const isTamil = runtimeActiveLanguage === 'ta';
+                        errEl.innerText = isTamil ? detail.ta : detail.en;
+                        errEl.style.color = '#b45309';
+                        errEl.style.background = '#fffbeb';
+                        errEl.style.padding = '0.5rem 0.65rem';
+                        errEl.style.borderRadius = '6px';
+                        errEl.style.border = '1px solid #fcd34d';
+                        errEl.style.fontSize = '0.82rem';
+                        errEl.style.display = 'block';
+                    } else {
+                        errEl.innerText = (typeof detail === 'string' ? detail : null) || copy.networkError;
+                        errEl.style.display = 'block';
+                    }
                     genBtn.innerHTML = '<span id="lbl-send-otp">' + copy.sendOtp + '</span>';
                     genBtn.disabled = false;
                 }
