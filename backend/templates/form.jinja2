@@ -1730,6 +1730,7 @@
                     if (data.submitted_at) params.set('submitted_at', data.submitted_at);
                     if (data.scheduled_date) params.set('date', data.scheduled_date);
                     if (data.scheduled_time) params.set('time', data.scheduled_time);
+                    if (data.scheduled_end)  params.set('time_end', data.scheduled_end);
                     window.location.href = `/form/success?${params.toString()}`;
                 } else {
                     const error = await response.json();

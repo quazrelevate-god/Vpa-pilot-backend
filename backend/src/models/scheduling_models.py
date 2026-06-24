@@ -18,7 +18,7 @@ from src.core.database import Base
 SLOT_START_HOUR  = 8     # 08:00
 SLOT_END_HOUR    = 18    # 18:00
 SLOT_DURATION    = 30    # minutes per slot
-MAX_CAPACITY     = 6     # citizens per slot
+MAX_CAPACITY     = 12    # citizens per slot
 TOTAL_SLOTS      = (SLOT_END_HOUR - SLOT_START_HOUR) * 60 // SLOT_DURATION  # 20
 FIXED_START_TIME = time(SLOT_START_HOUR, 0)
 FIXED_END_TIME   = time(SLOT_END_HOUR, 0)
@@ -102,7 +102,7 @@ class AppointmentSlot(Base):
     end_time        = Column(Time,       nullable=False)
     status          = Column(String(20), nullable=False, default="AVAILABLE",
                              comment="AVAILABLE | FULL | BLOCKED")
-    max_capacity    = Column(Integer,    nullable=False, default=MAX_CAPACITY)
+    max_capacity    = Column(Integer,    nullable=False, default=MAX_CAPACITY)  # 12
     booked_count    = Column(Integer,    nullable=False, default=0)
     created_at      = Column(DateTime,   nullable=False, default=datetime.utcnow)
 

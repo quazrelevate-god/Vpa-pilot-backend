@@ -892,25 +892,34 @@ class AppointmentService:
             else:
                 message = f"Appointment scheduled successfully. Your token number is {token_assigned}."
 
-            scheduled_date_str = None
-            scheduled_time_str = None
+            scheduled_date_str  = None
+            scheduled_time_str  = None   # slot window start (HH:MM)
+            scheduled_end_str   = None   # slot window end   (HH:MM)
             if final_status == 'SCHEDULED' and appointment.scheduled_date:
                 scheduled_date_str = appointment.scheduled_date.isoformat()
-            if final_status == 'SCHEDULED' and appointment.scheduled_start_time:
-                scheduled_time_str = appointment.scheduled_start_time.strftime("%H:%M")
+            if final_status == 'SCHEDULED' and appointment.scheduled_end_time:
+                # Show the 30-min slot window, not the personal sub-slot.
+                # scheduled_end_time = slot end (e.g., 08:30)
+                # slot start = end - 30 min
+                from datetime import timedelta as _td
+                end_dt    = datetime.combine(datetime.min, appointment.scheduled_end_time)
+                start_dt  = end_dt - _td(minutes=30)
+                scheduled_time_str = start_dt.time().strftime("%H:%M")
+                scheduled_end_str  = appointment.scheduled_end_time.strftime("%H:%M")
 
             submitted_at_str = current_time.isoformat()
 
             return {
-                "appointment_id": appointment.id,
-                "token_assigned": token_assigned,
-                "citizen_id": citizen.id,
+                "appointment_id":    appointment.id,
+                "token_assigned":    token_assigned,
+                "citizen_id":        citizen.id,
                 "attachments_count": len(attachments_created),
-                "status": final_status,
-                "submitted_at": submitted_at_str,
-                "scheduled_date": scheduled_date_str,
-                "scheduled_time": scheduled_time_str,
-                "message": message
+                "status":            final_status,
+                "submitted_at":      submitted_at_str,
+                "scheduled_date":    scheduled_date_str,
+                "scheduled_time":    scheduled_time_str,   # slot window start
+                "scheduled_end":     scheduled_end_str,    # slot window end
+                "message":           message
             }
 
         except HTTPException:

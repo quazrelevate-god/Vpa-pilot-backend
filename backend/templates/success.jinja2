@@ -514,6 +514,7 @@
         const status = (urlParams.get('status') || 'SCHEDULED').toUpperCase();
         const scheduledDate = urlParams.get('date');
         const scheduledTime = urlParams.get('time');
+        const scheduledEnd  = urlParams.get('time_end');
         const submittedAt = urlParams.get('submitted_at');
 
         // Set token number
@@ -577,10 +578,18 @@
 
             if (scheduledTime) {
                 const [h, m] = scheduledTime.split(':').map(Number);
-                const tObj = new Date();
-                tObj.setHours(h, m, 0);
-                meetingTimeEn = tObj.toLocaleTimeString('en-IN', timeOptions);
-                meetingTimeTa = tObj.toLocaleTimeString('ta-IN', timeOptions);
+                const tStart = new Date(); tStart.setHours(h, m, 0);
+                const startEn = tStart.toLocaleTimeString('en-IN', timeOptions);
+                const startTa = tStart.toLocaleTimeString('ta-IN', timeOptions);
+                if (scheduledEnd) {
+                    const [eh, em] = scheduledEnd.split(':').map(Number);
+                    const tEnd = new Date(); tEnd.setHours(eh, em, 0);
+                    meetingTimeEn = startEn + ' – ' + tEnd.toLocaleTimeString('en-IN', timeOptions);
+                    meetingTimeTa = startTa + ' – ' + tEnd.toLocaleTimeString('ta-IN', timeOptions);
+                } else {
+                    meetingTimeEn = startEn;
+                    meetingTimeTa = startTa;
+                }
             }
 
             if (scheduledDate) {
