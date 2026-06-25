@@ -1000,17 +1000,50 @@
                     </div>
                 </div>
 
-                <!-- Form Final Target Actions Pipeline Interface -->
-                <div class="action-strip" style="margin-top: 1.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-                    <button type="button" id="btnPetition" disabled class="base-btn btn-submit-main" onclick="submitForm(false)" style="background: rgba(59, 130, 246, 0.85);">
-                        <i class="fa-solid fa-paper-plane"></i> <span id="lbl-btn-petition">Submit Petition</span>
-                    </button>
-                    <button type="button" id="btnMeeting" disabled class="base-btn btn-submit-main" onclick="openSlotPicker()" style="background: rgba(139, 92, 246, 0.85);">
-                        <i class="fa-solid fa-handshake"></i> <span id="lbl-btn-meeting">Request Meeting</span>
+                <!-- Single submit trigger button -->
+                <div class="action-strip" style="margin-top: 1.5rem;">
+                    <button type="button" id="btnSubmitTrigger" disabled class="base-btn btn-submit-main"
+                        onclick="openActionChoiceDialog()"
+                        style="width:100%; background: rgba(59, 130, 246, 0.85);">
+                        <i class="fa-solid fa-paper-plane"></i> <span id="lbl-btn-submit-trigger">Submit</span>
                     </button>
                 </div>
 
+                <!-- Hidden wiring buttons (controlled by choice dialog) -->
+                <button type="button" id="btnPetition" style="display:none;" onclick="submitForm(false)"></button>
+                <button type="button" id="btnMeeting"  style="display:none;" onclick="openSlotPicker()"></button>
+
             </form>
+        </div>
+    </div>
+
+    <!-- Action Choice Dialog — shown when citizen taps Submit -->
+    <div id="actionChoiceOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
+        <div style="background:#fff; border-radius:16px; max-width:380px; width:100%; padding:1.5rem; box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem;">
+                <span id="lbl-choice-title" style="font-weight:800; font-size:1rem; color:#1e293b;">How would you like to proceed?</span>
+                <button type="button" onclick="closeActionChoiceDialog()" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:1.2rem;">&#x2715;</button>
+            </div>
+            <!-- Petition option -->
+            <button type="button" onclick="chooseAction('petition')"
+                style="width:100%; display:flex; align-items:flex-start; gap:0.85rem; padding:0.9rem 1rem; border:2px solid rgba(59,130,246,0.35); border-radius:12px; background:rgba(59,130,246,0.04); cursor:pointer; margin-bottom:0.75rem; text-align:left; transition:border-color 0.15s;"
+                onmouseover="this.style.borderColor='rgba(59,130,246,0.7)'" onmouseout="this.style.borderColor='rgba(59,130,246,0.35)'">
+                <span style="font-size:1.5rem; flex-shrink:0;">📄</span>
+                <div>
+                    <div id="lbl-choice-petition" style="font-weight:700; font-size:0.9rem; color:#1e40af;">Submit Petition</div>
+                    <div id="lbl-choice-petition-sub" style="font-size:0.78rem; color:#6b7280; margin-top:2px;">Submit your petition for review</div>
+                </div>
+            </button>
+            <!-- Meeting option -->
+            <button type="button" onclick="chooseAction('meeting')"
+                style="width:100%; display:flex; align-items:flex-start; gap:0.85rem; padding:0.9rem 1rem; border:2px solid rgba(139,92,246,0.35); border-radius:12px; background:rgba(139,92,246,0.04); cursor:pointer; text-align:left; transition:border-color 0.15s;"
+                onmouseover="this.style.borderColor='rgba(139,92,246,0.7)'" onmouseout="this.style.borderColor='rgba(139,92,246,0.35)'">
+                <span style="font-size:1.5rem; flex-shrink:0;">🤝</span>
+                <div>
+                    <div id="lbl-choice-meeting" style="font-weight:700; font-size:0.9rem; color:#6d28d9;">Request Meeting</div>
+                    <div id="lbl-choice-meeting-sub" style="font-size:0.78rem; color:#6b7280; margin-top:2px;">Book a slot to meet in person</div>
+                </div>
+            </button>
         </div>
     </div>
 
@@ -1172,6 +1205,11 @@
                 catGeneral: "General",
                 catGreetings: "Greetings",
                 alertSelectCategory: "Please select a category.",
+                // Action choice dialog
+                choiceTitle: "How would you like to proceed?",
+                choicePetitionSub: "Submit your petition for review",
+                choiceMeetingSub: "Book a slot to meet in person",
+                btnSubmit: "Submit",
                 // Persons attending
                 numPersonsLabel: "Number of Persons Attending",
                 optPersons1: "1 — Just me",
@@ -1237,6 +1275,11 @@
                 catGeneral: "பொது மனுக்கள்",
                 catGreetings: "வாழ்த்து செய்திகள்",
                 alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
+                // Action choice dialog
+                choiceTitle: "எவ்வாறு தொடர்வது?",
+                choicePetitionSub: "மனுவை பரிசீலிக்க சமர்பிக்கவும்",
+                choiceMeetingSub: "சந்திப்பிற்கு நேரம் பதிவு செய்யவும்",
+                btnSubmit: "சமர்பிக்கவும்",
                 // Persons attending
                 numPersonsLabel: "சந்திப்பிற்கு வரும் நபர்களின் எண்ணிக்கை",
                 optPersons1: "1 — நான் மட்டும்",
@@ -1316,8 +1359,14 @@
             _setText('lbl-upload-hint', copy.uploadHint);
 
             // Submit buttons
-            _setText('lbl-btn-petition', copy.btnPetition);
-            _setText('lbl-btn-meeting',  copy.btnMeeting);
+            _setText('lbl-btn-petition',        copy.btnPetition);
+            _setText('lbl-btn-meeting',         copy.btnMeeting);
+            _setText('lbl-btn-submit-trigger',  copy.btnSubmit);
+            _setText('lbl-choice-title',        copy.choiceTitle);
+            _setText('lbl-choice-petition',     copy.btnPetition);
+            _setText('lbl-choice-petition-sub', copy.choicePetitionSub);
+            _setText('lbl-choice-meeting',      copy.btnMeeting);
+            _setText('lbl-choice-meeting-sub',  copy.choiceMeetingSub);
 
             // Category dropdown
             _setText('lbl-category', copy.category);
@@ -1541,8 +1590,7 @@
                     setOtpBoxState('valid', copy.otpSuccess);
                     verifyBtn.innerHTML = copy.verified;
                     document.querySelectorAll('.otp-box').forEach(b => b.disabled = true);
-                    document.getElementById('btnPetition').disabled = false;
-                    document.getElementById('btnMeeting').disabled = false;
+                    document.getElementById('btnSubmitTrigger').disabled = false;
                 } else {
                     const err = await response.json();
                     showOtpFieldError(err.detail || copy.errOtp);
@@ -1713,13 +1761,11 @@
             // Close consent dialog immediately when submission starts
             document.getElementById('consentOverlay').style.display = 'none';
 
-            const btnPetition = document.getElementById('btnPetition');
-            const btnMeeting  = document.getElementById('btnMeeting');
-            const btnConfirm  = document.getElementById('btnConfirmMeeting');
-            btnPetition.disabled = true;
-            btnMeeting.disabled  = true;
+            const btnTrigger = document.getElementById('btnSubmitTrigger');
+            const btnConfirm = document.getElementById('btnConfirmMeeting');
+            btnTrigger.disabled = true;
             if (btnConfirm) btnConfirm.disabled = true;
-            const clickedBtn = scheduleMeeting ? (btnConfirm || btnMeeting) : btnPetition;
+            const clickedBtn = scheduleMeeting ? (btnConfirm || btnTrigger) : btnTrigger;
             const originalHTML = clickedBtn.innerHTML;
             clickedBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + copy.submitting;
 
@@ -1752,15 +1798,13 @@
                         if (btnConfirm) { btnConfirm.disabled = true; }
                         await loadSlots();
                     }
-                    btnPetition.disabled = false;
-                    btnMeeting.disabled  = false;
+                    btnTrigger.disabled = false;
                     if (btnConfirm) { btnConfirm.disabled = false; }
                     clickedBtn.innerHTML = originalHTML;
                 }
             } catch (error) {
                 showOtpFieldError(copy.networkError);
-                btnPetition.disabled = false;
-                btnMeeting.disabled  = false;
+                btnTrigger.disabled = false;
                 if (btnConfirm) { btnConfirm.disabled = false; }
                 clickedBtn.innerHTML = originalHTML;
             }
@@ -1991,6 +2035,25 @@
             document.getElementById('numPersonsSection').style.display = 'block';
             document.getElementById('selNumPersons').value             = '1';
             document.getElementById('btnConfirmMeeting').disabled     = false;
+        }
+
+        // ── Action choice dialog (petition vs meeting) ──────────────────────
+
+        function openActionChoiceDialog() {
+            document.getElementById('actionChoiceOverlay').style.display = 'flex';
+        }
+
+        function closeActionChoiceDialog() {
+            document.getElementById('actionChoiceOverlay').style.display = 'none';
+        }
+
+        function chooseAction(type) {
+            closeActionChoiceDialog();
+            if (type === 'petition') {
+                document.getElementById('btnPetition').click();
+            } else {
+                document.getElementById('btnMeeting').click();
+            }
         }
 
         // ── Consent dialog ─────────────────────────────────────────────────

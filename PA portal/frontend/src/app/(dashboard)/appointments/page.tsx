@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Download, Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron } from "lucide-react";
+import { Download, Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron, CalendarRange, X as ClearIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import TopBar from "@/components/TopBar";
@@ -59,6 +59,8 @@ function AppointmentsPageInner() {
   const [urgency, setUrgency] = useState("");
   const [department, setDepartment] = useState("");
   const [category, setCategory] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const [rescheduleFor, setRescheduleFor] = useState<{ id: number; name: string } | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -66,7 +68,7 @@ function AppointmentsPageInner() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAppointments({ status: tab, search, page, urgency, department, category });
+      const data = await fetchAppointments({ status: tab, search, page, urgency, department, category, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
       setRows(data.items);
       setTotal(data.total);
     } catch (e) {
@@ -74,7 +76,7 @@ function AppointmentsPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [tab, search, page, urgency, department, category]);
+  }, [tab, search, page, urgency, department, category, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -185,15 +187,48 @@ function AppointmentsPageInner() {
             </div>
 
             {/* Derived filters */}
-            <div className="border-b border-border px-4 py-3">
+            <div className="border-b border-border px-4 py-3 flex flex-col gap-3">
               <FilterStrip
-                onClearAll={() => { setUrgency(""); setDepartment(""); setCategory(""); setPage(1); }}
+                onClearAll={() => { setUrgency(""); setDepartment(""); setCategory(""); setDateFrom(""); setDateTo(""); setPage(1); }}
                 groups={[
                   { key: "urgency",    label: t("label.urgency"),    value: urgency,    onChange: v => { setPage(1); setUrgency(v); },    options: urgencyOptions },
                   { key: "department", label: t("label.department"), value: department, onChange: v => { setPage(1); setDepartment(v); }, options: deptOptions },
                   { key: "category",   label: t("label.category"),   value: category,   onChange: v => { setPage(1); setCategory(v); },   options: categoryOptions },
                 ]}
               />
+              {/* Date range filter */}
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-card">
+                <div className="flex items-center gap-1.5 pl-1 pr-1 text-xs font-semibold text-muted-foreground">
+                  <CalendarRange className="h-3.5 w-3.5" />
+                  Date Range
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">From</span>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">To</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                  />
+                </div>
+                {(dateFrom || dateTo) && (
+                  <button
+                    onClick={() => { setDateFrom(""); setDateTo(""); setPage(1); }}
+                    className="ml-auto flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-red-600"
+                  >
+                    <ClearIcon className="h-3.5 w-3.5" /> Clear dates
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Table */}

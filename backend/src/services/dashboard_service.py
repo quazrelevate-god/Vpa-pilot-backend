@@ -342,15 +342,29 @@ async def get_appointments(
     Returns dict with `items` list and `total` count.
     """
     from datetime import datetime as dt
-    stmt = (
-        select(Appointment)
-        .options(
-            selectinload(Appointment.citizen),
-            selectinload(Appointment.attachments),
-            selectinload(Appointment.grievance_summary),
+    # Scheduled tab: sort by appointment date+time ascending so closest slot is first.
+    # All other tabs: newest submission first.
+    is_scheduled_tab = status_filter == "Scheduled"
+    if is_scheduled_tab:
+        stmt = (
+            select(Appointment)
+            .options(
+                selectinload(Appointment.citizen),
+                selectinload(Appointment.attachments),
+                selectinload(Appointment.grievance_summary),
+            )
+            .order_by(Appointment.scheduled_date.asc(), Appointment.scheduled_start_time.asc())
         )
-        .order_by(Appointment.created_at.desc())
-    )
+    else:
+        stmt = (
+            select(Appointment)
+            .options(
+                selectinload(Appointment.citizen),
+                selectinload(Appointment.attachments),
+                selectinload(Appointment.grievance_summary),
+            )
+            .order_by(Appointment.created_at.desc())
+        )
 
     if date_from:
         stmt = stmt.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
