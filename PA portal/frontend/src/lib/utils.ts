@@ -12,6 +12,7 @@ const defaultDateTimeOptions: Intl.DateTimeFormatOptions = {
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
+  hour12: true,
 };
 
 const defaultDateOptions: Intl.DateTimeFormatOptions = {
@@ -23,6 +24,7 @@ const defaultDateOptions: Intl.DateTimeFormatOptions = {
 const defaultTimeOptions: Intl.DateTimeFormatOptions = {
   hour: "2-digit",
   minute: "2-digit",
+  hour12: true,
 };
 
 /** Format a UTC ISO string as the user's local date + time. */
