@@ -4,7 +4,7 @@ DB queries for the staff dashboard — stats aggregates and appointment list.
 from __future__ import annotations
 
 import base64
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -461,6 +461,11 @@ async def get_appointments(
             ),
             "appointment_slot_end": (
                 appt.scheduled_end_time.strftime("%H:%M")
+                if appt.scheduled_end_time else None
+            ),
+            # Slot window range: "08:00 – 08:30"
+            "slot_window": (
+                f"{(datetime.combine(datetime.min, appt.scheduled_end_time) - timedelta(minutes=30)).strftime('%H:%M')} – {appt.scheduled_end_time.strftime('%H:%M')}"
                 if appt.scheduled_end_time else None
             ),
             "num_persons": appt.num_persons,

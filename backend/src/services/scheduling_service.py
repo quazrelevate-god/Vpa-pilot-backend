@@ -225,10 +225,13 @@ class SchedulingService:
         if slot.booked_count >= slot.max_capacity:
             raise ValueError("Slot full, kindly select another slot.")
 
-        # Personal 5-min sub-slot: person 1 → slot_start+0, person 2 → +5min, etc.
-        sub_index     = slot.booked_count  # 0-based, before increment
-        assigned_time = (
-            datetime.combine(date.min, slot.start_time) + timedelta(minutes=sub_index * 5)
+        # Personal sub-slot: interval = floor(slot_duration / max_capacity)
+        # e.g. 6 persons → 30/6 = 5 min each;  12 persons → 30/12 = 2 min each
+        sub_index        = slot.booked_count  # 0-based, before increment
+        interval_minutes = max(1, SLOT_DURATION // slot.max_capacity)
+        assigned_time    = (
+            datetime.combine(date.min, slot.start_time)
+            + timedelta(minutes=sub_index * interval_minutes)
         ).time()
 
         # Reserve the seat

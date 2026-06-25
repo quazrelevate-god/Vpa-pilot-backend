@@ -59,7 +59,8 @@ export interface AppointmentRow {
   secondary_departments?: string[]; // 0–2 additional depts to loop in
   status: AppointmentStatus;
   created_at: string;        // pre-formatted timestamp
-  appointment_time?: string;
+  appointment_time?: string;   // personal sub-slot ISO datetime
+  slot_window?: string | null; // "08:00 – 08:30" range label
   appointment_slot_end?: string | null;
   urgency?: Urgency | null;
   description?: string;

@@ -241,7 +241,8 @@ function AppointmentsPageInner() {
                     <th className={cn(th, "w-40")}>{t("appts.colName")}</th>
                     <th className={cn(th, "w-36")}>{t("appts.colCategory")}</th>
                     <th className={cn(th, "w-36")}>{t("label.date")}</th>
-                    <th className={cn(th, "w-44")}>{t("appts.colTime")}</th>
+                    <th className={cn(th, "w-32")}>Slot</th>
+                    <th className={cn(th, "w-24")}>Time</th>
                     <th className={cn(th, "w-16")}>Persons</th>
                     <th className={cn(th, "w-24")}>{t("appts.colUrgency")}</th>
                     <th className={cn(th, "w-36")}>{t("appts.colStatus")}</th>
@@ -250,9 +251,9 @@ function AppointmentsPageInner() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">{t("label.loading")}</td></tr>
+                    <tr><td colSpan={11} className="py-12 text-center text-sm text-muted-foreground">{t("label.loading")}</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">{t("appts.noAppts")}</td></tr>
+                    <tr><td colSpan={11} className="py-12 text-center text-sm text-muted-foreground">{t("appts.noAppts")}</td></tr>
                   ) : rows.map((row, idx) => (
                     <tr
                       key={row.id}
@@ -264,16 +265,19 @@ function AppointmentsPageInner() {
                       <td className="px-4 py-3 text-sm font-medium text-foreground">{row.name}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{row.category_label ?? row.category}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(row.created_at)}</td>
+                      {/* Slot column — 30-min window e.g. "08:00 – 08:30" */}
                       <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {row.appointment_time ? (() => {
-                          const d = new Date(row.appointment_time);
-                          const startStr = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
-                          const endStr = row.appointment_slot_end
-                            ? (() => { const [h, m] = row.appointment_slot_end!.split(':').map(Number); const e = new Date(d); e.setHours(h, m); return e.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true }); })()
-                            : null;
-                          const dateStr = d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-                          return <><span className="font-medium text-foreground">{startStr}{endStr ? ` – ${endStr}` : ''}</span><br/><span className="text-muted-foreground/70">{dateStr}</span></>;
-                        })() : <span className="text-muted-foreground/40">—</span>}
+                        {row.slot_window
+                          ? <span className="font-medium text-foreground">{row.slot_window}</span>
+                          : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      {/* Time column — personal sub-slot e.g. "08:02" */}
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {row.appointment_time
+                          ? <span className="font-medium text-foreground">
+                              {new Date(row.appointment_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            </span>
+                          : <span className="text-muted-foreground/40">—</span>}
                       </td>
                       <td className="px-4 py-3 text-xs text-center font-medium text-foreground">
                         {row.num_persons ?? <span className="text-muted-foreground/40">—</span>}
