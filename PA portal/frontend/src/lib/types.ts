@@ -60,6 +60,7 @@ export interface AppointmentRow {
   status: AppointmentStatus;
   created_at: string;        // pre-formatted timestamp
   appointment_time?: string;
+  appointment_slot_end?: string | null;
   urgency?: Urgency | null;
   description?: string;
   headline?: string;

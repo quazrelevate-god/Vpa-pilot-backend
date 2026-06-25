@@ -578,18 +578,19 @@
 
             if (scheduledTime) {
                 const [h, m] = scheduledTime.split(':').map(Number);
-                const tStart = new Date(); tStart.setHours(h, m, 0);
+                const tStart = new Date(); tStart.setHours(h, m, 0, 0);
                 const startEn = tStart.toLocaleTimeString('en-IN', timeOptions);
                 const startTa = tStart.toLocaleTimeString('ta-IN', timeOptions);
+                // Build slot end: prefer explicit time_end, fallback to start + 30 min
+                const tEnd = new Date(tStart);
                 if (scheduledEnd) {
                     const [eh, em] = scheduledEnd.split(':').map(Number);
-                    const tEnd = new Date(); tEnd.setHours(eh, em, 0);
-                    meetingTimeEn = startEn + ' – ' + tEnd.toLocaleTimeString('en-IN', timeOptions);
-                    meetingTimeTa = startTa + ' – ' + tEnd.toLocaleTimeString('ta-IN', timeOptions);
+                    tEnd.setHours(eh, em, 0, 0);
                 } else {
-                    meetingTimeEn = startEn;
-                    meetingTimeTa = startTa;
+                    tEnd.setTime(tStart.getTime() + 30 * 60 * 1000);
                 }
+                meetingTimeEn = startEn + ' \u2013 ' + tEnd.toLocaleTimeString('en-IN', timeOptions);
+                meetingTimeTa = startTa + ' \u2013 ' + tEnd.toLocaleTimeString('ta-IN', timeOptions);
             }
 
             if (scheduledDate) {
