@@ -1936,7 +1936,20 @@
                     `;
 
                     const shortLabel = slot.start + ' – ' + slot.end;
-                    card.innerHTML = `<div style="font-size:0.78rem;font-weight:700;color:#1e293b;">${statusDot} ${shortLabel}</div>`;
+                    let subLabel = '';
+                    if (isPast) {
+                        subLabel = `<div style="font-size:0.7rem;color:#94a3b8;margin-top:2px;">Passed</div>`;
+                    } else if (isBlock) {
+                        subLabel = `<div style="font-size:0.7rem;color:#94a3b8;margin-top:2px;">Blocked</div>`;
+                    } else if (isFull) {
+                        subLabel = `<div style="font-size:0.7rem;color:#ef4444;margin-top:2px;">Full</div>`;
+                    } else if (isAvail) {
+                        const seatsTxt = slot.remaining < slot.max_capacity
+                            ? `${slot.remaining} left`
+                            : 'Available';
+                        subLabel = `<div style="font-size:0.7rem;color:#16a34a;font-weight:600;margin-top:2px;">${seatsTxt}</div>`;
+                    }
+                    card.innerHTML = `<div style="font-size:0.78rem;font-weight:700;color:#1e293b;">${statusDot} ${shortLabel}</div>${subLabel}`;
 
                     if (isAvail) {
                         card.addEventListener('click', () => selectSlot(slot.id, slot.label, card));
