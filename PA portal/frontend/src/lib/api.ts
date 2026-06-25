@@ -30,10 +30,13 @@ export async function fetchAppointments(opts: {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  apptDateFrom?: string;
+  apptDateTo?: string;
   urgency?: string;
   department?: string;
   category?: string;
   page?: number;
+  pageSize?: number;
 }): Promise<AppointmentsResponse> {
   const params = new URLSearchParams({
     status: opts.status ?? "All",
@@ -42,9 +45,12 @@ export async function fetchAppointments(opts: {
   if (opts.search) params.set("search", opts.search);
   if (opts.dateFrom) params.set("date_from", opts.dateFrom);
   if (opts.dateTo) params.set("date_to", opts.dateTo);
+  if (opts.apptDateFrom) params.set("appt_date_from", opts.apptDateFrom);
+  if (opts.apptDateTo) params.set("appt_date_to", opts.apptDateTo);
   if (opts.urgency) params.set("urgency", opts.urgency);
   if (opts.department) params.set("department", opts.department);
   if (opts.category) params.set("category", opts.category);
+  if (opts.pageSize) params.set("page_size", String(opts.pageSize));
   const resp = await fetch(`/api/appointments?${params.toString()}`, {
     credentials: "include",
     cache: "no-store",

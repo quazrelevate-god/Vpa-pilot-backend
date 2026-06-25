@@ -61,6 +61,10 @@ function AppointmentsPageInner() {
   const [category, setCategory] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [apptDateFrom, setApptDateFrom] = useState("");
+  const [apptDateTo, setApptDateTo] = useState("");
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [rescheduleFor, setRescheduleFor] = useState<{ id: number; name: string } | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -68,7 +72,7 @@ function AppointmentsPageInner() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAppointments({ status: tab, search, page, urgency, department, category, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
+      const data = await fetchAppointments({ status: tab, search, page, urgency, department, category, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined });
       setRows(data.items);
       setTotal(data.total);
     } catch (e) {
@@ -76,7 +80,7 @@ function AppointmentsPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [tab, search, page, urgency, department, category, dateFrom, dateTo]);
+  }, [tab, search, page, urgency, department, category, dateFrom, dateTo, apptDateFrom, apptDateTo]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -108,16 +112,43 @@ function AppointmentsPageInner() {
   const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const offset = (page - 1) * PAGE_SIZE;
 
-  async function exportCSV() {
-    const data = await fetchAppointments({ status: tab, search, page: 1 });
-    const out: (string | number)[][] = [["Token", "Name", "Mobile", "Category", "Status", "Created"]];
-    data.items.forEach((r) => out.push([r.token, r.name, r.mobile, r.category, r.status, r.created_at]));
-    const csv = out.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = "appointments.csv";
-    a.click();
-    toast.success("Export ready", { description: `${data.items.length} rows downloaded.` });
+  function buildFilters(pageOverride?: number, pageSizeOverride?: number) {
+    return {
+      status: tab, search: search || undefined,
+      urgency: urgency || undefined, department: department || undefined,
+      category: category || undefined,
+      dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
+      apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
+      page: pageOverride ?? page,
+      pageSize: pageSizeOverride,
+    };
+  }
+
+  function rowsToCsv(items: typeof rows) {
+    const headers = ["Token","Name","Mobile","Category","Status","Submitted","Appt Date","Slot","Time"];
+    const lines = items.map(r => [
+      r.token, r.name, r.mobile,
+      r.category_label ?? r.category,
+      r.status, r.created_at,
+      r.scheduled_date ?? "",
+      r.slot_window ?? "",
+      r.appointment_time ? new Date(r.appointment_time).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:true}) : "",
+    ]);
+    return [headers, ...lines].map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+  }
+
+  async function doExport(allRows: boolean) {
+    setExporting(true);
+    try {
+      const data = await fetchAppointments(buildFilters(1, allRows ? 5000 : PAGE_SIZE));
+      const csv = rowsToCsv(data.items);
+      const a = document.createElement("a");
+      a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+      a.download = `appointments_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      toast.success("Export ready", { description: `${data.items.length} rows downloaded.` });
+    } catch { toast.error("Export failed."); }
+    finally { setExporting(false); setShowExportDialog(false); }
   }
 
   const pagedInfo = useMemo(() => {
@@ -141,7 +172,7 @@ function AppointmentsPageInner() {
                 {t("appts.subtitle")}
               </p>
             </div>
-            <Button variant="outline" onClick={exportCSV}>
+            <Button variant="outline" onClick={() => setShowExportDialog(true)}>
               <Download className="h-4 w-4 text-brand" /> {t("action.export")}
             </Button>
           </div>
@@ -189,43 +220,55 @@ function AppointmentsPageInner() {
             {/* Derived filters */}
             <div className="border-b border-border px-4 py-3 flex flex-col gap-3">
               <FilterStrip
-                onClearAll={() => { setUrgency(""); setDepartment(""); setCategory(""); setDateFrom(""); setDateTo(""); setPage(1); }}
+                onClearAll={() => { setUrgency(""); setDepartment(""); setCategory(""); setDateFrom(""); setDateTo(""); setApptDateFrom(""); setApptDateTo(""); setPage(1); }}
                 groups={[
                   { key: "urgency",    label: t("label.urgency"),    value: urgency,    onChange: v => { setPage(1); setUrgency(v); },    options: urgencyOptions },
                   { key: "department", label: t("label.department"), value: department, onChange: v => { setPage(1); setDepartment(v); }, options: deptOptions },
                   { key: "category",   label: t("label.category"),   value: category,   onChange: v => { setPage(1); setCategory(v); },   options: categoryOptions },
                 ]}
               />
-              {/* Date range filter */}
+              {/* Submission date filter */}
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-card">
                 <div className="flex items-center gap-1.5 pl-1 pr-1 text-xs font-semibold text-muted-foreground">
-                  <CalendarRange className="h-3.5 w-3.5" />
-                  Date Range
+                  <CalendarRange className="h-3.5 w-3.5" /> Submitted
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-muted-foreground">From</span>
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-                    className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-                  />
+                  <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground" />
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-muted-foreground">To</span>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={e => { setDateTo(e.target.value); setPage(1); }}
-                    className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-                  />
+                  <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground" />
                 </div>
                 {(dateFrom || dateTo) && (
-                  <button
-                    onClick={() => { setDateFrom(""); setDateTo(""); setPage(1); }}
-                    className="ml-auto flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-red-600"
-                  >
-                    <ClearIcon className="h-3.5 w-3.5" /> Clear dates
+                  <button onClick={() => { setDateFrom(""); setDateTo(""); setPage(1); }}
+                    className="ml-auto flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-red-600">
+                    <ClearIcon className="h-3.5 w-3.5" /> Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Appointment date filter */}
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-card">
+                <div className="flex items-center gap-1.5 pl-1 pr-1 text-xs font-semibold text-muted-foreground">
+                  <CalendarRange className="h-3.5 w-3.5" /> Appt. Date
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">From</span>
+                  <input type="date" value={apptDateFrom} onChange={e => { setApptDateFrom(e.target.value); setPage(1); }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground" />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">To</span>
+                  <input type="date" value={apptDateTo} onChange={e => { setApptDateTo(e.target.value); setPage(1); }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground" />
+                </div>
+                {(apptDateFrom || apptDateTo) && (
+                  <button onClick={() => { setApptDateFrom(""); setApptDateTo(""); setPage(1); }}
+                    className="ml-auto flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-red-600">
+                    <ClearIcon className="h-3.5 w-3.5" /> Clear
                   </button>
                 )}
               </div>
@@ -241,8 +284,9 @@ function AppointmentsPageInner() {
                     <th className={cn(th, "w-40")}>{t("appts.colName")}</th>
                     <th className={cn(th, "w-36")}>{t("appts.colCategory")}</th>
                     <th className={cn(th, "w-36")}>{t("label.date")}</th>
-                    <th className={cn(th, "w-32")}>Slot</th>
-                    <th className={cn(th, "w-24")}>Time</th>
+                    <th className={cn(th, "w-32")}>Appt. Date</th>
+                    <th className={cn(th, "w-28")}>Slot</th>
+                    <th className={cn(th, "w-20")}>Time</th>
                     <th className={cn(th, "w-16")}>Persons</th>
                     <th className={cn(th, "w-24")}>{t("appts.colUrgency")}</th>
                     <th className={cn(th, "w-36")}>{t("appts.colStatus")}</th>
@@ -251,9 +295,9 @@ function AppointmentsPageInner() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={11} className="py-12 text-center text-sm text-muted-foreground">{t("label.loading")}</td></tr>
+                    <tr><td colSpan={12} className="py-12 text-center text-sm text-muted-foreground">{t("label.loading")}</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={11} className="py-12 text-center text-sm text-muted-foreground">{t("appts.noAppts")}</td></tr>
+                    <tr><td colSpan={12} className="py-12 text-center text-sm text-muted-foreground">{t("appts.noAppts")}</td></tr>
                   ) : rows.map((row, idx) => (
                     <tr
                       key={row.id}
@@ -265,6 +309,14 @@ function AppointmentsPageInner() {
                       <td className="px-4 py-3 text-sm font-medium text-foreground">{row.name}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{row.category_label ?? row.category}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(row.created_at)}</td>
+                      {/* Appointment date column */}
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {row.scheduled_date
+                          ? <span className="font-medium text-foreground">
+                              {new Date(row.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          : <span className="text-muted-foreground/40">—</span>}
+                      </td>
                       {/* Slot column — 30-min window e.g. "08:00 – 08:30" */}
                       <td className="px-4 py-3 text-xs text-muted-foreground">
                         {row.slot_window
@@ -324,6 +376,40 @@ function AppointmentsPageInner() {
           </Card>
         </div>
       </main>
+
+      {/* Export dialog */}
+      {showExportDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-80 rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <h3 className="mb-1 text-base font-bold text-foreground">Export Appointments</h3>
+            <p className="mb-4 text-xs text-muted-foreground">
+              {total} rows match current filters. Choose export scope:
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                disabled={exporting}
+                onClick={() => doExport(false)}
+                className="rounded-lg border border-border px-4 py-2.5 text-left text-sm font-medium hover:bg-muted disabled:opacity-50"
+              >
+                📄 Current page <span className="text-muted-foreground">({Math.min(PAGE_SIZE, total)} rows)</span>
+              </button>
+              <button
+                disabled={exporting}
+                onClick={() => doExport(true)}
+                className="rounded-lg bg-brand px-4 py-2.5 text-left text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {exporting ? "⏳ Exporting…" : `📊 All filtered rows (${total} rows)`}
+              </button>
+            </div>
+            <button
+              onClick={() => setShowExportDialog(false)}
+              className="mt-3 w-full rounded-lg border border-border py-2 text-xs text-muted-foreground hover:bg-muted"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <AppointmentDetailDrawer
         row={openRow}

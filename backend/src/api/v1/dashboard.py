@@ -85,10 +85,13 @@ async def api_appointments(
     search: str = "",
     date_from: str = "",
     date_to: str = "",
+    appt_date_from: str = "",
+    appt_date_to: str = "",
     urgency: str = "",
     department: str = "",
     category: str = "",
     page: int = 1,
+    page_size: int = 25,
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
@@ -98,10 +101,13 @@ async def api_appointments(
         search=search or None,
         date_from=date_from or None,
         date_to=date_to or None,
+        appt_date_from=appt_date_from or None,
+        appt_date_to=appt_date_to or None,
         urgency=urgency or None,
         department=department or None,
         category=category or None,
         page=page,
+        page_size=min(page_size, 5000),  # cap at 5000 for export safety
     )
     return JSONResponse(data)
 

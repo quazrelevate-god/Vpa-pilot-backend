@@ -331,6 +331,8 @@ async def get_appointments(
     search: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    appt_date_from: Optional[str] = None,
+    appt_date_to: Optional[str] = None,
     urgency: Optional[str] = None,
     department: Optional[str] = None,
     category: Optional[str] = None,
@@ -366,10 +368,18 @@ async def get_appointments(
             .order_by(Appointment.created_at.desc())
         )
 
+    # Submission date filter (when citizen submitted the form)
     if date_from:
         stmt = stmt.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
     if date_to:
         stmt = stmt.where(Appointment.created_at <= dt.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
+
+    # Appointment date filter (when the meeting slot is scheduled)
+    from datetime import date as date_type
+    if appt_date_from:
+        stmt = stmt.where(Appointment.scheduled_date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+    if appt_date_to:
+        stmt = stmt.where(Appointment.scheduled_date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
 
     if status_filter and status_filter != "All":
         if status_filter == "Scheduled":
@@ -386,7 +396,9 @@ async def get_appointments(
         elif status_filter == "Waiting":
             stmt = stmt.where(Appointment.status.in_(["WAITING", "IN_PROGRESS"]))
 
-    # AI-derived filters (urgency / dept / category) live on GrievanceSummaryRecord.
+    # AI-derived filters: urgency + department live only on GrievanceSummaryRecord.
+    # Category also falls back to Appointment.grievance_category for petitions
+    # that haven't been AI-summarised yet (AWAITING_REVIEW with form-selected category).
     if urgency or department or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
@@ -398,7 +410,22 @@ async def get_appointments(
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
         if category:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
-        stmt = stmt.where(Appointment.id.in_(gsr_sub))
+
+        if category:
+            # Also match appointments where citizen selected the category in the form
+            # (Appointment.grievance_category) and AI hasn't processed yet.
+            from sqlalchemy import or_
+            appt_cat_sub = select(Appointment.id).where(
+                Appointment.grievance_category == category
+            )
+            stmt = stmt.where(
+                or_(
+                    Appointment.id.in_(gsr_sub),
+                    Appointment.id.in_(appt_cat_sub),
+                )
+            )
+        else:
+            stmt = stmt.where(Appointment.id.in_(gsr_sub))
 
     # Count before pagination
     count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -455,6 +482,9 @@ async def get_appointments(
             "status_db": appt.status,
             "status": _resolve_display_status(appt),
             "created_at": utc_iso(appt.created_at),
+            "scheduled_date": (
+                appt.scheduled_date.isoformat() if appt.scheduled_date else None
+            ),
             "appointment_time": (
                 datetime.combine(appt.scheduled_date, appt.scheduled_start_time).isoformat()
                 if appt.scheduled_date and appt.scheduled_start_time else None
