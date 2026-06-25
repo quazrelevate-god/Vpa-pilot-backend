@@ -562,9 +562,13 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         appt.schedule_meeting = True
         appt.status = "SCHEDULED"
     elif new_status == "Reviewed":
-        # PA marks petition as reviewed — release slot only if the meeting is
-        # still in the future (hasn't happened yet), so the slot opens for others.
-        if appt.scheduled_date and appt.scheduled_date > date.today():
+        # PA marks petition as reviewed — release slot only if the meeting
+        # hasn't started yet (future date, or today but start time still ahead).
+        if appt.scheduled_date and appt.scheduled_start_time:
+            slot_dt = datetime.combine(appt.scheduled_date, appt.scheduled_start_time)
+            if slot_dt > datetime.utcnow():
+                await scheduling_service.release_slot(db, appt, commit=False)
+        elif appt.scheduled_date and appt.scheduled_date > date.today():
             await scheduling_service.release_slot(db, appt, commit=False)
         appt.status = "REVIEWED"
         appt.schedule_meeting = False
@@ -610,8 +614,13 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
             ))
     elif new_status == "Awaiting Review":
         # Allow moving a record back into the review queue (PA correction).
-        # If a future slot was booked, release it so the slot opens for others.
-        if appt.scheduled_date and appt.scheduled_date > date.today():
+        # Release slot if the meeting hasn't started yet (future date, or
+        # today but start time still ahead).
+        if appt.scheduled_date and appt.scheduled_start_time:
+            slot_dt = datetime.combine(appt.scheduled_date, appt.scheduled_start_time)
+            if slot_dt > datetime.utcnow():
+                await scheduling_service.release_slot(db, appt, commit=False)
+        elif appt.scheduled_date and appt.scheduled_date > date.today():
             await scheduling_service.release_slot(db, appt, commit=False)
         appt.status = "AWAITING_REVIEW"
         appt.schedule_meeting = False
