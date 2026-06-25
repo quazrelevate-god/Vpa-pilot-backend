@@ -411,11 +411,8 @@ async def get_appointments(
         )
 
         def _attachment_url(a) -> str:
-            # storage_url is relative to backend/ e.g. "uploads/attachments/11/file.jpg"
-            # normalise separators and strip any leading path components before "uploads/"
-            p = a.storage_url.replace("\\", "/")
-            idx = p.find("uploads/")
-            return "/static/" + p[idx:] if idx != -1 else "/static/" + p
+            from src.services.storage_service import get_file_url
+            return get_file_url(a.storage_url)
 
         attachments_data = [
             {
@@ -430,9 +427,8 @@ async def get_appointments(
         # Add audio recording URL if available
         audio_url = None
         if appt.audio_recording_url:
-            p = appt.audio_recording_url.replace("\\", "/")
-            idx = p.find("uploads/")
-            audio_url = "/static/" + p[idx:] if idx != -1 else "/static/" + p
+            from src.services.storage_service import get_file_url
+            audio_url = get_file_url(appt.audio_recording_url)
         
         items.append({
             "id": appt.id,

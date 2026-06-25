@@ -3,7 +3,7 @@ Staff dashboard routes — login, chart stats, appointments table, status update
 All page routes require cookie-based auth. API routes (/api/*) also require auth.
 """
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -374,3 +374,30 @@ async def api_ticket_reopen(
     if data is None:
         return JSONResponse({"error": "Ticket not found"}, status_code=404)
     return JSONResponse(data)
+
+
+_UPLOADS_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "uploads"
+
+
+@router.get("/api/files/{file_path:path}")
+async def serve_upload(
+    file_path: str,
+    user: str = Depends(require_auth),
+):
+    """Serve uploaded files — requires dashboard auth. Prevents public access."""
+    import mimetypes
+    try:
+        full_path = (_UPLOADS_ROOT / file_path).resolve()
+        full_path.relative_to(_UPLOADS_ROOT.resolve())
+    except Exception:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    if not full_path.exists() or not full_path.is_file():
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    mime, _ = mimetypes.guess_type(str(full_path))
+    return Response(
+        content=full_path.read_bytes(),
+        media_type=mime or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{full_path.name}"'},
+    )

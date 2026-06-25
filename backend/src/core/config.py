@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 5              # max size per uploaded attachment
     ALLOWED_FILE_EXTENSIONS: str = ".pdf,.jpg,.jpeg,.png"  # comma-separated
 
+    # Remote file storage (MinIO on VPS). Leave FILE_STORAGE_ENDPOINT unset
+    # to use local disk (default when FastAPI itself runs on the VPS).
+    FILE_STORAGE_ENDPOINT: Optional[str] = None   # e.g. http://YOUR_VPS_IP:9000
+    FILE_STORAGE_ACCESS_KEY: str = ""
+    FILE_STORAGE_SECRET_KEY: str = ""
+    FILE_STORAGE_BUCKET: str = "vpa-uploads"
+
     # MLA Profile (used by seed_mla.py for initial production setup)
     MLA_NAME: str = "Default MLA"
     MLA_CONSTITUENCY: str = "Default Constituency"

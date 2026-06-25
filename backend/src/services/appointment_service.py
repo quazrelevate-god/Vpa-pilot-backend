@@ -503,7 +503,6 @@ class AppointmentService:
             str: Storage URL path
         """
         import base64
-        from pathlib import Path
         
         try:
             # Parse base64 data URL
@@ -523,19 +522,12 @@ class AppointmentService:
                     detail=f"Audio recording too long. Maximum allowed is {settings.AUDIO_MAX_DURATION_SECONDS // 60} minutes."
                 )
             
-            # Create directory
-            audio_dir = Path("uploads/audio")
-            audio_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Generate filename
+            # Generate filename and save via storage_service
             filename = f"audio_{token_number}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.webm"
-            file_path = audio_dir / filename
+            relative_path = f"audio/{filename}"
             
-            # Save to disk
-            with open(file_path, 'wb') as f:
-                f.write(audio_bytes)
-            
-            return str(file_path)
+            from src.services.storage_service import save_file
+            return save_file(audio_bytes, relative_path, content_type="audio/webm")
             
         except Exception as e:
             print(f"[AUDIO SAVE ERROR] Failed to save audio: {e}")
@@ -591,17 +583,14 @@ class AppointmentService:
             timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
             safe_filename = f"{appointment_id}_{timestamp}_{secrets.token_hex(8)}_{file.filename}"
             
-            # Create subdirectory for appointment
-            appointment_dir = self.UPLOAD_DIR / str(appointment_id)
-            appointment_dir.mkdir(parents=True, exist_ok=True)
+            # Save via storage_service (MinIO on VPS if configured, else local disk)
+            relative_path = f"attachments/{appointment_id}/{safe_filename}"
             
-            # Save file to disk
-            file_path = appointment_dir / safe_filename
-            with open(file_path, 'wb') as f:
-                f.write(file_content)
+            from src.services.storage_service import save_file
+            storage_url = save_file(file_content, relative_path, content_type=mime_type)
             
             return {
-                "storage_url": str(file_path),
+                "storage_url": storage_url,
                 "file_size_bytes": file_size,
                 "mime_type": mime_type,
                 "attachment_type": attachment_type
@@ -966,14 +955,16 @@ class AppointmentService:
             grievance_text: str = ""
 
             # Priority 1: first IMAGE attachment
+            from src.services.storage_service import get_file_bytes
             for att in attachments_created:
                 if att["attachment_type"] == "IMAGE":
                     try:
-                        with open(att["storage_url"], "rb") as fh:
-                            attachment_bytes = fh.read()
+                        attachment_bytes = get_file_bytes(att["storage_url"])
+                        if attachment_bytes is None:
+                            raise FileNotFoundError(f"File not found in storage: {att['storage_url']}")
                         attachment_mime = att["mime_type"]
                         attachment_filename = Path(att["storage_url"]).name
-                    except OSError as read_err:
+                    except Exception as read_err:
                         print(f"[GEMINI WARN] appointment_id={appointment_id}: "
                               f"Could not read image file {att['storage_url']}: {read_err}")
                     break
@@ -983,11 +974,12 @@ class AppointmentService:
                 for att in attachments_created:
                     if att["attachment_type"] == "DOCUMENT":
                         try:
-                            with open(att["storage_url"], "rb") as fh:
-                                attachment_bytes = fh.read()
+                            attachment_bytes = get_file_bytes(att["storage_url"])
+                            if attachment_bytes is None:
+                                raise FileNotFoundError(f"File not found in storage: {att['storage_url']}")
                             attachment_mime = att["mime_type"]
                             attachment_filename = Path(att["storage_url"]).name
-                        except OSError as read_err:
+                        except Exception as read_err:
                             print(f"[GEMINI WARN] appointment_id={appointment_id}: "
                                   f"Could not read document file {att['storage_url']}: {read_err}")
                         break
@@ -1010,9 +1002,10 @@ class AppointmentService:
             audio_bytes_for_gemini: Optional[bytes] = None
             if audio_path:
                 try:
-                    with open(audio_path, "rb") as fh:
-                        audio_bytes_for_gemini = fh.read()
-                except OSError as read_err:
+                    audio_bytes_for_gemini = get_file_bytes(audio_path)
+                    if audio_bytes_for_gemini is None:
+                        raise FileNotFoundError(f"File not found in storage: {audio_path}")
+                except Exception as read_err:
                     print(f"[GEMINI WARN] appointment_id={appointment_id}: "
                           f"Could not read audio file {audio_path}: {read_err}")
 
@@ -1328,14 +1321,16 @@ class AppointmentService:
 
             svc = GrievanceSummarisationService.from_settings()
 
-            # Read all pages from disk
+            # Read all pages from storage (MinIO or local disk)
+            from src.services.storage_service import get_file_bytes
             attachments: List[tuple] = []
             for snap in attachment_snapshots:
                 try:
-                    with open(snap["storage_url"], "rb") as fh:
-                        raw = fh.read()
+                    raw = get_file_bytes(snap["storage_url"])
+                    if raw is None:
+                        raise FileNotFoundError(f"File not found in storage: {snap['storage_url']}")
                     attachments.append((raw, snap["mime_type"], snap.get("filename")))
-                except OSError as e:
+                except Exception as e:
                     print(f"[MANUAL GEMINI WARN] Could not read {snap['storage_url']}: {e}")
 
             if not attachments:

@@ -46,7 +46,8 @@ app.mount("/static/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="asset
 
 _UPLOADS_DIR = Path(__file__).resolve().parent.parent / "uploads"
 _UPLOADS_DIR.mkdir(exist_ok=True)
-app.mount("/static/uploads", StaticFiles(directory=str(_UPLOADS_DIR)), name="uploads")
+# NOTE: uploads/ is NOT mounted as public static — served via authenticated
+# /dashboard/api/files/{path} endpoint to prevent unauthenticated access.
 
 app.include_router(qr.router)
 app.include_router(form.router)
