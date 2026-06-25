@@ -98,6 +98,9 @@ export default function SchedulingPage() {
   const [confirmSlot,  setConfirmSlot]  = useState<Slot | null>(null);
   const [showAllocate,  setShowAllocate]  = useState(false);
   const [allocating,    setAllocating]    = useState(false);
+  const [maxCapacity,   setMaxCapacity]   = useState(12);
+  const [availFrom,     setAvailFrom]     = useState("14:00");
+  const [availTo,       setAvailTo]       = useState("16:00");
 
   // ── Data loaders ──────────────────────────────────────────────────────────
 
@@ -141,7 +144,13 @@ export default function SchedulingPage() {
       const res  = await fetch("/api/v1/scheduling/admin/open-date", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mla_id: 1, date: selectedDate }),
+        body: JSON.stringify({
+          mla_id: 1,
+          date: selectedDate,
+          max_capacity: maxCapacity,
+          available_from: availFrom,
+          available_to: availTo,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -308,8 +317,10 @@ export default function SchedulingPage() {
 
             {/* Left panel — date picker + open dates list */}
             <div className="space-y-4 lg:col-span-1">
-              <Card className="p-4">
-                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Select Date</h2>
+              <Card className="p-4 space-y-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Select Date</h2>
+
+                {/* Date picker */}
                 <input
                   type="date"
                   value={selectedDate}
@@ -317,10 +328,49 @@ export default function SchedulingPage() {
                   onChange={e => setSelectedDate(e.target.value)}
                   className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                 />
+
+                {/* Availability window */}
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Available Window
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="time"
+                      value={availFrom}
+                      onChange={e => setAvailFrom(e.target.value)}
+                      className="flex-1 rounded-lg border border-input bg-card px-2 py-1.5 text-xs focus:border-brand focus:outline-none"
+                    />
+                    <span className="text-xs text-muted-foreground">–</span>
+                    <input
+                      type="time"
+                      value={availTo}
+                      onChange={e => setAvailTo(e.target.value)}
+                      className="flex-1 rounded-lg border border-input bg-card px-2 py-1.5 text-xs focus:border-brand focus:outline-none"
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">Slots outside this window are blocked by default</p>
+                </div>
+
+                {/* Capacity */}
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Persons per Slot
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={maxCapacity}
+                    onChange={e => setMaxCapacity(Math.max(1, Math.min(100, Number(e.target.value))))}
+                    className="w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                  />
+                </div>
+
                 <Button
-                  className="mt-3 w-full"
+                  className="w-full"
                   onClick={handleOpenDate}
-                  disabled={openingDate || !selectedDate}
+                  disabled={openingDate || !selectedDate || availFrom >= availTo}
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   {openingDate ? "Opening…" : "Open This Date"}

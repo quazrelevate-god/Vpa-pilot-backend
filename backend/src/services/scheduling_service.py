@@ -61,14 +61,27 @@ class SchedulingService:
         mla_id: int,
         target_date: date,
         created_by: Optional[str] = None,
+        max_capacity: int = MAX_CAPACITY,
+        available_from: Optional[time] = None,
+        available_to: Optional[time] = None,
     ) -> Dict:
         """
         Open target_date for bookings.
 
         - Creates MLADailyAvailability + 20 AppointmentSlot rows.
+        - Slots within [available_from, available_to) are AVAILABLE;
+          all others are BLOCKED. Default window: 14:00–16:00.
+        - max_capacity overrides the global MAX_CAPACITY per slot.
         - If the date is already open with zero bookings, it is reset.
         - If any booking exists, raises ValueError.
         """
+        # Default window: 2 PM – 4 PM
+        if available_from is None:
+            available_from = time(14, 0)
+        if available_to is None:
+            available_to = time(16, 0)
+        if available_from >= available_to:
+            raise ValueError("available_from must be before available_to.")
         if target_date < date.today():
             raise ValueError(
                 f"Cannot open a past date ({target_date.strftime('%d %b %Y')}). "
@@ -112,27 +125,44 @@ class SchedulingService:
         db.add(avail)
         await db.flush()
 
+        available_slots_count = 0
         for slot_num, start, end in _slot_times():
+            # Slot is AVAILABLE only if its start is within the availability window.
+            # All other slots are BLOCKED by default so the PA doesn't have to
+            # manually block each one.
+            in_window = available_from <= start < available_to
+            slot_status = "AVAILABLE" if in_window else "BLOCKED"
+            if in_window:
+                available_slots_count += 1
             db.add(AppointmentSlot(
                 availability_id = avail.id,
                 slot_number     = slot_num,
                 start_time      = start,
                 end_time        = end,
-                status          = "AVAILABLE",
-                max_capacity    = MAX_CAPACITY,
+                status          = slot_status,
+                max_capacity    = max_capacity,
                 booked_count    = 0,
             ))
 
         await db.commit()
 
+        avail_label = f"{available_from.strftime('%I:%M %p').lstrip('0')} – {available_to.strftime('%I:%M %p').lstrip('0')}"
         return {
-            "availability_id": avail.id,
-            "date":            target_date.isoformat(),
-            "date_label":      target_date.strftime("%d %b %Y"),
-            "total_slots":     TOTAL_SLOTS,
-            "max_per_slot":    MAX_CAPACITY,
-            "total_capacity":  TOTAL_SLOTS * MAX_CAPACITY,
-            "message":         f"Opened {target_date.strftime('%d %b %Y')} — {TOTAL_SLOTS} slots, {MAX_CAPACITY} seats each.",
+            "availability_id":     avail.id,
+            "date":                target_date.isoformat(),
+            "date_label":          target_date.strftime("%d %b %Y"),
+            "total_slots":         TOTAL_SLOTS,
+            "available_slots":     available_slots_count,
+            "blocked_slots":       TOTAL_SLOTS - available_slots_count,
+            "max_per_slot":        max_capacity,
+            "total_capacity":      available_slots_count * max_capacity,
+            "availability_window": avail_label,
+            "message": (
+                f"Opened {target_date.strftime('%d %b %Y')} — "
+                f"{available_slots_count} slots available ({avail_label}), "
+                f"{TOTAL_SLOTS - available_slots_count} blocked, "
+                f"{max_capacity} seats each."
+            ),
         }
 
     # ── Citizen: browse available slots ─────────────────────────────────────

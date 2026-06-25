@@ -37,8 +37,11 @@ router = APIRouter(prefix="/api/v1/scheduling", tags=["scheduling"])
 # ── Pydantic request bodies ──────────────────────────────────────────────────
 
 class OpenDateRequest(BaseModel):
-    mla_id: int        = Field(1, description="MLA ID (defaults to 1)")
-    date:   date_type  = Field(..., description="Date to open for bookings (YYYY-MM-DD)")
+    mla_id:          int        = Field(1,    description="MLA ID (defaults to 1)")
+    date:            date_type  = Field(...,  description="Date to open for bookings (YYYY-MM-DD)")
+    max_capacity:    int        = Field(12,   ge=1, le=100, description="Max persons per slot (default 12)")
+    available_from:  str        = Field("14:00", description="Availability window start HH:MM (default 14:00)")
+    available_to:    str        = Field("16:00", description="Availability window end HH:MM (default 16:00)")
 
 
 class RescheduleRequest(BaseModel):
@@ -93,11 +96,18 @@ async def open_date(
     Fixed hours: 08:00 – 18:00.  Max 6 citizens per slot.
     """
     try:
+        from datetime import time as time_type
+        def _parse_time(s: str) -> time_type:
+            h, m = map(int, s.split(":"))
+            return time_type(h, m)
         result = await scheduling_service.set_mla_availability(
             db=db,
             mla_id=data.mla_id,
             target_date=data.date,
             created_by=user,
+            max_capacity=data.max_capacity,
+            available_from=_parse_time(data.available_from),
+            available_to=_parse_time(data.available_to),
         )
         return JSONResponse(result)
     except ValueError as e:
