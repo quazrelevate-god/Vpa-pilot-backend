@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 // Guard the dashboard pages: redirect to /login when the dash_session cookie
 // is missing. The cookie is set by FastAPI (/dashboard/login) and proxied
 // back to us by Next.js rewrites, so it sits on the same origin as the app.
-const PROTECTED_PREFIXES = ["/overview", "/appointments", "/tickets"];
+const PROTECTED_PREFIXES = ["/overview", "/appointments", "/tickets", "/referrals"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -19,5 +19,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/overview/:path*", "/appointments/:path*", "/tickets/:path*"],
+  matcher: ["/overview/:path*", "/appointments/:path*", "/tickets/:path*", "/referrals/:path*"],
 };

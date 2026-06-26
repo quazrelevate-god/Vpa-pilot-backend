@@ -11,6 +11,7 @@ const nextConfig = {
   async rewrites() {
     return [
       { source: "/api/v1/scheduling/:path*", destination: `${API_BASE}/api/v1/scheduling/:path*` },
+      { source: "/api/v1/referral/:path*", destination: `${API_BASE}/api/v1/referral/:path*` },
       { source: "/api/files/:path*", destination: `${API_BASE}/dashboard/api/files/:path*` },
       { source: "/api/:path*", destination: `${API_BASE}/dashboard/api/:path*` },
       { source: "/auth/login", destination: `${API_BASE}/dashboard/login` },

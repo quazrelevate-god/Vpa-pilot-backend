@@ -26,6 +26,11 @@ from src.models.scheduling_models import (
     RescheduleLog,
 )
 from src.models.ticket_models import Ticket, TicketEvent
+from src.models.referral_models import (
+    ReferralAvailability,
+    ReferralSlot,
+    ReferralBooking,
+)
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':
