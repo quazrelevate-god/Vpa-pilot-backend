@@ -432,9 +432,56 @@ class SchedulingService:
         slot = await db.get(AppointmentSlot, slot_id)
         if slot is None:
             raise ValueError("Slot not found.")
+        # If booked_count already fills the slot, don't reopen — mark FULL instead.
+        new_status = "FULL" if slot.booked_count >= slot.max_capacity else "AVAILABLE"
+        slot.status = new_status
+        await db.commit()
+        return {"slot_id": slot_id, "status": new_status}
+
+    async def close_slot(self, db: AsyncSession, slot_id: int) -> Dict:
+        """
+        Manually mark a slot as FULL to stop new bookings.
+        Existing bookings are kept. Does NOT relocate citizens.
+        Used when the PA wants to close a partially-booked slot early.
+        """
+        slot = await db.get(AppointmentSlot, slot_id)
+        if slot is None:
+            raise ValueError("Slot not found.")
+        if slot.status == "BLOCKED":
+            raise ValueError("Slot is already blocked. Unblock it first.")
+        slot.status = "FULL"
+        await db.commit()
+        return {
+            "slot_id":      slot_id,
+            "status":       "FULL",
+            "booked_count": slot.booked_count,
+            "max_capacity": slot.max_capacity,
+        }
+
+    async def reopen_slot(self, db: AsyncSession, slot_id: int) -> Dict:
+        """
+        Reopen a manually-closed (FULL) slot for new bookings.
+        Only works if booked_count < max_capacity (slots that are
+        naturally full cannot be reopened — cancel a booking first).
+        """
+        slot = await db.get(AppointmentSlot, slot_id)
+        if slot is None:
+            raise ValueError("Slot not found.")
+        if slot.status == "BLOCKED":
+            raise ValueError("Slot is blocked, not closed. Use unblock instead.")
+        if slot.booked_count >= slot.max_capacity:
+            raise ValueError(
+                f"Slot is genuinely full ({slot.booked_count}/{slot.max_capacity}). "
+                "Cancel a booking first, then reopen."
+            )
         slot.status = "AVAILABLE"
         await db.commit()
-        return {"slot_id": slot_id, "status": "AVAILABLE"}
+        return {
+            "slot_id":      slot_id,
+            "status":       "AVAILABLE",
+            "booked_count": slot.booked_count,
+            "remaining":    slot.max_capacity - slot.booked_count,
+        }
 
     # ── Admin: list open dates ───────────────────────────────────────────────
 

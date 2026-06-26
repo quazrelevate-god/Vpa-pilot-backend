@@ -39,7 +39,7 @@ router = APIRouter(prefix="/api/v1/scheduling", tags=["scheduling"])
 class OpenDateRequest(BaseModel):
     mla_id:          int        = Field(1,    description="MLA ID (defaults to 1)")
     date:            date_type  = Field(...,  description="Date to open for bookings (YYYY-MM-DD)")
-    max_capacity:    int        = Field(12,   ge=1, le=100, description="Max persons per slot (default 12)")
+    max_capacity:    int        = Field(6,    ge=1, le=100, description="Max persons per slot (default 6)")
     available_from:  str        = Field("14:00", description="Availability window start HH:MM (default 14:00)")
     available_to:    str        = Field("16:00", description="Availability window end HH:MM (default 16:00)")
 
@@ -171,13 +171,49 @@ async def unblock_slot(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    """Unblock a previously blocked slot."""
+    """Unblock a blocked slot. If booked_count == max_capacity it returns to FULL, otherwise AVAILABLE."""
     try:
         result = await scheduling_service.unblock_slot(db, slot_id)
         return JSONResponse(result)
     except ValueError as e:
         await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=404)
+    except Exception as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/admin/slots/{slot_id}/close")
+async def close_slot(
+    slot_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Manually close a partial slot — set status FULL without moving bookings."""
+    try:
+        result = await scheduling_service.close_slot(db, slot_id)
+        return JSONResponse(result)
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=409)
+    except Exception as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/admin/slots/{slot_id}/reopen")
+async def reopen_slot(
+    slot_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Reopen a manually-closed (FULL) slot for new bookings. Requires booked_count < max_capacity."""
+    try:
+        result = await scheduling_service.reopen_slot(db, slot_id)
+        return JSONResponse(result)
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=409)
     except Exception as e:
         await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)

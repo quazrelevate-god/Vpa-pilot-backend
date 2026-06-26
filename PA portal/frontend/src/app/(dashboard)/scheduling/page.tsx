@@ -98,7 +98,7 @@ export default function SchedulingPage() {
   const [confirmSlot,  setConfirmSlot]  = useState<Slot | null>(null);
   const [showAllocate,  setShowAllocate]  = useState(false);
   const [allocating,    setAllocating]    = useState(false);
-  const [maxCapacity,   setMaxCapacity]   = useState(12);
+  const [maxCapacity,   setMaxCapacity]   = useState(6);
   const [availFrom,     setAvailFrom]     = useState("14:00");
   const [availTo,       setAvailTo]       = useState("16:00");
 
@@ -210,11 +210,95 @@ export default function SchedulingPage() {
     setConfirmSlot(slot);
   }
 
-  async function confirmToggleBlock() {
+  // ── Slot action dispatcher ─────────────────────────────────────────────────
+
+  async function dispatchSlotAction(action: "block" | "unblock" | "close" | "reopen") {
     if (!confirmSlot) return;
     const slot = confirmSlot;
     setConfirmSlot(null);
-    await handleToggleBlock(slot);
+    setBlockingId(slot.id);
+    try {
+      const res  = await fetch(`/api/v1/scheduling/admin/slots/${slot.id}/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        const messages: Record<string, string> = {
+          block:   "Slot blocked. Existing bookings moved to queue or other slots.",
+          unblock: "Slot unblocked.",
+          close:   "Slot closed — no new bookings accepted.",
+          reopen:  "Slot reopened for new bookings.",
+        };
+        toast.success(messages[action] ?? "Done.");
+        loadGrid(selectedDate);
+        loadStats();
+      } else {
+        toast.error(data.error || `Failed to ${action} slot.`);
+      }
+    } catch { toast.error("Network error."); }
+    finally  { setBlockingId(null); }
+  }
+
+  // ── Derive dialog config from slot state ───────────────────────────────────
+
+  function getSlotDialog(slot: Slot) {
+    const { status, booked_count, max_capacity, start, end } = slot;
+    const label   = `${start} – ${end}`;
+    const counts  = `${booked_count}/${max_capacity} booked`;
+
+    // BLOCKED — always just offer unblock
+    if (status === "BLOCKED") return {
+      icon:    <Unlock className="h-5 w-5 text-emerald-600" />,
+      title:   "Blocked Slot",
+      desc:    `${label} is currently blocked (${counts}). Unblocking will allow new bookings.`,
+      actions: [{ label: "Unblock", action: "unblock" as const, cls: "bg-emerald-600 hover:bg-emerald-700 text-white" }],
+    };
+
+    // FULL + booked_count < max_capacity = manually closed by PA
+    if (status === "FULL" && booked_count < max_capacity) return {
+      icon:    <Lock className="h-5 w-5 text-orange-600" />,
+      title:   "Manually Closed Slot",
+      desc:    `${label} was closed early (${counts}). Reopen to accept more bookings, or block to relocate existing citizens.`,
+      actions: [
+        { label: "Reopen", action: "reopen" as const, cls: "bg-emerald-600 hover:bg-emerald-700 text-white" },
+        { label: "Block (relocate bookings)", action: "block" as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" },
+      ],
+    };
+
+    // FULL + booked_count >= max_capacity = naturally full
+    if (status === "FULL" || booked_count >= max_capacity) return {
+      icon:    <Lock className="h-5 w-5 text-red-600" />,
+      title:   "Full Slot",
+      desc:    `${label} is naturally full (${counts}). Block it to prevent rebooking if a citizen cancels. To reopen, cancel a booking first.`,
+      actions: [
+        { label: "Block (prevent rebooking)", action: "block" as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" },
+      ],
+    };
+
+    // AVAILABLE + partially booked
+    if (booked_count > 0) return {
+      icon:    <Lock className="h-5 w-5 text-amber-600" />,
+      title:   "Partially Booked Slot",
+      desc:    `${label} has ${counts}. Close it to stop new bookings without moving existing citizens, or block it to relocate them.`,
+      actions: [
+        { label: "Close (stop new bookings)", action: "close" as const, cls: "bg-orange-500 hover:bg-orange-600 text-white" },
+        { label: "Block (relocate all)", action: "block" as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" },
+      ],
+    };
+
+    // AVAILABLE + empty
+    return {
+      icon:    <Lock className="h-5 w-5 text-slate-600" />,
+      title:   "Block Empty Slot?",
+      desc:    `${label} has no bookings. It will be blocked and unavailable to citizens.`,
+      actions: [
+        { label: "Block", action: "block" as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" },
+      ],
+    };
+  }
+
+  async function confirmToggleBlock() {
+    // Legacy — no longer used but kept for safety
+    if (!confirmSlot) return;
+    await dispatchSlotAction("block");
   }
 
   async function handleCancelAll() {
@@ -451,7 +535,7 @@ export default function SchedulingPage() {
                     {l.label}
                   </span>
                 ))}
-                <span className="text-muted-foreground ml-2">Click any slot to block/unblock</span>
+                <span className="text-muted-foreground ml-2">Click any slot to manage</span>
               </div>
 
               {/* Slot grid */}
@@ -530,46 +614,37 @@ export default function SchedulingPage() {
         </div>
       </main>
 
-      {/* Block / Unblock confirmation dialog */}
-      <Dialog open={confirmSlot !== null} onOpenChange={(o) => { if (!o) setConfirmSlot(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {confirmSlot?.status === "BLOCKED" ? (
-                <><Unlock className="h-5 w-5 text-emerald-600" /> Unblock Slot?</>
-              ) : (
-                <><Lock className="h-5 w-5 text-slate-600" /> Block Slot?</>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {confirmSlot && (
-                <>
-                  Slot <strong>{confirmSlot.start} – {confirmSlot.end}</strong>
-                  {confirmSlot.status === "BLOCKED"
-                    ? " will be unblocked and available for booking again."
-                    : confirmSlot.booked_count > 0
-                      ? ` has ${confirmSlot.booked_count} booking(s). They will be moved to other available slots today, or to the waiting queue if no slots are free.`
-                      : " will be blocked and unavailable for booking."}
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <DialogClose asChild>
-              <Button variant="outline" size="sm">Cancel</Button>
-            </DialogClose>
-            <Button
-              size="sm"
-              className={confirmSlot?.status === "BLOCKED"
-                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                : "bg-slate-700 hover:bg-slate-800 text-white"}
-              onClick={confirmToggleBlock}
-            >
-              {confirmSlot?.status === "BLOCKED" ? "Yes, unblock" : "Yes, block"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Smart slot action dialog — state-machine driven */}
+      {(() => {
+        const cfg = confirmSlot ? getSlotDialog(confirmSlot) : null;
+        return (
+          <Dialog open={confirmSlot !== null} onOpenChange={(o) => { if (!o) setConfirmSlot(null); }}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {cfg?.icon} {cfg?.title}
+                </DialogTitle>
+                <DialogDescription>{cfg?.desc}</DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="flex flex-col gap-2 sm:flex-row">
+                <DialogClose asChild>
+                  <Button variant="outline" size="sm" className="w-full sm:w-auto">Cancel</Button>
+                </DialogClose>
+                {cfg?.actions.map(a => (
+                  <Button
+                    key={a.action}
+                    size="sm"
+                    className={cn("w-full sm:w-auto", a.cls)}
+                    onClick={() => dispatchSlotAction(a.action)}
+                  >
+                    {a.label}
+                  </Button>
+                ))}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* Auto-allocate confirmation dialog */}
       <Dialog open={showAllocate} onOpenChange={(o) => { if (!o) setShowAllocate(false); }}>
