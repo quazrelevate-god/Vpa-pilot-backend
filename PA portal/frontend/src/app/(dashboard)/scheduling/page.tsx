@@ -65,18 +65,25 @@ interface Stats {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Whether a slot is manually closed by admin (FULL status but seats remaining)
+function isAdminClosed(s: Slot): boolean {
+  return s.status === "FULL" && s.booked_count < s.max_capacity;
+}
+
 function slotColor(s: Slot): string {
-  if (s.status === "BLOCKED")        return "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 cursor-pointer";
-  if (s.booked_count === 0)          return "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 cursor-pointer";
-  if (s.remaining === 0)             return "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer";
+  if (s.status === "BLOCKED")   return "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 cursor-pointer";
+  if (s.status === "FULL")      return "border-red-400 bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer";  // both admin-closed and naturally full
+  if (s.booked_count === 0)     return "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 cursor-pointer";
+  if (s.remaining === 0)        return "border-red-400 bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer";
   return "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 cursor-pointer";
 }
 
 function slotBadge(s: Slot): { label: string; cls: string } {
-  if (s.status === "BLOCKED") return { label: "Blocked",   cls: "bg-slate-200 text-slate-500" };
-  if (s.remaining === 0)      return { label: "Full",      cls: "bg-red-100 text-red-600" };
-  if (s.booked_count > 0)     return { label: `${s.remaining} left`, cls: "bg-amber-100 text-amber-700" };
-  return                             { label: "Open",      cls: "bg-emerald-100 text-emerald-700" };
+  if (s.status === "BLOCKED")  return { label: "Blocked",      cls: "bg-slate-200 text-slate-500" };
+  if (isAdminClosed(s))        return { label: "Closed",       cls: "bg-red-100 text-red-700 ring-1 ring-red-300" };
+  if (s.remaining === 0)       return { label: "Full",         cls: "bg-red-100 text-red-600" };
+  if (s.booked_count > 0)      return { label: `${s.remaining} left`, cls: "bg-amber-100 text-amber-700" };
+  return                              { label: "Open",         cls: "bg-emerald-100 text-emerald-700" };
 }
 
 function todayIso(): string {
@@ -527,7 +534,7 @@ export default function SchedulingPage() {
                 {[
                   { cls: "bg-emerald-100 border border-emerald-300", label: "Available" },
                   { cls: "bg-amber-100 border border-amber-300",     label: "Partially booked" },
-                  { cls: "bg-red-100 border border-red-300",         label: "Full" },
+                  { cls: "bg-red-100 border border-red-400",         label: "Full / Admin Closed" },
                   { cls: "bg-slate-100 border border-slate-300",     label: "Blocked" },
                 ].map(l => (
                   <span key={l.label} className="flex items-center gap-1">
@@ -564,22 +571,22 @@ export default function SchedulingPage() {
                           isLoading && "opacity-60 pointer-events-none"
                         )}
                       >
-                        {/* Time label */}
+                        {/* Time label + icon */}
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-semibold">{slot.start} – {slot.end}</span>
-                          {slot.status === "BLOCKED" ? (
-                            <Lock    className="h-3 w-3 shrink-0 opacity-60" />
-                          ) : (
-                            <Unlock  className="h-3 w-3 shrink-0 opacity-30" />
-                          )}
+                          {slot.status === "BLOCKED"
+                            ? <Lock className="h-3 w-3 shrink-0 opacity-60" />
+                            : isAdminClosed(slot)
+                              ? <Lock className="h-3 w-3 shrink-0 text-red-500 opacity-80" />
+                              : <Unlock className="h-3 w-3 shrink-0 opacity-30" />}
                         </div>
 
-                        {/* Capacity bar */}
+                        {/* Capacity bar — red when FULL (admin or natural) */}
                         <div className="h-1.5 w-full rounded-full bg-black/10 overflow-hidden">
                           <div
                             className={cn(
                               "h-full rounded-full transition-all",
-                              slot.booked_count === slot.max_capacity
+                              slot.status === "FULL" || slot.remaining === 0
                                 ? "bg-red-500"
                                 : slot.booked_count > 0
                                   ? "bg-amber-500"
