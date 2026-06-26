@@ -369,6 +369,33 @@ class ReferralService:
             "slots":            slot_list,
         }
 
+    # ── Public: open dates for citizen date picker ──────────────────────────
+
+    async def list_open_dates_public(self, db: AsyncSession) -> List[Dict]:
+        """
+        Future dates that are open AND have at least one non-blocked slot.
+        Used by the citizen referral form date picker.
+        """
+        result = await db.execute(
+            select(ReferralAvailability)
+            .where(ReferralAvailability.status == "ACTIVE")
+            .where(ReferralAvailability.date   >= date.today())
+            .order_by(ReferralAvailability.date)
+        )
+        dates: List[Dict] = []
+        for a in result.scalars().all():
+            non_blocked = await db.scalar(
+                select(func.count(ReferralSlot.id))
+                .where(ReferralSlot.availability_id == a.id)
+                .where(ReferralSlot.status != "BLOCKED")
+            ) or 0
+            if non_blocked > 0:
+                dates.append({
+                    "date":       a.date.isoformat(),
+                    "date_label": a.date.strftime("%d %b %Y"),
+                })
+        return dates
+
     # ── Admin: open dates list ───────────────────────────────────────────────
 
     async def get_open_dates(self, db: AsyncSession) -> List[Dict]:

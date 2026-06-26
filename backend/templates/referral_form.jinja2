@@ -68,6 +68,19 @@
         .ta { display:none; }
         body.ta-mode .en { display:none; }
         body.ta-mode .ta { display:initial; }
+
+        /* Date chips */
+        .date-chip {
+            border: 2px solid #99f6e4; background: #f0fdfa;
+            border-radius: 10px; padding: 0.45rem 0.8rem;
+            cursor: pointer; text-align: center; transition: all .15s;
+            min-width: 64px;
+        }
+        .date-chip:hover { border-color: #0d9488; background: #ccfbf1; }
+        .date-chip.selected { border-color: #0d9488; background: #0d9488; color: white; }
+        .date-chip .dc-day  { font-size: 1.1rem; font-weight: 800; line-height: 1.1; }
+        .date-chip .dc-mon  { font-size: 0.68rem; font-weight: 600; opacity: .85; }
+        .date-chip .dc-wd   { font-size: 0.65rem; opacity: .75; }
     </style>
 </head>
 <body>
@@ -136,10 +149,21 @@
         </div>
 
         <div class="card">
-            <label class="lbl"><i class="fa-solid fa-clock"></i> <span class="en">Select a Time Slot</span><span class="ta">நேரத்தைத் தேர்ந்தெடுக்கவும்</span> <span class="req">*</span></label>
-            <div class="slot-msg" id="slotMsg"></div>
-            <div class="slot-grid" id="slotGrid"></div>
+            <!-- Date picker chips -->
+            <label class="lbl"><i class="fa-solid fa-calendar-days"></i> <span class="en">Select a Date</span><span class="ta">தேதியைத் தேர்ந்தெடுக்கவும்</span> <span class="req">*</span></label>
+            <div id="datePicker" style="margin-bottom:0.85rem;">
+                <div id="dateChips" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"></div>
+                <div id="dateMsg" style="font-size:0.8rem;color:#94a3b8;margin-top:0.35rem;"></div>
+            </div>
+
+            <!-- Slot grid (shown after date selected) -->
+            <div id="slotSection" style="display:none;">
+                <label class="lbl" style="margin-top:0.75rem;"><i class="fa-solid fa-clock"></i> <span class="en">Select a Time Slot</span><span class="ta">நேரத்தைத் தேர்ந்தெடுக்கவும்</span> <span class="req">*</span></label>
+                <div class="slot-msg" id="slotMsg"></div>
+                <div class="slot-grid" id="slotGrid"></div>
+            </div>
             <input type="hidden" id="selSlotId">
+            <input type="hidden" id="selDate">
         </div>
 
         <button class="submit-btn" id="subBtn" disabled onclick="submitReferral()">
@@ -150,8 +174,14 @@
 
     <script>
     const TOKEN = "{{ token }}";
-    let slotsData = [];
+    let slotsData       = [];
     let slotRefreshTimer = null;
+    let selectedDate    = null;   // YYYY-MM-DD
+
+    const TA_WD  = ['ஞா','திங்','செவ்','புதன்','வியா','வெள்','சனி'];
+    const EN_WD  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const TA_MON = ['ஜன','பிப்','மார்','ஏப்','மே','ஜூன்','ஜூலை','ஆக','செப்','அக்','நவ','டிச'];
+    const EN_MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     function setLang(ta) {
         document.body.classList.toggle('ta-mode', ta);
@@ -161,24 +191,79 @@
 
     function showErr(m){ const e=document.getElementById('errBox'); e.textContent=m; e.style.display='block'; setTimeout(()=>e.style.display='none',5000); }
 
+    // ── Date picker ──────────────────────────────────────────────────────────
+    async function loadOpenDates() {
+        const chips = document.getElementById('dateChips');
+        const msg   = document.getElementById('dateMsg');
+        const ta    = document.body.classList.contains('ta-mode');
+        chips.innerHTML = '';
+        msg.textContent  = ta ? 'தேதிகளை ஏற்றுகிறோம்…' : 'Loading dates…';
+        try {
+            const res  = await fetch('/api/v1/referral/open-dates?d=' + encodeURIComponent(TOKEN));
+            const data = await res.json();
+            if (!Array.isArray(data) || data.length === 0) {
+                chips.innerHTML = '';
+                msg.textContent = ta ? 'திறந்த தேதிகள் எதுவும் இல்லை.' : 'No open dates available.';
+                return;
+            }
+            msg.textContent = '';
+            data.forEach((od, idx) => {
+                const [yy, mm, dd] = od.date.split('-').map(Number);
+                const d  = new Date(yy, mm-1, dd);
+                const wd = d.getDay();
+                const chip = document.createElement('div');
+                chip.className = 'date-chip' + (idx === 0 ? ' selected' : '');
+                chip.dataset.date = od.date;
+                chip.innerHTML = `
+                    <div class="dc-wd">${ta ? TA_WD[wd] : EN_WD[wd]}</div>
+                    <div class="dc-day">${d.getDate()}</div>
+                    <div class="dc-mon">${ta ? TA_MON[d.getMonth()] : EN_MON[d.getMonth()]}</div>
+                `;
+                chip.addEventListener('click', () => {
+                    document.querySelectorAll('.date-chip').forEach(c => c.classList.remove('selected'));
+                    chip.classList.add('selected');
+                    selectedDate = od.date;
+                    // Reset slot on date change
+                    document.getElementById('selSlotId').value = '';
+                    document.getElementById('selDate').value   = od.date;
+                    document.getElementById('slotGrid').innerHTML = '';
+                    validate();
+                    loadSlots();
+                });
+                chips.appendChild(chip);
+                if (idx === 0) { selectedDate = od.date; document.getElementById('selDate').value = od.date; }
+            });
+            // Show slot section and load first date
+            document.getElementById('slotSection').style.display = 'block';
+            loadSlots();
+        } catch(e) {
+            msg.textContent = ta ? 'பிழை: தேதிகளை ஏற்ற முடியவில்லை.' : 'Error loading dates.';
+        }
+    }
+
+    // ── Slot loader ──────────────────────────────────────────────────────────
     async function loadSlots() {
+        if (!selectedDate) return;
         const grid = document.getElementById('slotGrid');
         const msg  = document.getElementById('slotMsg');
         const ta   = document.body.classList.contains('ta-mode');
         try {
-            const res  = await fetch('/api/v1/referral/slots?d=' + encodeURIComponent(TOKEN));
+            const url  = `/api/v1/referral/slots?d=${encodeURIComponent(TOKEN)}&target_date=${selectedDate}`;
+            const res  = await fetch(url);
             const data = await res.json();
             slotsData = data.slots || [];
 
             if (!data.slots || data.slots.length === 0) {
                 grid.innerHTML = '';
-                msg.innerHTML = '<span style="color:#b45309;">⚠ ' + (ta ? 'இன்று நேரங்கள் எதுவும் கிடைக்கவில்லை.' : 'No slots open for today.') + '</span>';
+                msg.innerHTML = '<span style="color:#b45309;">⚠ ' + (ta ? 'இந்த தேதிக்கு நேரங்கள் இல்லை.' : 'No slots open for this date.') + '</span>';
                 return;
             }
 
-            const now = new Date();
+            const now    = new Date();
+            const today  = now.toISOString().split('T')[0];
+            const isToday = selectedDate === today;
             const nowMin = now.getHours()*60 + now.getMinutes();
-            const selId = document.getElementById('selSlotId').value;
+            const selId  = document.getElementById('selSlotId').value;
             const persons = parseInt(document.getElementById('fPersons').value, 10) || 1;
 
             msg.textContent = ta ? 'பச்சை = கிடைக்கிறது, மஞ்சள் = நிரம்பிக்கொண்டிருக்கிறது, சிவப்பு = நிரம்பியது'
@@ -187,7 +272,8 @@
 
             data.slots.forEach(slot => {
                 const [sh, sm] = slot.start.split(':').map(Number);
-                const isPast = (sh*60+sm) <= nowMin;
+                // Grey out past slots only when viewing today
+                const isPast = isToday && (sh*60+sm) <= nowMin;
                 const isFull = !isPast && (slot.remaining === 0 || slot.status === 'FULL' || slot.remaining < persons);
                 const isPartial = !isPast && !isFull && slot.available && slot.booked_count > 0;
                 const isOpen = !isPast && !isFull && slot.available && slot.booked_count === 0;
@@ -272,8 +358,10 @@
         }
     }
 
-    loadSlots();
-    slotRefreshTimer = setInterval(loadSlots, 8000);  // reflect admin block/close in near-real-time
+    // Load open dates first; slots load automatically after date is selected.
+    loadOpenDates();
+    // Refresh slots every 8s so admin block/close reflects in near-real-time.
+    slotRefreshTimer = setInterval(() => { if (selectedDate) loadSlots(); }, 8000);
     </script>
 </body>
 </html>

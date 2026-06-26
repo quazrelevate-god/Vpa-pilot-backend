@@ -87,15 +87,45 @@ async def referral_form_page(request: Request, d: str = ""):
     return resp
 
 
+# ── Public: open dates for citizen date picker ────────────────────────────────
+
+@router.get("/open-dates")
+async def referral_open_dates(d: str, db: AsyncSession = Depends(get_db)):
+    """Return future open dates with available slots. Token required (verifies QR legitimacy)."""
+    try:
+        referral_service.verify_daily_token(d)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+    result = await referral_service.list_open_dates_public(db)
+    return JSONResponse(result)
+
+
 # ── Public: slots for the form ────────────────────────────────────────────────
 
 @router.get("/slots")
-async def referral_slots(d: str, db: AsyncSession = Depends(get_db)):
+async def referral_slots(
+    d: str,
+    target_date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return slots for a specific date.
+    If target_date not provided, defaults to today (token date).
+    """
     try:
-        token_date = referral_service.verify_daily_token(d)
+        referral_service.verify_daily_token(d)
     except ValueError as e:
         return JSONResponse({"available": False, "reason": "INVALID_QR", "message": str(e), "slots": []}, status_code=403)
-    result = await referral_service.get_available_slots(db, token_date)
+    # Use citizen-selected date if provided, otherwise fallback to today
+    if target_date:
+        try:
+            slot_date = datetime_type.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            return JSONResponse({"available": False, "reason": "INVALID_DATE", "slots": []}, status_code=400)
+    else:
+        from datetime import date as date_mod
+        slot_date = date_mod.today()
+    result = await referral_service.get_available_slots(db, slot_date)
     return JSONResponse(result)
 
 
