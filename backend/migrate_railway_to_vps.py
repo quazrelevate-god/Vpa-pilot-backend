@@ -119,6 +119,11 @@ def migrate():
     railway_url = re.sub(r"^postgresql\+\w+://", "postgresql://", railway_url)
     vps_url = re.sub(r"^postgresql\+\w+://", "postgresql://", vps_url)
 
+    # Append sslmode=require for Railway if not already present
+    if "sslmode" not in railway_url:
+        sep = "&" if "?" in railway_url else "?"
+        railway_url += sep + "sslmode=require"
+
     print()
     print("[1/4] Connecting to Railway (source) ...")
     src = psycopg2.connect(railway_url)
