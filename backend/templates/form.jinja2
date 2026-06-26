@@ -1183,13 +1183,18 @@
                 slotLoading: "Loading available slots…",
                 slotNone: "No meeting slots available",
                 slotNoneHint: "You can still submit — your request will join the waiting queue.",
-                slotHint: "Select a time — green = available, red = full or blocked, grey = past",
+                slotAllFull: "All slots are full for this date.",
+                slotHint: "Select a time — green = available, amber = filling up, red = full",
                 slotFail: "Failed to load slots. You can still submit — your request will join the waiting queue.",
                 slotConfirm: "Confirm & Submit",
                 slotSelectFirst: "Please select a meeting time slot first.",
                 slotSelectedGone: "Your selected slot is no longer available. Please choose another.",
                 slotSelectedPast: "Your selected slot has passed. Please choose an upcoming slot.",
                 slotSelectDate: "Select a date",
+                slotPassed: "Passed",
+                slotFull: "Full",
+                slotLeft: "left",
+                slotAvailable: "Available",
                 // Category
                 category: "Category",
                 categorySelect: "— Select —",
@@ -1253,13 +1258,18 @@
                 slotLoading: "கிடைக்கும் நேரங்களை ஏற்றுகிறோம்…",
                 slotNone: "சந்திப்பு நேரங்கள் எதுவும் கிடைக்கவில்லை.",
                 slotNoneHint: "நீங்கள் இன்னும் சமர்ப்பிக்கலாம் — உங்கள் கோரிக்கை காத்திர வரிசையில் சேர்க்கப்படும்.",
-                slotHint: "நேரத்தைத் தேர்ந்தெடுக்கவும் — பச்சை = கிடைக்கிறது, சிவப்பு = நிரம்பியது, சாம்பல் = கடந்தது",
+                slotAllFull: "இந்த தேதிக்கான அனைத்து நேரங்களும் நிரம்பிவிட்டன.",
+                slotHint: "நேரத்தைத் தேர்ந்தெடுக்கவும் — பச்சை = கிடைக்கிறது, மஞ்சள் = நிரம்பிக்கொண்டிருக்கிறது, சிவப்பு = நிரம்பியது",
                 slotFail: "நேரங்களை ஏற்ற முடியவில்லை. நீங்கள் இன்னும் சமர்ப்பிக்கலாம் — உங்கள் கோரிக்கை காத்திர வரிசையில் சேர்க்கப்படும்.",
                 slotConfirm: "உறுதிசெய் & சமர்ப்பி",
                 slotSelectFirst: "முதலில் சந்திப்பு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectedGone: "நீங்கள் தேர்ந்தெடுத்த நேரம் இனி கிடைக்கவில்லை. வேறு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectedPast: "நீங்கள் தேர்ந்தெடுத்த நேரம் கடந்துவிட்டது. வரவிருக்கும் நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectDate: "தேதியைத் தேர்ந்தெடுக்கவும்",
+                slotPassed: "முடிந்தது",
+                slotFull: "நிரம்பியது",
+                slotLeft: "மீதம்",
+                slotAvailable: "கிடைக்கிறது",
                 // Category
                 category: "பிரிவு",
                 categorySelect: "— தேர்ந்தெடுக்கவும் —",
@@ -1729,9 +1739,10 @@
                 }
             }
 
-            // For meeting requests, validate a slot was selected
+            // For meeting requests, a slot must be selected UNLESS there are
+            // genuinely no slots available (then the request joins the waiting queue).
             const slotId = document.getElementById('selectedSlotId').value;
-            if (scheduleMeeting && !slotId) {
+            if (scheduleMeeting && !slotId && !noSlotsAvailable) {
                 showOtpFieldError(copy.slotSelectFirst);
                 return;
             }
@@ -1814,6 +1825,8 @@
 
         let slotRefreshInterval = null;
         let selectedPickerDate  = null;  // YYYY-MM-DD chosen by user
+        let slotPickerFirstLoad = true;  // controls the one-time "loading" message
+        let noSlotsAvailable    = false; // true when no bookable slot exists → waiting queue
 
         // Tamil weekday names (0=Sun … 6=Sat)
         const TA_WEEKDAYS = ['ஞாயிறு', 'திங்கள்', 'செவ்வாய்', 'புதன்', 'வியாழன்', 'வெள்ளி', 'சனி'];
@@ -1821,30 +1834,42 @@
         const TA_MONTHS   = ['ஜன', 'பிப்', 'மார்', 'ஏப்', 'மே', 'ஜூன்', 'ஜூலை', 'ஆக', 'செப்', 'அக்', 'நவ', 'டிச'];
         const EN_MONTHS   = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-        function _buildDatePicker() {
+        // Build date chips ONLY for dates the PA has opened in scheduling.
+        // Returns the number of open dates found.
+        async function _buildDatePicker() {
             const row = document.getElementById('datePickerRow');
-            if (!row) return;
-            row.innerHTML = '';
+            if (!row) return 0;
             const isTa = runtimeActiveLanguage === 'ta';
             const weekdays = isTa ? TA_WEEKDAYS : EN_WEEKDAYS;
             const months   = isTa ? TA_MONTHS   : EN_MONTHS;
 
-            const today = new Date();
-            let chipsAdded = 0;
-            for (let i = 0; i < 8 && chipsAdded < 7; i++) {
-                const d = new Date(today);
-                d.setDate(today.getDate() + i);
-                // Skip Sundays (getDay() === 0)
-                if (d.getDay() === 0) continue;
+            row.innerHTML = `<div style="font-size:0.78rem;color:#94a3b8;padding:0.4rem;">${dynamicLocalizationDictionary[runtimeActiveLanguage].slotLoading}</div>`;
 
-                const yyyy = d.getFullYear();
-                const mm   = String(d.getMonth() + 1).padStart(2, '0');
-                const dd   = String(d.getDate()).padStart(2, '0');
-                const dateStr = `${yyyy}-${mm}-${dd}`;
-                const dow     = d.getDay();
+            // Fetch the dates that are actually open for bookings.
+            let openDates = [];
+            try {
+                const res  = await fetch('/api/v1/scheduling/open-dates');
+                const data = await res.json();
+                if (Array.isArray(data)) openDates = data;
+            } catch (e) { /* network error — handled below */ }
+
+            row.innerHTML = '';
+            selectedPickerDate = null;
+
+            if (openDates.length === 0) {
+                // No open dates at all — nothing the citizen can book.
+                row.innerHTML = `<div style="font-size:0.8rem;color:#b45309;padding:0.4rem;">${dynamicLocalizationDictionary[runtimeActiveLanguage].slotNone}</div>`;
+                return 0;
+            }
+
+            openDates.forEach((od, idx) => {
+                const dateStr = od.date;                 // "YYYY-MM-DD"
+                const [yy, mm, dd] = dateStr.split('-').map(Number);
+                const d = new Date(yy, mm - 1, dd);      // local midnight
+                const dow = d.getDay();
 
                 const chip = document.createElement('div');
-                chip.className = 'date-chip' + (chipsAdded === 0 ? ' selected' : '');
+                chip.className = 'date-chip' + (idx === 0 ? ' selected' : '');
                 chip.dataset.date = dateStr;
                 chip.innerHTML = `
                     <div class="dc-weekday">${weekdays[dow]}</div>
@@ -1858,26 +1883,45 @@
                     // Reset slot selection when date changes
                     document.getElementById('selectedSlotId').value = '';
                     document.getElementById('selectedSlotLabel').style.display = 'none';
+                    document.getElementById('numPersonsSection').style.display = 'none';
                     document.getElementById('btnConfirmMeeting').disabled = true;
-                    // Clear grid so loadSlots treats it as first load
+                    slotPickerFirstLoad = true;          // show loading state for new date
                     document.getElementById('slotGrid').innerHTML = '';
                     loadSlots();
                 });
                 row.appendChild(chip);
-                if (chipsAdded === 0) selectedPickerDate = dateStr;
-                chipsAdded++;
-            }
+                if (idx === 0) selectedPickerDate = dateStr;
+            });
+            return openDates.length;
         }
 
         async function openSlotPicker() {
             document.getElementById('slotPickerSection').style.display = 'block';
             document.getElementById('selectedSlotId').value = '';
             document.getElementById('selectedSlotLabel').style.display = 'none';
+            document.getElementById('numPersonsSection').style.display = 'none';
             document.getElementById('btnConfirmMeeting').disabled = true;
             document.getElementById('slotGrid').innerHTML = '';
-            _buildDatePicker();
+            slotPickerFirstLoad = true;
+            noSlotsAvailable    = false;
+
+            const numOpenDates = await _buildDatePicker();
+
+            if (numOpenDates === 0) {
+                // No open dates — guide citizen to submit into the waiting queue.
+                const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
+                noSlotsAvailable = true;
+                document.getElementById('slotGrid').innerHTML = '';
+                document.getElementById('slotPickerMsg').innerHTML =
+                    '<span style="color:#b45309;">⚠ ' + copy.slotNone + '</span> ' + copy.slotNoneHint;
+                document.getElementById('btnConfirmMeeting').disabled = false;
+                document.getElementById('slotPickerSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                return;
+            }
+
             await loadSlots();
-            // Auto-refresh every 5 s so admin block/full changes reflect immediately
+            // Auto-refresh every 5 s so admin block/close/full changes reflect immediately
+            if (slotRefreshInterval) clearInterval(slotRefreshInterval);
             slotRefreshInterval = setInterval(loadSlots, 5000);
             document.getElementById('slotPickerSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
@@ -1893,131 +1937,125 @@
         async function loadSlots() {
             const msg  = document.getElementById('slotPickerMsg');
             const grid = document.getElementById('slotGrid');
+            const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
             const selectedId = document.getElementById('selectedSlotId').value;
 
-            // Silent refresh — don't blank the grid while polling
-            const isFirstLoad = grid.innerHTML === '';
-            if (isFirstLoad) {
-                msg.textContent = dynamicLocalizationDictionary[runtimeActiveLanguage].slotLoading;
-                grid.innerHTML  = '';
+            // Only show the "loading" message on the very first load for a date,
+            // never on the 5-second background polls (prevents flicker).
+            if (slotPickerFirstLoad) {
+                msg.textContent = copy.slotLoading;
             }
 
-            try {
-                // Use the date selected in the date picker, fallback to today
-                const targetDate = selectedPickerDate || (() => {
-                    const now = new Date();
-                    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                })();
-                const res   = await fetch('/api/v1/scheduling/slots/available?target_date=' + targetDate);
-                const data  = await res.json();
+            const targetDate = selectedPickerDate || (() => {
+                const now = new Date();
+                return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            })();
 
-                if (!data.available || !data.slots || data.slots.length === 0) {
-                    const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
-                    msg.innerHTML = '<span style="color:#b45309;">⚠ ' + copy.slotNone + '</span> ' + copy.slotNoneHint;
+            try {
+                const res  = await fetch('/api/v1/scheduling/slots/available?target_date=' + targetDate);
+                const data = await res.json();
+
+                // No non-blocked slots exist for this date at all.
+                if (!data.slots || data.slots.length === 0) {
                     grid.innerHTML = '';
+                    noSlotsAvailable = true;
+                    msg.innerHTML = '<span style="color:#b45309;">⚠ ' + copy.slotNone + '</span> ' + copy.slotNoneHint;
                     document.getElementById('btnConfirmMeeting').disabled = false;
+                    slotPickerFirstLoad = false;
                     return;
                 }
 
-                const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
-                msg.textContent = copy.slotHint;
-                grid.innerHTML  = '';
-
-                // Current time in minutes since midnight (local time) for past-slot filtering.
-                // Past-slot greying only applies when the selected date IS today —
-                // future dates should never have any slots greyed out.
+                // Time-of-day comparison for greying past slots (only when date is today).
                 const nowLocal   = new Date();
                 const nowMinutes = nowLocal.getHours() * 60 + nowLocal.getMinutes();
                 const todayStr   = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
                 const isToday    = targetDate === todayStr;
 
-                data.slots.forEach(slot => {
-                    const card    = document.createElement('div');
+                grid.innerHTML = '';
+                let bookableCount = 0;   // counts slots actually selectable (after past-filter)
+                let selectionLost = false; // true if the citizen's picked slot just became unavailable
 
-                    // Grey out any slot that has already started (slotStart <= now),
-                    // but ONLY when the selected date is today.
-                    const [sh, sm] = slot.start.split(':').map(Number);
+                data.slots.forEach(slot => {
+                    const card = document.createElement('div');
+
+                    const [sh, sm]  = slot.start.split(':').map(Number);
                     const slotStart = sh * 60 + sm;
                     const isPast    = isToday && (slotStart <= nowMinutes);
 
-                    const isAvail = !isPast && slot.available;
-                    const isFull  = !isPast && slot.remaining === 0 && slot.status !== 'BLOCKED';
-                    const isBlock = !isPast && slot.status === 'BLOCKED';
+                    // Dynamic state — backend already excludes BLOCKED slots.
+                    //   FULL    : remaining === 0 OR status === 'FULL' (admin-closed)  → red, not clickable
+                    //   PARTIAL : 0 < booked < max AND bookable                        → amber, clickable
+                    //   OPEN    : booked === 0 AND bookable                            → green, clickable
+                    const isFull    = !isPast && (slot.remaining === 0 || slot.status === 'FULL');
+                    const isPartial = !isPast && !isFull && slot.available && slot.booked_count > 0;
+                    const isOpen    = !isPast && !isFull && slot.available && slot.booked_count === 0;
+                    const isBookable = isPartial || isOpen;
+                    if (isBookable) bookableCount++;
                     const isSelected = String(slot.id) === String(selectedId);
 
-                    let bg, border, cursor, opacity, statusDot;
+                    let bg, border, cursor, opacity, statusDot, subLabel;
                     if (isPast) {
-                        bg       = '#f1f5f9';
-                        border   = '#cbd5e1';
-                        cursor   = 'not-allowed';
-                        opacity  = '0.4';
-                        statusDot= '⬜';
-                    } else if (isBlock) {
-                        bg       = '#f1f5f9';
-                        border   = '#cbd5e1';
-                        cursor   = 'not-allowed';
-                        opacity  = '0.55';
-                        statusDot= '🔒';
+                        bg = '#f1f5f9'; border = '#cbd5e1'; cursor = 'not-allowed'; opacity = '0.4';
+                        statusDot = '⬜';
+                        subLabel  = `<div style="font-size:0.7rem;color:#94a3b8;margin-top:2px;">${copy.slotPassed}</div>`;
                     } else if (isFull) {
-                        bg       = '#fee2e2';
-                        border   = '#fca5a5';
-                        cursor   = 'not-allowed';
-                        opacity  = '0.55';
-                        statusDot= '🔴';
-                    } else {
-                        bg       = '#dcfce7';
-                        border   = isSelected ? '#7c3aed' : '#86efac';
-                        cursor   = 'pointer';
-                        opacity  = '1';
-                        statusDot= '🟢';
+                        bg = '#fee2e2'; border = '#fca5a5'; cursor = 'not-allowed'; opacity = '0.7';
+                        statusDot = '🔴';
+                        subLabel  = `<div style="font-size:0.7rem;color:#ef4444;font-weight:600;margin-top:2px;">${copy.slotFull}</div>`;
+                    } else if (isPartial) {
+                        bg = '#fef3c7'; border = isSelected ? '#7c3aed' : '#fbbf24'; cursor = 'pointer'; opacity = '1';
+                        statusDot = '🟠';
+                        subLabel  = `<div style="font-size:0.7rem;color:#b45309;font-weight:600;margin-top:2px;">${slot.remaining} ${copy.slotLeft}</div>`;
+                    } else { // isOpen
+                        bg = '#dcfce7'; border = isSelected ? '#7c3aed' : '#86efac'; cursor = 'pointer'; opacity = '1';
+                        statusDot = '🟢';
+                        subLabel  = `<div style="font-size:0.7rem;color:#16a34a;font-weight:600;margin-top:2px;">${copy.slotAvailable}</div>`;
                     }
 
                     card.style.cssText = `
                         border-radius:8px; padding:0.55rem 0.5rem; border:2px solid ${border};
                         cursor:${cursor}; background:${bg}; opacity:${opacity};
                         text-align:center; transition:border-color 0.15s;
-                        ${isSelected && !isPast ? 'outline:2.5px solid #7c3aed; outline-offset:1px;' : ''}
+                        ${isSelected && isBookable ? 'outline:2.5px solid #7c3aed; outline-offset:1px;' : ''}
                     `;
-
                     const shortLabel = slot.start + ' – ' + slot.end;
-                    let subLabel = '';
-                    if (isPast) {
-                        subLabel = `<div style="font-size:0.7rem;color:#94a3b8;margin-top:2px;">Passed</div>`;
-                    } else if (isBlock) {
-                        subLabel = `<div style="font-size:0.7rem;color:#94a3b8;margin-top:2px;">Blocked</div>`;
-                    } else if (isFull) {
-                        subLabel = `<div style="font-size:0.7rem;color:#ef4444;margin-top:2px;">Full</div>`;
-                    } else if (isAvail) {
-                        const seatsTxt = slot.remaining < slot.max_capacity
-                            ? `${slot.remaining} left`
-                            : 'Available';
-                        subLabel = `<div style="font-size:0.7rem;color:#16a34a;font-weight:600;margin-top:2px;">${seatsTxt}</div>`;
-                    }
                     card.innerHTML = `<div style="font-size:0.78rem;font-weight:700;color:#1e293b;">${statusDot} ${shortLabel}</div>${subLabel}`;
 
-                    if (isAvail) {
+                    if (isBookable) {
                         card.addEventListener('click', () => selectSlot(slot.id, slot.label, card));
-                    } else if (!isPast && (isBlock || isFull) && isSelected) {
-                        // Selected slot became unavailable during polling
+                    } else if (isSelected) {
+                        // The slot the citizen had selected just became full/passed during polling.
+                        selectionLost = true;
                         document.getElementById('selectedSlotId').value = '';
                         document.getElementById('selectedSlotLabel').style.display = 'none';
+                        document.getElementById('numPersonsSection').style.display = 'none';
                         document.getElementById('btnConfirmMeeting').disabled = true;
-                        msg.innerHTML = '<span style="color:#dc2626;">⚠ ' + copy.slotSelectedGone + '</span>';
-                    } else if (isPast && isSelected) {
-                        // Selected slot passed while user was still on the form
-                        document.getElementById('selectedSlotId').value = '';
-                        document.getElementById('selectedSlotLabel').style.display = 'none';
-                        document.getElementById('btnConfirmMeeting').disabled = true;
-                        msg.innerHTML = '<span style="color:#dc2626;">⚠ ' + copy.slotSelectedPast + '</span>';
+                        msg.innerHTML = '<span style="color:#dc2626;">⚠ ' +
+                            (isPast ? copy.slotSelectedPast : copy.slotSelectedGone) + '</span>';
                     }
                     grid.appendChild(card);
                 });
 
+                // Decide final availability state from what is actually bookable now
+                // (accounts for today's past slots that the backend can't know about).
+                if (bookableCount > 0) {
+                    noSlotsAvailable = false;
+                    if (!selectionLost) msg.textContent = copy.slotHint;
+                } else {
+                    noSlotsAvailable = true;
+                    document.getElementById('btnConfirmMeeting').disabled = false;
+                    if (!selectionLost) {
+                        msg.innerHTML = '<span style="color:#b45309;">⚠ ' + copy.slotAllFull + '</span> ' + copy.slotNoneHint;
+                    }
+                }
+
+                slotPickerFirstLoad = false;
+
             } catch (e) {
-                if (isFirstLoad) {
-                    const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
+                if (slotPickerFirstLoad) {
                     msg.textContent = copy.slotFail;
                     document.getElementById('btnConfirmMeeting').disabled = false;
+                    slotPickerFirstLoad = false;
                 }
             }
         }

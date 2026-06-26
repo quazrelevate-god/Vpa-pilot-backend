@@ -82,6 +82,23 @@ async def get_available_slots(
         return JSONResponse({"available": False, "reason": "ERROR", "message": str(e), "slots": []}, status_code=500)
 
 
+@router.get("/open-dates")
+async def get_open_dates_public(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public: list future dates that are open AND have at least one non-blocked slot.
+    Used by the citizen form date picker. No auth required.
+
+    Response: [ { "date": "2026-06-29", "date_label": "29 Jun 2026" }, ... ]
+    """
+    try:
+        result = await scheduling_service.list_open_dates_public(db)
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # ── Admin: open a date ────────────────────────────────────────────────────────
 
 @router.post("/admin/open-date")

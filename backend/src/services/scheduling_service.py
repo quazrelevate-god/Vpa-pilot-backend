@@ -203,6 +203,10 @@ class SchedulingService:
         slot_list = []
         any_available = False
         for s in slots:
+            # Citizen form only shows slots the PA has made available.
+            # BLOCKED slots are hidden entirely.
+            if s.status == "BLOCKED":
+                continue
             remaining   = s.max_capacity - s.booked_count
             is_bookable = s.status == "AVAILABLE" and remaining > 0
             if is_bookable:
@@ -221,11 +225,39 @@ class SchedulingService:
             })
 
         return {
-            "available":    any_available,
-            "date":         target_date.isoformat(),
-            "date_label":   target_date.strftime("%d %b %Y"),
-            "slots":        slot_list,
+            "available":      any_available,          # at least one bookable slot
+            "has_open_slots": len(slot_list) > 0,     # any non-blocked slot exists
+            "date":           target_date.isoformat(),
+            "date_label":     target_date.strftime("%d %b %Y"),
+            "slots":          slot_list,
         }
+
+    # ── Citizen: list open dates (public, no auth) ───────────────────────────
+
+    async def list_open_dates_public(self, db: AsyncSession) -> List[Dict]:
+        """
+        Return future dates that are open AND have at least one non-blocked slot.
+        Used by the citizen form date picker so it only offers real dates.
+        """
+        result = await db.execute(
+            select(MLADailyAvailability)
+            .where(MLADailyAvailability.status == "ACTIVE")
+            .where(MLADailyAvailability.date   >= date.today())
+            .order_by(MLADailyAvailability.date)
+        )
+        dates: List[Dict] = []
+        for a in result.scalars().all():
+            non_blocked = await db.scalar(
+                select(func.count(AppointmentSlot.id))
+                .where(AppointmentSlot.availability_id == a.id)
+                .where(AppointmentSlot.status != "BLOCKED")
+            ) or 0
+            if non_blocked > 0:
+                dates.append({
+                    "date":       a.date.isoformat(),
+                    "date_label": a.date.strftime("%d %b %Y"),
+                })
+        return dates
 
     # ── Book a slot (concurrency-safe) ───────────────────────────────────────
 
