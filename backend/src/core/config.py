@@ -86,10 +86,11 @@ class Settings(BaseSettings):
 
     # Remote file storage (MinIO on VPS). Leave FILE_STORAGE_ENDPOINT unset
     # to use local disk (default when FastAPI itself runs on the VPS).
-    FILE_STORAGE_ENDPOINT: Optional[str] = None   # e.g. http://YOUR_VPS_IP:9000
+    FILE_STORAGE_ENDPOINT: Optional[str] = None   # e.g. http://127.0.0.1:9000
     FILE_STORAGE_ACCESS_KEY: str = ""
     FILE_STORAGE_SECRET_KEY: str = ""
     FILE_STORAGE_BUCKET: str = "vpa-uploads"
+    FILE_STORAGE_PUBLIC_URL: Optional[str] = None  # e.g. https://namkural.in/storage
 
     # MLA Profile (used by seed_mla.py for initial production setup)
     MLA_NAME: str = "Default MLA"

@@ -68,14 +68,11 @@ def save_file(data: bytes, relative_path: str, content_type: str = None) -> str:
 def get_file_url(storage_path: str) -> str:
     """
     Return a URL to serve the file.
-    MinIO: returns a presigned URL (direct, time-limited, no auth needed).
+    MinIO: returns a presigned URL routed through nginx (HTTPS-safe).
     Local: returns /api/files/... path (goes through authenticated endpoint).
     """
     endpoint = getattr(settings, "FILE_STORAGE_ENDPOINT", None)
     if endpoint:
-        # Normalize: strip any leading "uploads/" so old DB records
-        # (uploads/audio/...) and new ones (audio/...) both resolve to
-        # the same MinIO key.
         key = storage_path.replace("\\", "/")
         if key.startswith("uploads/"):
             key = key[len("uploads/"):]
@@ -85,14 +82,23 @@ def get_file_url(storage_path: str) -> str:
                 url = client.generate_presigned_url(
                     "get_object",
                     Params={"Bucket": _bucket(), "Key": key},
-                    ExpiresIn=86400,  # 24 hours
+                    ExpiresIn=86400,
                 )
+                public_url = getattr(settings, "FILE_STORAGE_PUBLIC_URL", None)
+                if public_url:
+                    from urllib.parse import urlparse, urlunparse
+                    parsed = urlparse(url)
+                    pub = urlparse(public_url)
+                    # Replace scheme+host+port, rewrite path from /bucket/key to /proxy-prefix/key
+                    old_path = f"/{_bucket()}/"
+                    new_path = pub.path.rstrip("/") + "/"
+                    path = parsed.path.replace(old_path, new_path, 1)
+                    url = urlunparse((pub.scheme, pub.netloc, path, parsed.params, parsed.query, parsed.fragment))
                 return url
             except Exception:
                 pass
         return f"{endpoint}/{_bucket()}/{key}"
     else:
-        # Local disk — serve via authenticated /api/files/ endpoint
         p = storage_path.replace("\\", "/")
         idx = p.find("uploads/")
         rel = p[idx + len("uploads/"):] if idx != -1 else p
