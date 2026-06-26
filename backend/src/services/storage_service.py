@@ -89,7 +89,6 @@ def get_file_url(storage_path: str) -> str:
                     from urllib.parse import urlparse, urlunparse
                     parsed = urlparse(url)
                     pub = urlparse(public_url)
-                    # Replace scheme+host+port, rewrite path from /bucket/key to /proxy-prefix/key
                     old_path = f"/{_bucket()}/"
                     new_path = pub.path.rstrip("/") + "/"
                     path = parsed.path.replace(old_path, new_path, 1)
