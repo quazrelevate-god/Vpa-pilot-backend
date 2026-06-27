@@ -42,8 +42,10 @@ async def login_submit(request: Request, username: str = Form(...), password: st
 
 @router.get("/logout", include_in_schema=False)
 async def logout():
-    response = RedirectResponse(url="/auth/login", status_code=302)
-    response.delete_cookie("dash_session")
+    # Redirect to Next.js login page (not the Jinja2 /auth/login backend page)
+    response = RedirectResponse(url="/login", status_code=302)
+    # Attributes must exactly match how the cookie was set, or browsers won't clear it
+    response.delete_cookie("dash_session", path="/", httponly=True, samesite="lax")
     return response
 
 

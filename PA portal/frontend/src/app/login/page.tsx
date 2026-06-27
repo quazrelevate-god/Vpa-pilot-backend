@@ -69,13 +69,15 @@ export default function LoginPage() {
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Username
               </label>
-              <Input name="username" required autoFocus placeholder="Enter your username" />
+              <Input name="username" required autoFocus placeholder="Enter your username"
+                onChange={() => setError(null)} />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Password
               </label>
-              <Input type="password" name="password" required placeholder="Enter your password" />
+              <Input type="password" name="password" required placeholder="Enter your password"
+                onChange={() => setError(null)} />
             </div>
             <Button type="submit" disabled={submitting} size="lg" className="mt-2 w-full">
               {submitting ? "Signing in…" : "Sign In"}
