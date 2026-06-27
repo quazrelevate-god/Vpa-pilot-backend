@@ -98,17 +98,18 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
     )
 
     attachments = []
+    audio_url = None
     if appt:
+        from src.services.storage_service import get_file_url
         for a in appt.attachments:
-            p = (a.storage_url or "").replace("\\", "/")
-            idx = p.find("uploads/")
-            url = "/static/" + p[idx:] if idx != -1 else "/static/" + p
             attachments.append({
-                "url":  url,
+                "url":  get_file_url(a.storage_url),
                 "type": a.attachment_type,
                 "mime": a.mime_type,
                 "name": Path(a.storage_url).name if a.storage_url else "",
             })
+        if appt.audio_recording_url:
+            audio_url = get_file_url(appt.audio_recording_url)
 
     row.update({
         "description": _decode(appt.encrypted_grievance) if (appt and appt.encrypted_grievance) else None,
@@ -130,6 +131,7 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
         "forwarded_by":       t.forwarded_by,
         "forwarded_notes":    t.forwarded_notes,
         "attachments":        attachments,
+        "audio_url":          audio_url,
         "events":             [_serialize_event(e) for e in t.events],
     })
     return row
