@@ -14,10 +14,17 @@ export function middleware(req: NextRequest) {
 
   const session = req.cookies.get("dash_session");
 
-  // Already logged in → skip login page, go straight to dashboard
+  // Already logged in → skip login page, go straight to appointments
   if (pathname === "/login" && session) {
     const url = req.nextUrl.clone();
-    url.pathname = "/overview";
+    url.pathname = "/appointments";
+    return NextResponse.redirect(url);
+  }
+
+  // /dashboard is a common guess — redirect to the actual appointments section
+  if (pathname === "/dashboard" || pathname === "/dashboard/") {
+    const url = req.nextUrl.clone();
+    url.pathname = session ? "/appointments" : "/login";
     return NextResponse.redirect(url);
   }
 
@@ -33,6 +40,6 @@ export const config = {
   matcher: [
     "/overview/:path*", "/appointments/:path*", "/tickets/:path*",
     "/referrals/:path*", "/scheduling/:path*", "/operations/:path*",
-    "/login",
+    "/login", "/dashboard", "/dashboard/:path*",
   ],
 };

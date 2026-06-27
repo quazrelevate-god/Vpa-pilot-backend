@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
-// The middleware decides whether the user lands on /login or /overview based
-// on the dash_session cookie. This route just hands off.
+// Root always goes to appointments — middleware handles auth guard.
+// Logged-out users are intercepted by middleware and sent to /login.
 export default function Home() {
-  redirect("/overview");
+  redirect("/appointments");
 }
