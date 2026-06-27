@@ -24,9 +24,10 @@
             background: #ffffff;
             min-height: 100vh;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
-            padding: 2rem 1rem;
+            /* extra top padding clears the fixed language bar */
+            padding: 4.25rem 0.75rem 2rem;
             color: #1f2937;
         }
 
@@ -91,67 +92,47 @@
             padding: 1.5rem;
         }
 
-        /* Language Switcher Styling */
-        .lang-container {
+        /* ── Sticky language switch (segmented pills) ─────────────────────── */
+        .lang-bar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            padding: 0.5rem 0.75rem;
+            background: rgba(255, 255, 255, 0.96);
+            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .lang-seg {
             display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: rgba(0, 0, 0, 0.15);
-            padding: 0.35rem 1rem;
-            border-radius: 50px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            position:absolute;
-            top: 10px;
-            right: 10px;
+            gap: 4px;
+            background: #e8edf2;
+            border-radius: 999px;
+            padding: 4px;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
         }
 
-        .lang-text {
-            color: #ffffff;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .switch-wrapper {
-            position: relative;
-            display: inline-block;
-            width: 36px;
-            height: 20px;
-        }
-
-        .switch-wrapper input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
+        .lang-seg button {
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            font-size: clamp(0.95rem, 3.6vw, 1.05rem);
+            font-weight: 700;
+            color: #475569;
+            padding: 0.5rem 1.5rem;
+            border-radius: 999px;
             cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(0,0,0,0.25);
-            transition: .3s;
-            border-radius: 20px;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+            transition: all 0.15s ease;
+            min-width: 92px;
         }
 
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 14px;
-            width: 14px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .3s;
-            border-radius: 50%;
-        }
-
-        input:checked + .slider {
-            background-color: rgba(255,255,255,0.3);
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(16px);
+        .lang-seg button.active {
+            background: rgb(0, 135, 4);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(0, 135, 4, 0.35);
         }
 
         /* UI Form Functional Elements */
@@ -185,18 +166,18 @@
         }
 
         .field-group {
-            margin-bottom: 1.25rem;
+            margin-bottom: 1.4rem;
         }
 
         .label-container {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.55rem;
         }
 
         label {
-            font-size: 0.87rem;
+            font-size: 0.95rem;
             font-weight: 600;
             color: #1e40af;
         }
@@ -221,8 +202,8 @@
             background: rgba(255, 255, 255, 0.5);
             border: 1.5px solid rgba(59, 130, 246, 0.45);
             border-radius: 0.75rem;
-            padding: 0.75rem 1rem;
-            font-size: 0.95rem;
+            padding: 0.8rem 1rem;
+            font-size: 1rem;   /* 16px — stops iOS auto-zoom on focus */
             color: #1f2937;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
@@ -393,6 +374,119 @@
             color: #9ca3af;
         }
 
+        /* ── Proceed choice (inline, modular) ──────────────────────────────── */
+        .proceed-heading {
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: #0f172a;
+            text-align: center;
+            margin-bottom: 0.9rem;
+        }
+
+        .slots-alert {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.7rem;
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.25rem;
+        }
+        .slots-alert__icon {
+            flex-shrink: 0;
+            width: 30px; height: 30px;
+            border-radius: 9px;
+            display: grid; place-items: center;
+            background: #fef3c7;
+            color: #b45309;
+            font-size: 0.95rem;
+        }
+        .slots-alert__text {
+            font-size: 0.84rem;
+            line-height: 1.55;
+            color: #92400e;
+        }
+        .slots-alert__text strong { color: #78350f; font-weight: 700; }
+
+        .choice-card {
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+            width: 100%;
+            padding: 1rem 1.1rem;
+            border: 1.5px solid #e5e9f0;
+            border-radius: 14px;
+            background: #ffffff;
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+        }
+        .choice-card:hover  { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10); }
+        .choice-card:active { transform: translateY(0) scale(0.99); }
+        .choice-card__icon {
+            flex-shrink: 0;
+            width: 48px; height: 48px;
+            border-radius: 13px;
+            display: grid; place-items: center;
+            font-size: 1.5rem;
+        }
+        .choice-card__title { font-weight: 800; font-size: 1.02rem; line-height: 1.2; display: block; }
+        .choice-card__sub   { font-size: 0.8rem; color: #64748b; margin-top: 3px; display: block; }
+
+        .choice-card--meeting  { border-color: #ddd6fe; }
+        .choice-card--meeting:hover  { border-color: #a78bfa; }
+        .choice-card--meeting  .choice-card__icon  { background: #ede9fe; }
+        .choice-card--meeting  .choice-card__title { color: #6d28d9; }
+
+        .choice-card--petition { border-color: #bfdbfe; }
+        .choice-card--petition:hover { border-color: #60a5fa; }
+        .choice-card--petition .choice-card__icon  { background: #dbeafe; }
+        .choice-card--petition .choice-card__title { color: #1d4ed8; }
+
+        .choice-card--waitlist { border-color: #fde68a; }
+        .choice-card--waitlist:hover { border-color: #fbbf24; }
+        .choice-card--waitlist .choice-card__icon  { background: #fef3c7; }
+        .choice-card--waitlist .choice-card__title { color: #b45309; }
+
+        /* Recommended action gets a stronger frame + tint */
+        .choice-card--primary { border-width: 2px; }
+        .choice-card--meeting.choice-card--primary  { border-color: #a78bfa; background: linear-gradient(135deg, #faf5ff, #f5f3ff); }
+        .choice-card--petition.choice-card--primary { border-color: #60a5fa; background: linear-gradient(135deg, #eff6ff, #eef5ff); }
+
+        /* ── Slot cards (modular) ──────────────────────────────────────────── */
+        .slot-card {
+            border-radius: 12px;
+            padding: 0.7rem 0.5rem;
+            border: 1.5px solid #e5e9f0;
+            background: #ffffff;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+        }
+        .slot-card__time { font-size: 0.86rem; font-weight: 700; color: #0f172a; }
+        .slot-card__pill {
+            display: inline-block;
+            margin-top: 5px;
+            font-size: 0.66rem;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 999px;
+        }
+        .slot-card--open    { border-color: #86efac; background: #f0fdf4; }
+        .slot-card--open:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(22,163,74,0.16); border-color: #4ade80; }
+        .slot-card--open    .slot-card__pill { background: #dcfce7; color: #16a34a; }
+        .slot-card--partial { border-color: #fcd34d; background: #fffbeb; }
+        .slot-card--partial:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(217,119,6,0.16); border-color: #fbbf24; }
+        .slot-card--partial .slot-card__pill { background: #fef3c7; color: #b45309; }
+        .slot-card--full    { border-color: #fca5a5; background: #fef2f2; cursor: not-allowed; opacity: 0.9; }
+        .slot-card--full    .slot-card__pill { background: #fee2e2; color: #dc2626; }
+        .slot-card--past    { border-color: #e5e9f0; background: #f8fafc; cursor: not-allowed; opacity: 0.5; }
+        .slot-card--past    .slot-card__pill { background: #e2e8f0; color: #94a3b8; }
+        .slot-card--selected { outline: 2.5px solid #7c3aed; outline-offset: 1px; border-color: #7c3aed; }
+
         .glass-field:focus {
             background: rgba(255, 255, 255, 0.9);
             border-color: #3b82f6;
@@ -457,25 +551,29 @@
             align-items: center;
         }
 
-        /* OTP Box Grid */
+        /* OTP Box Grid — boxes get their own full-width row,
+           the Verify button drops to its own row below (responsive). */
         .otp-row {
             display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.6rem;
         }
 
         .otp-boxes {
             display: flex;
-            gap: 0.5rem;
-            flex: 1;
+            gap: 0.4rem;
+            width: 100%;
+            justify-content: space-between;
         }
 
         .otp-box {
-            width: 100%;
+            flex: 1 1 0;
+            min-width: 0;
+            max-width: 54px;
             aspect-ratio: 1;
-            max-width: 52px;
             text-align: center;
-            font-size: 1.4rem;
+            font-size: clamp(1.1rem, 6vw, 1.5rem);
             font-weight: 700;
             background: rgba(255, 255, 255, 0.5);
             border: 2px solid rgba(59, 130, 246, 0.45);
@@ -484,6 +582,12 @@
             transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
             outline: none;
             caret-color: transparent;
+        }
+
+        /* Verify button fills its own row under the boxes */
+        .otp-row > .btn-inline-action {
+            width: 100%;
+            padding: 0.7rem 1rem;
         }
 
         .otp-box:focus {
@@ -722,13 +826,22 @@
             }
             /* OTP boxes slightly smaller */
             .otp-box {
-                max-width: 42px;
-                font-size: 1.2rem;
+                max-width: 46px;
             }
             /* Consent dialog padding tighter */
             #consentOverlay > div {
                 padding: 1.1rem !important;
             }
+            /* Tighter form padding on small phones */
+            .form-body { padding: 1.25rem !important; }
+            /* Smaller language pills so both fit comfortably */
+            .lang-seg button { padding: 0.45rem 1.1rem; min-width: 84px; }
+        }
+
+        /* Big green header title scales with screen width */
+        .header-center h2 {
+            font-size: clamp(1.6rem, 8vw, 2.5rem) !important;
+            padding: 0.75rem 1rem !important;
         }
 
         /* Success Message Layout Modal */
@@ -816,22 +929,19 @@
 </head>
 <body>
 
+    <!-- Sticky language switch — always visible at the top -->
+    <div class="lang-bar">
+        <div class="lang-seg" role="group" aria-label="Language">
+            <button type="button" id="langBtnEn" onclick="switchLocalization(false)">English</button>
+            <button type="button" id="langBtnTa" onclick="switchLocalization(true)">தமிழ்</button>
+        </div>
+    </div>
+
     <div class="main-card">
         <!-- Header View Block -->
         <div class="header-bar">
-            
             <div class="header-center">
                 <h2 id="lbl-portal-title">Grievance Registration</h2>
-                
-                <!-- Interface Localizer Switch -->
-                <div class="lang-container">
-                    <span class="lang-text">EN</span>
-                    <label class="switch-wrapper">
-                        <input type="checkbox" id="languageToggle" onchange="switchLocalization(this.checked)" checked>
-                        <span class="slider"></span>
-                    </label>
-                    <span class="lang-text">தமிழ்</span>
-                </div>
             </div>
         </div>
 
@@ -1000,50 +1110,19 @@
                     </div>
                 </div>
 
-                <!-- Single submit trigger button -->
-                <div class="action-strip" style="margin-top: 1.5rem;">
-                    <button type="button" id="btnSubmitTrigger" disabled class="base-btn btn-submit-main"
-                        onclick="openActionChoiceDialog()"
-                        style="width:100%; background: rgba(59, 130, 246, 0.85);">
-                        <i class="fa-solid fa-paper-plane"></i> <span id="lbl-btn-submit-trigger">Submit</span>
-                    </button>
+                <!-- Inline action choice — revealed once OTP is verified.
+                     Buttons render dynamically based on meeting-slot availability. -->
+                <div id="actionChoiceInline" style="display:none; margin-top:1.5rem;">
+                    <div id="lbl-choice-heading" style="font-weight:700; font-size:1rem; color:#1e293b; margin-bottom:0.85rem; text-align:center;">How would you like to proceed?</div>
+                    <div id="choiceButtons" style="display:flex; flex-direction:column; gap:0.75rem;"></div>
                 </div>
 
-                <!-- Hidden wiring buttons (controlled by choice dialog) -->
+                <!-- Hidden wiring buttons (driven by the inline choice) -->
                 <button type="button" id="btnPetition" style="display:none;" onclick="submitForm(false)"></button>
                 <button type="button" id="btnMeeting"  style="display:none;" onclick="openSlotPicker()"></button>
+                <button type="button" id="btnWaitlist" style="display:none;" onclick="startWaitlist()"></button>
 
             </form>
-        </div>
-    </div>
-
-    <!-- Action Choice Dialog — shown when citizen taps Submit -->
-    <div id="actionChoiceOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
-        <div style="background:#fff; border-radius:16px; max-width:380px; width:100%; padding:1.5rem; box-shadow:0 20px 60px rgba(0,0,0,0.25);">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem;">
-                <span id="lbl-choice-title" style="font-weight:800; font-size:1rem; color:#1e293b;">How would you like to proceed?</span>
-                <button type="button" onclick="closeActionChoiceDialog()" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:1.2rem;">&#x2715;</button>
-            </div>
-            <!-- Petition option -->
-            <button type="button" onclick="chooseAction('petition')"
-                style="width:100%; display:flex; align-items:flex-start; gap:0.85rem; padding:0.9rem 1rem; border:2px solid rgba(59,130,246,0.35); border-radius:12px; background:rgba(59,130,246,0.04); cursor:pointer; margin-bottom:0.75rem; text-align:left; transition:border-color 0.15s;"
-                onmouseover="this.style.borderColor='rgba(59,130,246,0.7)'" onmouseout="this.style.borderColor='rgba(59,130,246,0.35)'">
-                <span style="font-size:1.5rem; flex-shrink:0;">📄</span>
-                <div>
-                    <div id="lbl-choice-petition" style="font-weight:700; font-size:0.9rem; color:#1e40af;">Submit Petition</div>
-                    <div id="lbl-choice-petition-sub" style="font-size:0.78rem; color:#6b7280; margin-top:2px;">Submit your petition for review</div>
-                </div>
-            </button>
-            <!-- Meeting option -->
-            <button type="button" onclick="chooseAction('meeting')"
-                style="width:100%; display:flex; align-items:flex-start; gap:0.85rem; padding:0.9rem 1rem; border:2px solid rgba(139,92,246,0.35); border-radius:12px; background:rgba(139,92,246,0.04); cursor:pointer; text-align:left; transition:border-color 0.15s;"
-                onmouseover="this.style.borderColor='rgba(139,92,246,0.7)'" onmouseout="this.style.borderColor='rgba(139,92,246,0.35)'">
-                <span style="font-size:1.5rem; flex-shrink:0;">🤝</span>
-                <div>
-                    <div id="lbl-choice-meeting" style="font-weight:700; font-size:0.9rem; color:#6d28d9;">Request Meeting</div>
-                    <div id="lbl-choice-meeting-sub" style="font-size:0.78rem; color:#6b7280; margin-top:2px;">Book a slot to meet in person</div>
-                </div>
-            </button>
         </div>
     </div>
 
@@ -1352,6 +1431,15 @@
             runtimeActiveLanguage = isChecked ? 'ta' : 'en';
             // Persist choice so the success page can read it and stay in sync
             try { localStorage.setItem('vpa_lang', runtimeActiveLanguage); } catch(e) {}
+
+            // Update the segmented language pills' active state
+            const enBtn = document.getElementById('langBtnEn');
+            const taBtn = document.getElementById('langBtnTa');
+            if (enBtn && taBtn) {
+                enBtn.classList.toggle('active', !isChecked);
+                taBtn.classList.toggle('active', isChecked);
+            }
+
             const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
 
             // Header & section titles
@@ -1368,15 +1456,11 @@
             _setText('lbl-upload-text', copy.uploadText);
             _setText('lbl-upload-hint', copy.uploadHint);
 
-            // Submit buttons
-            _setText('lbl-btn-petition',        copy.btnPetition);
-            _setText('lbl-btn-meeting',         copy.btnMeeting);
-            _setText('lbl-btn-submit-trigger',  copy.btnSubmit);
-            _setText('lbl-choice-title',        copy.choiceTitle);
-            _setText('lbl-choice-petition',     copy.btnPetition);
-            _setText('lbl-choice-petition-sub', copy.choicePetitionSub);
-            _setText('lbl-choice-meeting',      copy.btnMeeting);
-            _setText('lbl-choice-meeting-sub',  copy.choiceMeetingSub);
+            // Re-render the inline proceed-choice in the new language (if it's showing)
+            const _choiceBox = document.getElementById('actionChoiceInline');
+            if (_choiceBox && _choiceBox.style.display !== 'none' && typeof renderChoiceButtons === 'function') {
+                renderChoiceButtons();
+            }
 
             // Category dropdown
             _setText('lbl-category', copy.category);
@@ -1600,7 +1684,8 @@
                     setOtpBoxState('valid', copy.otpSuccess);
                     verifyBtn.innerHTML = copy.verified;
                     document.querySelectorAll('.otp-box').forEach(b => b.disabled = true);
-                    document.getElementById('btnSubmitTrigger').disabled = false;
+                    // Reveal the inline proceed-choice (Meeting / Petition / Waitlist)
+                    revealActionChoice();
                 } else {
                     const err = await response.json();
                     showOtpFieldError(err.detail || copy.errOtp);
@@ -1772,13 +1857,33 @@
             // Close consent dialog immediately when submission starts
             document.getElementById('consentOverlay').style.display = 'none';
 
-            const btnTrigger = document.getElementById('btnSubmitTrigger');
-            const btnConfirm = document.getElementById('btnConfirmMeeting');
-            btnTrigger.disabled = true;
+            const btnConfirm   = document.getElementById('btnConfirmMeeting');
+            const choiceWrap   = document.getElementById('choiceButtons');
+            const choiceHTML   = choiceWrap ? choiceWrap.innerHTML : '';
+            const pickerOpen   = document.getElementById('slotPickerSection').style.display !== 'none';
+
+            // Spinner: on the slot-picker's Confirm button when booking a meeting,
+            // otherwise replace the inline choice with a "submitting" indicator.
+            let spinnerOn = null, spinnerOrig = '';
             if (btnConfirm) btnConfirm.disabled = true;
-            const clickedBtn = scheduleMeeting ? (btnConfirm || btnTrigger) : btnTrigger;
-            const originalHTML = clickedBtn.innerHTML;
-            clickedBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + copy.submitting;
+            if (choiceWrap) choiceWrap.querySelectorAll('button').forEach(b => b.disabled = true);
+
+            if (scheduleMeeting && pickerOpen && btnConfirm) {
+                spinnerOn = btnConfirm; spinnerOrig = btnConfirm.innerHTML;
+                btnConfirm.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + copy.submitting;
+            } else if (choiceWrap) {
+                choiceWrap.innerHTML = '<div style="text-align:center; padding:1rem; color:#6b7280; font-weight:700;">'
+                    + '<i class="fa-solid fa-spinner fa-spin"></i> ' + copy.submitting + '</div>';
+            }
+
+            const restoreButtons = () => {
+                if (spinnerOn) { spinnerOn.innerHTML = spinnerOrig; spinnerOn.disabled = false; }
+                if (choiceWrap) {
+                    choiceWrap.innerHTML = choiceHTML;
+                    choiceWrap.querySelectorAll('button').forEach(b => b.disabled = false);
+                }
+                if (btnConfirm) btnConfirm.disabled = false;
+            };
 
             try {
                 const response = await fetch('/api/v1/appointments/submit', {
@@ -1809,15 +1914,11 @@
                         if (btnConfirm) { btnConfirm.disabled = true; }
                         await loadSlots();
                     }
-                    btnTrigger.disabled = false;
-                    if (btnConfirm) { btnConfirm.disabled = false; }
-                    clickedBtn.innerHTML = originalHTML;
+                    restoreButtons();
                 }
             } catch (error) {
                 showOtpFieldError(copy.networkError);
-                btnTrigger.disabled = false;
-                if (btnConfirm) { btnConfirm.disabled = false; }
-                clickedBtn.innerHTML = originalHTML;
+                restoreButtons();
             }
         }
 
@@ -1896,6 +1997,8 @@
         }
 
         async function openSlotPicker() {
+            // One action at a time: hide the inline choice while the slot picker is open
+            document.getElementById('actionChoiceInline').style.display = 'none';
             document.getElementById('slotPickerSection').style.display = 'block';
             document.getElementById('selectedSlotId').value = '';
             document.getElementById('selectedSlotLabel').style.display = 'none';
@@ -1932,6 +2035,10 @@
             document.getElementById('numPersonsSection').style.display = 'none';
             document.getElementById('selNumPersons').value = '1';
             if (slotRefreshInterval) { clearInterval(slotRefreshInterval); slotRefreshInterval = null; }
+            // Bring back the inline choice (Meeting / Petition) when the picker closes
+            if (isSystemPhoneVerified) {
+                document.getElementById('actionChoiceInline').style.display = 'block';
+            }
         }
 
         async function loadSlots() {
@@ -1993,33 +2100,17 @@
                     if (isBookable) bookableCount++;
                     const isSelected = String(slot.id) === String(selectedId);
 
-                    let bg, border, cursor, opacity, statusDot, subLabel;
-                    if (isPast) {
-                        bg = '#f1f5f9'; border = '#cbd5e1'; cursor = 'not-allowed'; opacity = '0.4';
-                        statusDot = '⬜';
-                        subLabel  = `<div style="font-size:0.7rem;color:#94a3b8;margin-top:2px;">${copy.slotPassed}</div>`;
-                    } else if (isFull) {
-                        bg = '#fee2e2'; border = '#fca5a5'; cursor = 'not-allowed'; opacity = '0.7';
-                        statusDot = '🔴';
-                        subLabel  = `<div style="font-size:0.7rem;color:#ef4444;font-weight:600;margin-top:2px;">${copy.slotFull}</div>`;
-                    } else if (isPartial) {
-                        bg = '#fef3c7'; border = isSelected ? '#7c3aed' : '#fbbf24'; cursor = 'pointer'; opacity = '1';
-                        statusDot = '🟠';
-                        subLabel  = `<div style="font-size:0.7rem;color:#b45309;font-weight:600;margin-top:2px;">${slot.remaining} ${copy.slotLeft}</div>`;
-                    } else { // isOpen
-                        bg = '#dcfce7'; border = isSelected ? '#7c3aed' : '#86efac'; cursor = 'pointer'; opacity = '1';
-                        statusDot = '🟢';
-                        subLabel  = `<div style="font-size:0.7rem;color:#16a34a;font-weight:600;margin-top:2px;">${copy.slotAvailable}</div>`;
-                    }
+                    let stateClass, pillText;
+                    if (isPast)         { stateClass = 'slot-card--past';    pillText = copy.slotPassed; }
+                    else if (isFull)    { stateClass = 'slot-card--full';    pillText = copy.slotFull; }
+                    else if (isPartial) { stateClass = 'slot-card--partial'; pillText = slot.remaining + ' ' + copy.slotLeft; }
+                    else                { stateClass = 'slot-card--open';    pillText = copy.slotAvailable; }
 
-                    card.style.cssText = `
-                        border-radius:8px; padding:0.55rem 0.5rem; border:2px solid ${border};
-                        cursor:${cursor}; background:${bg}; opacity:${opacity};
-                        text-align:center; transition:border-color 0.15s;
-                        ${isSelected && isBookable ? 'outline:2.5px solid #7c3aed; outline-offset:1px;' : ''}
-                    `;
-                    const shortLabel = slot.start + ' – ' + slot.end;
-                    card.innerHTML = `<div style="font-size:0.78rem;font-weight:700;color:#1e293b;">${statusDot} ${shortLabel}</div>${subLabel}`;
+                    const selectedCls = (isSelected && isBookable) ? ' slot-card--selected' : '';
+                    card.className = 'slot-card ' + stateClass + selectedCls;
+                    card.innerHTML =
+                        `<div class="slot-card__time">${slot.start} – ${slot.end}</div>` +
+                        `<span class="slot-card__pill">${pillText}</span>`;
 
                     if (isBookable) {
                         card.addEventListener('click', () => selectSlot(slot.id, slot.label, card));
@@ -2061,11 +2152,10 @@
         }
 
         function selectSlot(slotId, label, cardEl) {
-            document.querySelectorAll('#slotGrid > div').forEach(c => {
-                c.style.outline = 'none';
+            document.querySelectorAll('#slotGrid .slot-card').forEach(c => {
+                c.classList.remove('slot-card--selected');
             });
-            cardEl.style.outline = '2.5px solid #7c3aed';
-            cardEl.style.outlineOffset = '1px';
+            cardEl.classList.add('slot-card--selected');
 
             document.getElementById('selectedSlotId').value          = slotId;
             document.getElementById('selectedSlotText').textContent   = label;
@@ -2075,23 +2165,78 @@
             document.getElementById('btnConfirmMeeting').disabled     = false;
         }
 
-        // ── Action choice dialog (petition vs meeting) ──────────────────────
+        // ── Inline action choice (Meeting / Petition / Waitlist) ────────────
 
-        function openActionChoiceDialog() {
-            document.getElementById('actionChoiceOverlay').style.display = 'flex';
-        }
+        let meetingAvailable = null;   // cached availability boolean
 
-        function closeActionChoiceDialog() {
-            document.getElementById('actionChoiceOverlay').style.display = 'none';
-        }
-
-        function chooseAction(type) {
-            closeActionChoiceDialog();
-            if (type === 'petition') {
-                document.getElementById('btnPetition').click();
-            } else {
-                document.getElementById('btnMeeting').click();
+        async function revealActionChoice() {
+            // Check whether any meeting slot is bookable, then render the choice.
+            try {
+                const res  = await fetch('/api/v1/scheduling/meeting-availability');
+                const data = await res.json();
+                meetingAvailable = !!data.available;
+            } catch (e) {
+                meetingAvailable = true;   // fail-safe: never wrongly hide meetings
             }
+            renderChoiceButtons();
+            const box = document.getElementById('actionChoiceInline');
+            box.style.display = 'block';
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function renderChoiceButtons() {
+            const ta   = runtimeActiveLanguage === 'ta';
+            const wrap = document.getElementById('choiceButtons');
+            document.getElementById('lbl-choice-heading').textContent =
+                ta ? 'எப்படி தொடர விரும்புகிறீர்கள்?' : 'How would you like to proceed?';
+
+            // Modular card builder (uses CSS component classes — no inline styling)
+            const card = (type, primary, emoji, title, sub, onclick) => `
+                <button type="button" class="choice-card choice-card--${type}${primary ? ' choice-card--primary' : ''}" onclick="${onclick}">
+                    <span class="choice-card__icon">${emoji}</span>
+                    <span>
+                        <span class="choice-card__title">${title}</span>
+                        <span class="choice-card__sub">${sub}</span>
+                    </span>
+                </button>`;
+
+            const meeting = (primary) => card('meeting', primary, '🤝',
+                ta ? 'அமைச்சரை நேரில் சந்திக்க' : 'Meet the Minister in person',
+                ta ? 'நேரத்தைத் தேர்ந்தெடுக்கவும்' : 'Book a time slot',
+                "document.getElementById('btnMeeting').click()");
+
+            const petition = (primary) => card('petition', primary, '📄',
+                ta ? 'மனுவை மட்டும் சமர்ப்பிக்க' : 'Submit petition only',
+                ta ? 'சந்திப்பு இல்லை — பதிவு மட்டும்' : 'No meeting — just register it',
+                "document.getElementById('btnPetition').click()");
+
+            const waitlist = (primary) => card('waitlist', primary, '⏳',
+                ta ? 'காத்திருப்பு பட்டியலில் சேர' : 'Join the waiting list',
+                ta ? 'இடம் கிடைத்ததும் தொடர்பு கொள்வோம்' : "We'll contact you when a slot opens",
+                "document.getElementById('btnWaitlist').click()");
+
+            // Professional notice shown only when no meeting slots remain
+            const fullNotice = `
+                <div class="slots-alert">
+                    <span class="slots-alert__icon"><i class="fa-solid fa-circle-info"></i></span>
+                    <div class="slots-alert__text">
+                        ${ta
+                            ? '<strong>தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.</strong> நீங்கள் உங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் உங்களைத் தொடர்பு கொள்வோம்.'
+                            : "<strong>All meeting slots are currently full.</strong> You can still submit your petition, or join the waiting list — we'll contact you as soon as a slot opens."}
+                    </div>
+                </div>`;
+
+            // Dynamic: meeting only when slots exist; otherwise notice + waitlist.
+            wrap.innerHTML = meetingAvailable
+                ? meeting(true) + petition(false)
+                : fullNotice + petition(true) + waitlist(false);
+        }
+
+        // Waitlist = request a meeting with no slot → backend puts it in the queue.
+        // Goes through the same consent step as a meeting.
+        function startWaitlist() {
+            noSlotsAvailable = true;   // lets submitForm(true) proceed without a slot
+            openConsentDialog();
         }
 
         // ── Consent dialog ─────────────────────────────────────────────────
@@ -2470,8 +2615,7 @@
             let savedLang = 'ta';
             try { savedLang = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
             const isTamil = savedLang === 'ta';
-            document.getElementById('languageToggle').checked = isTamil;
-            switchLocalization(isTamil);
+            switchLocalization(isTamil);   // also sets the active pill
             _drawFlatLine();
         })();
     </script>

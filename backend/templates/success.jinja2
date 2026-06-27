@@ -69,12 +69,27 @@
         }
 
         .token-display {
-            background: rgba(0, 135, 4, 0.88);
+            background: rgba(0, 135, 4, 0.88);  /* default green */
             color: white;
             padding: 1.25rem;
             border-radius: 14px;
             margin: 1.25rem 0;
             border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: background 0.2s;
+        }
+        /* Outcome-coloured token banners */
+        .token-display.t-meeting  { background: linear-gradient(135deg, #6d28d9, #4f46e5); } /* purple — meeting */
+        .token-display.t-petition { background: linear-gradient(135deg, #1d4ed8, #2563eb); } /* blue — petition */
+        .token-display.t-waiting  { background: linear-gradient(135deg, #d97706, #b45309); } /* amber — waiting list */
+        .token-display .token-kind {
+            font-size: 0.78rem;
+            font-weight: 700;
+            opacity: 0.92;
+            margin-bottom: 0.5rem;
+            display: inline-block;
+            padding: 0.15rem 0.6rem;
+            background: rgba(255,255,255,0.18);
+            border-radius: 999px;
         }
 
         .token-label {
@@ -317,7 +332,8 @@
         <p class="subtitle english" id="subtitle-en">Your grievance has been successfully registered</p>
         <p class="subtitle tamil" id="subtitle-ta">உங்கள் புகார் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது</p>
         
-        <div class="token-display">
+        <div class="token-display" id="token-display">
+            <div class="token-kind" id="token-kind" style="display:none;"></div>
             <div class="token-label english">Your Token Number</div>
             <div class="token-label tamil">உங்கள் டோக்கன் எண்</div>
             <div class="token-number" id="token-number">TKN-000</div>
@@ -521,6 +537,25 @@
         const tokenDisplay = `TKN${token}`;
         document.getElementById('token-number').textContent = tokenDisplay;
 
+        // Colour the token banner by outcome (meeting=purple, petition=blue, waiting=amber)
+        (function() {
+            const ta   = (document.body.classList.contains('tamil-mode'));
+            const td   = document.getElementById('token-display');
+            const kind = document.getElementById('token-kind');
+            let cls, labelEn, labelTa;
+            if (status === 'WAITING') {
+                cls = 't-waiting';  labelEn = '⏳ Waiting List'; labelTa = '⏳ காத்திருப்பு பட்டியல்';
+            } else if (status === 'AWAITING_REVIEW') {
+                cls = 't-petition'; labelEn = '📄 Petition';     labelTa = '📄 மனு';
+            } else {
+                cls = 't-meeting';  labelEn = '🤝 Meeting';      labelTa = '🤝 சந்திப்பு';
+            }
+            td.classList.add(cls);
+            kind.dataset.en = labelEn; kind.dataset.ta = labelTa;
+            kind.textContent = ta ? labelTa : labelEn;
+            kind.style.display = 'inline-block';
+        })();
+
         // Set name (URLSearchParams already decodes, no need for decodeURIComponent)
         document.getElementById('citizen-name').textContent = name;
 
@@ -617,6 +652,11 @@
                 document.body.classList.add('tamil-mode');
             } else {
                 document.body.classList.remove('tamil-mode');
+            }
+            // Keep the token-kind chip in the chosen language
+            const kind = document.getElementById('token-kind');
+            if (kind && kind.dataset.en) {
+                kind.textContent = isTamil ? kind.dataset.ta : kind.dataset.en;
             }
             try { localStorage.setItem('vpa_lang', isTamil ? 'ta' : 'en'); } catch(e) {}
         }

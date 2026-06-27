@@ -259,6 +259,33 @@ class SchedulingService:
                 })
         return dates
 
+    async def has_meeting_availability(self, db: AsyncSession) -> Dict:
+        """
+        Returns whether ANY bookable meeting slot exists across all open future
+        dates (status AVAILABLE and remaining capacity > 0). Used by the citizen
+        form to decide whether to offer the 'Meet the Minister' button at all.
+        Single efficient query — no per-date loop. Excludes today's slots whose
+        start time has already passed (IST), so the option never shows when only
+        past slots remain.
+        """
+        from sqlalchemy import and_, or_
+        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        today   = now_ist.date()
+        now_t   = now_ist.time()
+        count = await db.scalar(
+            select(func.count(AppointmentSlot.id))
+            .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
+            .where(MLADailyAvailability.status == "ACTIVE")
+            .where(MLADailyAvailability.date   >= today)
+            .where(AppointmentSlot.status      == "AVAILABLE")
+            .where(AppointmentSlot.booked_count < AppointmentSlot.max_capacity)
+            .where(or_(
+                MLADailyAvailability.date > today,
+                and_(MLADailyAvailability.date == today, AppointmentSlot.start_time > now_t),
+            ))
+        ) or 0
+        return {"available": count > 0}
+
     # ── Book a slot (concurrency-safe) ───────────────────────────────────────
 
     async def book_slot(

@@ -99,6 +99,21 @@ async def get_open_dates_public(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@router.get("/meeting-availability")
+async def meeting_availability(db: AsyncSession = Depends(get_db)):
+    """
+    Public: whether ANY bookable meeting slot exists across open future dates.
+    Drives the citizen form's dynamic choice (show 'Meet the Minister' or not).
+
+    Response: { "available": true|false }
+    """
+    try:
+        return JSONResponse(await scheduling_service.has_meeting_availability(db))
+    except Exception as e:
+        # Fail safe: on error, assume available so we never wrongly block meetings.
+        return JSONResponse({"available": True, "error": str(e)})
+
+
 # ── Admin: open a date ────────────────────────────────────────────────────────
 
 @router.post("/admin/open-date")
