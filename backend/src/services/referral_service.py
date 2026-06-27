@@ -241,6 +241,12 @@ class ReferralService:
         avail = await db.get(ReferralAvailability, slot.availability_id)
         slot_date = avail.date
 
+        # Guard: never book a slot whose date has already passed. The citizen
+        # picker only shows future/today dates, but a stale slot_id must not be
+        # bookable directly.
+        if slot_date < date.today():
+            raise ValueError("That date has passed. Please pick an available date.")
+
         # Daily sequential token: YYYYMMDD * 100000 + n.
         # Advisory xact-lock keyed on the slot date serialises concurrent
         # bookings so two referrals can never share a token number.

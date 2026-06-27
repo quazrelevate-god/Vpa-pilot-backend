@@ -338,7 +338,7 @@ export default function ReferralsPage() {
                 </thead>
                 <tbody>
                   {bookings.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No referral bookings for this date.</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No referral bookings for this date.</td></tr>
                   ) : bookings.map(b => (
                     <tr key={b.id} className="border-t border-border/70 hover:bg-muted/30">
                       <td className="px-4 py-2.5 font-mono text-xs text-teal-600">{b.token}</td>

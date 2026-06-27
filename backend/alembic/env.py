@@ -30,6 +30,11 @@ from src.models.scheduling_models import (
     SlotBooking,
     RescheduleLog,
 )
+from src.models.referral_models import (
+    ReferralAvailability,
+    ReferralSlot,
+    ReferralBooking,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

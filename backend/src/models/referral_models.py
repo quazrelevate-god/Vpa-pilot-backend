@@ -14,7 +14,7 @@ Differences from petition scheduling:
   - Access is via a daily-reset QR (see referral_service.py), not OTP/QR-gatekeeper.
 """
 from sqlalchemy import (
-    Column, Integer, String, DateTime, Date, Time, ForeignKey, Index, UniqueConstraint,
+    Column, Integer, BigInteger, String, DateTime, Date, Time, ForeignKey, Index, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime, time
@@ -101,7 +101,7 @@ class ReferralBooking(Base):
 
     id                   = Column(Integer,    primary_key=True, autoincrement=True)
     slot_id              = Column(Integer,    ForeignKey("referral_slots.id", ondelete="CASCADE"), nullable=False)
-    token_number         = Column(Integer,    nullable=False, comment="Daily sequential token, e.g. 2026062900001")
+    token_number         = Column(BigInteger, nullable=False, comment="Daily sequential token, e.g. 2026062900001 — needs BIGINT (exceeds int32)")
     name                 = Column(String(150), nullable=False)
     mobile               = Column(String(15),  nullable=True)
     num_persons          = Column(Integer,    nullable=False, default=1, comment="1-3 persons")
