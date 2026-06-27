@@ -35,6 +35,7 @@ from src.models.referral_models import (
     ReferralSlot,
     ReferralBooking,
 )
+from src.models.ai_upload_models import AiUpload
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

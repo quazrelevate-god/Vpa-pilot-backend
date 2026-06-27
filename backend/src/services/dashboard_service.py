@@ -639,13 +639,18 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
             select(Ticket).where(Ticket.appointment_id == appointment_id)
         )
         if not existing_ticket.scalar_one_or_none():
-            # Create new ticket
+            # Create new ticket. Sequence = MAX existing suffix for the year + 1
+            # (NOT count+1, which collides whenever there is a gap). An advisory
+            # xact-lock keyed on the year serialises concurrent creations.
+            from sqlalchemy import text as _sa_text
             year = datetime.utcnow().year
-            count_q = await db.execute(
-                select(sa_func.count(Ticket.id))
-                .where(sa_func.extract("year", Ticket.created_at) == year)
+            await db.execute(_sa_text("SELECT pg_advisory_xact_lock(:k)"), {"k": 880000 + year})
+            max_tn = await db.scalar(
+                select(sa_func.max(Ticket.ticket_number))
+                .where(Ticket.ticket_number.like(f"TKT-{year}-%"))
             )
-            year_count = (count_q.scalar() or 0) + 1
+            # ticket numbers are zero-padded fixed width, so lexical max = numeric max
+            year_count = (int(max_tn.split("-")[-1]) if max_tn else 0) + 1
             current_time = datetime.utcnow()
             
             new_ticket = Ticket(

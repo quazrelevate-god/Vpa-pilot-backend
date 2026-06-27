@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  CalendarDays, LayoutDashboard, LogOut, Clock, Ticket, Landmark, Activity, UserPlus,
+  CalendarDays, LayoutDashboard, LogOut, Clock, Ticket, Landmark, Activity, UserPlus, Sparkles,
 } from "lucide-react";
 import { fetchTicketsOpenCount } from "@/lib/api";
 import { useLang } from "@/lib/lang-context";
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: "/appointments",  tKey: "nav.appointments", icon: CalendarDays },
   { href: "/scheduling",    tKey: "nav.scheduling",   icon: Clock },
   { href: "/referrals",     tKey: "nav.referrals",    icon: UserPlus },
+  { href: "/ai-uploads",    tKey: "nav.aiUploads",    icon: Sparkles },
 ];
 
 export default function Sidebar({ user = "admin" }: { user?: string }) {
