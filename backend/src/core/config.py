@@ -82,7 +82,7 @@ class Settings(BaseSettings):
 
     # File Upload Configuration
     MAX_FILE_SIZE_MB: int = 5              # max size per uploaded attachment
-    ALLOWED_FILE_EXTENSIONS: str = ".pdf,.jpg,.jpeg,.png"  # comma-separated
+    ALLOWED_FILE_EXTENSIONS: str = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"  # comma-separated
 
     # Remote file storage (MinIO on VPS). Leave FILE_STORAGE_ENDPOINT unset
     # to use local disk (default when FastAPI itself runs on the VPS).

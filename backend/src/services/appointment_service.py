@@ -4,6 +4,7 @@ Implements stateless identity gatekeeper pattern with brute-force protection.
 """
 import asyncio
 import hashlib
+import re
 import secrets
 import os
 import time
@@ -14,7 +15,7 @@ from pathlib import Path
 import httpx
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from src.core.config import settings
@@ -41,11 +42,17 @@ class AppointmentService:
     OTP_LENGTH = 6
     OTP_EXPIRY_MINUTES = 3
     MAX_OTP_ATTEMPTS = 3
+    MAX_ATTACHMENTS = 10  # cap files per citizen submission
     
     # File Upload Configuration
     UPLOAD_DIR = Path("uploads/attachments")
     ALLOWED_MIME_TYPES = {
-        'IMAGE': ['image/jpeg', 'image/png'],
+        # Phones send a range of image types: a single camera capture is usually
+        # JPEG, but multi-select from the iOS photo library sends HEIC/HEIF, and
+        # some Android browsers send WebP. All of these are accepted by Gemini's
+        # inline image input, so we accept and store them all.
+        'IMAGE': ['image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+                  'image/heic', 'image/heif'],
         'DOCUMENT': ['application/pdf'],
     }
     
@@ -101,7 +108,61 @@ class AppointmentService:
         # For now, return base64-encoded plaintext as placeholder
         import base64
         return base64.b64encode(plaintext.encode('utf-8')).decode('utf-8')
-    
+
+    @staticmethod
+    def _sanitize_filename(filename: str) -> str:
+        """
+        Strip any path components and unsafe characters from a client-supplied
+        filename before it is used to build a storage path. Prevents path
+        traversal (e.g. '../../etc/passwd') on the local-disk storage backend.
+        """
+        # Drop any directory component (handles both / and \ separators)
+        base = os.path.basename((filename or "").replace("\\", "/"))
+        # Keep only a conservative whitelist; collapse everything else to '_'
+        cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", base).strip("._") or "file"
+        return cleaned[:120]  # cap length
+
+    @staticmethod
+    async def _assign_daily_token(db: AsyncSession, utc_now: datetime) -> tuple[int, int]:
+        """
+        Generate the next daily token in YYYYMMDDNNNNN format, in IST.
+
+        Two guarantees over the previous COUNT-based logic:
+          1. The date prefix and the per-day counter reset use **IST** (the day
+             the citizen actually walked in), not UTC. Without this, every token
+             issued between IST-midnight and 05:30 IST carried the previous
+             calendar day's prefix and shared its counter.
+          2. A PostgreSQL transaction-level advisory lock keyed on the IST date
+             serialises concurrent submissions, so two citizens submitting in the
+             same instant can never receive the same token. The lock is released
+             automatically when the surrounding transaction commits/rolls back.
+
+        Returns:
+            (token_assigned, daily_sequence) where daily_sequence is the 1-based
+            counter used for the legacy slot_id column.
+        """
+        ist_now = utc_now + timedelta(hours=5, minutes=30)
+        ist_date = ist_now.date()
+        date_key = int(ist_date.strftime("%Y%m%d"))
+
+        # IST midnight expressed back in UTC, since created_at is stored in UTC.
+        ist_midnight_utc = datetime(
+            ist_date.year, ist_date.month, ist_date.day
+        ) - timedelta(hours=5, minutes=30)
+
+        # Serialise token assignment for this IST day across concurrent requests.
+        await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": date_key})
+
+        daily_count = await db.scalar(
+            select(func.count(Appointment.id)).where(
+                Appointment.created_at >= ist_midnight_utc
+            )
+        ) or 0
+
+        sequence = daily_count + 1
+        token_assigned = date_key * 100000 + sequence
+        return token_assigned, sequence
+
     @staticmethod
     def _decrypt_field(ciphertext: str) -> str:
         """
@@ -581,14 +642,19 @@ class AppointmentService:
             
             # Generate unique filename
             timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-            safe_filename = f"{appointment_id}_{timestamp}_{secrets.token_hex(8)}_{file.filename}"
+            safe_filename = f"{appointment_id}_{timestamp}_{secrets.token_hex(8)}_{self._sanitize_filename(file.filename)}"
             
             # Save via storage_service (MinIO on VPS if configured, else local disk)
             relative_path = f"attachments/{appointment_id}/{safe_filename}"
             
             from src.services.storage_service import save_file
-            storage_url = save_file(file_content, relative_path, content_type=mime_type)
-            
+            # save_file is blocking (local disk write or MinIO/boto3 network put).
+            # Run it in a worker thread so it never stalls the async event loop —
+            # critical when several files are uploaded at once.
+            storage_url = await asyncio.to_thread(
+                save_file, file_content, relative_path, content_type=mime_type
+            )
+
             return {
                 "storage_url": storage_url,
                 "file_size_bytes": file_size,
@@ -701,14 +767,8 @@ class AppointmentService:
                 # Step 5: Mark OTP as used
                 otp_record.is_used = True
                 
-                # Step 6: Assign token in YYYYMMDDNNNNN format (e.g. 2026062200001)
-                today_date = current_time.date()
-                daily_counter_stmt = select(func.count(Appointment.id)).where(
-                    Appointment.created_at >= current_time.replace(hour=0, minute=0, second=0)
-                )
-                daily_count = await db.scalar(daily_counter_stmt) or 0
-                token_assigned = int(today_date.strftime("%Y%m%d")) * 100000 + daily_count + 1
-                legacy_slot_ref = daily_count + 1  # sequential counter for legacy slot_id column only
+                # Step 6: Assign token in YYYYMMDDNNNNN format (IST, collision-safe)
+                token_assigned, legacy_slot_ref = await self._assign_daily_token(db, current_time)
                 
                 # Step 7: Encrypt sensitive fields
                 encrypted_name = self._encrypt_field(name)
@@ -804,12 +864,15 @@ class AppointmentService:
                     db.add(audio_attachment)
                     attachments_created.append(audio_attachment)
                 
-                for file in files:
-                    if file.filename:  # Skip empty file uploads
-                        # Save file to disk
-                        file_metadata = await self._save_uploaded_file(file, appointment.id)
-                        
-                        # Create attachment record
+                # Save all uploaded files concurrently (each save runs its blocking
+                # I/O in a worker thread). Doing them in parallel instead of one
+                # after another is what keeps a multi-image submission fast.
+                upload_files = [f for f in files if f.filename][:self.MAX_ATTACHMENTS]
+                if upload_files:
+                    file_metadatas = await asyncio.gather(
+                        *[self._save_uploaded_file(f, appointment.id) for f in upload_files]
+                    )
+                    for file_metadata in file_metadatas:
                         attachment = AppointmentAttachment(
                             appointment_id=appointment.id,
                             attachment_type=file_metadata['attachment_type'],
@@ -1161,7 +1224,8 @@ class AppointmentService:
         MAX_FILES      = 10
         MAX_BYTES      = 10 * 1024 * 1024   # 10 MB per file
         ALLOWED_MIMES  = {
-            "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp",
+            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
+            "image/bmp", "image/heic", "image/heif",
             "application/pdf",
         }
 
@@ -1192,15 +1256,8 @@ class AppointmentService:
         try:
             current_time = datetime.utcnow()
 
-            # ── Token assignment ──────────────────────────────────────────────
-            today_date = current_time.date()
-            daily_count = await db.scalar(
-                select(func.count(Appointment.id)).where(
-                    Appointment.created_at >= current_time.replace(hour=0, minute=0, second=0)
-                )
-            ) or 0
-            token_assigned = int(today_date.strftime("%Y%m%d")) * 100000 + daily_count + 1
-            legacy_slot_ref = daily_count + 1
+            # ── Token assignment (IST, collision-safe) ────────────────────────
+            token_assigned, legacy_slot_ref = await self._assign_daily_token(db, current_time)
 
             # ── Encrypt PII ───────────────────────────────────────────────────
             encrypted_name   = self._encrypt_field(name)
@@ -1250,7 +1307,7 @@ class AppointmentService:
 
             attachment_snapshots: List[Dict[str, Any]] = []
             for raw, mime, fname in file_contents:
-                safe_name = f"{appointment.id}_{len(attachment_snapshots)+1}_{fname}"
+                safe_name = f"{appointment.id}_{len(attachment_snapshots)+1}_{self._sanitize_filename(fname)}"
                 fpath = upload_dir / safe_name
                 with open(fpath, "wb") as fh:
                     fh.write(raw)

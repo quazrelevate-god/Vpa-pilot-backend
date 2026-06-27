@@ -13,7 +13,7 @@ from datetime import datetime, date, time, timedelta
 from typing import Optional, Dict, List
 
 from itsdangerous import Signer, BadSignature
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
@@ -241,14 +241,16 @@ class ReferralService:
         avail = await db.get(ReferralAvailability, slot.availability_id)
         slot_date = avail.date
 
-        # Daily sequential token: YYYYMMDD * 100000 + n
-        day_start = datetime.combine(slot_date, time(0, 0))
-        day_end   = datetime.combine(slot_date, time(23, 59, 59))
+        # Daily sequential token: YYYYMMDD * 100000 + n.
+        # Advisory xact-lock keyed on the slot date serialises concurrent
+        # bookings so two referrals can never share a token number.
+        date_key = int(slot_date.strftime("%Y%m%d"))
+        await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": date_key})
         day_count = await db.scalar(
             select(func.count(ReferralBooking.id))
             .where(ReferralBooking.scheduled_date == slot_date)
         ) or 0
-        token_number = int(slot_date.strftime("%Y%m%d")) * 100000 + day_count + 1
+        token_number = date_key * 100000 + day_count + 1
 
         # Reserve seats
         slot.booked_count += num_persons

@@ -225,27 +225,27 @@
         <h1 class="tamil" id="title-ta">பிழை</h1>
         
         <p class="subtitle english" id="subtitle-en">We encountered an issue processing your request</p>
-        <p class="subtitle tamil" id="subtitle-ta">உங்கள் கோரிக்கையை செயல்படுத்துவதில் சிக்கல் ஏற்பட்டுள்ளது</p>
+        <p class="subtitle tamil" id="subtitle-ta">ஒரு சிக்கல் ஏற்பட்டது</p>
         
         <div class="error-card">
             <div class="error-title english" id="error-title-en">Error Details</div>
-            <div class="error-title tamil" id="error-title-ta">பிழை விவரங்கள்</div>
+            <div class="error-title tamil" id="error-title-ta">விவரம்</div>
             <div class="error-message english" id="error-msg-en">The error message will appear here</div>
             <div class="error-message tamil" id="error-msg-ta">பிழை செய்தி இங்கே தோன்றும்</div>
         </div>
         
         <div class="instructions">
             <h3 class="english">📋 What to do next</h3>
-            <h3 class="tamil">📋 அடுத்து என்ன செய்ய வேண்டும்</h3>
+            <h3 class="tamil">📋 அடுத்து என்ன செய்வது</h3>
             <ul class="english" id="steps-en">
                 <li>Please scan a new QR code to start fresh</li>
                 <li>Ensure you complete the form within the time limit</li>
                 <li>Contact support if the issue persists</li>
             </ul>
             <ul class="tamil" id="steps-ta">
-                <li>புதிய QR குறியீட்டை ஸ்கேன் செய்து மீண்டும் தொடங்கவும்</li>
-                <li>நேர வரம்புக்குள் படிவத்தை பூர்த்தி செய்யவும்</li>
-                <li>சிக்கல் தொடர்ந்தால் ஆதரவைத் தொடர்பு கொள்ளவும்</li>
+                <li>புதிய QR ஐ ஸ்கேன் செய்யவும்</li>
+                <li>நேரத்திற்குள் படிவத்தை நிரப்பவும்</li>
+                <li>சிக்கல் தொடர்ந்தால் உதவியைத் தொடர்பு கொள்ளவும்</li>
             </ul>
         </div>
         
@@ -267,23 +267,23 @@
         const errorMessages = {
             'session_expired': {
                 en: 'Your session has expired. Sessions are valid for a limited time only.',
-                ta: 'உங்கள் அமர்வு காலாவதியாகிவிட்டது. அமர்வுகள் குறிப்பிட்ட நேரத்திற்கு மட்டுமே செல்லுபடியாகும்.'
+                ta: 'அமர்வு காலாவதியானது. புதிய QR ஐ ஸ்கேன் செய்யவும்.'
             },
             'session_used': {
                 en: 'This session has already been used. Each QR code can only be used once.',
-                ta: 'இந்த அமர்வு ஏற்கனவே பயன்படுத்தப்பட்டுள்ளது. ஒவ்வொரு QR குறியீடும் ஒரு முறை மட்டுமே பயன்படுத்த முடியும்.'
+                ta: 'இந்த QR ஏற்கனவே பயன்படுத்தப்பட்டது. புதிய QR ஐ ஸ்கேன் செய்யவும்.'
             },
             'session_not_found': {
                 en: 'Session not found. Please scan a new QR code.',
-                ta: 'அமர்வு கண்டுபிடிக்கப்படவில்லை. புதிய QR குறியீட்டை ஸ்கேன் செய்யவும்.'
+                ta: 'அமர்வு இல்லை. புதிய QR ஐ ஸ்கேன் செய்யவும்.'
             },
             'device_mismatch': {
                 en: 'Security violation: This form can only be accessed from the device that scanned the QR code.',
-                ta: 'பாதுகாப்பு மீறல்: QR குறியீட்டை ஸ்கேன் செய்த சாதனத்திலிருந்து மட்டுமே இந்த படிவத்தை அணுக முடியும்.'
+                ta: 'அனுமதி இல்லை. QR ஐ ஸ்கேன் செய்த சாதனத்தில் மட்டுமே திறக்க முடியும்.'
             },
             'qr_expired': {
                 en: 'QR code has expired. QR codes are valid for a limited time only.',
-                ta: 'QR குறியீடு காலாவதியாகிவிட்டது. QR குறியீடுகள் குறிப்பிட்ட நேரத்திற்கு மட்டுமே செல்லுபடியாகும்.'
+                ta: 'QR காலாவதியானது. புதிய QR ஐ ஸ்கேன் செய்யவும்.'
             },
             'unknown': {
                 en: errorMessage,
@@ -305,7 +305,7 @@
             document.getElementById('title-ta').textContent = 'ஏற்கனவே பயன்படுத்தப்பட்டது';
         } else if (errorType === 'device_mismatch') {
             document.getElementById('title-en').textContent = 'Access Denied';
-            document.getElementById('title-ta').textContent = 'அணுகல் மறுக்கப்பட்டது';
+            document.getElementById('title-ta').textContent = 'அனுமதி இல்லை';
         }
 
         function toggleLanguage() {
