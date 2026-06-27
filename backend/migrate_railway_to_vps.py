@@ -14,9 +14,15 @@ Requirements:
 
 You will be prompted for both connection strings.
 """
+import json
 import sys
 import psycopg2
+import psycopg2.extras
 from psycopg2 import sql
+
+psycopg2.extras.register_default_jsonb(globally=True, loads=json.loads)
+psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
+psycopg2.extensions.register_adapter(list, psycopg2.extras.Json)
 
 # ── Table order: parents before children (respects FK constraints) ───────────
 # Ephemeral tables included for completeness (qr_logs, gatekeeper_sessions,
@@ -159,11 +165,21 @@ def migrate():
         print("Aborted.")
         return
 
-    # ── Disable FK checks during import ──────────────────────────────────
+    # ── Truncate VPS tables in REVERSE order (children first) ──────────────
     print()
     print("[3/4] Migrating data ...")
-    dst_cur.execute("SET session_replication_role = 'replica';")  # disables FK triggers
+    print("  Clearing VPS tables (children first) ...")
+    for table in reversed(TABLES_IN_ORDER):
+        if table_counts.get(table, -1) < 0:
+            continue
+        try:
+            dst_cur.execute(sql.SQL("DELETE FROM {}").format(sql.Identifier(table)))
+        except Exception as e:
+            print(f"    [WARN] Could not clear {table}: {e}")
+            dst.rollback()
+    dst.commit()
 
+    # ── Insert data in FK-safe order (parents first) ─────────────────────
     migrated = 0
     for table in TABLES_IN_ORDER:
         if table_counts.get(table, -1) < 0:
@@ -184,9 +200,6 @@ def migrate():
             print(f"  SKIP  {table} (no common columns)")
             continue
 
-        # Truncate target table
-        dst_cur.execute(sql.SQL("TRUNCATE {} CASCADE").format(sql.Identifier(table)))
-
         # Read all rows from Railway
         col_ids = sql.SQL(", ").join(sql.Identifier(c) for c in common)
         src_cur.execute(sql.SQL("SELECT {} FROM {}").format(col_ids, sql.Identifier(table)))
@@ -205,14 +218,14 @@ def migrate():
             batch = rows[i:i + batch_size]
             dst_cur.executemany(insert_sql, batch)
 
+        dst.commit()
+
         # Reset sequence
         reset_sequence(dst_cur, table)
+        dst.commit()
 
         migrated += len(rows)
         print(f"  OK    {table:<33} {len(rows):>6} rows")
-
-    # Re-enable FK checks
-    dst_cur.execute("SET session_replication_role = 'origin';")
 
     dst.commit()
     print()
