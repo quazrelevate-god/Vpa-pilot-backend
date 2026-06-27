@@ -53,6 +53,8 @@ async def logout():
 
 @router.get("/", include_in_schema=False)
 async def root_redirect():
+    # Redirect anyone hitting the raw FastAPI dashboard root to the appointments page.
+    # In production this goes through Next.js which applies the auth middleware.
     return RedirectResponse(url="/appointments", status_code=302)
 
 
