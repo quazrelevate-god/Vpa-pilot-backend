@@ -2,267 +2,450 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Today's Appointments — Display Board</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: { extend: { colors: { brand: '#0f62fe', sidebar: '#0c2e59' } } }
-        }
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <title>Crowd Board — Today's Visitors</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/display/manifest.webmanifest">
+    <meta name="theme-color" content="#0c2e59">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Crowd Board">
+    <link rel="apple-touch-icon" href="/static/assets/apple-touch-icon.png">
+    <link rel="icon" href="/static/assets/icon-192.png">
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Mukta+Malar:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 0.8s linear infinite; }
+        :root{
+            --navy:#0c2e59; --navy-2:#103a73;
+            --teal:#0d9488; --teal-700:#0f766e;
+            --green:#059669; --green-bg:#ecfdf5; --green-bd:#a7f3d0;
+            --red:#dc2626;  --red-bg:#fef2f2;  --red-bd:#fecaca;
+            --blue:#2563eb; --blue-bg:#eff6ff; --blue-bd:#bfdbfe;
+            --violet:#7c3aed; --violet-bg:#f5f3ff; --violet-bd:#ddd6fe;
+            --amber:#b45309; --amber-bg:#fffbeb; --amber-bd:#fde68a;
+            --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
+        }
+        *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+        body{font-family:'Inter','Mukta Malar',system-ui,sans-serif;background:var(--bg);color:var(--ink);
+            min-height:100vh;padding-bottom:env(safe-area-inset-bottom);}
+        .ta{display:none;} body.ta-mode .en{display:none;} body.ta-mode .ta{display:inline;}
+
+        /* Header */
+        header{background:var(--navy);color:#fff;position:sticky;top:0;z-index:20;
+            padding:calc(0.7rem + env(safe-area-inset-top)) 1rem 0.7rem;
+            box-shadow:0 2px 10px rgba(0,0,0,.18);}
+        .h-row{display:flex;align-items:center;justify-content:space-between;gap:.5rem;}
+        .h-title{font-size:1.05rem;font-weight:800;line-height:1.1;}
+        .h-date{font-size:.72rem;opacity:.7;margin-top:.1rem;}
+        .h-actions{display:flex;align-items:center;gap:.4rem;flex-shrink:0;}
+        .chip{background:rgba(255,255,255,.12);border:none;color:#fff;font-family:inherit;
+            border-radius:9px;padding:.4rem .6rem;font-size:.72rem;font-weight:700;cursor:pointer;
+            display:flex;align-items:center;gap:.3rem;transition:background .15s;}
+        .chip:active{background:rgba(255,255,255,.25);}
+        .clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:.8rem;opacity:.9;}
+
+        /* Tabs */
+        .tabs{display:flex;gap:.35rem;background:rgba(255,255,255,.1);border-radius:11px;padding:.25rem;margin-top:.7rem;}
+        .tab{flex:1;text-align:center;padding:.5rem;border-radius:8px;font-size:.85rem;font-weight:700;
+            color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;border:none;background:transparent;font-family:inherit;}
+        .tab.active{background:#fff;color:var(--navy);}
+        .tab .cnt{font-size:.7rem;opacity:.7;font-weight:600;}
+
+        /* Body */
+        main{max-width:560px;margin:0 auto;padding:.85rem;}
+        .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.85rem;}
+        .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.6rem .5rem;text-align:center;}
+        .stat .n{font-size:1.4rem;font-weight:900;line-height:1;}
+        .stat .l{font-size:.66rem;color:var(--muted);font-weight:600;margin-top:.2rem;}
+        .stat.s-exp .n{color:var(--blue);} .stat.s-pre .n{color:var(--green);} .stat.s-no .n{color:var(--red);}
+
+        .search{position:relative;margin-bottom:.85rem;}
+        .search input{width:100%;padding:.7rem .9rem .7rem 2.3rem;border:1.5px solid var(--line);border-radius:11px;
+            font-size:1rem;font-family:inherit;background:#fff;outline:none;}
+        .search input:focus{border-color:var(--teal);}
+        .search svg{position:absolute;left:.75rem;top:50%;transform:translateY(-50%);width:1.05rem;height:1.05rem;color:var(--muted);}
+
+        /* Cards */
+        .list{display:flex;flex-direction:column;gap:.6rem;}
+        .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:.85rem;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+        .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;}
+        .c-time{display:inline-flex;align-items:center;gap:.3rem;background:var(--navy);color:#fff;border-radius:7px;
+            padding:.2rem .5rem;font-size:.74rem;font-weight:800;font-variant-numeric:tabular-nums;flex-shrink:0;}
+        .c-name{font-size:1.02rem;font-weight:800;line-height:1.2;}
+        .c-sub{font-size:.78rem;color:var(--muted);margin-top:.15rem;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;}
+        .c-count{display:inline-flex;align-items:center;gap:.25rem;background:#f1f5f9;border-radius:6px;padding:.1rem .4rem;font-weight:700;color:#334155;}
+        .c-call{display:inline-flex;align-items:center;gap:.3rem;color:var(--teal-700);font-weight:700;text-decoration:none;}
+        .c-reason{font-size:.8rem;color:#475569;margin-top:.45rem;line-height:1.4;
+            display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+        .pill{font-size:.68rem;font-weight:800;border-radius:50px;padding:.2rem .55rem;white-space:nowrap;border:1px solid transparent;}
+        .pill.expected{background:var(--blue-bg);color:var(--blue);border-color:var(--blue-bd);}
+        .pill.resch{background:var(--violet-bg);color:var(--violet);border-color:var(--violet-bd);}
+        .pill.present{background:var(--green-bg);color:var(--green);border-color:var(--green-bd);}
+        .pill.notcame{background:var(--red-bg);color:var(--red);border-color:var(--red-bd);}
+        .pill.pending{background:#f8fafc;color:var(--muted);border-color:var(--line);}
+
+        .actions{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.75rem;}
+        .btn{padding:.6rem;border-radius:10px;font-size:.88rem;font-weight:800;font-family:inherit;cursor:pointer;
+            border:1.5px solid var(--line);background:#fff;color:#475569;display:flex;align-items:center;justify-content:center;gap:.35rem;transition:.12s;}
+        .btn:active{transform:scale(.97);}
+        .btn.came.on{background:var(--green);border-color:var(--green);color:#fff;}
+        .btn.no.on{background:var(--red);border-color:var(--red);color:#fff;}
+        .btn[disabled]{opacity:.55;cursor:default;}
+
+        .empty{text-align:center;padding:3rem 1rem;color:var(--muted);}
+        .empty svg{width:3rem;height:3rem;opacity:.35;margin-bottom:.6rem;}
+        .skeleton{height:96px;border-radius:14px;background:linear-gradient(90deg,#eef2f7 25%,#e2e8f0 37%,#eef2f7 63%);
+            background-size:400% 100%;animation:sh 1.3s ease infinite;}
+        @keyframes sh{0%{background-position:100% 0;}100%{background-position:-100% 0;}}
+        .toast{position:fixed;left:50%;bottom:calc(1rem + env(safe-area-inset-bottom));transform:translateX(-50%);
+            background:var(--ink);color:#fff;padding:.6rem 1rem;border-radius:10px;font-size:.82rem;font-weight:600;
+            opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;}
+        .toast.show{opacity:.95;}
+        .offline{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-bd);border-radius:10px;
+            padding:.5rem .8rem;font-size:.78rem;font-weight:700;text-align:center;margin-bottom:.75rem;display:none;}
     </style>
 </head>
-<body class="min-h-screen bg-slate-50 font-sans">
-    <!-- Header -->
-    <header class="bg-sidebar text-white shadow-lg sticky top-0 z-10">
-        <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+<body>
+    <header>
+        <div class="h-row">
             <div>
-                <div class="text-xl font-bold" id="headerTitle">Today's Appointments</div>
+                <div class="h-title"><span class="en">Today's Visitors</span><span class="ta">இன்றைய வருகையாளர்கள்</span></div>
+                <div class="h-date" id="dateLabel"></div>
             </div>
-            <div class="flex items-center gap-4">
-                <button id="langToggle" class="bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5 text-sm transition-colors">தமிழ்</button>
-                <div id="dateLabel" class="text-sm opacity-70"></div>
-                <div id="clock" class="text-lg font-mono font-semibold"></div>
-                <button id="refreshBtn" class="bg-white/10 hover:bg-white/20 rounded-lg p-2 transition-colors" title="Refresh">
-                    <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                    </svg>
-                </button>
-                <a href="/display/logout" class="text-xs bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5 transition-colors">Logout</a>
+            <div class="h-actions">
+                <span class="clock" id="clock"></span>
+                <button class="chip" id="installBtn" style="display:none;">⬇ <span class="en">Install</span><span class="ta">நிறுவு</span></button>
+                <button class="chip" id="langToggle">தமிழ்</button>
+                <a class="chip" href="/display/logout"><span class="en">Exit</span><span class="ta">வெளியேறு</span></a>
             </div>
+        </div>
+        <div class="tabs">
+            <button class="tab active" data-tab="appt">
+                <div><span class="en">Appointments</span><span class="ta">சந்திப்புகள்</span></div>
+                <div class="cnt" id="cntAppt"></div>
+            </button>
+            <button class="tab" data-tab="ref">
+                <div><span class="en">Referrals</span><span class="ta">பரிந்துரைகள்</span></div>
+                <div class="cnt" id="cntRef"></div>
+            </button>
         </div>
     </header>
 
-    <!-- Stats -->
-    <div class="max-w-6xl mx-auto px-6 py-6">
-        <div class="grid grid-cols-3 gap-4 mb-6">
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center gap-3">
-                <div class="bg-emerald-50 rounded-xl w-12 h-12 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </div>
-                <div>
-                    <div id="statScheduled" class="text-2xl font-extrabold text-slate-800">0</div>
-                    <div class="text-xs text-slate-500" id="lblScheduled">Scheduled</div>
-                </div>
-            </div>
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center gap-3">
-                <div class="bg-violet-50 rounded-xl w-12 h-12 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                </div>
-                <div>
-                    <div id="statRescheduled" class="text-2xl font-extrabold text-slate-800">0</div>
-                    <div class="text-xs text-slate-500" id="lblRescheduled">Rescheduled</div>
-                </div>
-            </div>
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center gap-3">
-                <div class="bg-amber-50 rounded-xl w-12 h-12 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                </div>
-                <div>
-                    <div id="statTotal" class="text-2xl font-extrabold text-slate-800">0</div>
-                    <div class="text-xs text-slate-500" id="lblTotal">Total Today</div>
-                </div>
-            </div>
+    <main>
+        <div class="offline" id="offlineBar">
+            <span class="en">Offline — showing last loaded data. Status changes need a connection.</span>
+            <span class="ta">இணைப்பு இல்லை — பழைய தரவு காட்டப்படுகிறது. நிலை மாற்ற இணைப்பு தேவை.</span>
         </div>
 
-        <!-- Search -->
-        <div class="mb-4 relative max-w-md">
-            <svg class="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-            </svg>
-            <input id="searchInput" type="text" placeholder="Search by name, phone, or token..."
-                class="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition bg-white">
+        <div class="stats">
+            <div class="stat s-exp"><div class="n" id="stExpected">0</div><div class="l"><span class="en">Expected</span><span class="ta">எதிர்பார்ப்பு</span></div></div>
+            <div class="stat s-pre"><div class="n" id="stPresent">0</div><div class="l"><span class="en">Came</span><span class="ta">வந்தவர்</span></div></div>
+            <div class="stat s-no"><div class="n" id="stNo">0</div><div class="l"><span class="en">Not Came</span><span class="ta">வரவில்லை</span></div></div>
         </div>
 
-        <!-- Table -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <table class="w-full">
-                <thead class="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colTime">Time</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colToken">Token</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colName">Name</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colMobile">Mobile</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colCategory">Category</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider" id="colStatus">Status</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody" class="divide-y divide-slate-100">
-                    <tr><td colspan="6" class="px-4 py-12 text-center text-slate-400 text-sm" id="loadingText">Loading...</td></tr>
-                </tbody>
-            </table>
+        <div class="search">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
+            <input id="searchInput" placeholder="Search name / mobile / token" autocomplete="off">
         </div>
 
-        <div id="emptyState" class="hidden text-center py-12 text-slate-400 text-sm">
-            No appointments found.
+        <div class="list" id="list"></div>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- iOS install instructions -->
+    <div id="iosSheet" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:60;align-items:flex-end;">
+      <div style="background:#fff;width:100%;max-width:560px;margin:0 auto;border-radius:18px 18px 0 0;padding:1.25rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom));">
+        <div style="width:40px;height:4px;background:#cbd5e1;border-radius:4px;margin:0 auto .9rem;"></div>
+        <div style="font-weight:800;font-size:1.05rem;margin-bottom:.6rem;">
+          <span class="en">Install on your phone</span><span class="ta">தொலைபேசியில் நிறுவவும்</span>
         </div>
+        <ol style="margin:0 0 1rem 1.1rem;font-size:.9rem;color:#334155;line-height:1.9;">
+          <li><span class="en">Tap the <b>Share</b> button <span style="font-size:1.1em;">&#x2191;</span> in Safari</span><span class="ta"><b>Share</b> பொத்தானை அழுத்தவும்</span></li>
+          <li><span class="en">Choose <b>Add to Home Screen</b></span><span class="ta"><b>Add to Home Screen</b> தேர்ந்தெடுக்கவும்</span></li>
+          <li><span class="en">Tap <b>Add</b></span><span class="ta"><b>Add</b> அழுத்தவும்</span></li>
+        </ol>
+        <button class="btn" style="width:100%;background:var(--navy);color:#fff;border-color:var(--navy);" onclick="document.getElementById('iosSheet').style.display='none'">
+          <span class="en">Got it</span><span class="ta">சரி</span>
+        </button>
+      </div>
     </div>
 
     <script>
-        let allItems = [];
-        let searchTimeout = null;
-        let currentLang = 'en';
+    const TAB = { appt: 'appt', ref: 'ref' };
+    let currentTab = 'appt';
+    let cache = { appt: [], ref: [] };
+    let lastSummary = { appt: {}, ref: {} };
+    let lang = 'en';
 
-        const i18n = {
-            en: {
-                title: "Today's Appointments",
-                scheduled: "Scheduled",
-                rescheduled: "Rescheduled",
-                total: "Total Today",
-                searchPlaceholder: "Search by name, phone, or token...",
-                colTime: "Time",
-                colToken: "Token",
-                colName: "Name",
-                colMobile: "Mobile",
-                colCategory: "Category",
-                colStatus: "Status",
-                loading: "Loading...",
-                empty: "No appointments found.",
-                langBtn: "தமிழ்",
-                logout: "Logout",
-            },
-            ta: {
-                title: "இன்றைய சந்திப்புகள்",
-                scheduled: "திட்டமிடப்பட்டது",
-                rescheduled: "மறுவரவேற்பு",
-                total: "மொத்தம் இன்று",
-                searchPlaceholder: "பெயர், தொலைபேசி, அல்லது டோக்கன் மூலம் தேடவும்...",
-                colTime: "நேரம்",
-                colToken: "டோக்கன்",
-                colName: "பெயர்",
-                colMobile: "தொலைபேசி",
-                colCategory: "பிரிவு",
-                colStatus: "நிலை",
-                loading: "ஏற்றுகிறது...",
-                empty: "சந்திப்புகள் இல்லை.",
-                langBtn: "English",
-                logout: "வெளியேறு",
-            }
-        };
+    // ── i18n ──
+    function applyLang(){
+        document.body.classList.toggle('ta-mode', lang === 'ta');
+        document.getElementById('langToggle').textContent = lang === 'ta' ? 'EN' : 'தமிழ்';
+        const si = document.getElementById('searchInput');
+        si.placeholder = lang === 'ta' ? 'பெயர் / எண் / டோக்கன் தேடுங்கள்' : 'Search name / mobile / token';
+        try { localStorage.setItem('cb_lang', lang); } catch(e){}
+        render();
+    }
+    document.getElementById('langToggle').addEventListener('click', () => { lang = lang === 'ta' ? 'en' : 'ta'; applyLang(); });
+    (function(){ try { lang = localStorage.getItem('cb_lang') || 'en'; } catch(e){} })();
 
-        function applyLang() {
-            const t = i18n[currentLang];
-            document.getElementById('headerTitle').textContent = t.title;
-            document.getElementById('lblScheduled').textContent = t.scheduled;
-            document.getElementById('lblRescheduled').textContent = t.rescheduled;
-            document.getElementById('lblTotal').textContent = t.total;
-            document.getElementById('searchInput').placeholder = t.searchPlaceholder;
-            document.getElementById('colTime').textContent = t.colTime;
-            document.getElementById('colToken').textContent = t.colToken;
-            document.getElementById('colName').textContent = t.colName;
-            document.getElementById('colMobile').textContent = t.colMobile;
-            document.getElementById('colCategory').textContent = t.colCategory;
-            document.getElementById('colStatus').textContent = t.colStatus;
-            document.getElementById('loadingText').textContent = t.loading;
-            document.getElementById('emptyState').textContent = t.empty;
-            document.getElementById('langToggle').textContent = t.langBtn;
-            document.querySelector('a[href="/display/logout"]').textContent = t.logout;
-            renderTable();
+    // ── Clock ──
+    function tick(){
+        const d = new Date();
+        document.getElementById('clock').textContent =
+            d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
+    }
+    setInterval(tick, 1000); tick();
+
+    // ── Tabs ──
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+        currentTab = t.dataset.tab;
+        document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+        render();
+        load(currentTab);
+    }));
+
+    document.getElementById('searchInput').addEventListener('input', render);
+
+    function toast(msg){
+        const el = document.getElementById('toast');
+        el.textContent = msg; el.classList.add('show');
+        clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2200);
+    }
+    function setOffline(on){ document.getElementById('offlineBar').style.display = on ? 'block' : 'none'; }
+
+    // ── Data ──
+    async function load(tab){
+        const url = tab === 'appt' ? '/display/api/today' : '/display/api/referral/today';
+        try {
+            const res = await fetch(url, { headers: { 'Accept':'application/json' } });
+            if (!res.ok) throw new Error('http '+res.status);
+            const data = await res.json();
+            cache[tab] = data.items || [];
+            lastSummary[tab] = data;
+            setOffline(false);
+            render();
+            updateCounts();
+        } catch(e){
+            setOffline(true);
+        }
+    }
+
+    function updateCounts(){
+        document.getElementById('cntAppt').textContent = lastSummary.appt.total != null ? lastSummary.appt.total : '';
+        document.getElementById('cntRef').textContent  = lastSummary.ref.total  != null ? lastSummary.ref.total  : '';
+    }
+
+    function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    function render(){
+        const list = document.getElementById('list');
+        const items = cache[currentTab] || [];
+        const q = document.getElementById('searchInput').value.trim().toLowerCase();
+        const filtered = !q ? items : items.filter(it =>
+            (it.name||'').toLowerCase().includes(q) ||
+            (it.mobile||'').includes(q) ||
+            (it.token||'').toLowerCase().includes(q) ||
+            (it.referred_by||'').toLowerCase().includes(q)
+        );
+
+        // summary stats from server payload
+        const sum = lastSummary[currentTab] || {};
+        document.getElementById('stExpected').textContent = sum.expected ?? 0;
+        document.getElementById('stPresent').textContent  = sum.present  ?? 0;
+        document.getElementById('stNo').textContent       = sum.not_came ?? 0;
+        document.getElementById('dateLabel').textContent  = sum.date || '';
+
+        if (!items.length){
+            list.innerHTML = '<div class="empty"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z"/></svg><div>'
+                + (lang==='ta' ? 'இன்னும் வருகையாளர்கள் இல்லை' : 'No visitors yet for today') + '</div></div>';
+            return;
+        }
+        if (!filtered.length){
+            list.innerHTML = '<div class="empty">'+(lang==='ta'?'பொருத்தம் இல்லை':'No matches')+'</div>';
+            return;
+        }
+        list.innerHTML = filtered.map(it => currentTab === 'appt' ? apptCard(it) : refCard(it)).join('');
+    }
+
+    // ── Appointment card ──
+    function apptCard(it){
+        const db = it.status_db;
+        const pill = db === 'AWAITING_REVIEW'
+              ? `<span class="pill present">${lang==='ta'?'வந்தார்':'Came'}</span>`
+            : db === 'NOT_CAME'
+              ? `<span class="pill notcame">${lang==='ta'?'வரவில்லை':'Not Came'}</span>`
+            : db === 'RESCHEDULED'
+              ? `<span class="pill resch">${lang==='ta'?'மறுதிட்டம்':'Rescheduled'}</span>`
+              : `<span class="pill expected">${lang==='ta'?'எதிர்பார்ப்பு':'Expected'}</span>`;
+        const came = db === 'AWAITING_REVIEW', no = db === 'NOT_CAME';
+        const mobile = it.mobile && it.mobile !== '—'
+            ? `<a class="c-call" href="tel:${esc(it.mobile)}">📞 ${esc(it.mobile)}</a>` : '';
+        return `<div class="card" data-id="${it.id}">
+            <div class="card-top">
+              <div style="min-width:0;">
+                <div class="c-name">${esc(it.name)}</div>
+                <div class="c-sub">
+                  <span class="c-count">👥 ${it.num_persons||1}</span>
+                  ${mobile}
+                  ${it.category ? `<span>${esc(it.category)}</span>` : ''}
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.35rem;flex-shrink:0;">
+                ${it.time ? `<span class="c-time">🕑 ${esc(it.time)}</span>` : ''}
+                ${pill}
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn came ${came?'on':''}" onclick="mark('appt',${it.id},'came')" title="${came?'Tap again to undo':''}">${came?'✓':'✓'} <span class="en">${came?'Came ↺':'Came'}</span><span class="ta">${came?'வந்தார் ↺':'வந்தார்'}</span></button>
+              <button class="btn no ${no?'on':''}" onclick="mark('appt',${it.id},'notcame')" title="${no?'Tap again to undo':''}">✕ <span class="en">${no?'Not Came ↺':'Not Came'}</span><span class="ta">${no?'வரவில்லை ↺':'வரவில்லை'}</span></button>
+            </div>
+        </div>`;
+    }
+
+    // ── Referral card ──
+    function refCard(it){
+        const s = it.status;
+        const pill = s === 'CAME'
+              ? `<span class="pill present">${lang==='ta'?'வந்தார்':'Came'}</span>`
+            : s === 'NOT_CAME'
+              ? `<span class="pill notcame">${lang==='ta'?'வரவில்லை':'Not Came'}</span>`
+              : `<span class="pill pending">${lang==='ta'?'காத்திருப்பு':'Pending'}</span>`;
+        const came = s === 'CAME', no = s === 'NOT_CAME';
+        const mobile = it.mobile
+            ? `<a class="c-call" href="tel:${esc(it.mobile)}">📞 ${esc(it.mobile)}</a>` : '';
+        return `<div class="card" data-id="${it.id}">
+            <div class="card-top">
+              <div style="min-width:0;">
+                <div class="c-name">${esc(it.name)}</div>
+                <div class="c-sub">
+                  <span class="c-count">👥 ${it.num_persons||1}</span>
+                  ${mobile}
+                  <span>${lang==='ta'?'பரிந்துரை':'Ref'}: ${esc(it.referred_by)}</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.35rem;flex-shrink:0;">
+                ${it.slot ? `<span class="c-time">🕑 ${esc(it.slot_start||'')}</span>` : ''}
+                ${pill}
+              </div>
+            </div>
+            ${it.reason ? `<div class="c-reason">${esc(it.reason)}</div>` : ''}
+            <div class="actions">
+              <button class="btn came ${came?'on':''}" onclick="mark('ref',${it.id},'came')" title="${came?'Tap again to undo':''}">✓ <span class="en">${came?'Came ↺':'Came'}</span><span class="ta">${came?'வந்தார் ↺':'வந்தார்'}</span></button>
+              <button class="btn no ${no?'on':''}" onclick="mark('ref',${it.id},'notcame')" title="${no?'Tap again to undo':''}">✕ <span class="en">${no?'Not Came ↺':'Not Came'}</span><span class="ta">${no?'வரவில்லை ↺':'வரவில்லை'}</span></button>
+            </div>
+        </div>`;
+    }
+
+    // ── Mark attendance (optimistic, toggle-to-revert) ──
+    // target is 'came' or 'notcame'. Tapping the button that is already active
+    // reverts the row to its original "expected" state (undo a mistaken tap).
+    async function mark(tab, id, target){
+        const item = (cache[tab]||[]).find(x => String(x.id) === String(id));
+        if (!item) return;
+
+        const isAppt = tab === 'appt';
+        const cur = isAppt ? item.status_db : item.status;   // current state
+        const activeCame = isAppt ? (cur === 'AWAITING_REVIEW') : (cur === 'CAME');
+        const activeNo   = (cur === 'NOT_CAME');
+        const alreadyThis = (target === 'came' && activeCame) || (target === 'notcame' && activeNo);
+
+        // Decide payload + optimistic new state
+        let payload, newState;
+        if (alreadyThis){                       // revert
+            payload = isAppt ? 'Reset' : 'PENDING';
+            newState = isAppt ? 'SCHEDULED' : 'PENDING';
+        } else if (target === 'came'){
+            payload = isAppt ? 'Came' : 'CAME';
+            newState = isAppt ? 'AWAITING_REVIEW' : 'CAME';
+        } else {
+            payload = isAppt ? 'Not Came' : 'NOT_CAME';
+            newState = 'NOT_CAME';
         }
 
-        document.getElementById('langToggle').addEventListener('click', function() {
-            currentLang = currentLang === 'en' ? 'ta' : 'en';
-            applyLang();
+        // optimistic update
+        if (isAppt) item.status_db = newState; else item.status = newState;
+        render();
+
+        const url = isAppt
+            ? `/display/api/appointments/${id}/status`
+            : `/display/api/referral/${id}/status`;
+        try {
+            const res = await fetch(url, {
+                method:'PATCH', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ status: payload })
+            });
+            if (!res.ok) throw new Error('http '+res.status);
+            toast(alreadyThis ? (lang==='ta'?'மீட்டமைக்கப்பட்டது':'Reverted')
+                              : (lang==='ta'?'புதுப்பிக்கப்பட்டது':'Updated'));
+            load(tab);
+        } catch(e){
+            toast(lang==='ta' ? 'இணைப்பு இல்லை — மீண்டும் முயற்சிக்கவும்' : 'Offline — try again');
+            load(tab);
+        }
+    }
+
+    // ── Boot ──
+    function showSkeleton(){
+        document.getElementById('list').innerHTML =
+            Array.from({length:4}).map(()=>'<div class="skeleton"></div>').join('');
+    }
+    applyLang();
+    showSkeleton();
+    load('appt');
+    load('ref');                       // warm the other tab's count
+    setInterval(() => load(currentTab), 12000);  // live refresh
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(currentTab); });
+    window.addEventListener('online',  () => { setOffline(false); load(currentTab); });
+    window.addEventListener('offline', () => setOffline(true));
+
+    // ── PWA service worker ──
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/display/service-worker.js', { scope: '/display/' })
+                .catch(() => {/* non-fatal */});
         });
+    }
 
-        // ── Clock ──────────────────────────────────────────────────────────────
-        function updateClock() {
-            const now = new Date();
-            const h = String(now.getHours()).padStart(2, '0');
-            const m = String(now.getMinutes()).padStart(2, '0');
-            const s = String(now.getSeconds()).padStart(2, '0');
-            document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+    // ── Install (Add to Home Screen) ──
+    const installBtn = document.getElementById('installBtn');
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+    let deferredPrompt = null;
+
+    // Android/desktop Chrome: capture the native prompt and reveal the button.
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        if (!isStandalone) installBtn.style.display = 'flex';
+    });
+
+    // iOS Safari has no prompt event — show the button so users get instructions.
+    if (isIOS && !isStandalone) installBtn.style.display = 'flex';
+
+    // Already installed → never show.
+    if (isStandalone) installBtn.style.display = 'none';
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            deferredPrompt = null;
+            if (outcome === 'accepted') installBtn.style.display = 'none';
+        } else if (isIOS) {
+            document.getElementById('iosSheet').style.display = 'flex';
+        } else {
+            toast(lang==='ta' ? 'உலாவி மெனுவில் "நிறுவு" தேர்வு செய்யவும்' : 'Use the browser menu → Install');
         }
-        setInterval(updateClock, 1000);
-        updateClock();
+    });
 
-        // ── Status badge ───────────────────────────────────────────────────────
-        function statusBadge(status) {
-            const map = {
-                'Scheduled':   'bg-emerald-100 text-emerald-700',
-                'Rescheduled': 'bg-violet-100 text-violet-700',
-            };
-            const cls = map[status] || 'bg-slate-100 text-slate-600';
-            return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}">${status}</span>`;
-        }
-
-        // ── Render table ───────────────────────────────────────────────────────
-        function renderTable() {
-            const tbody = document.getElementById('tableBody');
-            const empty = document.getElementById('emptyState');
-            const t = i18n[currentLang];
-
-            if (allItems.length === 0) {
-                tbody.innerHTML = '';
-                empty.classList.remove('hidden');
-                return;
-            }
-            empty.classList.add('hidden');
-
-            tbody.innerHTML = allItems.map(item => `
-                <tr class="hover:bg-slate-50 transition-colors">
-                    <td class="px-4 py-3 text-sm font-semibold text-slate-700">${item.time || '—'}</td>
-                    <td class="px-4 py-3 text-sm text-slate-600 font-mono">${item.token}</td>
-                    <td class="px-4 py-3 text-sm font-medium text-slate-800">${item.name}</td>
-                    <td class="px-4 py-3 text-sm text-slate-600 font-mono">${item.mobile}</td>
-                    <td class="px-4 py-3 text-sm text-slate-600">${item.category || '—'}</td>
-                    <td class="px-4 py-3">${statusBadge(item.status)}</td>
-                </tr>
-            `).join('');
-        }
-
-        // ── Fetch data ─────────────────────────────────────────────────────────
-        async function loadData(search) {
-            const params = new URLSearchParams();
-            if (search) params.set('search', search);
-
-            try {
-                const res = await fetch(`/display/api/today?${params.toString()}`, { credentials: 'include' });
-                if (res.status === 302 || res.redirected) {
-                    window.location.href = '/display/login';
-                    return;
-                }
-                const data = await res.json();
-                allItems = data.items || [];
-
-                document.getElementById('statScheduled').textContent = data.scheduled || 0;
-                document.getElementById('statRescheduled').textContent = data.rescheduled || 0;
-                document.getElementById('statTotal').textContent = data.total || 0;
-                document.getElementById('dateLabel').textContent = data.date || '';
-
-                renderTable();
-            } catch (e) {
-                console.error('Failed to load data:', e);
-            }
-        }
-
-        // ── Search ─────────────────────────────────────────────────────────────
-        document.getElementById('searchInput').addEventListener('input', function() {
-            clearTimeout(searchTimeout);
-            const val = this.value.trim();
-            searchTimeout = setTimeout(() => loadData(val), 300);
-        });
-
-        // ── Refresh button ─────────────────────────────────────────────────────
-        document.getElementById('refreshBtn').addEventListener('click', async function() {
-            const icon = document.getElementById('refreshIcon');
-            icon.classList.add('spin');
-            const search = document.getElementById('searchInput').value.trim();
-            await loadData(search);
-            setTimeout(() => icon.classList.remove('spin'), 500);
-        });
-
-        // ── Auto-refresh every 60 seconds ──────────────────────────────────────
-        setInterval(() => {
-            const search = document.getElementById('searchInput').value.trim();
-            loadData(search);
-        }, 60000);
-
-        // ── Initial load ───────────────────────────────────────────────────────
-        loadData();
+    window.addEventListener('appinstalled', () => {
+        installBtn.style.display = 'none';
+        toast(lang==='ta' ? 'நிறுவப்பட்டது' : 'Installed');
+    });
     </script>
 </body>
 </html>

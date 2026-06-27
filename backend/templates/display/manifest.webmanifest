@@ -1,0 +1,17 @@
+{
+  "name": "Crowd Board — Today's Visitors",
+  "short_name": "Crowd Board",
+  "description": "Live attendance board for the floor team — appointments & referrals.",
+  "start_url": "/display/",
+  "scope": "/display/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0c2e59",
+  "theme_color": "#0c2e59",
+  "lang": "en",
+  "icons": [
+    { "src": "/static/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

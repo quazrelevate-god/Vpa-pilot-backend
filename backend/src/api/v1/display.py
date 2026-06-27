@@ -12,11 +12,17 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fastapi import Body
+from fastapi.responses import Response
+
 from src.core.database import get_db
 from src.core.config import settings
 from src.core.display_auth import create_display_cookie, require_display_auth
 from src.models.appointment_models import Appointment
-from src.services.dashboard_service import _decode, _resolve_display_status, _category_label
+from src.services.dashboard_service import (
+    _decode, _resolve_display_status, _category_label, set_floor_attendance,
+)
+from src.services.referral_service import referral_service
 from src.services.scheduling_service import _decrypt
 from src.core.utils import utc_iso
 
@@ -78,7 +84,12 @@ async def display_today_api(
             selectinload(Appointment.grievance_summary),
         )
         .where(Appointment.scheduled_date == today)
-        .where(Appointment.status.in_(["SCHEDULED", "RESCHEDULED"]))
+        # Floor board: meeting visitors for today, plus their post-arrival states
+        # (Came -> AWAITING_REVIEW, no-show -> NOT_CAME) so rows stay visible
+        # after the team toggles them. Direct-submit petitions have no
+        # scheduled_date, so they are naturally excluded.
+        .where(Appointment.status.in_(
+            ["SCHEDULED", "RESCHEDULED", "AWAITING_REVIEW", "NOT_CAME"]))
         .order_by(Appointment.scheduled_start_time)
     )
 
@@ -114,15 +125,110 @@ async def display_today_api(
             "token": f"TKN{appt.token_assigned}",
             "name": name,
             "mobile": mobile,
+            "num_persons": appt.num_persons or 1,
             "category": _category_label(appt.grievance_category),
             "status": _resolve_display_status(appt),
+            "status_db": appt.status,
             "time": time_str,
         })
 
     return JSONResponse({
         "items": items,
         "total": len(items),
-        "scheduled": sum(1 for i in items if i["status"] == "Scheduled"),
-        "rescheduled": sum(1 for i in items if i["status"] == "Rescheduled"),
+        "expected": sum(1 for i in items if i["status_db"] in ("SCHEDULED", "RESCHEDULED")),
+        "present": sum(1 for i in items if i["status_db"] == "AWAITING_REVIEW"),
+        "not_came": sum(1 for i in items if i["status_db"] == "NOT_CAME"),
         "date": today.strftime("%d %b %Y"),
     })
+
+
+@router.get("/api/referral/today")
+async def display_referral_today_api(
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_display_auth),
+):
+    """Today's referral bookings for the floor board (name, count, reason, status)."""
+    today = date.today()
+    bookings = await referral_service.get_bookings(db, today)
+
+    if search:
+        q = search.lower().strip()
+        bookings = [
+            b for b in bookings
+            if q in (b["name"] or "").lower()
+            or q in (b["mobile"] or "")
+            or q in (b["token"] or "").lower()
+        ]
+
+    return JSONResponse({
+        "items": bookings,
+        "total": len(bookings),
+        "expected": sum(1 for b in bookings if b["status"] == "PENDING"),
+        "present": sum(1 for b in bookings if b["status"] == "CAME"),
+        "not_came": sum(1 for b in bookings if b["status"] == "NOT_CAME"),
+        "date": today.strftime("%d %b %Y"),
+    })
+
+
+# ── Write-back: attendance toggles ──────────────────────────────────────────────
+
+@router.patch("/api/appointments/{appointment_id}/status")
+async def display_set_appointment_status(
+    appointment_id: int,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_display_auth),
+):
+    """Floor board: mark a meeting visitor Came / Not Came, or Reset (undo)."""
+    action = str(payload.get("status", "")).strip().lower().replace(" ", "_")
+    if action not in ("came", "not_came", "reset"):
+        return JSONResponse({"error": "status must be Came, Not Came or Reset"}, status_code=400)
+    result = await set_floor_attendance(db, appointment_id, action)
+    if not result.get("success"):
+        return JSONResponse({"error": result.get("error", "Appointment not found")}, status_code=404)
+    return JSONResponse(result)
+
+
+@router.patch("/api/referral/{booking_id}/status")
+async def display_set_referral_status(
+    booking_id: int,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_display_auth),
+):
+    """Floor board: mark a referral visitor CAME or NOT_CAME."""
+    raw = str(payload.get("status", "")).strip().upper().replace(" ", "_")
+    if raw not in ("CAME", "NOT_CAME", "PENDING"):
+        return JSONResponse({"error": "status must be CAME, NOT_CAME or PENDING"}, status_code=400)
+    try:
+        result = await referral_service.update_booking_status(db, booking_id, raw)
+        return JSONResponse(result)
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=404)
+
+
+# ── PWA assets (served from /display/ so the service worker scope covers the app) ─
+
+@router.get("/manifest.webmanifest", include_in_schema=False)
+async def display_manifest():
+    path = _TMPL_DIR / "manifest.webmanifest"
+    return Response(
+        content=path.read_text(encoding="utf-8"),
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.get("/service-worker.js", include_in_schema=False)
+async def display_service_worker():
+    path = _TMPL_DIR / "service-worker.js"
+    return Response(
+        content=path.read_text(encoding="utf-8"),
+        media_type="application/javascript",
+        headers={
+            "Cache-Control": "no-cache",
+            "Service-Worker-Allowed": "/display/",
+        },
+    )

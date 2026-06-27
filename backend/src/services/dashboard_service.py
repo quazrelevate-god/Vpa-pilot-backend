@@ -46,6 +46,7 @@ _STATUS_DISPLAY = {
     "AWAITING_REVIEW": "Awaiting Review",
     "REVIEWED":        "Reviewed",
     "SCHEDULED":       "Scheduled",
+    "NOT_CAME":        "Not Came",
 }
 
 
@@ -699,3 +700,50 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         "name": name,
         "status": new_status,
     }
+
+
+async def set_floor_attendance(db: AsyncSession, appointment_id: int, action: str) -> dict:
+    """
+    Floor-board attendance toggle used by the crowd-management PWA.
+
+    Deliberately side-effect-free vs update_appointment_status: it only flips the
+    status field and logs the change. It does NOT release the slot — releasing
+    nulls scheduled_date, which would drop the row off today's board, and freeing
+    capacity on a same-day passed slot is pointless.
+
+      action="came"     -> AWAITING_REVIEW (visitor showed up, enters PA review)
+      action="not_came" -> NOT_CAME        (no-show)
+      action="reset"    -> restore the original scheduling status (undo a mistake)
+
+    The first time the board marks a row, the original status is saved in
+    pre_floor_status so 'reset' restores SCHEDULED vs RESCHEDULED exactly.
+    """
+    action = (action or "").strip().lower().replace(" ", "_")
+    if action not in ("came", "not_came", "reset"):
+        return {"success": False, "error": "invalid action"}
+
+    result = await db.execute(
+        select(Appointment).where(Appointment.id == appointment_id)
+    )
+    appt = result.scalar_one_or_none()
+    if not appt:
+        return {"success": False}
+
+    old_status = appt.status
+
+    if action == "reset":
+        # Undo: go back to the captured original (fallback to SCHEDULED).
+        appt.status = appt.pre_floor_status or "SCHEDULED"
+        appt.pre_floor_status = None
+    else:
+        # Capture the original scheduling status once, before we overwrite it.
+        if appt.pre_floor_status is None and old_status in ("SCHEDULED", "RESCHEDULED"):
+            appt.pre_floor_status = old_status
+        appt.status = "AWAITING_REVIEW" if action == "came" else "NOT_CAME"
+
+    if old_status != appt.status:
+        _log_appt_event(db, appointment_id, "status_changed",
+                        payload={"from": old_status, "to": appt.status, "via": "floor_board"})
+
+    await db.commit()
+    return {"success": True, "status": _STATUS_DISPLAY.get(appt.status, appt.status)}

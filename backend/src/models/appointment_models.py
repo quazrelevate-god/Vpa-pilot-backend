@@ -261,9 +261,16 @@ class Appointment(Base):
         String(20),
         nullable=False,
         default='SCHEDULED',
-        comment="Appointment status: SCHEDULED, WAITING, RESCHEDULED, AWAITING_REVIEW, REVIEWED"
+        comment="Appointment status: SCHEDULED, WAITING, RESCHEDULED, AWAITING_REVIEW, REVIEWED, NOT_CAME"
     )
-    
+
+    pre_floor_status = Column(
+        String(20),
+        nullable=True,
+        comment="Original status captured the first time the floor board marked attendance, "
+                "so a mistaken Came/Not Came can be reverted exactly (SCHEDULED vs RESCHEDULED)."
+    )
+
     schedule_meeting = Column(
         Boolean,
         nullable=False,

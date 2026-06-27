@@ -451,10 +451,26 @@ class ReferralService:
                 "num_persons":  b.num_persons,
                 "referred_by":  b.referred_by,
                 "reason":       b.reason,
+                "status":       b.status,
                 "slot":         f"{b.scheduled_start_time.strftime('%I:%M %p')} – {b.scheduled_end_time.strftime('%I:%M %p')}",
+                "slot_start":   b.scheduled_start_time.strftime("%H:%M"),
                 "booked_at":    b.created_at.isoformat() if b.created_at else None,
             })
         return out
+
+    # ── Floor board: mark attendance (came / not came) ───────────────────────
+
+    async def update_booking_status(self, db: AsyncSession, booking_id: int, status: str) -> Dict:
+        """Set a referral booking's floor-attendance status. Used by the crowd PWA."""
+        status = (status or "").upper()
+        if status not in ("PENDING", "CAME", "NOT_CAME"):
+            raise ValueError("Invalid status. Use CAME, NOT_CAME or PENDING.")
+        booking = await db.get(ReferralBooking, booking_id)
+        if booking is None:
+            raise ValueError("Booking not found.")
+        booking.status = status
+        await db.commit()
+        return {"id": booking_id, "status": status}
 
 
 referral_service = ReferralService()

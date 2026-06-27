@@ -107,6 +107,8 @@ class ReferralBooking(Base):
     num_persons          = Column(Integer,    nullable=False, default=1, comment="1-3 persons")
     referred_by          = Column(String(200), nullable=False)
     reason               = Column(String(500), nullable=False, comment="Reason for the meeting")
+    status               = Column(String(12),  nullable=False, default="PENDING",
+                                  comment="Floor attendance: PENDING / CAME / NOT_CAME")
     scheduled_date       = Column(Date,        nullable=False)
     scheduled_start_time = Column(Time,        nullable=False)
     scheduled_end_time   = Column(Time,        nullable=False)
