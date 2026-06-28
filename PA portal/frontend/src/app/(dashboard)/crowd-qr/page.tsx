@@ -8,8 +8,6 @@ import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-declare global { interface Window { QRCode?: any } }
-
 export default function CrowdQrPage() {
   const [url, setUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -32,11 +30,13 @@ export default function CrowdQrPage() {
   useEffect(() => {
     if (!url || !boxRef.current) return;
     const box = boxRef.current;
+    const QR = () => (window as unknown as { QRCode?: any }).QRCode;
     const render = () => {
       box.innerHTML = "";
-      if (window.QRCode) new window.QRCode(box, { text: url, width: 240, height: 240, correctLevel: window.QRCode.CorrectLevel.M });
+      const Q = QR();
+      if (Q) new Q(box, { text: url, width: 240, height: 240, correctLevel: Q.CorrectLevel.M });
     };
-    if (window.QRCode) { render(); return; }
+    if (QR()) { render(); return; }
     const s = document.createElement("script");
     s.src = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
     s.onload = render;
