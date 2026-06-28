@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     
     # Security Configuration
     SECRET_KEY: str
+    # Set true in production (HTTPS) so session cookies get the Secure flag + HSTS.
+    COOKIE_SECURE: bool = False
+    # Comma-separated allowed CORS origins for the PA portal. In prod the portal is
+    # served same-origin so this is mainly for split dev (Next on :3000).
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # Sentry error monitoring (backend). Leave unset to disable.
+    SENTRY_DSN: Optional[str] = None
 
     # Gemini / AI Configuration
     # Used by src/services/summarisation.py to call gemini-2.5-flash.

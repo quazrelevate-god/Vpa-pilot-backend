@@ -8,14 +8,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
 from src.core.database import get_db
 from src.services.appointment_service import appointment_service
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
+# Shared rate limiter (registered on the app in main.py so the limits fire)
+from src.core.rate_limit import limiter
 
 
 router = APIRouter(

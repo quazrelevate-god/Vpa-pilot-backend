@@ -4,6 +4,7 @@ Implements stateless identity gatekeeper pattern with brute-force protection.
 """
 import asyncio
 import hashlib
+import logging
 import re
 import secrets
 import os
@@ -24,6 +25,8 @@ from src.models.appointment_models import (
     OTPVerification, Citizen, Appointment, AppointmentAttachment
 )
 from src.services.scheduling_service import scheduling_service
+
+logger = logging.getLogger(__name__)
 
 
 class AppointmentService:
@@ -213,16 +216,16 @@ class AppointmentService:
             otp_from_api = resp.text.strip().strip('"')
 
             if not otp_from_api or not otp_from_api.isdigit():
-                print(f"[APM SMS ERROR] Could not extract OTP from response: {resp.text!r}")
+                logger.info(f"[APM SMS ERROR] Could not extract OTP from response: {resp.text!r}")
                 raise HTTPException(status_code=502, detail="SMS gateway did not return an OTP.")
 
-            print(f"[APM SMS SUCCESS] OTP sent to {phone}, otp: {otp_from_api}")
+            logger.info(f"[APM SMS SUCCESS] OTP sent to {phone}, otp: {otp_from_api}")
             return otp_from_api
 
         except HTTPException:
             raise
         except Exception as e:
-            print(f"[APM SMS ERROR] Failed to send OTP to {mobile_number}: {e}")
+            logger.info(f"[APM SMS ERROR] Failed to send OTP to {mobile_number}: {e}")
             raise HTTPException(status_code=502, detail=f"SMS gateway error: {e}")
 
     async def _send_confirmation_sms(self, mobile_number: str, token_number: int, citizen_name: str) -> bool:
@@ -241,7 +244,7 @@ class AppointmentService:
             bool: True if sent successfully, False otherwise
         """
         if not settings.APM_SMS_API_KEY:
-            print(f"[SMS CONFIRMATION DUMMY] Token {token_number} assigned to {citizen_name} ({mobile_number})")
+            logger.info(f"[SMS CONFIRMATION DUMMY] Token {token_number} assigned to {citizen_name} ({mobile_number})")
             return False
         
         phone = mobile_number.lstrip("+")
@@ -257,10 +260,10 @@ class AppointmentService:
                     params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
                 )
             resp.raise_for_status()
-            print(f"[SMS CONFIRMATION SUCCESS] Token {token_number} sent to {phone}")
+            logger.info(f"[SMS CONFIRMATION SUCCESS] Token {token_number} sent to {phone}")
             return True
         except Exception as e:
-            print(f"[SMS CONFIRMATION ERROR] Failed to send to {mobile_number}: {e}")
+            logger.info(f"[SMS CONFIRMATION ERROR] Failed to send to {mobile_number}: {e}")
             return False
     
     async def send_status_update_sms(self, mobile_number: str, token_number: int, citizen_name: str, new_status: str) -> bool:
@@ -280,7 +283,7 @@ class AppointmentService:
             bool: True if sent successfully, False otherwise
         """
         if not settings.APM_SMS_API_KEY:
-            print(f"[SMS STATUS UPDATE DUMMY] Token {token_number} status changed to {new_status} for {citizen_name} ({mobile_number})")
+            logger.info(f"[SMS STATUS UPDATE DUMMY] Token {token_number} status changed to {new_status} for {citizen_name} ({mobile_number})")
             return False
         
         phone = mobile_number.lstrip("+")
@@ -297,10 +300,10 @@ class AppointmentService:
                     params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
                 )
             resp.raise_for_status()
-            print(f"[SMS STATUS UPDATE SUCCESS] Token {token_number} status update sent to {phone}")
+            logger.info(f"[SMS STATUS UPDATE SUCCESS] Token {token_number} status update sent to {phone}")
             return True
         except Exception as e:
-            print(f"[SMS STATUS UPDATE ERROR] Failed to send to {mobile_number}: {e}")
+            logger.info(f"[SMS STATUS UPDATE ERROR] Failed to send to {mobile_number}: {e}")
             return False
     
     # ── Twilio (commented out — replaced by APM Technologies SMS) ───────────────
@@ -321,7 +324,7 @@ class AppointmentService:
     #         sid = await asyncio.get_event_loop().run_in_executor(None, _send)
     #         return True
     #     except Exception as e:
-    #         print(f"[TWILIO ERROR] {e}")
+    #         logger.info(f"[TWILIO ERROR] {e}")
     #         return False
     
     async def verify_otp(
@@ -480,7 +483,7 @@ class AppointmentService:
 
             if dummy_mode:
                 otp_code = self._generate_otp_code()
-                print(f"[OTP DUMMY] APM SMS not configured. OTP for {mobile_number}: {otp_code}")
+                logger.info(f"[OTP DUMMY] APM SMS not configured. OTP for {mobile_number}: {otp_code}")
             else:
                 otp_code = otp_from_api
 
@@ -591,7 +594,7 @@ class AppointmentService:
             return save_file(audio_bytes, relative_path, content_type="audio/webm")
             
         except Exception as e:
-            print(f"[AUDIO SAVE ERROR] Failed to save audio: {e}")
+            logger.info(f"[AUDIO SAVE ERROR] Failed to save audio: {e}")
             return None
     
     async def _save_uploaded_file(
@@ -831,15 +834,15 @@ class AppointmentService:
                             await scheduling_service.book_slot(
                                 db, appointment, slot_id, commit=False
                             )
-                            print(f"[SLOT OK] appointment_id={appointment.id} | slot_id={slot_id} | status=SCHEDULED")
+                            logger.info(f"[SLOT OK] appointment_id={appointment.id} | slot_id={slot_id} | status=SCHEDULED")
                         except ValueError as slot_err:
                             # Slot just filled or blocked — put in waiting queue
-                            print(f"[SLOT WARN] appointment_id={appointment.id} | slot_id={slot_id} | err={slot_err} → WAITING")
+                            logger.info(f"[SLOT WARN] appointment_id={appointment.id} | slot_id={slot_id} | err={slot_err} → WAITING")
                             await scheduling_service.move_to_waiting_queue(
                                 db, appointment, 'SLOT_UNAVAILABLE', commit=False
                             )
                     else:
-                        print(f"[SLOT WARN] appointment_id={appointment.id} | no slot_id → WAITING")
+                        logger.info(f"[SLOT WARN] appointment_id={appointment.id} | no slot_id → WAITING")
                         await scheduling_service.move_to_waiting_queue(
                             db, appointment, 'NO_SLOT_SELECTED', commit=False
                         )
@@ -921,7 +924,7 @@ class AppointmentService:
                 }
                 for att in attachments_created
             ]
-            print(
+            logger.info(
                 f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
                 f"schedule_meeting={schedule_meeting} | "
                 f"attachments={len(attachment_snapshots)} | "
@@ -1003,7 +1006,7 @@ class AppointmentService:
         Any failure is logged; the appointment record is never affected.
         """
         from src.core.database import AsyncSessionLocal
-        print(f"[GEMINI START] appointment_id={appointment_id} — background summarisation starting")
+        logger.info(f"[GEMINI START] appointment_id={appointment_id} — background summarisation starting")
         try:
             # Lazy imports to avoid circular dependencies at module load time.
             from src.services.summarisation import GrievanceSummarisationService
@@ -1028,7 +1031,7 @@ class AppointmentService:
                         attachment_mime = att["mime_type"]
                         attachment_filename = Path(att["storage_url"]).name
                     except Exception as read_err:
-                        print(f"[GEMINI WARN] appointment_id={appointment_id}: "
+                        logger.info(f"[GEMINI WARN] appointment_id={appointment_id}: "
                               f"Could not read image file {att['storage_url']}: {read_err}")
                     break
 
@@ -1043,7 +1046,7 @@ class AppointmentService:
                             attachment_mime = att["mime_type"]
                             attachment_filename = Path(att["storage_url"]).name
                         except Exception as read_err:
-                            print(f"[GEMINI WARN] appointment_id={appointment_id}: "
+                            logger.info(f"[GEMINI WARN] appointment_id={appointment_id}: "
                                   f"Could not read document file {att['storage_url']}: {read_err}")
                         break
 
@@ -1069,7 +1072,7 @@ class AppointmentService:
                     if audio_bytes_for_gemini is None:
                         raise FileNotFoundError(f"File not found in storage: {audio_path}")
                 except Exception as read_err:
-                    print(f"[GEMINI WARN] appointment_id={appointment_id}: "
+                    logger.info(f"[GEMINI WARN] appointment_id={appointment_id}: "
                           f"Could not read audio file {audio_path}: {read_err}")
 
             # When an image/document is present it becomes the sole summarisation
@@ -1082,7 +1085,7 @@ class AppointmentService:
 
             # Skip only when nothing at all to summarise.
             if attachment_bytes is None and audio_for_summary is None and not grievance_text:
-                print(f"[GEMINI SKIP] appointment_id={appointment_id}: "
+                logger.info(f"[GEMINI SKIP] appointment_id={appointment_id}: "
                       "No usable input — skipping summarisation.")
                 return
 
@@ -1120,12 +1123,12 @@ class AppointmentService:
                     summarise_future, stt_future, return_exceptions=False
                 )
                 if stt_result.error:
-                    print(f"[STT WARN] appointment_id={appointment_id}: "
+                    logger.info(f"[STT WARN] appointment_id={appointment_id}: "
                           f"Gemini STT failed: {stt_result.error}")
                 elif stt_result.transcript:
                     audio_transcript = stt_result.transcript.strip()
                     audio_stt_latency_ms = stt_result.latency_ms
-                    print(f"[STT OK] appointment_id={appointment_id} | "
+                    logger.info(f"[STT OK] appointment_id={appointment_id} | "
                           f"chars={len(audio_transcript)} | latency={audio_stt_latency_ms}ms")
             else:
                 summary = await summarise_future
@@ -1188,7 +1191,7 @@ class AppointmentService:
             if audio_bytes_for_gemini: input_parts.append("audio")
             if grievance_text: input_parts.append("text")
             input_mode = "+".join(input_parts) if input_parts else "empty"
-            print(
+            logger.info(
                 f"[GEMINI OK] appointment_id={appointment_id} | input={input_mode} | "
                 f"urgency={summary.urgency.value} | category={summary.category.value} | "
                 f"department={summary.department.value} | "
@@ -1196,7 +1199,7 @@ class AppointmentService:
             )
 
         except Exception as exc:
-            print(f"[GEMINI WARN] appointment_id={appointment_id}: "
+            logger.info(f"[GEMINI WARN] appointment_id={appointment_id}: "
                   f"Summarisation failed (appointment unaffected): {exc}")
 
 
@@ -1339,7 +1342,7 @@ class AppointmentService:
             ))
             _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
-            print(
+            logger.info(
                 f"[MANUAL PETITION] appointment_id={appointment.id} | "
                 f"token={token_assigned} | pages={len(valid_files)} | "
                 f"submitted_by={submitted_by}"
@@ -1371,7 +1374,7 @@ class AppointmentService:
     ) -> None:
         """Background: read all scanned pages → Gemini → save summary."""
         from src.core.database import AsyncSessionLocal
-        print(f"[MANUAL GEMINI START] appointment_id={appointment_id} | "
+        logger.info(f"[MANUAL GEMINI START] appointment_id={appointment_id} | "
               f"pages={len(attachment_snapshots)}")
         try:
             from src.services.summarisation import GrievanceSummarisationService
@@ -1389,13 +1392,13 @@ class AppointmentService:
                         raise FileNotFoundError(f"File not found in storage: {snap['storage_url']}")
                     attachments.append((raw, snap["mime_type"], snap.get("filename")))
                 except Exception as e:
-                    print(f"[MANUAL GEMINI WARN] Could not read {snap['storage_url']}: {e}")
+                    logger.info(f"[MANUAL GEMINI WARN] Could not read {snap['storage_url']}: {e}")
 
             if not attachments:
-                print(f"[MANUAL GEMINI SKIP] appointment_id={appointment_id}: no readable files.")
+                logger.info(f"[MANUAL GEMINI SKIP] appointment_id={appointment_id}: no readable files.")
                 return
 
-            print(f"[MANUAL GEMINI CALL] appointment_id={appointment_id} | "
+            logger.info(f"[MANUAL GEMINI CALL] appointment_id={appointment_id} | "
                   f"pages={len(attachments)} | model={svc._model_name}")
             loop = asyncio.get_running_loop()   # get_event_loop() deprecated in 3.10+
             t0 = time.monotonic()
@@ -1428,14 +1431,14 @@ class AppointmentService:
                 # Auto-suggest ticket priority (no ticket yet for manual petitions)
                 await db.commit()
 
-            print(
+            logger.info(
                 f"[MANUAL GEMINI OK] appointment_id={appointment_id} | "
                 f"pages={len(attachments)} | urgency={summary.urgency.value} | "
                 f"category={summary.category.value} | latency={elapsed_ms}ms"
             )
 
         except Exception as exc:
-            print(f"[MANUAL GEMINI WARN] appointment_id={appointment_id}: "
+            logger.info(f"[MANUAL GEMINI WARN] appointment_id={appointment_id}: "
                   f"Summarisation failed (appointment unaffected): {exc}")
 
 

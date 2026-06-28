@@ -4,12 +4,18 @@ Configures middleware, CORS, and routes for the citizen scheduler API.
 """
 import sys
 import asyncio
+import logging
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from src.core.config import settings
+from src.core.logging_config import setup_logging, init_sentry
+
+setup_logging()
+init_sentry()
+
 from src.api.v1 import qr, form, appointments, dashboard, scheduling, display, scan_petition, referral, ai_uploads
 
 # Import all ORM models so SQLAlchemy can resolve cross-model relationships
@@ -34,13 +40,40 @@ app = FastAPI(
 )
 
 
+# ── Rate limiting (shared limiter, registered so @limiter.limit actually fires) ──
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from src.core.rate_limit import limiter
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+
+# CORS — locked to configured origins (the PA portal is same-origin in prod;
+# this is mainly for the split dev setup). Never "*" with credentials.
+_cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+if settings.SERVER_BASE_URL and settings.SERVER_BASE_URL not in _cors_origins:
+    _cors_origins.append(settings.SERVER_BASE_URL)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if settings.COOKIE_SECURE:  # only meaningful over HTTPS
+        resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return resp
 
 
 _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
@@ -71,17 +104,27 @@ async def _recover_ai_uploads():
         await ai_upload_service.recover_stale(max_minutes=0)
         await ai_upload_service._ensure_worker()   # drain anything still QUEUED
     except Exception as e:  # never block startup
-        print(f"[AI UPLOAD] startup recovery skipped: {e}")
+        logging.getLogger("ai_upload").warning("startup recovery skipped: %s", e)
 
 
 @app.get("/health", tags=["Health Check"])
 async def health_check():
-    """Health check endpoint for load balancers and monitoring."""
-    return {
-        "status": "healthy",
-        "app_name": settings.APP_NAME,
-        "version": settings.APP_VERSION
-    }
+    """Liveness — process is up. Cheap, no dependencies."""
+    return {"status": "healthy", "app_name": settings.APP_NAME, "version": settings.APP_VERSION}
+
+
+@app.get("/health/ready", tags=["Health Check"])
+async def readiness_check():
+    """Readiness — verifies DB connectivity. Use this for the load balancer probe."""
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text
+    from src.core.database import AsyncSessionLocal
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        return {"status": "ready", "db": "ok"}
+    except Exception as e:
+        return JSONResponse({"status": "not_ready", "db": "error", "detail": str(e)[:200]}, status_code=503)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ def create_session_cookie(response, username: str):
         max_age=_COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=settings.COOKIE_SECURE,
         path="/",
     )
 

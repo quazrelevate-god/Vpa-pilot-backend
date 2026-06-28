@@ -12,6 +12,7 @@ from pathlib import Path
 from src.core.database import get_db
 from src.core.config import settings
 from src.core.dash_auth import create_session_cookie, require_auth
+from src.core.rate_limit import limiter
 from src.services import dashboard_service
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -102,6 +103,7 @@ async def login_page(request: Request) -> HTMLResponse:
 
 
 @router.post("/login", include_in_schema=False)
+@limiter.limit("5/minute")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == settings.DASHBOARD_USERNAME and password == settings.DASHBOARD_PASSWORD:
         response = RedirectResponse(url="/appointments", status_code=302)

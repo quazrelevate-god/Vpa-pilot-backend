@@ -15,6 +15,7 @@ Isolated from scan-petition; converges into the existing Ticket system only on a
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -30,6 +31,8 @@ from src.models.ai_upload_models import (
     STATUS_QUEUED, STATUS_PROCESSING, STATUS_AWAITING_REVIEW,
     STATUS_REVIEWED, STATUS_FAILED,
 )
+
+logger = logging.getLogger(__name__)
 
 _ALLOWED_MIMES = {
     "application/pdf",
@@ -147,7 +150,7 @@ class AiUploadService:
             await db.commit()
             n = res.rowcount or 0
             if n:
-                print(f"[AI UPLOAD] recovered {n} stale PROCESSING row(s) -> QUEUED")
+                logger.info(f"[AI UPLOAD] recovered {n} stale PROCESSING row(s) -> QUEUED")
             return n
 
     async def _claim_next_queued(self) -> Optional[int]:
@@ -171,7 +174,7 @@ class AiUploadService:
         from src.services.petition_extraction import PetitionExtractionService
         from src.services.storage_service import get_file_bytes
 
-        print(f"[AI UPLOAD] processing id={upload_id}")
+        logger.info(f"[AI UPLOAD] processing id={upload_id}")
         try:
             async with AsyncSessionLocal() as db:
                 row = await db.get(AiUpload, upload_id)
@@ -218,10 +221,10 @@ class AiUploadService:
                 row.status             = STATUS_AWAITING_REVIEW
                 row.processed_at       = datetime.utcnow()
                 await db.commit()
-            print(f"[AI UPLOAD] id={upload_id} -> AWAITING_REVIEW ({latency_ms}ms)")
+            logger.info(f"[AI UPLOAD] id={upload_id} -> AWAITING_REVIEW ({latency_ms}ms)")
 
         except Exception as exc:
-            print(f"[AI UPLOAD] id={upload_id} FAILED: {exc}")
+            logger.info(f"[AI UPLOAD] id={upload_id} FAILED: {exc}")
             try:
                 async with AsyncSessionLocal() as db:
                     row = await db.get(AiUpload, upload_id)
@@ -231,7 +234,7 @@ class AiUploadService:
                         row.processed_at = datetime.utcnow()
                         await db.commit()
             except Exception as inner:
-                print(f"[AI UPLOAD] could not mark FAILED id={upload_id}: {inner}")
+                logger.info(f"[AI UPLOAD] could not mark FAILED id={upload_id}: {inner}")
 
     # ── Read ────────────────────────────────────────────────────────────────────
     @staticmethod

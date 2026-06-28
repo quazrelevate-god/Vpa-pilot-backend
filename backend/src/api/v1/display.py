@@ -18,6 +18,7 @@ from fastapi.responses import Response
 from src.core.database import get_db
 from src.core.config import settings
 from src.core.display_auth import create_display_cookie, require_display_auth
+from src.core.rate_limit import limiter
 from src.models.appointment_models import Appointment
 from src.services.dashboard_service import (
     _decode, _resolve_display_status, _category_label, set_floor_attendance,
@@ -40,6 +41,7 @@ async def display_login_page(request: Request) -> HTMLResponse:
 
 
 @router.post("/login", include_in_schema=False)
+@limiter.limit("5/minute")
 async def display_login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == settings.DISPLAY_USERNAME and password == settings.DISPLAY_PASSWORD:
         response = RedirectResponse(url="/display", status_code=302)
