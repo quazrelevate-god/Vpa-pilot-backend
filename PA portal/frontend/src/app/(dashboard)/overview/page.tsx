@@ -8,9 +8,11 @@ import {
 
 import TopBar from "@/components/TopBar";
 import MetricTile from "@/components/MetricTile";
+import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { AppointmentRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -63,6 +65,14 @@ export default function OverviewPage() {
   const [pets, setPets] = useState<{ items: Petition[]; total: number; page: number; pages: number } | null>(null);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ by: string; dir: "asc" | "desc" }>({ by: "created_at", dir: "desc" });
+  const [selected, setSelected] = useState<AppointmentRow | null>(null);
+
+  async function openDetail(id: number) {
+    try {
+      const r = await fetch(`/api/appointments/${id}`, { credentials: "include" });
+      if (r.ok) setSelected(await r.json());
+    } catch { /* ignore */ }
+  }
 
   const qs = useCallback((extra: Record<string, any> = {}) => {
     const { from, to } = presetDates(preset);
@@ -252,7 +262,6 @@ export default function OverviewPage() {
               <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
-                    <Th label="Token" col="token" sort={sort} onSort={setSort} />
                     <th className="px-4 py-2.5">Name</th>
                     <th className="px-4 py-2.5">Mobile</th>
                     <Th label="Category" col="category" sort={sort} onSort={setSort} />
@@ -264,12 +273,11 @@ export default function OverviewPage() {
                 </thead>
                 <tbody>
                   {!pets ? (
-                    <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">Loading…</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">Loading…</td></tr>
                   ) : pets.items.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No petitions match the filters.</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No petitions match the filters.</td></tr>
                   ) : pets.items.map(p => (
-                    <tr key={p.id} className="border-t border-border/70 hover:bg-muted/30">
-                      <td className="px-4 py-2.5 font-mono text-[11px] text-brand">{p.token}</td>
+                    <tr key={p.id} onClick={() => openDetail(p.id)} className="cursor-pointer border-t border-border/70 hover:bg-muted/30">
                       <td className="px-4 py-2.5 font-medium">{p.name}</td>
                       <td className="px-4 py-2.5 text-muted-foreground">{p.mobile}</td>
                       <td className="px-4 py-2.5 text-muted-foreground">{p.category_label}</td>
@@ -294,6 +302,13 @@ export default function OverviewPage() {
           </Card>
         </div>
       </main>
+
+      {/* Petition detail — summary + attachments */}
+      <AppointmentDetailDrawer
+        row={selected}
+        onClose={() => setSelected(null)}
+        onStatusChange={() => { loadAnalytics(); loadPetitions(); }}
+      />
     </>
   );
 }

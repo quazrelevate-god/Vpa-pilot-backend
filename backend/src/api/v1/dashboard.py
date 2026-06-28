@@ -83,6 +83,17 @@ async def api_analytics_export(
     )
 
 
+@router.get("/api/appointments/{appointment_id}")
+async def api_appointment_detail(
+    appointment_id: int, db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
+):
+    """Full appointment detail (summary + attachments) for the dashboard drawer."""
+    row = await dashboard_service.get_appointment_detail(db, appointment_id)
+    if row is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse(row)
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @router.get("/login", include_in_schema=False)

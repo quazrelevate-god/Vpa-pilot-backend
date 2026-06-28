@@ -438,86 +438,86 @@ async def get_appointments(
 
     items = []
     for appt in appointments:
-        citizen = appt.citizen
-        name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "—")
-        mobile = _decode(citizen.encrypted_mobile) if citizen else "—"
-
-        # Search filter (applied post-decode so name/mobile can be matched)
         if search:
+            citizen = appt.citizen
+            name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "—")
+            mobile = _decode(citizen.encrypted_mobile) if citizen else "—"
             q = search.lower()
             if q not in name.lower() and q not in mobile and q not in str(appt.token_assigned):
                 continue
-
-        summary_rec: Optional[GrievanceSummaryRecord] = next(
-            (s for s in appt.grievance_summary if s.is_latest), None
-        )
-
-        def _attachment_url(a) -> str:
-            from src.services.storage_service import get_file_url
-            return get_file_url(a.storage_url)
-
-        attachments_data = [
-            {
-                "url": _attachment_url(a),
-                "type": a.attachment_type,
-                "mime": a.mime_type,
-                "name": Path(a.storage_url).name,
-            }
-            for a in appt.attachments
-        ]
-
-        # Add audio recording URL if available
-        audio_url = None
-        if appt.audio_recording_url:
-            from src.services.storage_service import get_file_url
-            audio_url = get_file_url(appt.audio_recording_url)
-        
-        items.append({
-            "id": appt.id,
-            "token": f"TKN{appt.token_assigned}",
-            "name": name,
-            "mobile": mobile,
-            "category": _category_label(appt.grievance_category),
-            "department": (summary_rec.department if summary_rec else None),
-            "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
-            "status_db": appt.status,
-            "status": _resolve_display_status(appt),
-            "created_at": utc_iso(appt.created_at),
-            "scheduled_date": (
-                appt.scheduled_date.isoformat() if appt.scheduled_date else None
-            ),
-            "appointment_time": (
-                datetime.combine(appt.scheduled_date, appt.scheduled_start_time).isoformat()
-                if appt.scheduled_date and appt.scheduled_start_time else None
-            ),
-            "appointment_slot_end": (
-                appt.scheduled_end_time.strftime("%H:%M")
-                if appt.scheduled_end_time else None
-            ),
-            # Slot window range: "08:00 – 08:30"
-            "slot_window": (
-                f"{(datetime.combine(datetime.min, appt.scheduled_end_time) - timedelta(minutes=30)).strftime('%H:%M')} – {appt.scheduled_end_time.strftime('%H:%M')}"
-                if appt.scheduled_end_time else None
-            ),
-            "num_persons": appt.num_persons,
-            "description": _decode(appt.encrypted_grievance) if appt.encrypted_grievance else None,
-            "audio_url": audio_url,
-            "headline": summary_rec.headline if summary_rec else None,
-            "headline_ta": summary_rec.headline_ta if summary_rec else None,
-            "summary": summary_rec.summary if summary_rec else None,
-            "summary_ta": summary_rec.summary_ta if summary_rec else None,
-            "citizen_ask": summary_rec.citizen_ask if summary_rec else None,
-            "citizen_ask_ta": summary_rec.citizen_ask_ta if summary_rec else None,
-            "urgency": summary_rec.urgency if summary_rec else None,
-            "key_details": summary_rec.key_details if summary_rec else [],
-            "key_details_ta": summary_rec.key_details_ta if summary_rec else [],
-            "audio_transcript": summary_rec.audio_transcript if summary_rec else None,
-            "category_label": _category_label(appt.grievance_category),
-            "department_label": (DEPARTMENT_DISPLAY.get(summary_rec.department, summary_rec.department) if summary_rec and summary_rec.department else None),
-            "attachments": attachments_data,
-        })
+        items.append(build_appointment_row(appt))
 
     return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+def build_appointment_row(appt) -> Dict[str, Any]:
+    """Build the rich appointment row (citizen + AI summary + attachments) used by
+    the appointments table AND the dashboard detail drawer."""
+    from src.services.storage_service import get_file_url
+    citizen = appt.citizen
+    name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "—")
+    mobile = _decode(citizen.encrypted_mobile) if citizen else "—"
+    summary_rec: Optional[GrievanceSummaryRecord] = next(
+        (s for s in appt.grievance_summary if s.is_latest), None
+    )
+    attachments_data = [
+        {"url": get_file_url(a.storage_url), "type": a.attachment_type, "mime": a.mime_type, "name": Path(a.storage_url).name}
+        for a in appt.attachments
+    ]
+    audio_url = get_file_url(appt.audio_recording_url) if appt.audio_recording_url else None
+    return {
+        "id": appt.id,
+        "token": f"TKN{appt.token_assigned}",
+        "name": name,
+        "mobile": mobile,
+        "category": _category_label(appt.grievance_category),
+        "department": (summary_rec.department if summary_rec else None),
+        "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
+        "status_db": appt.status,
+        "status": _resolve_display_status(appt),
+        "created_at": utc_iso(appt.created_at),
+        "scheduled_date": (appt.scheduled_date.isoformat() if appt.scheduled_date else None),
+        "appointment_time": (
+            datetime.combine(appt.scheduled_date, appt.scheduled_start_time).isoformat()
+            if appt.scheduled_date and appt.scheduled_start_time else None
+        ),
+        "appointment_slot_end": (appt.scheduled_end_time.strftime("%H:%M") if appt.scheduled_end_time else None),
+        "slot_window": (
+            f"{(datetime.combine(datetime.min, appt.scheduled_end_time) - timedelta(minutes=30)).strftime('%H:%M')} – {appt.scheduled_end_time.strftime('%H:%M')}"
+            if appt.scheduled_end_time else None
+        ),
+        "num_persons": appt.num_persons,
+        "description": _decode(appt.encrypted_grievance) if appt.encrypted_grievance else None,
+        "audio_url": audio_url,
+        "headline": summary_rec.headline if summary_rec else None,
+        "headline_ta": summary_rec.headline_ta if summary_rec else None,
+        "summary": summary_rec.summary if summary_rec else None,
+        "summary_ta": summary_rec.summary_ta if summary_rec else None,
+        "citizen_ask": summary_rec.citizen_ask if summary_rec else None,
+        "citizen_ask_ta": summary_rec.citizen_ask_ta if summary_rec else None,
+        "urgency": summary_rec.urgency if summary_rec else None,
+        "key_details": summary_rec.key_details if summary_rec else [],
+        "key_details_ta": summary_rec.key_details_ta if summary_rec else [],
+        "audio_transcript": summary_rec.audio_transcript if summary_rec else None,
+        "category_label": _category_label(appt.grievance_category),
+        "department_label": (DEPARTMENT_DISPLAY.get(summary_rec.department, summary_rec.department) if summary_rec and summary_rec.department else None),
+        "attachments": attachments_data,
+    }
+
+
+async def get_appointment_detail(db: AsyncSession, appointment_id: int) -> Optional[Dict[str, Any]]:
+    """Single rich appointment row for the detail drawer (summary + attachments)."""
+    stmt = (
+        select(Appointment)
+        .options(
+            selectinload(Appointment.citizen),
+            selectinload(Appointment.attachments),
+            selectinload(Appointment.grievance_summary),
+        )
+        .where(Appointment.id == appointment_id)
+    )
+    appt = (await db.execute(stmt)).scalar_one_or_none()
+    return build_appointment_row(appt) if appt else None
 
 
 async def update_appointment_derived_fields(
