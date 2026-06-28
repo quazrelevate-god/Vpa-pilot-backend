@@ -23,6 +23,7 @@ const ACCEPT = /\.(pdf|jpe?g|png|webp|heic|heif|gif|bmp)$/i;
 
 export default function AiUploadsPage() {
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [category, setCategory] = useState("");          // "" = Auto
   const [rows, setRows] = useState<Row[]>([]);
@@ -53,22 +54,47 @@ export default function AiUploadsPage() {
     }
   }, []);
 
+  // Upload in small chunks (concurrency-limited) under one shared batch id, so a
+  // folder of hundreds of files streams in as many small requests instead of one
+  // huge body that would blow memory / time out.
   async function handleFiles(fileList: FileList | File[]) {
     const arr = Array.from(fileList).filter(f => ACCEPT.test(f.name));
     if (!arr.length) { toast.error("No PDF/image files found"); return; }
+
+    const batchId = (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`);
+    const CHUNK = 6, CONCURRENCY = 2;
+    const chunks: File[][] = [];
+    for (let i = 0; i < arr.length; i += CHUNK) chunks.push(arr.slice(i, i + CHUNK));
+
     setUploading(true);
-    try {
+    setProgress({ done: 0, total: arr.length });
+    let ok = 0, bad = 0, idx = 0;
+
+    const sendChunk = async (chunk: File[]) => {
       const fd = new FormData();
-      arr.forEach(f => fd.append("files", f));
+      chunk.forEach(f => fd.append("files", f));
+      fd.append("batch_id", batchId);
       if (category) fd.append("category", category);
-      const r = await fetch("/api/ai-uploads/upload", { method: "POST", body: fd, credentials: "include" });
-      const d = await r.json();
-      if (r.ok) {
-        toast.success(`${d.count} file(s) queued`, { description: "Processing one by one — watch the batch below." });
-        load();
-      } else toast.error(d.detail || d.error || "Upload failed");
-    } catch { toast.error("Network error"); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; if (folderRef.current) folderRef.current.value = ""; }
+      try {
+        const r = await fetch("/api/ai-uploads/upload", { method: "POST", body: fd, credentials: "include" });
+        if (!r.ok) throw new Error();
+        ok += chunk.length;
+      } catch { bad += chunk.length; }
+      setProgress({ done: ok + bad, total: arr.length });
+      load();
+    };
+    const worker = async () => { while (idx < chunks.length) await sendChunk(chunks[idx++]); };
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
+      if (bad) toast.error(`${bad} file(s) failed to upload`, { description: ok ? `${ok} queued.` : undefined });
+      else toast.success(`${ok} file(s) queued`, { description: "Processing one by one — watch the batch below." });
+    } finally {
+      setUploading(false); setProgress(null);
+      if (fileRef.current) fileRef.current.value = "";
+      if (folderRef.current) folderRef.current.value = "";
+      load();
+    }
   }
 
   // group rows into batches, newest first
@@ -127,7 +153,11 @@ export default function AiUploadsPage() {
             <div className="grid h-14 w-14 place-items-center rounded-2xl bg-violet-100">
               {uploading ? <Loader2 className="h-7 w-7 animate-spin text-violet-600" /> : <UploadCloud className="h-7 w-7 text-violet-600" />}
             </div>
-            <div className="text-base font-semibold">{uploading ? "Uploading…" : "Drag files here, or choose below"}</div>
+            <div className="text-base font-semibold">
+              {uploading
+                ? (progress ? `Uploading ${progress.done}/${progress.total}…` : "Uploading…")
+                : "Drag files here, or choose below"}
+            </div>
             <div className="flex flex-wrap justify-center gap-2">
               <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
                 <Files className="mr-1.5 h-4 w-4" /> Select files

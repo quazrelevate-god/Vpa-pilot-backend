@@ -17,11 +17,11 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import AsyncSessionLocal
@@ -36,8 +36,11 @@ _ALLOWED_MIMES = {
     "image/jpeg", "image/jpg", "image/png", "image/webp",
     "image/heic", "image/heif", "image/gif", "image/bmp",
 }
-_MAX_BYTES = 15 * 1024 * 1024   # 15 MB per file
-_MAX_FILES = 50                 # per batch
+_MAX_BYTES = 15 * 1024 * 1024        # 15 MB per file
+_MAX_FILES = 25                      # per HTTP request (client chunks big folders)
+_MAX_REQUEST_BYTES = 60 * 1024 * 1024  # 60 MB total per request (memory guard)
+_EXTRACTION_TIMEOUT = 90             # seconds per file before a stuck call is failed
+_STALE_PROCESSING_MIN = 15          # PROCESSING older than this is re-queued (crash recovery)
 
 
 class AiUploadService:
@@ -47,22 +50,30 @@ class AiUploadService:
 
     # ── Batch upload ────────────────────────────────────────────────────────────
     async def create_batch(self, files: List[UploadFile], db: AsyncSession,
-                           category: Optional[str] = None) -> Dict[str, Any]:
+                           category: Optional[str] = None,
+                           batch_id: Optional[str] = None) -> Dict[str, Any]:
         from src.services.appointment_service import appointment_service
         from src.services.storage_service import save_file
+        from src.models.grievance_summary import GrievanceCategory
 
         valid = [f for f in files if f.filename]
         if not valid:
             raise HTTPException(status_code=400, detail="At least one file is required.")
         if len(valid) > _MAX_FILES:
-            raise HTTPException(status_code=400, detail=f"Max {_MAX_FILES} files per batch.")
+            raise HTTPException(status_code=400, detail=f"Max {_MAX_FILES} files per request — upload in smaller chunks.")
 
-        # PA category override for the whole batch ('auto'/'general'/blank => use AI)
+        # PA category override for the whole batch ('auto'/'general'/blank => use AI).
+        # Validate against the enum so a bad value can't break approve later.
         forced = (category or "").strip().lower()
         forced_category = forced if forced and forced not in ("auto", "general") else None
+        if forced_category and forced_category not in {c.value for c in GrievanceCategory}:
+            raise HTTPException(status_code=400, detail=f"Unknown category '{category}'.")
 
-        batch_id = uuid.uuid4().hex
+        # Reuse the client-supplied batch id so one folder (sent as several chunks)
+        # stays one batch; otherwise mint a new one.
+        batch_id = (batch_id or "").strip() or uuid.uuid4().hex
         created: List[Dict[str, Any]] = []
+        total_bytes = 0
 
         for f in valid:
             mime = f.content_type or "application/octet-stream"
@@ -71,6 +82,9 @@ class AiUploadService:
             raw = await f.read()
             if len(raw) > _MAX_BYTES:
                 raise HTTPException(status_code=400, detail=f"'{f.filename}' exceeds 15 MB limit.")
+            total_bytes += len(raw)
+            if total_bytes > _MAX_REQUEST_BYTES:
+                raise HTTPException(status_code=400, detail="Upload chunk too large — send fewer files per request.")
 
             safe = appointment_service._sanitize_filename(f.filename)
             rel = f"ai_uploads/{batch_id}/{safe}"
@@ -105,6 +119,7 @@ class AiUploadService:
 
     async def _worker(self) -> None:
         try:
+            await self.recover_stale()   # re-queue anything left PROCESSING by a crash
             while True:
                 upload_id = await self._claim_next_queued()
                 if upload_id is None:
@@ -112,6 +127,28 @@ class AiUploadService:
                 await self._process_one(upload_id)
         finally:
             self._worker_active = False
+
+    async def recover_stale(self, max_minutes: int = _STALE_PROCESSING_MIN) -> int:
+        """
+        Re-queue rows stuck in PROCESSING (server restarted/crashed mid-extraction,
+        or a call hung). Called at worker start and on app startup. max_minutes=0
+        re-queues every PROCESSING row (used on startup — nothing is really running).
+        """
+        cutoff = datetime.utcnow() - timedelta(minutes=max_minutes)
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(
+                update(AiUpload)
+                .where(
+                    AiUpload.status == STATUS_PROCESSING,
+                    (AiUpload.processed_at.is_(None)) | (AiUpload.processed_at < cutoff),
+                )
+                .values(status=STATUS_QUEUED, error_message=None)
+            )
+            await db.commit()
+            n = res.rowcount or 0
+            if n:
+                print(f"[AI UPLOAD] recovered {n} stale PROCESSING row(s) -> QUEUED")
+            return n
 
     async def _claim_next_queued(self) -> Optional[int]:
         """Atomically pick the oldest QUEUED row and flip it to PROCESSING."""
@@ -126,6 +163,7 @@ class AiUploadService:
             if row is None:
                 return None
             row.status = STATUS_PROCESSING
+            row.processed_at = datetime.utcnow()   # start marker for stale recovery
             await db.commit()
             return row.id
 
@@ -149,8 +187,12 @@ class AiUploadService:
             svc = PetitionExtractionService.from_settings()
             loop = asyncio.get_running_loop()
             t0 = time.monotonic()
-            result = await loop.run_in_executor(
-                None, lambda: svc.extract(file_bytes=raw, mime_type=mime, filename=fname)
+            # Hard timeout so one hung Gemini call can't stall the whole queue.
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, lambda: svc.extract(file_bytes=raw, mime_type=mime, filename=fname)
+                ),
+                timeout=_EXTRACTION_TIMEOUT,
             )
             latency_ms = int((time.monotonic() - t0) * 1000)
 
@@ -271,6 +313,36 @@ class AiUploadService:
 
     # ── Approve → create the case + ticket ──────────────────────────────────────
     async def approve(self, db: AsyncSession, upload_id: int, reviewed_by: str) -> Dict[str, Any]:
+        # Atomically claim the row: flip AWAITING_REVIEW -> REVIEWED in one UPDATE.
+        # A double-click or a second PA loses the race (rowcount 0) and cannot
+        # create a duplicate Citizen/Appointment/Ticket for the same upload.
+        claim = await db.execute(
+            update(AiUpload)
+            .where(AiUpload.id == upload_id, AiUpload.status == STATUS_AWAITING_REVIEW)
+            .values(status=STATUS_REVIEWED)
+        )
+        await db.commit()
+        if (claim.rowcount or 0) == 0:
+            if await db.get(AiUpload, upload_id) is None:
+                raise ValueError("Upload not found.")
+            raise ValueError("Already approved or not awaiting review.")
+
+        try:
+            return await self._build_case(db, upload_id, reviewed_by)
+        except Exception:
+            # Build failed — release the claim so the row can be approved again.
+            await db.rollback()
+            try:
+                async with AsyncSessionLocal() as db2:
+                    r = await db2.get(AiUpload, upload_id)
+                    if r and r.status == STATUS_REVIEWED and r.ticket_id is None:
+                        r.status = STATUS_AWAITING_REVIEW
+                        await db2.commit()
+            except Exception:
+                pass
+            raise
+
+    async def _build_case(self, db: AsyncSession, upload_id: int, reviewed_by: str) -> Dict[str, Any]:
         from src.services.appointment_service import appointment_service
         from src.services import dashboard_service
         from src.services.petition_extraction import PetitionExtraction
@@ -279,11 +351,6 @@ class AiUploadService:
         from src.models.ticket_models import Ticket
 
         row = await db.get(AiUpload, upload_id)
-        if row is None:
-            raise ValueError("Upload not found.")
-        if row.status != STATUS_AWAITING_REVIEW:
-            raise ValueError("Only rows awaiting review can be approved.")
-
         sj = row.summary_json or {}
         extraction = PetitionExtraction.model_validate(sj)   # enums back, edits included
         name   = (row.extracted_name or extraction.citizen_name or "Unknown").strip()

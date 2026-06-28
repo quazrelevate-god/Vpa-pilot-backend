@@ -63,6 +63,17 @@ app.include_router(referral.page_router)
 app.include_router(ai_uploads.router)
 
 
+@app.on_event("startup")
+async def _recover_ai_uploads():
+    """After a restart, re-queue any AI uploads left mid-processing and resume."""
+    try:
+        from src.services.ai_upload_service import ai_upload_service
+        await ai_upload_service.recover_stale(max_minutes=0)
+        await ai_upload_service._ensure_worker()   # drain anything still QUEUED
+    except Exception as e:  # never block startup
+        print(f"[AI UPLOAD] startup recovery skipped: {e}")
+
+
 @app.get("/health", tags=["Health Check"])
 async def health_check():
     """Health check endpoint for load balancers and monitoring."""
