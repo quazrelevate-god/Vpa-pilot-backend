@@ -46,7 +46,8 @@ class AiUploadService:
         self._worker_active = False   # single sequential worker guard
 
     # ── Batch upload ────────────────────────────────────────────────────────────
-    async def create_batch(self, files: List[UploadFile], db: AsyncSession) -> Dict[str, Any]:
+    async def create_batch(self, files: List[UploadFile], db: AsyncSession,
+                           category: Optional[str] = None) -> Dict[str, Any]:
         from src.services.appointment_service import appointment_service
         from src.services.storage_service import save_file
 
@@ -55,6 +56,10 @@ class AiUploadService:
             raise HTTPException(status_code=400, detail="At least one file is required.")
         if len(valid) > _MAX_FILES:
             raise HTTPException(status_code=400, detail=f"Max {_MAX_FILES} files per batch.")
+
+        # PA category override for the whole batch ('auto'/'general'/blank => use AI)
+        forced = (category or "").strip().lower()
+        forced_category = forced if forced and forced not in ("auto", "general") else None
 
         batch_id = uuid.uuid4().hex
         created: List[Dict[str, Any]] = []
@@ -77,6 +82,8 @@ class AiUploadService:
                 storage_url=storage_url,
                 mime_type=mime,
                 status=STATUS_QUEUED,
+                forced_category=forced_category,
+                grievance_category=forced_category,   # show the chosen category up-front
                 created_at=datetime.utcnow(),
             )
             db.add(row)
@@ -133,6 +140,7 @@ class AiUploadService:
                 if row is None:
                     return
                 storage_url, mime, fname = row.storage_url, row.mime_type, row.original_filename
+                forced_category = row.forced_category
 
             raw = await asyncio.to_thread(get_file_bytes, storage_url)
             if raw is None:
@@ -146,7 +154,11 @@ class AiUploadService:
             )
             latency_ms = int((time.monotonic() - t0) * 1000)
 
+            # PA's batch category overrides the AI one (unless none was chosen)
+            final_category = forced_category or result.category.value
+
             payload = result.model_dump(mode="json")
+            payload["category"] = final_category
             payload["_model_used"] = svc._model_name
             payload["_latency_ms"] = latency_ms
 
@@ -157,7 +169,7 @@ class AiUploadService:
                 row.extracted_name    = result.citizen_name
                 row.extracted_name_ta = result.citizen_name_ta
                 row.extracted_mobile  = result.mobile
-                row.grievance_category = result.category.value
+                row.grievance_category = final_category
                 row.urgency            = result.urgency.value
                 row.summary_json       = payload
                 row.error_message      = None
@@ -199,6 +211,7 @@ class AiUploadService:
             "name_ta": row.extracted_name_ta,
             "mobile": row.extracted_mobile,
             "category": row.grievance_category,
+            "forced_category": row.forced_category,
             "urgency": row.urgency,
             "headline": sj.get("headline"),
             "headline_ta": sj.get("headline_ta"),

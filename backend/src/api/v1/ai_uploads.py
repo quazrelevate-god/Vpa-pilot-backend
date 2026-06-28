@@ -13,7 +13,7 @@ Frontend proxy maps /api/ai-uploads/* → /dashboard/api/ai-uploads/*.
 """
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, Depends, File, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,10 +27,11 @@ router = APIRouter(prefix="/dashboard/api/ai-uploads", tags=["AI Uploads"])
 @router.post("/upload")
 async def upload_batch(
     files: List[UploadFile] = File(...),
+    category: str = Form(default=""),
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    return JSONResponse(await ai_upload_service.create_batch(files, db), status_code=201)
+    return JSONResponse(await ai_upload_service.create_batch(files, db, category=category), status_code=201)
 
 
 @router.get("")

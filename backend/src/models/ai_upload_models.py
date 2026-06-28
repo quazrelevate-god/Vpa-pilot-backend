@@ -59,6 +59,10 @@ class AiUpload(Base):
     grievance_category = Column(VARCHAR(50), nullable=True)
     urgency            = Column(VARCHAR(20), nullable=True)
 
+    # PA-chosen category for the whole batch. When set (and not 'general') it
+    # overrides whatever Gemini detects. NULL/'general' => use the AI value.
+    forced_category    = Column(VARCHAR(50), nullable=True)
+
     # ── Full Gemini extraction (used to build a GrievanceSummaryRecord on approve)
     summary_json = Column(JSONB, nullable=True)
 
