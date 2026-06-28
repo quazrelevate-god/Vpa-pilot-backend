@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import SentryInit from "@/components/SentryInit";
 
 export const metadata: Metadata = {
   title: "Petition Management — Staff Portal",
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="bg-background text-foreground antialiased">
+        <SentryInit />
         {children}
         <Toaster />
       </body>
