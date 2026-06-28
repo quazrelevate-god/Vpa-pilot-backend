@@ -57,6 +57,7 @@ export default function OverviewPage() {
   const [filters, setFilters] = useState<Filters>({});
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // table
   const [pets, setPets] = useState<{ items: Petition[]; total: number; page: number; pages: number } | null>(null);
@@ -76,15 +77,18 @@ export default function OverviewPage() {
     setLoading(true);
     try {
       const r = await fetch(`/api/analytics?${qs()}`, { credentials: "include" });
-      setData(await r.json());
-    } catch { /* keep */ } finally { setLoading(false); }
+      if (!r.ok) { setError(`Analytics request failed (HTTP ${r.status}). If this is a fresh deploy, run "alembic upgrade head".`); return; }
+      setError(null); setData(await r.json());
+    } catch (e) { setError(`Could not reach the analytics API: ${(e as Error).message}`); }
+    finally { setLoading(false); }
   }, [qs]);
 
   const loadPetitions = useCallback(async () => {
     try {
       const r = await fetch(`/api/analytics/petitions?${qs({ page, page_size: 50, sort: sort.by, direction: sort.dir })}`, { credentials: "include" });
+      if (!r.ok) { setPets({ items: [], total: 0, page: 1, pages: 1 }); return; }
       setPets(await r.json());
-    } catch { /* keep */ }
+    } catch { setPets({ items: [], total: 0, page: 1, pages: 1 }); }
   }, [qs, page, sort]);
 
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
@@ -143,6 +147,13 @@ export default function OverviewPage() {
                 </button>
               ))}
               <button onClick={() => setFilters({})} className="text-xs font-medium text-muted-foreground hover:text-foreground">Clear all</button>
+            </div>
+          )}
+
+          {/* Error banner */}
+          {error && (
+            <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+              {error}
             </div>
           )}
 
