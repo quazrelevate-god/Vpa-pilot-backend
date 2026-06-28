@@ -3,343 +3,214 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Success - Page Grievance Portal</title>
+    <title>Success - Grievance Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
             font-family: 'Inter', 'Mukta Malar', sans-serif;
-            background: #f0fdf4;
             min-height: 100vh;
             display: flex;
             align-items: flex-start;
             justify-content: center;
-            padding: 1rem 0.75rem 2rem;
+            padding: 1.25rem 0.75rem 2rem;
+            background: #f1f5f9;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,135,4,0.07), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(59,130,246,0.05), transparent);
         }
 
-        .container {
+        /* ── Card ──────────────────────────────────────────────── */
+        .card {
             width: 100%;
-            max-width: 520px;
-            background: rgba(255, 255, 255, 0.92);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.8);
+            max-width: 460px;
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.85);
             border-radius: 20px;
-            overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.10);
-            padding: 1.5rem 1.25rem 2rem;
+            padding: 1.75rem 1.5rem 1.5rem;
             text-align: center;
+            box-shadow:
+                0 20px 50px -15px rgba(0,0,0,0.1),
+                0 8px 20px -8px rgba(0,0,0,0.06),
+                inset 0 1px 1px rgba(255,255,255,0.9);
             margin-top: 0.5rem;
         }
 
+        /* ── Language switcher ─────────────────────────────────── */
+        .lang-bar { display: flex; justify-content: center; margin-bottom: 1.5rem; }
+        .lang-seg {
+            display: inline-flex; gap: 4px;
+            background: rgba(0,0,0,0.05); border-radius: 999px; padding: 3px;
+        }
+        .lang-seg button {
+            border: none; background: transparent; font-family: inherit;
+            font-size: 0.82rem; font-weight: 700; color: #64748b;
+            padding: 0.4rem 1.2rem; border-radius: 999px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .lang-seg button.active {
+            background: #fff; color: #0f172a;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        /* ── Success icon ──────────────────────────────────────── */
         .success-icon {
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            background: rgba(16, 185, 129, 0.15);
-            border: 2px solid rgba(16, 185, 129, 0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #10b981;
-            font-size: 2rem;
+            width: 68px; height: 68px; border-radius: 50%;
+            background: rgba(0, 135, 4, 0.1);
+            border: 2px solid rgba(0, 135, 4, 0.2);
+            display: flex; align-items: center; justify-content: center;
             margin: 0 auto 1rem;
+            font-size: 1.7rem; color: rgb(0, 135, 4);
         }
 
+        /* ── Title & subtitle ──────────────────────────────────── */
         h1 {
-            color: #1f2937;
-            font-size: 1.5rem;
-            font-weight: 800;
-            margin-bottom: 0.35rem;
-            line-height: 1.3;
+            color: #1f2937; font-size: 1.35rem; font-weight: 800;
+            margin-bottom: 0.3rem; line-height: 1.3;
         }
-
         .subtitle {
-            color: #6b7280;
-            font-size: 0.9rem;
-            margin-bottom: 1.25rem;
+            color: #6b7280; font-size: 0.88rem; margin-bottom: 1.25rem;
         }
 
+        /* ── Token banner ──────────────────────────────────────── */
         .token-display {
-            background: rgba(0, 135, 4, 0.88);  /* default green */
-            color: white;
-            padding: 1.25rem;
-            border-radius: 14px;
-            margin: 1.25rem 0;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 135, 4, 0.88);
+            color: white; padding: 1.25rem; border-radius: 14px;
+            margin: 1rem 0; border: 1px solid rgba(255,255,255,0.2);
             transition: background 0.2s;
         }
-        /* Outcome-coloured token banners */
-        .token-display.t-meeting  { background: linear-gradient(135deg, #6d28d9, #4f46e5); } /* purple — meeting */
-        .token-display.t-petition { background: linear-gradient(135deg, #1d4ed8, #2563eb); } /* blue — petition */
-        .token-display.t-waiting  { background: linear-gradient(135deg, #d97706, #b45309); } /* amber — waiting list */
-        .token-display .token-kind {
-            font-size: 0.78rem;
-            font-weight: 700;
-            opacity: 0.92;
-            margin-bottom: 0.5rem;
-            display: inline-block;
-            padding: 0.15rem 0.6rem;
-            background: rgba(255,255,255,0.18);
-            border-radius: 999px;
-        }
-
-        .token-label {
-            font-size: 0.82rem;
-            opacity: 0.9;
-            margin-bottom: 0.35rem;
-            font-weight: 600;
-        }
-
+        .token-display.t-meeting  { background: linear-gradient(135deg, #6d28d9, #4f46e5); }
+        .token-display.t-petition { background: linear-gradient(135deg, #1d4ed8, #2563eb); }
+        .token-display.t-waiting  { background: linear-gradient(135deg, #d97706, #b45309); }
+        .token-label { font-size: 0.82rem; opacity: 0.9; margin-bottom: 0.35rem; font-weight: 600; }
         .token-number {
-            font-size: clamp(1.1rem, 5vw, 1.8rem);
-            font-weight: 900;
-            letter-spacing: 0.02em;
-            word-break: break-all;
-            overflow-wrap: break-word;
-            line-height: 1.2;
+            font-size: clamp(1.1rem, 5vw, 1.8rem); font-weight: 900;
+            letter-spacing: 0.02em; word-break: break-all;
+            overflow-wrap: break-word; line-height: 1.2;
         }
 
-        /* Highlighted meeting time card */
+        /* ── Meeting time card ─────────────────────────────────── */
         .time-highlight {
-            background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%);
-            color: white;
-            padding: 1rem 1.25rem;
-            border-radius: 14px;
-            margin: 0.75rem 0 1.25rem;
-            display: none;
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1.5px solid rgba(0,135,4,0.2);
+            color: #1e293b;
+            padding: 1rem 1.25rem; border-radius: 14px;
+            margin: 0.75rem 0 1rem; display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
         }
-
         .time-highlight .time-label {
-            font-size: 0.78rem;
-            opacity: 0.85;
-            font-weight: 600;
-            margin-bottom: 0.2rem;
+            font-size: 0.75rem; color: #059669; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.25rem;
         }
-
         .time-highlight .time-value {
-            font-size: 1.6rem;
-            font-weight: 900;
-            letter-spacing: 0.02em;
+            font-size: 1.35rem; font-weight: 900; color: #047857; line-height: 1.3;
         }
-
         .time-highlight .time-date {
-            font-size: 0.82rem;
-            opacity: 0.85;
-            margin-top: 0.15rem;
+            font-size: 0.82rem; color: #6b7280; margin-top: 0.15rem;
         }
 
+        /* ── Info card ─────────────────────────────────────────── */
         .info-card {
-            background: rgba(248, 250, 252, 0.8);
-            border: 1px solid rgba(226, 232, 240, 0.8);
-            border-radius: 12px;
-            padding: 0.75rem 1rem;
-            margin: 1rem 0;
-            text-align: left;
+            background: rgba(255,255,255,0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px; padding: 0.6rem 1rem;
+            margin: 1rem 0; text-align: left;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
         }
-
         .info-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.55rem 0;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
-            gap: 0.5rem;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.6rem 0; border-bottom: 1px solid rgba(0,0,0,0.04); gap: 0.5rem;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: #6b7280; font-weight: 600; font-size: 0.82rem; flex-shrink: 0; }
+        .info-value { color: #1f2937; font-weight: 700; font-size: 0.82rem; text-align: right; }
+
+        /* ── Next steps ────────────────────────────────────────── */
+        .steps-card {
+            background: rgba(255,255,255,0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px; padding: 1.1rem 1.15rem;
+            margin: 1rem 0; text-align: left;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        }
+        .steps-heading {
+            font-size: 0.92rem; font-weight: 800; color: #3b82f6;
+            margin-bottom: 1rem;
+        }
+        .steps-list {
+            list-style: none; display: flex; flex-direction: column;
+            gap: 0.9rem; counter-reset: steps;
+        }
+        .steps-list li {
+            counter-increment: steps;
+            display: flex; align-items: baseline; gap: 0.6rem;
+            font-size: 0.86rem; color: #475569; line-height: 1.5;
+            text-align: left; overflow-wrap: break-word; word-break: break-word;
+        }
+        .steps-list li::before {
+            content: counter(steps) ".";
+            flex-shrink: 0; color: #3b82f6;
+            font-size: 0.92rem; font-weight: 800;
+        }
+        .steps-list li strong {
+            color: #1e293b;
         }
 
-        .info-row:last-child {
-            border-bottom: none;
+        /* ── Footer ────────────────────────────────────────────── */
+        .footer {
+            font-size: 0.75rem; color: #94a3b8; margin-top: 1.25rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(0,0,0,0.05);
         }
 
-        .info-label {
-            color: #6b7280;
-            font-weight: 600;
-            font-size: 0.82rem;
-            flex-shrink: 0;
-        }
-
-        .info-value {
-            color: #1f2937;
-            font-weight: 700;
-            font-size: 0.82rem;
-            text-align: right;
-        }
-
-        .instructions {
-            background: rgba(59, 130, 246, 0.07);
-            border-left: 4px solid #3b82f6;
-            padding: 1rem 1rem 1rem 1.1rem;
-            border-radius: 8px;
-            margin: 1.25rem 0;
-            text-align: left;
-        }
-
-        .instructions h3 {
-            color: #1e40af;
-            font-size: 0.95rem;
-            font-weight: 700;
-            margin-bottom: 0.75rem;
-        }
-
-        .instructions .step {
-            display: flex;
-            gap: 0.6rem;
-            margin-bottom: 0.85rem;
-            align-items: flex-start;
-        }
-
-        .instructions .step:last-child { margin-bottom: 0; }
-
-        .instructions .step-icon {
-            font-size: 1.05rem;
-            flex-shrink: 0;
-            margin-top: 1px;
-        }
-
-        .instructions .step-body {
-            color: #374151;
-            font-size: 0.84rem;
-            line-height: 1.6;
-        }
-
-        .instructions .step-title {
-            font-weight: 700;
-            color: #1e40af;
-            display: block;
-            margin-bottom: 0.15rem;
-        }
-
-        .btn {
-            display: inline-block;
-            background: rgba(59, 130, 246, 0.85);
-            color: white;
-            padding: 1rem 2rem;
-            border-radius: 12px;
-            text-decoration: none;
-            margin-top: 1.5rem;
-            font-weight: 700;
-            transition: all 0.2s;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .btn:hover {
-            background: rgba(37, 99, 235, 0.95);
-        }
-
-        .lang-container {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: rgba(0, 0, 0, 0.05);
-            padding: 0.35rem 1rem;
-            border-radius: 50px;
-            border: 1px solid rgba(0, 0, 0, 0.1);
-            margin-bottom: 1.5rem;
-            align-self: flex-start;
-        }
-        
-        .container {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .lang-text {
-            color: #1f2937;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .switch-wrapper {
-            position: relative;
-            display: inline-block;
-            width: 36px;
-            height: 20px;
-        }
-
-        .switch-wrapper input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(0,0,0,0.15);
-            transition: .3s;
-            border-radius: 20px;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 14px;
-            width: 14px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .3s;
-            border-radius: 50%;
-        }
-
-        input:checked + .slider {
-            background-color: rgba(0,135,4,0.3);
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(16px);
-        }
-
-        .tamil {
-            display: none;
-        }
-
-        body.tamil-mode .english {
-            display: none;
-        }
-
-        body.tamil-mode .tamil {
-            display: block;
-        }
+        /* ── Language visibility ────────────────────────────────── */
+        .tamil { display: none; }
+        body.tamil-mode .english { display: none; }
+        body.tamil-mode .tamil   { display: block; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="lang-container">
-            <span class="lang-text">EN</span>
-            <label class="switch-wrapper">
-                <input type="checkbox" id="languageToggle" onchange="toggleLanguage()" checked>
-                <span class="slider"></span>
-            </label>
-            <span class="lang-text">தமிழ்</span>
+    <div class="card">
+        <!-- Language switcher -->
+        <div class="lang-bar">
+            <div class="lang-seg">
+                <button type="button" id="langBtnEn" onclick="setLang(false)">English</button>
+                <button type="button" id="langBtnTa" class="active" onclick="setLang(true)">தமிழ்</button>
+            </div>
         </div>
 
-        <div class="success-icon">✓</div>
-        
+        <!-- Success icon -->
+        <div class="success-icon">
+            <i class="fa-solid fa-circle-check"></i>
+        </div>
+
         <h1 class="english" id="title-en">Appointment Confirmed!</h1>
         <h1 class="tamil" id="title-ta">சந்திப்பு உறுதி செய்யப்பட்டது!</h1>
-        
+
         <p class="subtitle english" id="subtitle-en">Your grievance has been successfully registered</p>
         <p class="subtitle tamil" id="subtitle-ta">உங்கள் புகார் வெற்றிகரமாக பதிவு செய்யப்பட்டுள்ளது</p>
-        
+
+        <!-- Token banner -->
         <div class="token-display" id="token-display">
-            <div class="token-kind" id="token-kind" style="display:none;"></div>
             <div class="token-label english">Your Token Number</div>
             <div class="token-label tamil">உங்கள் டோக்கன் எண்</div>
             <div class="token-number" id="token-number">TKN-000</div>
         </div>
 
-        <!-- Shown only for SCHEDULED appointments -->
+        <!-- Meeting time (shown only for SCHEDULED) -->
         <div class="time-highlight" id="time-highlight-card">
             <div class="time-label english">Your Meeting Time</div>
             <div class="time-label tamil">உங்கள் சந்திப்பு நேரம்</div>
@@ -349,6 +220,7 @@
             <div class="time-date tamil" id="meeting-date-ta"></div>
         </div>
 
+        <!-- Info card -->
         <div class="info-card">
             <div class="info-row">
                 <span class="info-label english">Name</span>
@@ -370,266 +242,148 @@
                 </span>
             </div>
         </div>
-        
-        <div class="instructions" id="instructions-scheduled">
-            <h3 class="english">📋 Next Steps</h3>
-            <h3 class="tamil">📋 கீழ்க்கண்ட வழிமுறைகளைத் தயவுசெய்து பின்பற்றவும்</h3>
 
-            <!-- English steps -->
-            <div class="english">
-                <div class="step">
-                    <span class="step-icon">🎫</span>
-                    <div class="step-body">
-                        <span class="step-title">Keep your Token</span>
-                        Kindly save this token number / reference <strong id="token-ref-en">TKN-000</strong> for all your future reference and verification.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">📄</span>
-                    <div class="step-body">
-                        <span class="step-title">Bring Documents</span>
-                        Please bring a valid ID proof along with a written copy of your petition, grievance, or memorandum (மனு).
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">⏰</span>
-                    <div class="step-body">
-                        <span class="step-title">Arrive Early</span>
-                        Please arrive at least 10 minutes prior to your scheduled booking time to ensure a smooth meeting.
-                    </div>
-                </div>
-            </div>
-
-            <!-- Tamil steps -->
-            <div class="tamil">
-                <div class="step">
-                    <span class="step-icon">🎫</span>
-                    <div class="step-body">
-                        <span class="step-title">டோக்கன் எண்</span>
-                        எதிர்காலப் பயன்பாட்டிற்கு இந்த டோக்கன் எண்ணை / குறிப்பை <strong id="token-ref-ta">TKN-000</strong> பத்திரமாகச் சேமித்து வைத்துக்கொள்ளவும்.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">📄</span>
-                    <div class="step-body">
-                        <span class="step-title">தேவையான ஆவணங்கள்</span>
-                        உங்களுடைய செல்லுபடியாகும் அடையாளச் சான்று (ID Proof) மற்றும் உங்கள் கோரிக்கை மனுவின் (Petition / Grievance) எழுதப்பட்ட நகலை மறவாமல் உடன் எடுத்து வரவும்.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">⏰</span>
-                    <div class="step-body">
-                        <span class="step-title">முன்கூட்டியே வருகை தரவும்</span>
-                        சந்திப்பு தடையின்றி நடப்பதை உறுதி செய்ய, உங்களுக்கு ஒதுக்கப்பட்ட நேரத்திற்கு 10 நிமிடங்களுக்கு முன்பாகவே வர வேண்டுகிறோம்.
-                    </div>
-                </div>
-            </div>
+        <!-- Next steps (single block, populated by JS) -->
+        <div class="steps-card">
+            <div class="steps-heading english" id="steps-heading-en">Next Steps</div>
+            <div class="steps-heading tamil" id="steps-heading-ta">அடுத்த படிகள்</div>
+            <ol class="steps-list english" id="steps-en"></ol>
+            <ol class="steps-list tamil" id="steps-ta"></ol>
         </div>
 
-        <div class="instructions" id="instructions-waiting" style="display:none; border-left-color:#f59e0b;">
-            <h3 class="english" style="color:#b45309;">⏳ Waiting Queue</h3>
-            <h3 class="tamil" style="color:#b45309;">⏳ காத்திருப்பு வரிசை</h3>
-            <div class="english">
-                <div class="step">
-                    <span class="step-icon">🎫</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#b45309;">Keep your Token</span>
-                        Save token <strong id="token-ref-en-w">TKN-000</strong> for all future reference and verification.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">📲</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#b45309;">Stay Alert</span>
-                        No slots were available at this time. You have been added to the waiting queue and will be notified via SMS once a slot opens.
-                    </div>
-                </div>
-            </div>
-            <div class="tamil">
-                <div class="step">
-                    <span class="step-icon">🎫</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#b45309;">டோக்கன் எண்</span>
-                        <strong id="token-ref-ta-w">TKN-000</strong> என்ற டோக்கன் எண்ணை எதிர்காலப் பயன்பாட்டிற்காக சேமிக்கவும்.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">📲</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#b45309;">தகவலுக்கு காத்திருக்கவும்</span>
-                        தற்போது இடங்கள் கிடைக்கவில்லை. நீங்கள் காத்திருப்பு வரிசையில் சேர்க்கப்பட்டுள்ளீர்கள். இடம் கிடைத்தவுடன் SMS மூலம் அறிவிக்கப்படும்.
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="instructions" id="instructions-submitted" style="display:none; border-left-color:#3b82f6;">
-            <h3 class="english" style="color:#1e40af;">📝 Petition Submitted</h3>
-            <h3 class="tamil" style="color:#1e40af;">📝 மனு சமர்ப்பிக்கப்பட்டது</h3>
-            <div class="english">
-                <div class="step">
-                    <span class="step-icon">🎫</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#1e40af;">Keep your Token</span>
-                        Please save your token number <strong id="token-ref-en-s">TKN-000</strong> for all future reference and verification.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">📋</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#1e40af;">Under Review</span>
-                        Your petition has been submitted and will be reviewed by the PA team.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">📲</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#1e40af;">SMS Notification</span>
-                        You will be notified via SMS when your petition is reviewed.
-                    </div>
-                </div>
-            </div>
-            <div class="tamil">
-                <div class="step">
-                    <span class="step-icon">🎫</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#1e40af;">டோக்கன் எண்</span>
-                        எதிர்கால குறிப்புக்காக உங்கள் டோக்கன் எண் <strong id="token-ref-ta-s">TKN-000</strong> ஐ சேமிக்கவும்.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">📋</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#1e40af;">பரிசீலனையில்</span>
-                        உங்கள் மனு சமர்ப்பிக்கப்பட்டது, PA குழுவால் பரிசீலிக்கப்படும்.
-                    </div>
-                </div>
-                <div class="step">
-                    <span class="step-icon">📲</span>
-                    <div class="step-body">
-                        <span class="step-title" style="color:#1e40af;">SMS அறிவிப்பு</span>
-                        உங்கள் மனு பரிசீலிக்கப்பட்டவுடன் SMS மூலம் அறிவிக்கப்படும்.
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <p style="color: #6b7280; font-size: 0.85rem; margin-top: 2rem;" class="english">
-            Thank you for using Grievance Portal
-        </p>
-        <p style="color: #6b7280; font-size: 0.85rem; margin-top: 2rem;" class="tamil">
-            குறைதீர்க்கும் போர்ட்டலைப் பயன்படுத்தியதற்கு நன்றி
-        </p>
+        <!-- Footer -->
+        <div class="footer english">Thank you for using Grievance Portal</div>
+        <div class="footer tamil">குறைதீர்க்கும் போர்ட்டலைப் பயன்படுத்தியதற்கு நன்றி</div>
     </div>
 
     <script>
-        // Get parameters from URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token') || '000';
-        const name = urlParams.get('name') || 'Citizen';
-        const status = (urlParams.get('status') || 'SCHEDULED').toUpperCase();
-        const scheduledDate = urlParams.get('date');
-        const scheduledTime = urlParams.get('time');
-        const scheduledEnd  = urlParams.get('time_end');
-        const submittedAt = urlParams.get('submitted_at');
+        var urlParams = new URLSearchParams(window.location.search);
+        var token = urlParams.get('token') || '000';
+        var name = urlParams.get('name') || 'Citizen';
+        var status = (urlParams.get('status') || 'SCHEDULED').toUpperCase();
+        var scheduledDate = urlParams.get('date');
+        var scheduledTime = urlParams.get('time');
+        var scheduledEnd  = urlParams.get('time_end');
+        var submittedAt = urlParams.get('submitted_at');
 
-        // Set token number
-        const tokenDisplay = `TKN${token}`;
+        var tokenDisplay = 'TKN' + token;
         document.getElementById('token-number').textContent = tokenDisplay;
 
-        // Colour the token banner by outcome (meeting=purple, petition=blue, waiting=amber)
+        // Token banner colour
         (function() {
-            const ta   = (document.body.classList.contains('tamil-mode'));
-            const td   = document.getElementById('token-display');
-            const kind = document.getElementById('token-kind');
-            let cls, labelEn, labelTa;
-            if (status === 'WAITING') {
-                cls = 't-waiting';  labelEn = '⏳ Waiting List'; labelTa = '⏳ காத்திருப்பு பட்டியல்';
-            } else if (status === 'AWAITING_REVIEW') {
-                cls = 't-petition'; labelEn = '📄 Petition';     labelTa = '📄 மனு';
-            } else {
-                cls = 't-meeting';  labelEn = '🤝 Meeting';      labelTa = '🤝 சந்திப்பு';
-            }
+            var td = document.getElementById('token-display');
+            var cls;
+            if (status === 'WAITING') { cls = 't-waiting'; }
+            else if (status === 'AWAITING_REVIEW') { cls = 't-petition'; }
+            else { cls = 't-meeting'; }
             td.classList.add(cls);
-            kind.dataset.en = labelEn; kind.dataset.ta = labelTa;
-            kind.textContent = ta ? labelTa : labelEn;
-            kind.style.display = 'inline-block';
         })();
 
-        // Set name (URLSearchParams already decodes, no need for decodeURIComponent)
         document.getElementById('citizen-name').textContent = name;
 
-        const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-        const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
+        var dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+        var timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
 
-        // Use submitted_at from backend, fall back to now
-        const submittedDate = submittedAt ? new Date(submittedAt + 'Z') : new Date();
-        document.getElementById('submitted-datetime-en').textContent = submittedDate.toLocaleString('en-IN', { ...dateOptions, ...timeOptions });
-        document.getElementById('submitted-datetime-ta').textContent = submittedDate.toLocaleString('ta-IN', { ...dateOptions, ...timeOptions });
+        var submittedDate = submittedAt ? new Date(submittedAt + 'Z') : new Date();
+        document.getElementById('submitted-datetime-en').textContent = submittedDate.toLocaleString('en-IN', Object.assign({}, dateOptions, timeOptions));
+        document.getElementById('submitted-datetime-ta').textContent = submittedDate.toLocaleString('ta-IN', Object.assign({}, dateOptions, timeOptions));
 
+        // Steps content per status
+        var stepsData = {
+            SCHEDULED: {
+                en: [
+                    'Save the above token number for future reference and verification.',
+                    'Bring a valid ID proof along with a written copy of your petition or grievance.',
+                    'Arrive at least 10 minutes before your scheduled time for a smooth meeting.'
+                ],
+                ta: [
+                    'மேலே உள்ள டோக்கன் எண்ணை எதிர்காலப் பயன்பாட்டிற்கு சேமிக்கவும்.',
+                    'செல்லுபடியாகும் அடையாளச் சான்று மற்றும் உங்கள் கோரிக்கை மனுவின் எழுதப்பட்ட நகலை எடுத்து வரவும்.',
+                    'சந்திப்பு தடையின்றி நடக்க, ஒதுக்கப்பட்ட நேரத்திற்கு 10 நிமிடங்களுக்கு முன்பாக வரவும்.'
+                ]
+            },
+            WAITING: {
+                headingEn: 'What happens next',
+                headingTa: 'அடுத்து என்ன நடக்கும்',
+                en: [
+                    'Save the above token number for future reference.',
+                    'You have been added to the waiting queue. No slots are available right now.',
+                    'You will be notified via SMS once a slot opens up.'
+                ],
+                ta: [
+                    'மேலே உள்ள டோக்கன் எண்ணை எதிர்காலப் பயன்பாட்டிற்கு சேமிக்கவும்.',
+                    'தற்போது இடங்கள் கிடைக்கவில்லை. நீங்கள் காத்திருப்பு வரிசையில் சேர்க்கப்பட்டுள்ளீர்கள்.',
+                    'இடம் கிடைத்தவுடன் SMS மூலம் அறிவிக்கப்படும்.'
+                ]
+            },
+            AWAITING_REVIEW: {
+                headingEn: 'What happens next',
+                headingTa: 'அடுத்து என்ன நடக்கும்',
+                en: [
+                    'Save the above token number for future reference.',
+                    'Your petition has been submitted and will be reviewed by the PA team.',
+                    'You will be notified via SMS when your petition is reviewed.'
+                ],
+                ta: [
+                    'மேலே உள்ள டோக்கன் எண்ணை எதிர்காலப் பயன்பாட்டிற்கு சேமிக்கவும்.',
+                    'உங்கள் மனு சமர்ப்பிக்கப்பட்டது, PA குழுவால் பரிசீலிக்கப்படும்.',
+                    'உங்கள் மனு பரிசீலிக்கப்பட்டவுடன் SMS மூலம் அறிவிக்கப்படும்.'
+                ]
+            }
+        };
+
+        // Populate steps
+        var sd = stepsData[status] || stepsData['SCHEDULED'];
+        if (sd.headingEn) {
+            document.getElementById('steps-heading-en').textContent = sd.headingEn;
+            document.getElementById('steps-heading-ta').textContent = sd.headingTa;
+        }
+        var stepsEn = document.getElementById('steps-en');
+        var stepsTa = document.getElementById('steps-ta');
+        sd.en.forEach(function(t) { var li = document.createElement('li'); li.innerHTML = t; stepsEn.appendChild(li); });
+        sd.ta.forEach(function(t) { var li = document.createElement('li'); li.innerHTML = t; stepsTa.appendChild(li); });
+
+        // Title/subtitle per status
         if (status === 'WAITING') {
-            // Waiting — no slot, show waiting instructions
-            document.getElementById('instructions-scheduled').style.display = 'none';
-            document.getElementById('instructions-waiting').style.display = 'block';
-
             document.getElementById('title-en').textContent = 'Added to Waiting Queue';
             document.getElementById('title-ta').textContent = 'காத்திருப்பு வரிசையில் சேர்க்கப்பட்டது';
             document.getElementById('subtitle-en').textContent = 'Your grievance has been registered. You are in the waiting queue.';
             document.getElementById('subtitle-ta').textContent = 'உங்கள் புகார் பதிவு செய்யப்பட்டது. நீங்கள் காத்திருப்பு வரிசையில் உள்ளீர்கள்.';
-
             document.getElementById('status-en').textContent = 'WAITING';
             document.getElementById('status-ta').textContent = 'காத்திருப்பு';
-
-            document.getElementById('token-ref-en-w').textContent = tokenDisplay;
-            document.getElementById('token-ref-ta-w').textContent = tokenDisplay;
-
         } else if (status === 'AWAITING_REVIEW') {
-            // Petition submitted (no meeting requested) — no slot, show submitted instructions
-            document.getElementById('instructions-scheduled').style.display = 'none';
-            document.getElementById('instructions-submitted').style.display = 'block';
-
             document.getElementById('title-en').textContent = 'Petition Submitted';
             document.getElementById('title-ta').textContent = 'மனு சமர்ப்பிக்கப்பட்டது';
             document.getElementById('subtitle-en').textContent = 'Your petition has been submitted for review.';
             document.getElementById('subtitle-ta').textContent = 'உங்கள் மனு பரிசீலனைக்காக சமர்ப்பிக்கப்பட்டது.';
-
             document.getElementById('status-en').textContent = 'SUBMITTED';
             document.getElementById('status-ta').textContent = 'சமர்ப்பிக்கப்பட்டது';
-
-            document.getElementById('token-ref-en-s').textContent = tokenDisplay;
-            document.getElementById('token-ref-ta-s').textContent = tokenDisplay;
-
         } else {
-            // SCHEDULED — show slot date/time
-            document.getElementById('instructions-waiting').style.display = 'none';
-            document.getElementById('instructions-submitted').style.display = 'none';
-
-            // Prominent meeting time card
-            const timeCard = document.getElementById('time-highlight-card');
+            // SCHEDULED — show meeting time
+            var timeCard = document.getElementById('time-highlight-card');
             timeCard.style.display = 'block';
 
-            let meetingTimeEn = '—', meetingTimeTa = '—';
-            let meetingDateEn = '', meetingDateTa = '';
+            var meetingTimeEn = '—', meetingTimeTa = '—';
+            var meetingDateEn = '', meetingDateTa = '';
 
             if (scheduledTime) {
-                const [h, m] = scheduledTime.split(':').map(Number);
-                const tStart = new Date(); tStart.setHours(h, m, 0, 0);
-                const startEn = tStart.toLocaleTimeString('en-IN', timeOptions);
-                const startTa = tStart.toLocaleTimeString('ta-IN', timeOptions);
-                // Build slot end: prefer explicit time_end, fallback to start + 30 min
-                const tEnd = new Date(tStart);
+                var parts = scheduledTime.split(':').map(Number);
+                var tStart = new Date(); tStart.setHours(parts[0], parts[1], 0, 0);
+                var startEn = tStart.toLocaleTimeString('en-IN', timeOptions);
+                var startTa = tStart.toLocaleTimeString('ta-IN', timeOptions);
+                var tEnd = new Date(tStart);
                 if (scheduledEnd) {
-                    const [eh, em] = scheduledEnd.split(':').map(Number);
-                    tEnd.setHours(eh, em, 0, 0);
+                    var ep = scheduledEnd.split(':').map(Number);
+                    tEnd.setHours(ep[0], ep[1], 0, 0);
                 } else {
                     tEnd.setTime(tStart.getTime() + 30 * 60 * 1000);
                 }
-                meetingTimeEn = startEn + ' \u2013 ' + tEnd.toLocaleTimeString('en-IN', timeOptions);
-                meetingTimeTa = startTa + ' \u2013 ' + tEnd.toLocaleTimeString('ta-IN', timeOptions);
+                meetingTimeEn = startEn + ' – ' + tEnd.toLocaleTimeString('en-IN', timeOptions);
+                meetingTimeTa = startTa + ' – ' + tEnd.toLocaleTimeString('ta-IN', timeOptions);
             }
 
             if (scheduledDate) {
-                const dObj = new Date(scheduledDate);
+                var dObj = new Date(scheduledDate);
                 meetingDateEn = dObj.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
                 meetingDateTa = dObj.toLocaleDateString('ta-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
             }
@@ -638,40 +392,25 @@
             document.getElementById('meeting-time-ta').textContent = meetingTimeTa;
             document.getElementById('meeting-date-en').textContent = meetingDateEn;
             document.getElementById('meeting-date-ta').textContent = meetingDateTa;
-
             document.getElementById('status-en').textContent = 'SCHEDULED';
             document.getElementById('status-ta').textContent = 'திட்டமிடப்பட்டது';
-
-            document.getElementById('token-ref-en').textContent = tokenDisplay;
-            document.getElementById('token-ref-ta').textContent = tokenDisplay;
         }
 
-        function applyLang(isTamil) {
-            document.getElementById('languageToggle').checked = isTamil;
+        function setLang(isTamil) {
             if (isTamil) {
                 document.body.classList.add('tamil-mode');
             } else {
                 document.body.classList.remove('tamil-mode');
             }
-            // Keep the token-kind chip in the chosen language
-            const kind = document.getElementById('token-kind');
-            if (kind && kind.dataset.en) {
-                kind.textContent = isTamil ? kind.dataset.ta : kind.dataset.en;
-            }
+            document.getElementById('langBtnEn').classList.toggle('active', !isTamil);
+            document.getElementById('langBtnTa').classList.toggle('active', isTamil);
             try { localStorage.setItem('vpa_lang', isTamil ? 'ta' : 'en'); } catch(e) {}
         }
 
-        function toggleLanguage() {
-            const isTamil = document.getElementById('languageToggle').checked;
-            applyLang(isTamil);
-        }
-
-        // On load: read the language the citizen chose on the form page.
-        // Falls back to Tamil if nothing is saved.
         window.addEventListener('DOMContentLoaded', function() {
-            let savedLang = 'ta';
+            var savedLang = 'ta';
             try { savedLang = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
-            applyLang(savedLang === 'ta');
+            setLang(savedLang === 'ta');
         });
     </script>
 </body>

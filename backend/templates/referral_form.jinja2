@@ -5,225 +5,400 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>Referral Booking</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Mukta+Malar:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
             font-family: 'Inter', 'Mukta Malar', sans-serif;
-            background: #f1f5f9; min-height: 100vh;
-            padding: 1rem; max-width: 480px; margin: 0 auto;
+            min-height: 100vh;
+            padding: 1rem;
+            background: #f1f5f9;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(13,148,136,0.07), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(59,130,246,0.05), transparent);
         }
+
+        .page-wrap {
+            max-width: 520px;
+            margin: 0 auto;
+        }
+
+        /* ── Header ────────────────────────────────────────────── */
         .header {
             background: linear-gradient(135deg, #0d9488, #0f766e);
-            color: white; border-radius: 14px; padding: 1.1rem 1.25rem; margin-bottom: 1rem;
-            display: flex; align-items: center; justify-content: space-between;
+            color: white; border-radius: 14px;
+            padding: 1.1rem 1.25rem; margin-bottom: 1rem;
+            display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
         }
         .header-title { font-size: 1.05rem; font-weight: 800; }
         .header-sub   { font-size: 0.78rem; opacity: 0.9; margin-top: 0.15rem; }
-        .lang-pill {
-            display: flex; align-items: center; gap: 0.4rem;
-            background: rgba(255,255,255,0.18); border-radius: 50px;
-            padding: 0.25rem 0.65rem; font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
-        }
-        .sw { position:relative; display:inline-block; width:30px; height:16px; }
-        .sw input { opacity:0; width:0; height:0; }
-        .sl { position:absolute; cursor:pointer; inset:0; background:rgba(255,255,255,0.35); border-radius:16px; transition:.25s; }
-        .sl:before { position:absolute; content:""; height:10px; width:10px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.25s; }
-        input:checked + .sl { background:rgba(255,255,255,0.55); }
-        input:checked + .sl:before { transform:translateX(14px); }
 
-        .date-banner {
-            background: #ecfdf5; border:1px solid #a7f3d0; color:#065f46;
-            border-radius: 10px; padding: 0.6rem 0.9rem; margin-bottom: 1rem;
-            font-size: 0.85rem; font-weight: 600; text-align:center;
+        /* ── Language switcher ─────────────────────────────────── */
+        .lang-seg {
+            display: inline-flex; gap: 3px; flex-shrink: 0;
+            background: rgba(255,255,255,0.18); border-radius: 999px; padding: 3px;
         }
-        .card { background:white; border-radius:14px; box-shadow:0 1px 4px rgba(0,0,0,0.07); padding:1.1rem; margin-bottom:1rem; }
+        .lang-seg button {
+            border: none; background: transparent; font-family: inherit;
+            font-size: 0.72rem; font-weight: 700; color: rgba(255,255,255,0.8);
+            padding: 0.3rem 0.8rem; border-radius: 999px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .lang-seg button.active {
+            background: #fff; color: #0f172a;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        }
+
+
+        /* ── Cards ─────────────────────────────────────────────── */
+        .card {
+            background: rgba(255,255,255,0.75);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.85);
+            border-radius: 14px; padding: 1.1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06), inset 0 1px 1px rgba(255,255,255,0.9);
+        }
+
+        /* ── Form fields ───────────────────────────────────────── */
         .fld { margin-bottom: 0.9rem; }
         .fld:last-child { margin-bottom: 0; }
-        .lbl { display:block; font-size:0.8rem; font-weight:700; color:#374151; margin-bottom:0.35rem; }
-        .lbl .req { color:#ef4444; }
+        .lbl { display: block; font-size: 0.82rem; font-weight: 700; color: #374151; margin-bottom: 0.35rem; }
+        .lbl .req { color: #ef4444; }
         .inp {
-            width:100%; padding:0.65rem 0.85rem; border:1.5px solid #e2e8f0; border-radius:9px;
-            font-size:0.9rem; font-family:inherit; background:#f8fafc; color:#1e293b; outline:none; transition:border-color .15s;
+            width: 100%; padding: 0.65rem 0.85rem;
+            border: 1.5px solid #e2e8f0; border-radius: 9px;
+            font-size: 0.9rem; font-family: inherit;
+            background: rgba(248,250,252,0.8); color: #1e293b;
+            outline: none; transition: border-color .15s;
         }
-        .inp:focus { border-color:#0d9488; background:white; }
-        select.inp { appearance:auto; }
+        .inp:focus { border-color: #0d9488; background: white; }
+        select.inp { appearance: auto; }
 
-        .slot-msg { font-size:0.8rem; color:#6b7280; margin-bottom:0.5rem; }
-        .slot-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:0.5rem; }
-
-        .submit-btn {
-            width:100%; padding:0.85rem; background:linear-gradient(135deg, #0d9488, #0f766e);
-            color:white; border:none; border-radius:11px; font-size:0.98rem; font-weight:800; cursor:pointer;
-            display:flex; align-items:center; justify-content:center; gap:0.5rem; font-family:inherit; transition:opacity .2s;
+        /* ── Date chips ────────────────────────────────────────── */
+        .date-chips-row {
+            display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.4rem;
         }
-        .submit-btn:disabled { opacity:0.45; cursor:not-allowed; }
-
-        .err-box { background:#fee2e2; color:#991b1b; border-radius:8px; padding:0.6rem 0.85rem; font-size:0.82rem; font-weight:600; margin-bottom:0.75rem; display:none; }
-
-        .success-box { background:linear-gradient(135deg, #059669, #0d9488); color:white; border-radius:14px; padding:1.5rem; text-align:center; display:none; }
-        .success-box .s-token { font-size:1.5rem; font-weight:900; letter-spacing:0.02em; margin:0.4rem 0 0.2rem; word-break:break-all; }
-        .success-box .s-row { font-size:0.85rem; opacity:0.95; margin-top:0.25rem; }
-
-        .ta { display:none; }
-        body.ta-mode .en { display:none; }
-        body.ta-mode .ta { display:initial; }
-
-        /* Date chips */
         .date-chip {
-            border: 2px solid #99f6e4; background: #f0fdfa;
+            border: 2px solid #86efac; background: rgba(240,253,250,0.8);
             border-radius: 10px; padding: 0.45rem 0.8rem;
             cursor: pointer; text-align: center; transition: all .15s;
             min-width: 64px;
         }
-        .date-chip:hover { border-color: #0d9488; background: #ccfbf1; }
+        .date-chip:hover { border-color: #0d9488; background: #dcfce7; }
         .date-chip.selected { border-color: #0d9488; background: #0d9488; color: white; }
-        .date-chip .dc-day  { font-size: 1.1rem; font-weight: 800; line-height: 1.1; }
-        .date-chip .dc-mon  { font-size: 0.68rem; font-weight: 600; opacity: .85; }
-        .date-chip .dc-wd   { font-size: 0.65rem; opacity: .75; }
+        .date-chip .dc-day { font-size: 1.1rem; font-weight: 800; line-height: 1.1; }
+        .date-chip .dc-mon { font-size: 0.68rem; font-weight: 600; opacity: .85; }
+        .date-chip .dc-wd  { font-size: 0.65rem; opacity: .75; }
+
+        /* ── Slot grid ─────────────────────────────────────────── */
+        .slot-msg { font-size: 0.78rem; color: #6b7280; margin-bottom: 0.5rem; }
+        .slot-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+
+        .slot-card {
+            border-radius: 10px; padding: 0.6rem 0.5rem;
+            border: 2px solid #e5e7eb; text-align: center;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .slot-card__time { font-size: 0.85rem; font-weight: 700; color: #1e293b; }
+        .slot-card__status { font-size: 0.72rem; font-weight: 600; color: #64748b; margin-top: 2px; }
+        .slot-card__dot {
+            display: inline-block; width: 7px; height: 7px;
+            border-radius: 50%; margin-right: 4px; vertical-align: middle;
+        }
+
+        .slot-card--open    { border-color: #86efac; background: #f0fdf4; }
+        .slot-card--open:hover { border-color: #4ade80; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(22,163,74,0.12); }
+        .slot-card--open .slot-card__dot { background: #22c55e; }
+        .slot-card--partial { border-color: #fcd34d; background: #fffbeb; }
+        .slot-card--partial:hover { border-color: #fbbf24; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(217,119,6,0.12); }
+        .slot-card--partial .slot-card__dot { background: #f59e0b; }
+        .slot-card--full    { border-color: #fca5a5; background: #fef2f2; cursor: not-allowed; opacity: 0.7; }
+        .slot-card--full .slot-card__dot { background: #ef4444; }
+        .slot-card--past    { border-color: #e2e8f0; background: #f8fafc; cursor: not-allowed; opacity: 0.4; }
+        .slot-card--past .slot-card__dot { background: #cbd5e1; }
+        .slot-card--selected { outline: 2.5px solid #0d9488; outline-offset: 1px; }
+
+        /* ── Submit button ─────────────────────────────────────── */
+        .submit-btn {
+            width: 100%; padding: 0.85rem;
+            background: linear-gradient(135deg, #0d9488, #0f766e); color: white;
+            border: none; border-radius: 11px;
+            font-size: 0.98rem; font-weight: 800; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            font-family: inherit; transition: all 0.2s;
+            box-shadow: 0 4px 14px rgba(13,148,136,0.25);
+        }
+        .submit-btn:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(13,148,136,0.35); transform: translateY(-1px); }
+        .submit-btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+
+        /* ── Error box ─────────────────────────────────────────── */
+        .err-box {
+            background: #fee2e2; color: #991b1b; border-radius: 10px;
+            padding: 0.6rem 0.85rem; font-size: 0.82rem; font-weight: 600;
+            margin-bottom: 0.75rem; display: none;
+        }
+
+        /* ── Success box ───────────────────────────────────────── */
+        .success-box {
+            background: rgba(255,255,255,0.75);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.85);
+            border-radius: 14px; padding: 2rem 1.5rem; text-align: center;
+            display: none;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06), inset 0 1px 1px rgba(255,255,255,0.9);
+        }
+        .success-icon {
+            width: 64px; height: 64px; border-radius: 50%;
+            background: rgba(13,148,136,0.1); border: 2px solid rgba(13,148,136,0.2);
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 0.75rem; font-size: 1.6rem; color: #0d9488;
+        }
+        .success-box .s-title { font-weight: 800; font-size: 1.1rem; color: #1f2937; }
+        .success-box .s-token {
+            font-size: 1.4rem; font-weight: 900; letter-spacing: 0.02em;
+            margin: 0.5rem 0 0.25rem; word-break: break-all; color: #0d9488;
+        }
+        .success-box .s-row { font-size: 0.85rem; color: #6b7280; margin-top: 0.25rem; }
+
+        /* ── Language visibility ────────────────────────────────── */
+        .ta { display: none; }
+        body.ta-mode .en { display: none; }
+        body.ta-mode .ta { display: inline; }
+
+        /* ── 12-hr helper ──────────────────────────────────────── */
+
+        /* ── Responsive ────────────────────────────────────────── */
+        @media (min-width: 600px) {
+            .page-wrap { max-width: 560px; }
+            .slot-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (min-width: 900px) {
+            .page-wrap { max-width: 640px; }
+            body { display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1.5rem; }
+            .card { padding: 1.5rem; }
+        }
+        @media (max-width: 360px) {
+            .slot-grid { grid-template-columns: 1fr; }
+            .header { flex-direction: column; align-items: flex-start; gap: 0.6rem; }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div>
-            <div class="header-title"><span class="en">🤝 Referral Booking</span><span class="ta">🤝 பரிந்துரை பதிவு</span></div>
-            <div class="header-sub"><span class="en">Book your meeting slot (11 AM – 1 PM)</span><span class="ta">உங்கள் சந்திப்பு நேரத்தை பதிவு செய்யவும் (காலை 11 – மதியம் 1)</span></div>
-        </div>
-        <div class="lang-pill">
-            <span>EN</span>
-            <label class="sw"><input type="checkbox" id="lt" onchange="setLang(this.checked)" checked><span class="sl"></span></label>
-            <span>த</span>
-        </div>
-    </div>
-
-    <div class="date-banner">
-        <i class="fa-solid fa-calendar-day"></i>
-        <span class="en">Booking for: </span><span class="ta">பதிவு தேதி: </span>
-        <strong>{{ date_label }}</strong>
-    </div>
-
-    <div class="err-box" id="errBox"></div>
-
-    <div class="success-box" id="successBox">
-        <div style="font-size:2rem;">✅</div>
-        <div class="en" style="font-weight:800;font-size:1rem;">Referral Booked!</div>
-        <div class="ta" style="font-weight:800;font-size:1rem;">பரிந்துரை பதிவு செய்யப்பட்டது!</div>
-        <div class="s-token" id="sToken">REF—</div>
-        <div class="s-row" id="sSlot"></div>
-        <div class="s-row en">Please arrive 10 minutes early.</div>
-        <div class="s-row ta">10 நிமிடங்களுக்கு முன் வருகை தரவும்.</div>
-    </div>
-
-    <div id="mainForm">
-        <div class="card">
-            <div class="fld">
-                <label class="lbl"><span class="en">Full Name</span><span class="ta">முழு பெயர்</span> <span class="req">*</span></label>
-                <input type="text" id="fName" class="inp" placeholder="Enter full name / முழு பெயர்" oninput="validate()">
+    <div class="page-wrap">
+        <div class="header">
+            <div>
+                <div class="header-title">
+                    <span class="en"><i class="fa-solid fa-handshake"></i> Referral Booking</span>
+                    <span class="ta"><i class="fa-solid fa-handshake"></i> பரிந்துரை பதிவு</span>
+                </div>
+                <div class="header-sub">
+                    <span class="en">Book your meeting slot (11 AM – 1 PM)</span>
+                    <span class="ta">உங்கள் சந்திப்பு நேரத்தை பதிவு செய்யவும் (காலை 11 – மதியம் 1)</span>
+                </div>
             </div>
-            <div class="fld">
-                <label class="lbl">
-                    <span class="en">Mobile Number</span><span class="ta">அலைபேசி எண்</span>
-                    <span style="color:#94a3b8;font-weight:400;font-size:0.75rem;"> (<span class="en">optional</span><span class="ta">விரும்பினால்</span>)</span>
-                </label>
-                <input type="tel" id="fMobile" class="inp" maxlength="10" placeholder="10-digit mobile (optional)" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
-            </div>
-            <div class="fld">
-                <label class="lbl"><span class="en">Number of Persons</span><span class="ta">நபர்களின் எண்ணிக்கை</span> <span class="req">*</span></label>
-                <select id="fPersons" class="inp" onchange="onPersonsChange()">
-                    <option value="1">1 — Just me / நான் மட்டும்</option>
-                    <option value="2">2 Persons / 2 நபர்கள்</option>
-                    <option value="3">3 Persons / 3 நபர்கள்</option>
-                </select>
-            </div>
-            <div class="fld">
-                <label class="lbl"><span class="en">Referred By</span><span class="ta">பரிந்துரைத்தவர்</span> <span class="req">*</span></label>
-                <input type="text" id="fRefBy" class="inp" placeholder="Name of person who referred you / பரிந்துரைத்தவரின் பெயர்" oninput="validate()">
-            </div>
-            <div class="fld" style="margin-bottom:0;">
-                <label class="lbl"><span class="en">Reason for Meeting</span><span class="ta">சந்திப்பின் காரணம்</span> <span class="req">*</span></label>
-                <textarea id="fReason" class="inp" rows="3"
-                    placeholder="Briefly describe the purpose of your visit / உங்கள் வருகையின் நோக்கத்தை சுருக்கமாக விவரிக்கவும்"
-                    style="resize:vertical; min-height:72px;"
-                    oninput="validate()"></textarea>
+            <div class="lang-seg">
+                <button type="button" id="langBtnEn" onclick="setLang(false)">EN</button>
+                <button type="button" id="langBtnTa" class="active" onclick="setLang(true)">த</button>
             </div>
         </div>
 
-        <div class="card">
-            <!-- Date picker chips -->
-            <label class="lbl"><i class="fa-solid fa-calendar-days"></i> <span class="en">Select a Date</span><span class="ta">தேதியைத் தேர்ந்தெடுக்கவும்</span> <span class="req">*</span></label>
-            <div id="datePicker" style="margin-bottom:0.85rem;">
-                <div id="dateChips" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"></div>
-                <div id="dateMsg" style="font-size:0.8rem;color:#94a3b8;margin-top:0.35rem;"></div>
-            </div>
 
-            <!-- Slot grid (shown after date selected) -->
-            <div id="slotSection" style="display:none;">
-                <label class="lbl" style="margin-top:0.75rem;"><i class="fa-solid fa-clock"></i> <span class="en">Select a Time Slot</span><span class="ta">நேரத்தைத் தேர்ந்தெடுக்கவும்</span> <span class="req">*</span></label>
-                <div class="slot-msg" id="slotMsg"></div>
-                <div class="slot-grid" id="slotGrid"></div>
-            </div>
-            <input type="hidden" id="selSlotId">
-            <input type="hidden" id="selDate">
+        <div class="err-box" id="errBox"></div>
+
+        <div class="success-box" id="successBox">
+            <div class="success-icon"><i class="fa-solid fa-circle-check"></i></div>
+            <div class="s-title en">Referral Booked!</div>
+            <div class="s-title ta">பரிந்துரை பதிவு செய்யப்பட்டது!</div>
+            <div class="s-token" id="sToken">REF—</div>
+            <div class="s-row" id="sSlot"></div>
+            <div class="s-row en">Please arrive 10 minutes early.</div>
+            <div class="s-row ta">10 நிமிடங்களுக்கு முன் வருகை தரவும்.</div>
         </div>
 
-        <button class="submit-btn" id="subBtn" disabled onclick="submitReferral()">
-            <i class="fa-solid fa-paper-plane"></i>
-            <span class="en">Confirm Booking</span><span class="ta">பதிவை உறுதிசெய்யவும்</span>
-        </button>
+        <div id="mainForm">
+            <div class="card">
+                <div class="fld">
+                    <label class="lbl"><span class="en">Full Name</span><span class="ta">முழு பெயர்</span> <span class="req">*</span></label>
+                    <input type="text" id="fName" class="inp" placeholder="Enter full name / முழு பெயர்" oninput="validate()">
+                </div>
+                <div class="fld">
+                    <label class="lbl">
+                        <span class="en">Mobile Number</span><span class="ta">அலைபேசி எண்</span>
+                        <span style="color:#94a3b8;font-weight:400;font-size:0.75rem;"> (<span class="en">optional</span><span class="ta">விரும்பினால்</span>)</span>
+                    </label>
+                    <input type="tel" id="fMobile" class="inp" maxlength="10" placeholder="10-digit mobile (optional)" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+                </div>
+                <div class="fld">
+                    <label class="lbl"><span class="en">Number of Persons</span><span class="ta">நபர்களின் எண்ணிக்கை</span> <span class="req">*</span></label>
+                    <select id="fPersons" class="inp" onchange="onPersonsChange()">
+                        <option value="1">1 — Just me / நான் மட்டும்</option>
+                        <option value="2">2 Persons / 2 நபர்கள்</option>
+                        <option value="3">3 Persons / 3 நபர்கள்</option>
+                    </select>
+                </div>
+                <div class="fld">
+                    <label class="lbl"><span class="en">Referred By</span><span class="ta">பரிந்துரைத்தவர்</span> <span class="req">*</span></label>
+                    <input type="text" id="fRefBy" class="inp" placeholder="Name of person who referred you / பரிந்துரைத்தவரின் பெயர்" oninput="validate()">
+                </div>
+                <div class="fld" style="margin-bottom:0;">
+                    <label class="lbl"><span class="en">Reason for Meeting</span><span class="ta">சந்திப்பின் காரணம்</span> <span class="req">*</span></label>
+                    <textarea id="fReason" class="inp" rows="3"
+                        placeholder="Briefly describe the purpose of your visit / உங்கள் வருகையின் நோக்கத்தை சுருக்கமாக விவரிக்கவும்"
+                        style="resize:vertical; min-height:72px;"
+                        oninput="validate()"></textarea>
+                </div>
+            </div>
+
+            <div class="card">
+                <label class="lbl"><i class="fa-solid fa-calendar-days"></i> <span class="en">Select a Date</span><span class="ta">தேதியைத் தேர்ந்தெடுக்கவும்</span> <span class="req">*</span></label>
+                <div id="datePicker" style="margin-bottom:0.85rem;">
+                    <div id="dateChips" class="date-chips-row"></div>
+                    <div id="dateMsg" style="font-size:0.8rem;color:#94a3b8;margin-top:0.35rem;"></div>
+                </div>
+
+                <div id="slotSection" style="display:none;">
+                    <label class="lbl" style="margin-top:0.75rem;"><i class="fa-solid fa-clock"></i> <span class="en">Select a Time Slot</span><span class="ta">நேரத்தைத் தேர்ந்தெடுக்கவும்</span> <span class="req">*</span></label>
+                    <div class="slot-msg" id="slotMsg"></div>
+                    <div class="slot-grid" id="slotGrid"></div>
+                </div>
+                <input type="hidden" id="selSlotId">
+                <input type="hidden" id="selDate">
+            </div>
+
+            <button class="submit-btn" id="subBtn" disabled onclick="submitReferral()">
+                <i class="fa-solid fa-paper-plane"></i>
+                <span class="en">Confirm Booking</span><span class="ta">பதிவை உறுதிசெய்யவும்</span>
+            </button>
+        </div>
     </div>
 
     <script>
-    const TOKEN = "{{ token }}";
-    let slotsData       = [];
-    let slotRefreshTimer = null;
-    let selectedDate    = null;   // YYYY-MM-DD
+    var TOKEN = "{{ token }}";
+    var slotsData       = [];
+    var slotRefreshTimer = null;
+    var selectedDate    = null;
 
-    const TA_WD  = ['ஞா','திங்','செவ்','புதன்','வியா','வெள்','சனி'];
-    const EN_WD  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const TA_MON = ['ஜன','பிப்','மார்','ஏப்','மே','ஜூன்','ஜூலை','ஆக','செப்','அக்','நவ','டிச'];
-    const EN_MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var TA_WD  = ['ஞா','திங்','செவ்','புதன்','வியா','வெள்','சனி'];
+    var EN_WD  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var TA_MON = ['ஜன','பிப்','மார்','ஏப்','மே','ஜூன்','ஜூலை','ஆக','செப்','அக்','நவ','டிச'];
+    var EN_MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    function _isTa() { return document.body.classList.contains('ta-mode'); }
+
+    function _to12h(t) {
+        var p = t.split(':');
+        var h = parseInt(p[0], 10);
+        var m = p[1];
+        var ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return h + ':' + m + ' ' + ampm;
+    }
 
     function setLang(ta) {
         document.body.classList.toggle('ta-mode', ta);
+        document.getElementById('langBtnEn').classList.toggle('active', !ta);
+        document.getElementById('langBtnTa').classList.toggle('active', ta);
         try { localStorage.setItem('vpa_lang', ta ? 'ta' : 'en'); } catch(e) {}
+        _relabelDateChips();
+        _relabelSlots();
     }
-    (function(){ let l='ta'; try{ l=localStorage.getItem('vpa_lang')||'ta'; }catch(e){} document.getElementById('lt').checked=l==='ta'; setLang(l==='ta'); })();
 
-    function showErr(m){ const e=document.getElementById('errBox'); e.textContent=m; e.style.display='block'; setTimeout(()=>e.style.display='none',5000); }
+    (function() {
+        var l = 'ta';
+        try { l = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
+        setLang(l === 'ta');
+    })();
 
-    // ── Date picker ──────────────────────────────────────────────────────────
+    function showErr(m) {
+        var e = document.getElementById('errBox');
+        e.textContent = m; e.style.display = 'block';
+        setTimeout(function() { e.style.display = 'none'; }, 5000);
+    }
+
+    var _dateMsgKeys = {
+        loading:  { en: 'Loading dates…',             ta: 'தேதிகளை ஏற்றுகிறோம்…' },
+        none:     { en: 'No open dates available.',    ta: 'திறந்த தேதிகள் எதுவும் இல்லை.' },
+        error:    { en: 'Error loading dates.',        ta: 'பிழை: தேதிகளை ஏற்ற முடியவில்லை.' }
+    };
+
+    function _relabelDateChips() {
+        var ta = _isTa();
+        document.querySelectorAll('.date-chip').forEach(function(chip) {
+            var dateStr = chip.dataset.date;
+            if (!dateStr) return;
+            var parts = dateStr.split('-').map(Number);
+            var d = new Date(parts[0], parts[1] - 1, parts[2]);
+            var wd = d.getDay();
+            chip.querySelector('.dc-wd').textContent = ta ? TA_WD[wd] : EN_WD[wd];
+            chip.querySelector('.dc-mon').textContent = ta ? TA_MON[d.getMonth()] : EN_MON[d.getMonth()];
+        });
+        var msgEl = document.getElementById('dateMsg');
+        if (msgEl && msgEl.dataset.key && _dateMsgKeys[msgEl.dataset.key]) {
+            msgEl.textContent = ta ? _dateMsgKeys[msgEl.dataset.key].ta : _dateMsgKeys[msgEl.dataset.key].en;
+        }
+    }
+
+    function _relabelSlots() {
+        var ta = _isTa();
+        var persons = parseInt(document.getElementById('fPersons').value, 10) || 1;
+        document.querySelectorAll('.slot-card').forEach(function(card) {
+            var statusEl = card.querySelector('.slot-card__status');
+            if (!statusEl || !card.dataset.slotState) return;
+            var state = card.dataset.slotState;
+            var remaining = parseInt(card.dataset.remaining || '0', 10);
+            if (state === 'past')        statusEl.textContent = ta ? 'முடிந்தது' : 'Passed';
+            else if (state === 'full')   statusEl.textContent = ta ? 'நிரம்பியது' : 'Full';
+            else if (state === 'partial') statusEl.textContent = remaining + ' ' + (ta ? 'மீதம்' : 'left');
+            else                         statusEl.textContent = '';
+        });
+        var msg = document.getElementById('slotMsg');
+        if (msg) {
+            var k = msg.dataset.key;
+            if (k === 'no_slots') {
+                msg.innerHTML = '<span style="color:#b45309;"><i class="fa-solid fa-circle-exclamation"></i> ' +
+                    (ta ? 'இந்த தேதிக்கு நேரங்கள் இல்லை.' : 'No slots open for this date.') + '</span>';
+            } else if (k === 'slot_error') {
+                msg.textContent = ta ? 'நேரங்களை ஏற்ற முடியவில்லை.' : 'Failed to load slots.';
+            }
+        }
+    }
+
+    // ── Date picker ─────────────────────────────────────────────
     async function loadOpenDates() {
-        const chips = document.getElementById('dateChips');
-        const msg   = document.getElementById('dateMsg');
-        const ta    = document.body.classList.contains('ta-mode');
+        var chips = document.getElementById('dateChips');
+        var msg   = document.getElementById('dateMsg');
+        var ta    = _isTa();
         chips.innerHTML = '';
-        msg.textContent  = ta ? 'தேதிகளை ஏற்றுகிறோம்…' : 'Loading dates…';
+        msg.textContent = ta ? 'தேதிகளை ஏற்றுகிறோம்…' : 'Loading dates…';
+        msg.dataset.key = 'loading';
         try {
-            const res  = await fetch('/api/v1/referral/open-dates?d=' + encodeURIComponent(TOKEN));
-            const data = await res.json();
+            var res  = await fetch('/api/v1/referral/open-dates?d=' + encodeURIComponent(TOKEN));
+            var data = await res.json();
             if (!Array.isArray(data) || data.length === 0) {
                 chips.innerHTML = '';
-                msg.textContent = ta ? 'திறந்த தேதிகள் எதுவும் இல்லை.' : 'No open dates available.';
+                msg.textContent = '';
+                msg.dataset.key = '';
                 return;
             }
             msg.textContent = '';
-            data.forEach((od, idx) => {
-                const [yy, mm, dd] = od.date.split('-').map(Number);
-                const d  = new Date(yy, mm-1, dd);
-                const wd = d.getDay();
-                const chip = document.createElement('div');
+            msg.dataset.key = '';
+            data.forEach(function(od, idx) {
+                var parts = od.date.split('-').map(Number);
+                var d  = new Date(parts[0], parts[1] - 1, parts[2]);
+                var wd = d.getDay();
+                var chip = document.createElement('div');
                 chip.className = 'date-chip' + (idx === 0 ? ' selected' : '');
                 chip.dataset.date = od.date;
-                chip.innerHTML = `
-                    <div class="dc-wd">${ta ? TA_WD[wd] : EN_WD[wd]}</div>
-                    <div class="dc-day">${d.getDate()}</div>
-                    <div class="dc-mon">${ta ? TA_MON[d.getMonth()] : EN_MON[d.getMonth()]}</div>
-                `;
-                chip.addEventListener('click', () => {
-                    document.querySelectorAll('.date-chip').forEach(c => c.classList.remove('selected'));
+                chip.innerHTML =
+                    '<div class="dc-wd">' + (ta ? TA_WD[wd] : EN_WD[wd]) + '</div>' +
+                    '<div class="dc-day">' + d.getDate() + '</div>' +
+                    '<div class="dc-mon">' + (ta ? TA_MON[d.getMonth()] : EN_MON[d.getMonth()]) + '</div>';
+                chip.addEventListener('click', function() {
+                    document.querySelectorAll('.date-chip').forEach(function(c) { c.classList.remove('selected'); });
                     chip.classList.add('selected');
                     selectedDate = od.date;
-                    // Reset slot on date change
                     document.getElementById('selSlotId').value = '';
                     document.getElementById('selDate').value   = od.date;
                     document.getElementById('slotGrid').innerHTML = '';
@@ -233,74 +408,91 @@
                 chips.appendChild(chip);
                 if (idx === 0) { selectedDate = od.date; document.getElementById('selDate').value = od.date; }
             });
-            // Show slot section and load first date
             document.getElementById('slotSection').style.display = 'block';
             loadSlots();
         } catch(e) {
             msg.textContent = ta ? 'பிழை: தேதிகளை ஏற்ற முடியவில்லை.' : 'Error loading dates.';
+            msg.dataset.key = 'error';
         }
     }
 
-    // ── Slot loader ──────────────────────────────────────────────────────────
+    // ── Slot loader ─────────────────────────────────────────────
     async function loadSlots() {
         if (!selectedDate) return;
-        const grid = document.getElementById('slotGrid');
-        const msg  = document.getElementById('slotMsg');
-        const ta   = document.body.classList.contains('ta-mode');
+        var grid = document.getElementById('slotGrid');
+        var msg  = document.getElementById('slotMsg');
+        var ta   = _isTa();
         try {
-            const url  = `/api/v1/referral/slots?d=${encodeURIComponent(TOKEN)}&target_date=${selectedDate}`;
-            const res  = await fetch(url);
-            const data = await res.json();
+            var url  = '/api/v1/referral/slots?d=' + encodeURIComponent(TOKEN) + '&target_date=' + selectedDate;
+            var res  = await fetch(url);
+            var data = await res.json();
             slotsData = data.slots || [];
 
             if (!data.slots || data.slots.length === 0) {
                 grid.innerHTML = '';
-                msg.innerHTML = '<span style="color:#b45309;">⚠ ' + (ta ? 'இந்த தேதிக்கு நேரங்கள் இல்லை.' : 'No slots open for this date.') + '</span>';
+                msg.dataset.key = 'no_slots';
+                msg.innerHTML = '<span style="color:#b45309;"><i class="fa-solid fa-circle-exclamation"></i> ' +
+                    (ta ? 'இந்த தேதிக்கு நேரங்கள் இல்லை.' : 'No slots open for this date.') + '</span>';
                 return;
             }
 
-            const now    = new Date();
-            const today  = now.toISOString().split('T')[0];
-            const isToday = selectedDate === today;
-            const nowMin = now.getHours()*60 + now.getMinutes();
-            const selId  = document.getElementById('selSlotId').value;
-            const persons = parseInt(document.getElementById('fPersons').value, 10) || 1;
+            var now    = new Date();
+            var today  = now.toISOString().split('T')[0];
+            var isToday = selectedDate === today;
+            var nowMin = now.getHours() * 60 + now.getMinutes();
+            var selId  = document.getElementById('selSlotId').value;
+            var persons = parseInt(document.getElementById('fPersons').value, 10) || 1;
 
-            msg.textContent = ta ? 'பச்சை = கிடைக்கிறது, மஞ்சள் = நிரம்பிக்கொண்டிருக்கிறது, சிவப்பு = நிரம்பியது'
-                                 : 'green = available, amber = filling up, red = full';
+            msg.textContent = '';
+            msg.dataset.key = '';
             grid.innerHTML = '';
 
-            data.slots.forEach(slot => {
-                const [sh, sm] = slot.start.split(':').map(Number);
-                // Grey out past slots only when viewing today
-                const isPast = isToday && (sh*60+sm) <= nowMin;
-                const isFull = !isPast && (slot.remaining === 0 || slot.status === 'FULL' || slot.remaining < persons);
-                const isPartial = !isPast && !isFull && slot.available && slot.booked_count > 0;
-                const isOpen = !isPast && !isFull && slot.available && slot.booked_count === 0;
-                const bookable = isPartial || isOpen;
-                const isSel = String(slot.id) === String(selId);
+            data.slots.forEach(function(slot) {
+                var sh = parseInt(slot.start.split(':')[0], 10);
+                var sm = parseInt(slot.start.split(':')[1], 10);
+                var isPast = isToday && (sh * 60 + sm) <= nowMin;
+                var isFull = !isPast && (slot.remaining === 0 || slot.status === 'FULL' || slot.remaining < persons);
+                var isPartial = !isPast && !isFull && slot.available && slot.booked_count > 0;
+                var isOpen = !isPast && !isFull && slot.available && slot.booked_count === 0;
+                var bookable = isPartial || isOpen;
+                var isSel = String(slot.id) === String(selId);
 
-                let bg, border, cursor, opacity, dot, sub;
-                if (isPast)        { bg='#f1f5f9'; border='#cbd5e1'; cursor='not-allowed'; opacity='0.4'; dot='⬜'; sub=(ta?'முடிந்தது':'Passed'); }
-                else if (isFull)   { bg='#fee2e2'; border='#fca5a5'; cursor='not-allowed'; opacity='0.7'; dot='🔴'; sub=(ta?'நிரம்பியது':'Full'); }
-                else if (isPartial){ bg='#fef3c7'; border=isSel?'#0d9488':'#fbbf24'; cursor='pointer'; opacity='1'; dot='🟠'; sub=slot.remaining+' '+(ta?'மீதம்':'left'); }
-                else               { bg='#dcfce7'; border=isSel?'#0d9488':'#86efac'; cursor='pointer'; opacity='1'; dot='🟢'; sub=(ta?'கிடைக்கிறது':'Available'); }
+                var stateClass, statusText, slotState;
+                if (isPast) {
+                    stateClass = 'slot-card--past'; statusText = ta ? 'முடிந்தது' : 'Passed'; slotState = 'past';
+                } else if (isFull) {
+                    stateClass = 'slot-card--full'; statusText = ta ? 'நிரம்பியது' : 'Full'; slotState = 'full';
+                } else if (isPartial) {
+                    stateClass = 'slot-card--partial'; statusText = slot.remaining + ' ' + (ta ? 'மீதம்' : 'left'); slotState = 'partial';
+                } else {
+                    stateClass = 'slot-card--open'; statusText = ''; slotState = 'open';
+                }
 
-                const card = document.createElement('div');
-                card.style.cssText = `border-radius:8px;padding:0.55rem 0.5rem;border:2px solid ${border};cursor:${cursor};background:${bg};opacity:${opacity};text-align:center;${isSel&&bookable?'outline:2.5px solid #0d9488;outline-offset:1px;':''}`;
-                card.innerHTML = `<div style="font-size:0.78rem;font-weight:700;color:#1e293b;">${dot} ${slot.start} – ${slot.end}</div><div style="font-size:0.7rem;font-weight:600;color:#64748b;margin-top:2px;">${sub}</div>`;
-                if (bookable) card.addEventListener('click', () => selectSlot(slot.id, slot.label, card));
-                else if (isSel) { document.getElementById('selSlotId').value=''; validate(); }
+                var card = document.createElement('div');
+                card.className = 'slot-card ' + stateClass + (isSel && bookable ? ' slot-card--selected' : '');
+                card.dataset.slotState = slotState;
+                card.dataset.remaining = slot.remaining || 0;
+                card.innerHTML =
+                    '<div class="slot-card__time"><span class="slot-card__dot"></span>' + _to12h(slot.start) + ' – ' + _to12h(slot.end) + '</div>' +
+                    '<div class="slot-card__status">' + statusText + '</div>';
+
+                if (bookable) {
+                    card.addEventListener('click', function() { selectSlot(slot.id, slot.label, card); });
+                } else if (isSel) {
+                    document.getElementById('selSlotId').value = '';
+                    validate();
+                }
                 grid.appendChild(card);
             });
         } catch(e) {
             msg.textContent = ta ? 'நேரங்களை ஏற்ற முடியவில்லை.' : 'Failed to load slots.';
+            msg.dataset.key = 'slot_error';
         }
     }
 
     function selectSlot(id, label, el) {
-        document.querySelectorAll('#slotGrid > div').forEach(c => c.style.outline='none');
-        el.style.outline = '2.5px solid #0d9488'; el.style.outlineOffset='1px';
+        document.querySelectorAll('.slot-card').forEach(function(c) { c.classList.remove('slot-card--selected'); });
+        el.classList.add('slot-card--selected');
         document.getElementById('selSlotId').value = id;
         validate();
     }
@@ -308,26 +500,26 @@
     function onPersonsChange() { loadSlots(); validate(); }
 
     function validate() {
-        const ok = document.getElementById('fName').value.trim()
-                 && document.getElementById('fRefBy').value.trim()
-                 && document.getElementById('fReason').value.trim()
-                 && document.getElementById('selSlotId').value;
+        var ok = document.getElementById('fName').value.trim()
+              && document.getElementById('fRefBy').value.trim()
+              && document.getElementById('fReason').value.trim()
+              && document.getElementById('selSlotId').value;
         document.getElementById('subBtn').disabled = !ok;
     }
 
     async function submitReferral() {
-        const btn = document.getElementById('subBtn');
-        const ta  = document.body.classList.contains('ta-mode');
-        const name   = document.getElementById('fName').value.trim();
-        const refBy  = document.getElementById('fRefBy').value.trim();
-        const reason = document.getElementById('fReason').value.trim();
-        const slotId = document.getElementById('selSlotId').value;
+        var btn = document.getElementById('subBtn');
+        var ta  = _isTa();
+        var name   = document.getElementById('fName').value.trim();
+        var refBy  = document.getElementById('fRefBy').value.trim();
+        var reason = document.getElementById('fReason').value.trim();
+        var slotId = document.getElementById('selSlotId').value;
         if (!name || !refBy || !reason || !slotId) return;
 
         btn.disabled = true;
-        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${ta?'பதிவு செய்கிறது…':'Booking…'}`;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + (ta ? 'பதிவு செய்கிறது…' : 'Booking…');
         try {
-            const fd = new FormData();
+            var fd = new FormData();
             fd.append('d', TOKEN);
             fd.append('name', name);
             fd.append('referred_by', refBy);
@@ -335,33 +527,30 @@
             fd.append('num_persons', document.getElementById('fPersons').value);
             fd.append('slot_id', slotId);
             fd.append('mobile', document.getElementById('fMobile').value.trim());
-            const res = await fetch('/api/v1/referral/submit', { method:'POST', body:fd });
-            const data = await res.json();
+            var res = await fetch('/api/v1/referral/submit', { method: 'POST', body: fd });
+            var data = await res.json();
             if (res.ok) {
                 if (slotRefreshTimer) clearInterval(slotRefreshTimer);
-                document.getElementById('sToken').textContent = data.token_display || ('REF'+data.token_number);
-                document.getElementById('sSlot').textContent = (ta?'நேரம்: ':'Slot: ') + (data.slot_label || '');
-                document.getElementById('mainForm').style.display='none';
-                document.getElementById('successBox').style.display='block';
-                window.scrollTo({ top:0, behavior:'smooth' });
+                document.getElementById('sToken').textContent = data.token_display || ('REF' + data.token_number);
+                document.getElementById('sSlot').textContent = (ta ? 'நேரம்: ' : 'Slot: ') + (data.slot_label || '');
+                document.getElementById('mainForm').style.display = 'none';
+                document.getElementById('successBox').style.display = 'block';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             } else {
-                showErr(data.error || (ta?'பதிவு தோல்வி.':'Booking failed.'));
-                // Slot may have filled — refresh grid
+                showErr(data.error || (ta ? 'பதிவு தோல்வி.' : 'Booking failed.'));
                 loadSlots();
                 btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> ${ta?'பதிவை உறுதிசெய்யவும்':'Confirm Booking'}`;
+                btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> ' + (ta ? 'பதிவை உறுதிசெய்யவும்' : 'Confirm Booking');
             }
         } catch(e) {
-            showErr(ta?'பிணைய பிழை.':'Network error.');
+            showErr(ta ? 'பிணைய பிழை.' : 'Network error.');
             btn.disabled = false;
-            btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> ${ta?'பதிவை உறுதிசெய்யவும்':'Confirm Booking'}`;
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> ' + (ta ? 'பதிவை உறுதிசெய்யவும்' : 'Confirm Booking');
         }
     }
 
-    // Load open dates first; slots load automatically after date is selected.
     loadOpenDates();
-    // Refresh slots every 8s so admin block/close reflects in near-real-time.
-    slotRefreshTimer = setInterval(() => { if (selectedDate) loadSlots(); }, 8000);
+    slotRefreshTimer = setInterval(function() { if (selectedDate) loadSlots(); }, 8000);
     </script>
 </body>
 </html>

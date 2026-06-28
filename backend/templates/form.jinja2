@@ -4,15 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grievance Portal</title>
-    
+
     <!-- Design Assets -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+
     <style>
-        /* Base Resets & Global CSS Definitions */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -21,17 +20,16 @@
 
         body {
             font-family: 'Inter', 'Mukta Malar', sans-serif;
-            background: #ffffff;
+            background: #f8fafc;
             min-height: 100vh;
             display: flex;
             align-items: flex-start;
             justify-content: center;
-            /* extra top padding clears the fixed language bar */
-            padding: 4.25rem 0.75rem 2rem;
+            padding: 7rem 0.75rem 2rem;
             color: #1f2937;
         }
 
-        /* Glassmorphism Structural Classes */
+        /* ── Main card ─────────────────────────────────────────────────────── */
         .main-card {
             width: 100%;
             max-width: 650px;
@@ -57,16 +55,6 @@
             text-align: center;
         }
 
-        .header-logo {
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.6);
-            object-fit: cover;
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(4px);
-        }
-
         .header-center {
             display: flex;
             flex-direction: column;
@@ -74,25 +62,16 @@
             gap: 0.5rem;
         }
 
-        .header-center h1 {
-            color: #ffffff;
-            font-size: 0.9rem;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.25rem;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.15);
-        }
-
         .header-center h2 {
             color: #ffffff;
-            font-size: 2.5rem;
+            font-size: clamp(1.6rem, 8vw, 2.5rem) !important;
             font-weight: 700;
             text-shadow: 0 2px 4px rgba(0,0,0,0.15);
             margin-bottom: 0.5rem;
-            padding: 1.5rem;
+            padding: 0.75rem 1rem !important;
         }
 
-        /* ── Sticky language switch (segmented pills) ─────────────────────── */
+        /* ── Sticky language switch ────────────────────────────────────────── */
         .lang-bar {
             position: fixed;
             top: 0; left: 0; right: 0;
@@ -135,39 +114,109 @@
             box-shadow: 0 2px 8px rgba(0, 135, 4, 0.35);
         }
 
-        /* UI Form Functional Elements */
-        .form-body {
-            padding: 2rem;
-        }
-
-        .section-indicator {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .icon-circle {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: rgba(59, 130, 246, 0.15);
-            border: 1px solid rgba(59, 130, 246, 0.25);
+        /* ── Stepper (fixed on scroll, outside main-card) ─────────────────── */
+        .stepper {
+            position: fixed;
+            top: var(--lang-bar-h, 48px);
+            left: 0; right: 0;
+            z-index: 999;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #2563eb;
+            padding: 0.7rem 1.5rem;
+            background: rgba(248, 250, 248, 0.97);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            gap: 0;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            opacity: 0.4;
+            transition: opacity 0.3s ease;
+        }
+        .step.active { opacity: 1; }
+        .step.done   { opacity: 0.75; }
+        .step-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #d1d5db;
+            color: #fff;
+            font-size: 0.8rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s ease;
+            flex-shrink: 0;
+        }
+        .step.active .step-num { background: rgb(0, 135, 4); }
+        .step.done .step-num   { background: #10b981; }
+        .step-label {
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: #6b7280;
+            transition: color 0.3s ease;
+            white-space: nowrap;
+        }
+        .step.active .step-label { color: #047857; }
+        .step.done .step-label   { color: #10b981; }
+        .step-line {
+            width: 32px;
+            height: 2px;
+            background: #e5e7eb;
+            margin: 0 0.35rem;
+            border-radius: 2px;
+            transition: background 0.3s ease;
+            flex-shrink: 0;
+        }
+        .step-line.done { background: #10b981; }
+
+        /* ── Phase sections ────────────────────────────────────────────────── */
+        .form-body { padding: 2rem; }
+
+        .phase-section {
+            margin-bottom: 0.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        .phase-section:last-of-type {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
         }
 
-        .section-indicator h3 {
-            font-size: 1.25rem;
+        .phase-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 1.25rem;
+        }
+        .phase-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        .phase-icon--details { background: rgba(5, 150, 105, 0.12); color: #059669; }
+        .phase-icon--verify  { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
+        .phase-icon--submit  { background: rgba(5, 150, 105, 0.12); color: #059669; }
+        .phase-title {
+            font-size: 1.05rem;
             font-weight: 700;
             color: #1f2937;
         }
 
-        .field-group {
-            margin-bottom: 1.4rem;
-        }
+        /* ── Form fields ───────────────────────────────────────────────────── */
+        .field-group { margin-bottom: 1.4rem; }
 
         .label-container {
             display: flex;
@@ -182,10 +231,7 @@
             color: #1e40af;
         }
 
-        .req-star {
-            color: #ef4444;
-            font-weight: 700;
-        }
+        .req-star { color: #ef4444; font-weight: 700; }
 
         .validation-msg {
             font-size: 0.75rem;
@@ -203,25 +249,62 @@
             border: 1.5px solid rgba(59, 130, 246, 0.45);
             border-radius: 0.75rem;
             padding: 0.8rem 1rem;
-            font-size: 1rem;   /* 16px — stops iOS auto-zoom on focus */
+            font-size: 1rem;
             color: #1f2937;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
         }
 
-        .glass-field::placeholder {
-            opacity: 0.5;
+        .glass-field::placeholder { opacity: 0.5; }
+
+        .glass-field:focus {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.02);
+            outline: none;
         }
 
-        /* ── Recording row: sine wave line + mic circle ── */
+        textarea.glass-field { resize: none; }
+
+        select.glass-field {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            padding-right: 2.5rem;
+            cursor: pointer;
+        }
+        select.glass-field option {
+            background-color: #ffffff;
+            color: #1f2937;
+            font-size: 0.95rem;
+            padding: 0.6rem 1rem;
+        }
+        select.glass-field option:checked,
+        select.glass-field option:hover {
+            background-color: #eff6ff;
+            color: #1d4ed8;
+        }
+        .category-select-wrapper { position: relative; }
+        .category-select-wrapper::after {
+            content: '';
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            width: 0.6rem;
+            height: 0.6rem;
+            border-right: 2px solid #3b82f6;
+            border-bottom: 2px solid #3b82f6;
+            transform: translateY(-65%) rotate(45deg);
+            pointer-events: none;
+        }
+
+        /* ── Recording row ─────────────────────────────────────────────────── */
         .recording-row {
             display: flex;
             align-items: center;
             gap: 0.75rem;
             width: 100%;
         }
-
-        /* Sine wave line — fills remaining space left of mic */
         .sine-wave-container {
             flex: 1;
             height: 60px;
@@ -231,14 +314,7 @@
             background: rgba(248, 250, 252, 0.6);
             border: 1px solid rgba(203, 213, 225, 0.4);
         }
-
-        .sine-wave-canvas {
-            width: 100%;
-            height: 100%;
-            display: block;
-        }
-
-        /* Mic circle */
+        .sine-wave-canvas { width: 100%; height: 100%; display: block; }
         .mic-circle-wrapper {
             position: relative;
             width: 64px;
@@ -248,7 +324,6 @@
             justify-content: center;
             flex-shrink: 0;
         }
-
         .mic-circle {
             width: 56px;
             height: 56px;
@@ -266,29 +341,16 @@
             position: relative;
             z-index: 2;
         }
-
-        .mic-circle:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45);
-        }
-
-        .mic-circle:active {
-            transform: scale(0.95);
-        }
-
+        .mic-circle:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45); }
+        .mic-circle:active { transform: scale(0.95); }
         .mic-circle.recording {
             background: linear-gradient(135deg, #6b7280, #4b5563);
             box-shadow: 0 4px 14px rgba(107, 114, 128, 0.35);
         }
-
-        /* Pulse rings around mic while recording */
-        .mic-wave-ring,
-        .mic-wave-ring-2 {
+        .mic-wave-ring, .mic-wave-ring-2 {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 56px;
-            height: 56px;
+            top: 50%; left: 50%;
+            width: 56px; height: 56px;
             border-radius: 50%;
             border: 2px solid rgba(239, 68, 68, 0.5);
             transform: translate(-50%, -50%);
@@ -296,28 +358,15 @@
             pointer-events: none;
             z-index: 1;
         }
-
-        .mic-wave-ring.animate {
-            animation: mic-wave-pulse 1.5s ease-out infinite;
-        }
-
-        .mic-wave-ring-2.animate {
-            animation: mic-wave-pulse 1.5s ease-out infinite 0.5s;
-        }
-
+        .mic-wave-ring.animate   { animation: mic-wave-pulse 1.5s ease-out infinite; }
+        .mic-wave-ring-2.animate { animation: mic-wave-pulse 1.5s ease-out infinite 0.5s; }
         @keyframes mic-wave-pulse {
             0%   { width: 56px; height: 56px; opacity: 0.6; }
             100% { width: 100px; height: 100px; opacity: 0; }
         }
+        .mic-label { font-size: 0.85rem; font-weight: 600; color: #374151; text-align: center; }
 
-        .mic-label {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #374151;
-            text-align: center;
-        }
-
-        /* ── Date picker ── */
+        /* ── Date picker ───────────────────────────────────────────────────── */
         .date-picker-row {
             display: flex;
             gap: 0.5rem;
@@ -326,63 +375,31 @@
             margin-bottom: 0.75rem;
             scrollbar-width: thin;
         }
-        .date-picker-row::-webkit-scrollbar {
-            height: 4px;
-        }
-        .date-picker-row::-webkit-scrollbar-thumb {
-            background: rgba(139, 92, 246, 0.3);
-            border-radius: 4px;
-        }
-
+        .date-picker-row::-webkit-scrollbar { height: 4px; }
+        .date-picker-row::-webkit-scrollbar-thumb { background: rgba(5, 150, 105, 0.3); border-radius: 4px; }
         .date-chip {
             flex-shrink: 0;
             padding: 0.5rem 0.75rem;
             border-radius: 10px;
-            border: 1.5px solid rgba(139, 92, 246, 0.2);
+            border: 1.5px solid rgba(5, 150, 105, 0.2);
             background: rgba(255, 255, 255, 0.7);
             cursor: pointer;
             transition: all 0.2s;
             text-align: center;
             min-width: 64px;
         }
-        .date-chip:hover {
-            border-color: rgba(139, 92, 246, 0.5);
-            background: rgba(139, 92, 246, 0.05);
-        }
+        .date-chip:hover { border-color: rgba(5, 150, 105, 0.5); background: rgba(5, 150, 105, 0.05); }
         .date-chip.selected {
-            border-color: #7c3aed;
-            background: rgba(139, 92, 246, 0.12);
-            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+            border-color: #059669;
+            background: rgba(5, 150, 105, 0.10);
+            box-shadow: 0 2px 8px rgba(5, 150, 105, 0.2);
         }
-        .date-chip .dc-weekday {
-            font-size: 0.7rem;
-            font-weight: 600;
-            color: #6b7280;
-            text-transform: uppercase;
-        }
-        .date-chip.selected .dc-weekday {
-            color: #5b21b6;
-        }
-        .date-chip .dc-day {
-            font-size: 1.1rem;
-            font-weight: 800;
-            color: #1e293b;
-            line-height: 1.2;
-        }
-        .date-chip .dc-month {
-            font-size: 0.65rem;
-            color: #9ca3af;
-        }
+        .date-chip .dc-weekday { font-size: 0.7rem; font-weight: 600; color: #6b7280; text-transform: uppercase; }
+        .date-chip.selected .dc-weekday { color: #047857; }
+        .date-chip .dc-day { font-size: 1.1rem; font-weight: 800; color: #1e293b; line-height: 1.2; }
+        .date-chip .dc-month { font-size: 0.65rem; color: #9ca3af; }
 
-        /* ── Proceed choice (inline, modular) ──────────────────────────────── */
-        .proceed-heading {
-            font-weight: 700;
-            font-size: 1.05rem;
-            color: #0f172a;
-            text-align: center;
-            margin-bottom: 0.9rem;
-        }
-
+        /* ── Proceed choice ────────────────────────────────────────────────── */
         .slots-alert {
             display: flex;
             align-items: flex-start;
@@ -402,11 +419,7 @@
             color: #b45309;
             font-size: 0.95rem;
         }
-        .slots-alert__text {
-            font-size: 0.84rem;
-            line-height: 1.55;
-            color: #92400e;
-        }
+        .slots-alert__text { font-size: 0.84rem; line-height: 1.55; color: #92400e; }
         .slots-alert__text strong { color: #78350f; font-weight: 700; }
 
         .choice-card {
@@ -414,49 +427,115 @@
             align-items: center;
             gap: 0.9rem;
             width: 100%;
-            padding: 1rem 1.1rem;
-            border: 1.5px solid #e5e9f0;
+            padding: 1.1rem 1.2rem;
+            border: 2px solid #e5e9f0;
             border-radius: 14px;
             background: #ffffff;
             cursor: pointer;
             text-align: left;
             font-family: inherit;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-            transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            position: relative;
+            overflow: hidden;
         }
-        .choice-card:hover  { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10); }
-        .choice-card:active { transform: translateY(0) scale(0.99); }
+        .choice-card::after {
+            content: '\f054';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            right: 1.1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8rem;
+            color: #94a3b8;
+            transition: color 0.15s, transform 0.15s;
+        }
+        .choice-card:hover::after { transform: translateY(-50%) translateX(3px); }
+        .choice-card:hover  { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12); }
+        .choice-card:active { transform: translateY(0) scale(0.98); }
         .choice-card__icon {
             flex-shrink: 0;
-            width: 48px; height: 48px;
-            border-radius: 13px;
+            width: 50px; height: 50px;
+            border-radius: 14px;
             display: grid; place-items: center;
             font-size: 1.5rem;
         }
-        .choice-card__title { font-weight: 800; font-size: 1.02rem; line-height: 1.2; display: block; }
+        .choice-card__title { font-weight: 800; font-size: 1.05rem; line-height: 1.2; display: block; }
         .choice-card__sub   { font-size: 0.8rem; color: #64748b; margin-top: 3px; display: block; }
 
-        .choice-card--meeting  { border-color: #ddd6fe; }
-        .choice-card--meeting:hover  { border-color: #a78bfa; }
-        .choice-card--meeting  .choice-card__icon  { background: #ede9fe; }
-        .choice-card--meeting  .choice-card__title { color: #6d28d9; }
+        .choice-card--meeting       { border-color: #6ee7b7; }
+        .choice-card--meeting:hover { border-color: #34d399; }
+        .choice-card--meeting::after { color: #34d399; }
+        .choice-card--meeting  .choice-card__icon  { background: #d1fae5; }
+        .choice-card--meeting  .choice-card__title { color: #047857; }
 
-        .choice-card--petition { border-color: #bfdbfe; }
+        .choice-card--petition       { border-color: #93c5fd; }
         .choice-card--petition:hover { border-color: #60a5fa; }
+        .choice-card--petition::after { color: #60a5fa; }
         .choice-card--petition .choice-card__icon  { background: #dbeafe; }
         .choice-card--petition .choice-card__title { color: #1d4ed8; }
+        .choice-card--petition:not(.choice-card--primary) {
+            padding: 0.7rem 1rem;
+            border-radius: 10px;
+            border-width: 1.5px;
+        }
+        .choice-card--petition:not(.choice-card--primary) .choice-card__icon {
+            width: 36px; height: 36px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+        }
+        .choice-card--petition:not(.choice-card--primary) .choice-card__title {
+            font-size: 0.88rem;
+        }
+        .choice-card--petition:not(.choice-card--primary) .choice-card__sub {
+            font-size: 0.72rem;
+        }
 
-        .choice-card--waitlist { border-color: #fde68a; }
+        .choice-card--waitlist       { border-color: #fcd34d; }
         .choice-card--waitlist:hover { border-color: #fbbf24; }
+        .choice-card--waitlist::after { color: #fbbf24; }
         .choice-card--waitlist .choice-card__icon  { background: #fef3c7; }
         .choice-card--waitlist .choice-card__title { color: #b45309; }
 
-        /* Recommended action gets a stronger frame + tint */
-        .choice-card--primary { border-width: 2px; }
-        .choice-card--meeting.choice-card--primary  { border-color: #a78bfa; background: linear-gradient(135deg, #faf5ff, #f5f3ff); }
-        .choice-card--petition.choice-card--primary { border-color: #60a5fa; background: linear-gradient(135deg, #eff6ff, #eef5ff); }
+        .choice-card--primary { border-width: 2.5px; }
+        .choice-card--meeting.choice-card--primary  {
+            border-color: #34d399;
+            background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+            box-shadow: 0 4px 16px rgba(5,150,105,0.15);
+        }
+        .choice-card--petition.choice-card--primary {
+            border-color: #60a5fa;
+            background: linear-gradient(135deg, #eff6ff, #eef5ff);
+            box-shadow: 0 4px 16px rgba(59,130,246,0.15);
+        }
 
-        /* ── Slot cards (modular) ──────────────────────────────────────────── */
+        @keyframes choiceReveal {
+            0%   { opacity: 0; transform: translateY(12px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        #actionChoiceInline.revealed .choice-card {
+            animation: choiceReveal 0.4s ease forwards;
+        }
+        #actionChoiceInline.revealed .choice-card:nth-child(2) {
+            animation-delay: 0.1s;
+        }
+        #actionChoiceInline.revealed .choice-card--meeting.choice-card--primary {
+            animation: choiceReveal 0.4s ease forwards, choicePulseMeeting 2s ease-in-out 0.5s 3;
+        }
+        #actionChoiceInline.revealed .choice-card--petition.choice-card--primary {
+            animation: choiceReveal 0.4s ease forwards, choicePulsePetition 2s ease-in-out 0.5s 3;
+        }
+        @keyframes choicePulseMeeting {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(5,150,105,0); }
+            50%      { box-shadow: 0 0 0 8px rgba(5,150,105,0.15); }
+        }
+        @keyframes choicePulsePetition {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+            50%      { box-shadow: 0 0 0 8px rgba(59,130,246,0.15); }
+        }
+
+        /* ── Slot cards ────────────────────────────────────────────────────── */
         .slot-card {
             border-radius: 12px;
             padding: 0.7rem 0.5rem;
@@ -466,7 +545,7 @@
             cursor: pointer;
             transition: transform 0.1s ease, box-shadow 0.12s ease, border-color 0.12s ease;
         }
-        .slot-card__time { font-size: 0.86rem; font-weight: 700; color: #0f172a; }
+        .slot-card__time { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
         .slot-card__pill {
             display: inline-block;
             margin-top: 5px;
@@ -475,98 +554,37 @@
             padding: 2px 9px;
             border-radius: 999px;
         }
-        .slot-card--open    { border-color: #86efac; background: #f0fdf4; }
-        .slot-card--open:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(22,163,74,0.16); border-color: #4ade80; }
+        .slot-card--open         { border-color: #86efac; background: #f0fdf4; }
+        .slot-card--open:hover   { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(22,163,74,0.16); border-color: #4ade80; }
         .slot-card--open    .slot-card__pill { background: #dcfce7; color: #16a34a; }
-        .slot-card--partial { border-color: #fcd34d; background: #fffbeb; }
+        .slot-card--partial      { border-color: #fcd34d; background: #fffbeb; }
         .slot-card--partial:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(217,119,6,0.16); border-color: #fbbf24; }
         .slot-card--partial .slot-card__pill { background: #fef3c7; color: #b45309; }
         .slot-card--full    { border-color: #fca5a5; background: #fef2f2; cursor: not-allowed; opacity: 0.9; }
         .slot-card--full    .slot-card__pill { background: #fee2e2; color: #dc2626; }
         .slot-card--past    { border-color: #e5e9f0; background: #f8fafc; cursor: not-allowed; opacity: 0.5; }
         .slot-card--past    .slot-card__pill { background: #e2e8f0; color: #94a3b8; }
-        .slot-card--selected { outline: 2.5px solid #7c3aed; outline-offset: 1px; border-color: #7c3aed; }
+        .slot-card--selected { outline: 2.5px solid #059669; outline-offset: 1px; border-color: #059669; }
 
-        .glass-field:focus {
-            background: rgba(255, 255, 255, 0.9);
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.02);
-            outline: none;
-        }
-
-        textarea.glass-field {
-            resize: none;
-        }
-
-        select.glass-field {
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            padding-right: 2.5rem;
-            cursor: pointer;
-            background: rgba(255, 255, 255, 0.5);
-            border: 1.5px solid rgba(59, 130, 246, 0.45);
-            border-radius: 0.75rem;
-            color: #1f2937;
-        }
-        select.glass-field:focus {
-            background: rgba(255, 255, 255, 0.9);
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.02);
-            outline: none;
-        }
-        select.glass-field option {
-            background-color: #ffffff;
-            color: #1f2937;
-            font-size: 0.95rem;
-            padding: 0.6rem 1rem;
-        }
-        select.glass-field option:checked,
-        select.glass-field option:hover {
-            background-color: #eff6ff;
-            color: #1d4ed8;
-        }
-        .category-select-wrapper {
-            position: relative;
-        }
-        .category-select-wrapper::after {
-            content: '';
-            position: absolute;
-            right: 1rem;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 0.6rem;
-            height: 0.6rem;
-            border-right: 2px solid #3b82f6;
-            border-bottom: 2px solid #3b82f6;
-            transform: translateY(-65%) rotate(45deg);
-            pointer-events: none;
-        }
-
-        /* Layout Block for Phone + OTP Generation Trigger */
+        /* ── Phone + OTP ───────────────────────────────────────────────────── */
         .phone-otp-row {
             display: grid;
             grid-template-columns: 1fr auto;
             gap: 0.75rem;
             align-items: center;
         }
-
-        /* OTP Box Grid — boxes get their own full-width row,
-           the Verify button drops to its own row below (responsive). */
         .otp-row {
             display: flex;
             flex-direction: column;
             align-items: stretch;
             gap: 0.6rem;
         }
-
         .otp-boxes {
             display: flex;
             gap: 0.4rem;
             width: 100%;
             justify-content: space-between;
         }
-
         .otp-box {
             flex: 1 1 0;
             min-width: 0;
@@ -583,26 +601,18 @@
             outline: none;
             caret-color: transparent;
         }
-
-        /* Verify button fills its own row under the boxes */
-        .otp-row > .btn-inline-action {
-            width: 100%;
-            padding: 0.7rem 1rem;
-        }
-
+        .otp-row > .btn-inline-action { width: 100%; padding: 0.7rem 1rem; }
         .otp-box:focus {
             border-color: #3b82f6;
             background: rgba(255, 255, 255, 0.95);
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
         }
-
         .otp-box.otp-valid {
             border-color: #10b981;
             background: rgba(16, 185, 129, 0.08);
             box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
             color: #065f46;
         }
-
         .otp-box.otp-invalid {
             border-color: #ef4444;
             background: rgba(239, 68, 68, 0.07);
@@ -610,13 +620,11 @@
             color: #991b1b;
             animation: shake 0.35s ease;
         }
-
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
-            25%       { transform: translateX(-4px); }
-            75%       { transform: translateX(4px); }
+            25%      { transform: translateX(-4px); }
+            75%      { transform: translateX(4px); }
         }
-
         .otp-status-msg {
             font-size: 0.78rem;
             font-weight: 600;
@@ -625,14 +633,12 @@
             border-radius: 4px;
             display: none;
         }
-
         .otp-status-msg.success {
             display: block;
             color: #065f46;
             background: rgba(16, 185, 129, 0.12);
             border: 1px solid rgba(16, 185, 129, 0.25);
         }
-
         .otp-status-msg.error {
             display: block;
             color: #991b1b;
@@ -640,7 +646,7 @@
             border: 1px solid rgba(239, 68, 68, 0.2);
         }
 
-        /* File Upload Control Design */
+        /* ── File Upload ───────────────────────────────────────────────────── */
         .upload-container {
             border: 2px dashed rgba(59, 130, 246, 0.3);
             background: rgba(255, 255, 255, 0.4);
@@ -651,44 +657,16 @@
             transition: all 0.2s ease;
             position: relative;
         }
-
-        .upload-container:hover {
-            background: rgba(255, 255, 255, 0.6);
-            border-color: #3b82f6;
-        }
-
-        .upload-icon {
-            font-size: 1.75rem;
-            color: #3b82f6;
-            margin-bottom: 0.5rem;
-        }
-
-        .upload-text {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #4b5563;
-        }
-
-        .upload-hint {
-            font-size: 0.75rem;
-            color: #6b7280;
-            margin-top: 0.25rem;
-        }
-
+        .upload-container:hover { background: rgba(255, 255, 255, 0.6); border-color: #3b82f6; }
+        .upload-icon { font-size: 1.75rem; color: #3b82f6; margin-bottom: 0.5rem; }
+        .upload-text { font-size: 0.85rem; font-weight: 600; color: #4b5563; }
+        .upload-hint { font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; }
         .file-input-hidden {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            opacity: 0;
-            cursor: pointer;
+            opacity: 0; cursor: pointer;
         }
-
-        .file-preview-list {
-            margin-top: 0.75rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
+        .file-preview-list { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
         .file-badge {
             display: flex;
             align-items: center;
@@ -700,55 +678,20 @@
             font-size: 0.8rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
-
-        .file-badge-inner {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            overflow: hidden;
-        }
-
+        .file-badge-inner { display: flex; align-items: center; gap: 0.75rem; overflow: hidden; }
         .file-thumb {
-            width: 56px;
-            height: 56px;
+            width: 56px; height: 56px;
             object-fit: cover;
             border-radius: 0.4rem;
             border: 1px solid rgba(0,0,0,0.08);
             flex-shrink: 0;
         }
+        .file-badge-info { display: flex; flex-direction: column; gap: 0.15rem; overflow: hidden; }
+        .file-badge-info strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+        .file-badge-info span { color: #6b7280; font-size: 0.75rem; }
+        .remove-file-btn { background: none; border: none; color: #ef4444; cursor: pointer; padding: 0.25rem; }
 
-        .file-badge-info {
-            display: flex;
-            flex-direction: column;
-            gap: 0.15rem;
-            overflow: hidden;
-        }
-
-        .file-badge-info strong {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 260px;
-        }
-
-        .file-badge-info span {
-            color: #6b7280;
-            font-size: 0.75rem;
-        }
-
-        .remove-file-btn {
-            background: none;
-            border: none;
-            color: #ef4444;
-            cursor: pointer;
-            padding: 0.25rem;
-        }
-
-        /* Form Submissions Action Strip */
-        .action-strip {
-            margin-top: 2rem;
-        }
-
+        /* ── Buttons ───────────────────────────────────────────────────────── */
         .base-btn {
             border: none;
             border-radius: 0.75rem;
@@ -763,7 +706,6 @@
             gap: 0.5rem;
             text-decoration: none;
         }
-
         .btn-inline-action {
             background: rgba(59, 130, 246, 0.85);
             color: white;
@@ -773,26 +715,7 @@
             padding: 0.75rem 1.25rem;
             height: 100%;
         }
-
-        .btn-inline-action:hover {
-            background: rgba(37, 99, 235, 0.95);
-        }
-
-        .btn-submit-main {
-            width: 100%;
-            background: rgba(68, 139, 69, 0.85);
-            color: white;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 8px 16px rgba(68, 139, 69, 0.15);
-            padding: 1rem;
-        }
-
-        .btn-submit-main:hover {
-            background: rgba(56, 116, 57, 0.95);
-            box-shadow: 0 10px 20px rgba(68, 139, 69, 0.25);
-        }
-
+        .btn-inline-action:hover { background: rgba(37, 99, 235, 0.95); }
         .base-btn:disabled {
             background: rgba(156, 163, 175, 0.4) !important;
             color: rgba(31, 41, 55, 0.4) !important;
@@ -800,54 +723,9 @@
             box-shadow: none !important;
         }
 
-        /* ── Responsive / Mobile ── */
-        @media (max-width: 480px) {
-            /* Stack action buttons vertically on narrow screens */
-            .action-strip {
-                grid-template-columns: 1fr !important;
-            }
-            /* Slot grid: single column on small phones */
-            #slotGrid {
-                grid-template-columns: 1fr !important;
-            }
-            /* Date chips: smaller min-width so more fit without scroll */
-            .date-chip {
-                min-width: 52px;
-                padding: 0.4rem 0.5rem;
-            }
-            .date-chip .dc-day {
-                font-size: 0.95rem;
-            }
-            .date-chip .dc-weekday {
-                font-size: 0.62rem;
-            }
-            .date-chip .dc-month {
-                font-size: 0.58rem;
-            }
-            /* OTP boxes slightly smaller */
-            .otp-box {
-                max-width: 46px;
-            }
-            /* Consent dialog padding tighter */
-            #consentOverlay > div {
-                padding: 1.1rem !important;
-            }
-            /* Tighter form padding on small phones */
-            .form-body { padding: 1.25rem !important; }
-            /* Smaller language pills so both fit comfortably */
-            .lang-seg button { padding: 0.45rem 1.1rem; min-width: 84px; }
-        }
-
-        /* Big green header title scales with screen width */
-        .header-center h2 {
-            font-size: clamp(1.6rem, 8vw, 2.5rem) !important;
-            padding: 0.75rem 1rem !important;
-        }
-
-        /* Success Message Layout Modal */
+        /* ── Success Modal ─────────────────────────────────────────────────── */
         .modal-overlay {
-            position: fixed;
-            inset: 0;
+            position: fixed; inset: 0;
             background: rgba(17, 24, 39, 0.4);
             backdrop-filter: blur(10px);
             z-index: 100;
@@ -858,78 +736,69 @@
             pointer-events: none;
             transition: all 0.4s ease;
         }
-
-        .modal-overlay.active {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
         .modal-box {
             background: rgba(255, 255, 255, 0.7);
             backdrop-filter: blur(40px) saturate(200%);
             border: 1px solid rgba(255, 255, 255, 0.8);
-            max-width: 400px;
-            width: 90%;
-            padding: 2rem;
-            border-radius: 2rem;
+            max-width: 400px; width: 90%;
+            padding: 2rem; border-radius: 2rem;
             text-align: center;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
             transform: scale(0.95);
             transition: transform 0.4s ease;
         }
-
-        .modal-overlay.active .modal-box {
-            transform: scale(1);
-        }
-
+        .modal-overlay.active .modal-box { transform: scale(1); }
         .success-icon-container {
-            width: 70px;
-            height: 70px;
+            width: 70px; height: 70px;
             border-radius: 50%;
             background: rgba(16, 185, 129, 0.15);
             border: 1px solid rgba(16, 185, 129, 0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #10b981;
-            font-size: 2rem;
+            display: flex; align-items: center; justify-content: center;
+            color: #10b981; font-size: 2rem;
             margin: 0 auto 1.25rem;
         }
-
         .receipt-card {
             background: rgba(255,255,255,0.4);
             border: 1px solid rgba(255,255,255,0.6);
             border-radius: 0.75rem;
-            padding: 1rem;
-            text-align: left;
+            padding: 1rem; text-align: left;
             margin: 1.25rem 0;
         }
-
         .receipt-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            margin-bottom: 0.5rem;
+            display: flex; justify-content: space-between;
+            font-size: 0.85rem; margin-bottom: 0.5rem;
         }
-
-        .receipt-row:last-child {
-            margin-bottom: 0;
-        }
-
+        .receipt-row:last-child { margin-bottom: 0; }
         .receipt-label { color: #6b7280; font-weight: 500; }
-        .receipt-val { color: #1f2937; font-weight: 700; }
-
+        .receipt-val   { color: #1f2937; font-weight: 700; }
         .btn-modal-close {
             width: 100%;
             background: rgba(68, 139, 69, 0.85);
             color: white;
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
+
+        /* ── Responsive ────────────────────────────────────────────────────── */
+        @media (max-width: 480px) {
+            #slotGrid { grid-template-columns: 1fr !important; }
+            .date-chip { min-width: 52px; padding: 0.4rem 0.5rem; }
+            .date-chip .dc-day { font-size: 0.95rem; }
+            .date-chip .dc-weekday { font-size: 0.62rem; }
+            .date-chip .dc-month { font-size: 0.58rem; }
+            .otp-box { max-width: 46px; }
+            #consentOverlay > div { padding: 1.1rem !important; }
+            .form-body { padding: 1.25rem !important; }
+            .lang-seg button { padding: 0.45rem 1.1rem; min-width: 84px; }
+            .stepper { padding: 1rem; gap: 0; }
+            .step-label { font-size: 0.78rem; }
+            .step-line { width: 20px; }
+        }
     </style>
 </head>
 <body>
 
-    <!-- Sticky language switch — always visible at the top -->
+    <!-- Sticky language switch -->
     <div class="lang-bar">
         <div class="lang-seg" role="group" aria-label="Language">
             <button type="button" id="langBtnEn" onclick="switchLocalization(false)">English</button>
@@ -937,187 +806,226 @@
         </div>
     </div>
 
+    <!-- Stepper (fixed bar below lang-bar) -->
+    <div class="stepper" id="stepperBar">
+        <div class="step active" id="step1">
+            <div class="step-num">1</div>
+            <div class="step-label" id="stepLabel1">Details</div>
+        </div>
+        <div class="step-line" id="stepLine1"></div>
+        <div class="step" id="step2">
+            <div class="step-num">2</div>
+            <div class="step-label" id="stepLabel2">Verify</div>
+        </div>
+        <div class="step-line" id="stepLine2"></div>
+        <div class="step" id="step3">
+            <div class="step-num">3</div>
+            <div class="step-label" id="stepLabel3">Submit</div>
+        </div>
+    </div>
+
     <div class="main-card">
-        <!-- Header View Block -->
+        <!-- Header -->
         <div class="header-bar">
             <div class="header-center">
                 <h2 id="lbl-portal-title">Grievance Registration</h2>
             </div>
         </div>
 
-        <!-- Dynamic Content Processing Form Form -->
+        <!-- Form -->
         <div class="form-body">
-            <div class="section-indicator">
-                <div class="icon-circle">
-                    <i class="fa-solid fa-file-invoice"></i>
-                </div>
-                <h3 id="lbl-sec-title">Grievance Form</h3>
-            </div>
-
             <form id="submissionForm" data-session-token="{{ session_token }}" onsubmit="executeFormSubmission(event)">
-                
-                <!-- Name Field Row -->
-                <div class="field-group">
-                    <div class="label-container">
-                        <label for="txtName"><span id="lbl-name">Full Name</span> <span class="req-star">*</span></label>
-                    </div>
-                    <input type="text" id="txtName" required placeholder="Enter full legal name" class="glass-field">
-                </div>
 
-                <!-- Category Field -->
-                <div class="field-group">
-                    <div class="label-container">
-                        <label for="ddlCategory"><span id="lbl-category">Category</span> <span class="req-star">*</span></label>
+                <!-- PHASE 1: Details — Name, Category, Upload, Voice -->
+                <div class="phase-section" id="phaseDetails">
+                    <div class="phase-header">
+                        <div class="phase-icon phase-icon--details"><i class="fa-solid fa-file-invoice"></i></div>
+                        <div class="phase-title" id="lbl-sec-title">Grievance Details</div>
                     </div>
-                    <div class="category-select-wrapper">
-                        <select id="ddlCategory" name="grievance_category" class="glass-field">
-                            <option value="" id="opt-category-default">— Select —</option>
-                        </select>
-                    </div>
-                </div>
 
-                <!-- Multi-format Application Upload Target Wrapper -->
-                <div class="field-group">
-                    <div class="label-container">
-                        <label><span id="lbl-upload">Upload Attachments</span></label>
+                    <!-- Name -->
+                    <div class="field-group">
+                        <div class="label-container">
+                            <label for="txtName"><span id="lbl-name">Full Name</span> <span class="req-star">*</span></label>
+                        </div>
+                        <input type="text" id="txtName" required placeholder="Enter full legal name" class="glass-field">
                     </div>
-                    <div class="upload-container">
-                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
-                        <div class="upload-text" id="lbl-upload-text">Click or drag file to upload</div>
-                        <div class="upload-hint" id="lbl-upload-hint">Supported formats: PDF, JPG, PNG (Max {{ max_file_size_mb }}MB)</div>
-                        <input type="file" id="fileAttachments" class="file-input-hidden" multiple accept="{{ allowed_file_extensions }}" onchange="renderUploadedFiles(this)">
-                    </div>
-                    <div class="file-preview-list" id="filePreviews"></div>
-                </div>
 
-                <!-- Audio Recording Field -->
-                <div class="field-group">
-                    <div class="label-container">
-                        <label><span id="lbl-audio">Voice Recording</span> <span id="lbl-audio-hint" style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(Speak your grievance)</span></label>
+                    <!-- Category -->
+                    <div class="field-group">
+                        <div class="label-container">
+                            <label for="ddlCategory"><span id="lbl-category">Category</span> <span class="req-star">*</span></label>
+                        </div>
+                        <div class="category-select-wrapper">
+                            <select id="ddlCategory" name="grievance_category" class="glass-field">
+                                <option value="" id="opt-category-default">— Select —</option>
+                            </select>
+                        </div>
                     </div>
-                    <div style="padding: 1.25rem 1rem; background: rgba(255, 255, 255, 0.5); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; align-items: center; gap: 0.6rem;">
-                        <!-- Audio waveform line + mic circle on the right -->
-                        <div class="recording-row">
-                            <div class="sine-wave-container">
-                                <canvas class="sine-wave-canvas" id="waveformCanvas"></canvas>
+
+                    <!-- Upload Attachments -->
+                    <div class="field-group" id="sectionUpload">
+                        <div class="label-container">
+                            <label><span id="lbl-upload">Upload Attachments</span></label>
+                        </div>
+                        <div class="upload-container">
+                            <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                            <div class="upload-text" id="lbl-upload-text">Click or drag file to upload</div>
+                            <div class="upload-hint" id="lbl-upload-hint">Supported formats: PDF, JPG, PNG (Max {{ max_file_size_mb }}MB)</div>
+                            <input type="file" id="fileAttachments" class="file-input-hidden" multiple accept="{{ allowed_file_extensions }}" onchange="renderUploadedFiles(this)">
+                        </div>
+                        <div class="file-preview-list" id="filePreviews"></div>
+                    </div>
+
+                    <!-- Voice Recording -->
+                    <div class="field-group" id="sectionVoice">
+                        <div class="label-container">
+                            <label><span id="lbl-audio">Voice Recording</span> <span id="lbl-audio-hint" style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(Speak your grievance)</span></label>
+                        </div>
+                        <div style="padding: 1.25rem 1rem; background: rgba(255, 255, 255, 0.5); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; align-items: center; gap: 0.6rem;">
+                            <div class="recording-row">
+                                <div class="sine-wave-container">
+                                    <canvas class="sine-wave-canvas" id="waveformCanvas"></canvas>
+                                </div>
+                                <div class="mic-circle-wrapper">
+                                    <div class="mic-wave-ring" id="micWaveRing"></div>
+                                    <div class="mic-wave-ring mic-wave-ring-2" id="micWaveRing2"></div>
+                                    <button type="button" id="btnStartRecording" class="mic-circle" onclick="startRecording()">
+                                        <i class="fa-solid fa-microphone"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="mic-circle-wrapper">
-                                <div class="mic-wave-ring" id="micWaveRing"></div>
-                                <div class="mic-wave-ring mic-wave-ring-2" id="micWaveRing2"></div>
-                                <button type="button" id="btnStartRecording" class="mic-circle" onclick="startRecording()">
-                                    <i class="fa-solid fa-microphone"></i>
-                                </button>
+                            <span id="lbl-record" class="mic-label">Start Recording</span>
+                            <div id="recordingTimer" style="display: none; font-size: 1.1rem; font-weight: 600; color: #ef4444; min-width: 60px; text-align: center;">0:00</div>
+                        </div>
+                        <div id="audioPreview" style="display: none; margin-top: 0.75rem; padding: 1rem; background: rgba(16, 185, 129, 0.1); border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                                <i class="fa-solid fa-check-circle" style="color: #10b981; font-size: 1.25rem;"></i>
+                                <span id="lbl-recording-saved" style="font-weight: 600; color: #065f46;">Recording saved</span>
+                                <span id="recordingDuration" style="margin-left: auto; font-size: 0.82rem; font-weight: 600; color: #065f46; background: rgba(16, 185, 129, 0.15); padding: 0.15rem 0.5rem; border-radius: 6px;"></span>
                             </div>
+                            <audio id="audioPlayer" controls style="width: 100%; margin-top: 0.5rem;"></audio>
+                            <button type="button" onclick="deleteRecording()" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: rgba(239, 68, 68, 0.1); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; font-size: 0.875rem; cursor: pointer;">
+                                <i class="fa-solid fa-trash"></i> <span id="lbl-delete-rec">Delete Recording</span>
+                            </button>
                         </div>
-                        <span id="lbl-record" class="mic-label">Start Recording</span>
-                        <div id="recordingTimer" style="display: none; font-size: 1.1rem; font-weight: 600; color: #ef4444; min-width: 60px; text-align: center;">0:00</div>
+                        <input type="hidden" id="audioRecordingData">
                     </div>
-                    <div id="audioPreview" style="display: none; margin-top: 0.75rem; padding: 1rem; background: rgba(16, 185, 129, 0.1); border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3);">
-                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
-                            <i class="fa-solid fa-check-circle" style="color: #10b981; font-size: 1.25rem;"></i>
-                            <span id="lbl-recording-saved" style="font-weight: 600; color: #065f46;">Recording saved</span>
-                            <span id="recordingDuration" style="margin-left: auto; font-size: 0.82rem; font-weight: 600; color: #065f46; background: rgba(16, 185, 129, 0.15); padding: 0.15rem 0.5rem; border-radius: 6px;"></span>
+
+                    <!-- Description (hidden) -->
+                    <div class="field-group" style="display: none;">
+                        <div class="label-container">
+                            <label for="txtDesc"><span id="lbl-desc">Grievance Description</span></label>
                         </div>
-                        <audio id="audioPlayer" controls style="width: 100%; margin-top: 0.5rem;"></audio>
-                        <button type="button" onclick="deleteRecording()" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: rgba(239, 68, 68, 0.1); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; font-size: 0.875rem; cursor: pointer;">
-                            <i class="fa-solid fa-trash"></i> <span id="lbl-delete-rec">Delete Recording</span>
-                        </button>
-                    </div>
-                    <input type="hidden" id="audioRecordingData">
-                </div>
-
-                <!-- Description Block Field Row - HIDDEN -->
-                <div class="field-group" style="display: none;">
-                    <div class="label-container">
-                        <label for="txtDesc"><span id="lbl-desc">Grievance Description</span> <span style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(optional if audio recorded)</span></label>
-                    </div>
-                    <textarea id="txtDesc" rows="4" placeholder="Describe your issue or application details clearly..." class="glass-field"></textarea>
-                </div>
-
-
-                <!-- Mobile Field and OTP Processing Container -->
-                <div class="field-group">
-                    <div class="label-container">
-                        <label for="txtMobile"><span id="lbl-phone">Mobile Number</span> <span class="req-star">*</span></label>
-                        <span class="validation-msg" id="errMobile">Invalid 10-digit number</span>
-                    </div>
-                    <div class="phone-otp-row">
-                        <input type="tel" id="txtMobile" required maxlength="10" placeholder="Enter 10 digit mobile number" class="glass-field" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
-                        <button type="button" id="btnGenOtp" class="base-btn btn-inline-action" onclick="generateVerificationOtp()"><span id="lbl-send-otp">Send OTP</span></button>
+                        <textarea id="txtDesc" rows="4" placeholder="Describe your issue..." class="glass-field"></textarea>
                     </div>
                 </div>
 
-                <!-- OTP Input Verification Grid -->
-                <div class="field-group" id="otpVerificationWrapper" style="display: none;">
-                    <div class="label-container">
-                        <label><span id="lbl-otp">Enter OTP</span> <span class="req-star">*</span></label>
+                <!-- PHASE 2: Verify — Mobile + OTP -->
+                <div class="phase-section" id="phaseVerify">
+                    <div class="phase-header">
+                        <div class="phase-icon phase-icon--verify"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div class="phase-title" id="lbl-phase-verify">Verify Identity</div>
                     </div>
-                    <div class="otp-row">
-                        <div class="otp-boxes" id="otpBoxes">
-                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp0">
-                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp1">
-                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp2">
-                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp3">
-                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp4">
-                            <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp5">
+
+                    <!-- Mobile -->
+                    <div class="field-group">
+                        <div class="label-container">
+                            <label for="txtMobile"><span id="lbl-phone">Mobile Number</span> <span class="req-star">*</span></label>
+                            <span class="validation-msg" id="errMobile">Invalid 10-digit number</span>
                         </div>
-                        <button type="button" id="btnVerifyOtp" class="base-btn btn-inline-action" onclick="verifyInputOtp()" style="background: rgba(16, 185, 129, 0.85); white-space: nowrap;"><span id="lbl-verify-otp">Verify OTP</span></button>
+                        <div class="phone-otp-row">
+                            <input type="tel" id="txtMobile" required maxlength="10" placeholder="Enter 10 digit mobile number" class="glass-field" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                            <button type="button" id="btnGenOtp" class="base-btn btn-inline-action" onclick="generateVerificationOtp()"><span id="lbl-send-otp">Send OTP</span></button>
+                        </div>
                     </div>
-                    <!-- Hidden aggregator used by form submission -->
-                    <input type="hidden" id="txtOtp">
-                    <div id="otpStatusMsg" class="otp-status-msg"></div>
+
+                    <!-- OTP -->
+                    <div class="field-group" id="otpVerificationWrapper" style="display: none;">
+                        <div class="label-container">
+                            <label><span id="lbl-otp">Enter OTP</span> <span class="req-star">*</span></label>
+                        </div>
+                        <div class="otp-row">
+                            <div class="otp-boxes" id="otpBoxes">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp0">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp1">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp2">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp3">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp4">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp5">
+                            </div>
+                            <button type="button" id="btnVerifyOtp" class="base-btn btn-inline-action" onclick="verifyInputOtp()" style="background: rgba(16, 185, 129, 0.85); white-space: nowrap;"><span id="lbl-verify-otp">Verify OTP</span></button>
+                        </div>
+                        <input type="hidden" id="txtOtp">
+                        <div id="otpStatusMsg" class="otp-status-msg"></div>
+                    </div>
                 </div>
 
-                <!-- Slot picker — shown when citizen clicks "Request Meeting" -->
+                <!-- PHASE 3: Submit — Slot picker + action choice (revealed after OTP) -->
+
+                <!-- Slot picker (shown when citizen clicks "Request Meeting") -->
                 <div id="slotPickerSection" style="display:none; margin-top:1.25rem;">
-                    <div style="background:rgba(139,92,246,0.06); border:1px solid rgba(139,92,246,0.25); border-radius:10px; padding:1rem;">
-                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
-                            <span style="font-weight:700; font-size:0.9rem; color:#5b21b6;">
-                                <i class="fa-solid fa-calendar-check"></i>&nbsp;<span id="lbl-slot-title">Select Meeting Slot</span>
-                            </span>
-                            <button type="button" onclick="closeSlotPicker()" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:1.1rem;">&#x2715;</button>
+                    <div style="background:rgba(5,150,105,0.04); border:1.5px solid rgba(5,150,105,0.18); border-radius:14px; padding:1.25rem;">
+                        <!-- Centered heading with back arrow -->
+                        <div style="display:grid; grid-template-columns:32px 1fr 32px; align-items:center; margin-bottom:1rem;">
+                            <button type="button" onclick="closeSlotPicker()" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:1rem;padding:4px;"><i class="fa-solid fa-arrow-left"></i></button>
+                            <div style="text-align:center;">
+                                <div style="font-weight:800; font-size:1.15rem; color:#047857;"><i class="fa-solid fa-calendar-check"></i> <span id="lbl-slot-title">Select Meeting Slot</span></div>
+                            </div>
+                            <div></div>
                         </div>
-                        <!-- Date picker -->
-                        <div style="margin-bottom:0.75rem;">
-                            <div style="font-size:0.78rem; font-weight:600; color:#5b21b6; margin-bottom:0.4rem;"><i class="fa-solid fa-calendar-days"></i> <span id="lbl-slot-date">Select a date</span></div>
+
+                        <!-- Date chips -->
+                        <div style="margin-bottom:1rem;">
+                            <div style="font-size:0.85rem; font-weight:600; color:#059669; margin-bottom:0.45rem;"><i class="fa-solid fa-calendar-days"></i> <span id="lbl-slot-date">Select a date</span></div>
                             <div id="datePickerRow" class="date-picker-row"></div>
                         </div>
-                        <div id="slotPickerMsg" style="font-size:0.82rem; color:#6b7280; margin-bottom:0.5rem;"><span id="lbl-slot-loading">Loading available slots…</span></div>
+
+                        <!-- Slot grid -->
                         <div id="slotGrid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:0.5rem;"></div>
                         <input type="hidden" id="selectedSlotId">
-                        <div id="selectedSlotLabel" style="margin-top:0.6rem; font-size:0.82rem; color:#5b21b6; font-weight:600; display:none;">
-                            <i class="fa-solid fa-check-circle"></i> <span id="selectedSlotText"></span>
-                        </div>
+                        <span id="selectedSlotText" style="display:none;"></span>
 
-                        <!-- Number of persons attending (shown after a slot is picked) -->
-                        <div id="numPersonsSection" style="display:none; margin-top:0.85rem;">
-                            <label for="selNumPersons" style="font-size:0.8rem; font-weight:600; color:#5b21b6; display:block; margin-bottom:0.4rem;">
+                        <!-- Persons selector (inline after slot select) -->
+                        <div id="numPersonsSection" style="display:none; margin-top:1.1rem;">
+                            <label for="selNumPersons" style="font-size:0.9rem; font-weight:600; color:#047857; display:block; margin-bottom:0.4rem;">
                                 <i class="fa-solid fa-users"></i> <span id="lbl-num-persons">Number of Persons Attending</span>
                             </label>
-                            <select id="selNumPersons" style="width:100%; padding:0.5rem 0.75rem; border:1.5px solid rgba(139,92,246,0.35); border-radius:8px; font-size:0.9rem; background:#fff; color:#374151; cursor:pointer;">
-                                <option value="1" id="opt-persons-1">1 — Just me</option>
+                            <select id="selNumPersons" onchange="updateConfirmBtnLabel()" style="width:100%; padding:0.5rem 0.75rem; border:1.5px solid rgba(5,150,105,0.35); border-radius:8px; font-size:0.95rem; background:#fff; color:#374151; cursor:pointer;">
+                                <option value="1" id="opt-persons-1">1 - Just me</option>
                                 <option value="2" id="opt-persons-2">2 Persons</option>
                                 <option value="3" id="opt-persons-3">3 Persons</option>
                                 <option value="4" id="opt-persons-4">4 Persons (maximum)</option>
                             </select>
                         </div>
 
-                        <button type="button" id="btnConfirmMeeting" disabled
-                            onclick="openConsentDialog()"
-                            style="margin-top:0.85rem; width:100%; padding:0.65rem; background:rgba(139,92,246,0.85); color:#fff; border:none; border-radius:8px; font-weight:700; font-size:0.9rem; cursor:pointer; transition:opacity 0.2s;">
-                            <i class="fa-solid fa-handshake"></i> <span id="lbl-slot-confirm">Confirm &amp; Submit</span>
+                        <!-- Smart submit button — shows slot time + persons -->
+                        <button type="button" id="btnConfirmMeeting" disabled onclick="openConsentDialog()"
+                            style="margin-top:1rem; width:100%; padding:0.85rem 1rem; background:rgb(0,135,4); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.95rem; cursor:pointer; transition:all 0.25s ease; box-shadow:0 4px 14px rgba(0,135,4,0.25); line-height:1.4;"
+                            onfocus="this.style.outline='none'">
+                            <span id="btnConfirmMeetingInner"><i class="fa-solid fa-handshake"></i> <span id="lbl-slot-confirm">Confirm &amp; Submit</span></span>
                         </button>
+                        <style>
+                            #btnConfirmMeeting:disabled {
+                                background: #d1d5db !important;
+                                box-shadow: none !important;
+                                cursor: not-allowed;
+                                color: rgba(255,255,255,0.6) !important;
+                            }
+                            #btnConfirmMeeting:not(:disabled):hover {
+                                box-shadow: 0 6px 20px rgba(0,135,4,0.35);
+                                transform: translateY(-1px);
+                            }
+                        </style>
                     </div>
                 </div>
 
-                <!-- Inline action choice — revealed once OTP is verified.
-                     Buttons render dynamically based on meeting-slot availability. -->
+                <!-- Inline action choice (revealed once OTP is verified) -->
                 <div id="actionChoiceInline" style="display:none; margin-top:1.5rem;">
-                    <div id="lbl-choice-heading" style="font-weight:700; font-size:1rem; color:#1e293b; margin-bottom:0.85rem; text-align:center;">How would you like to proceed?</div>
                     <div id="choiceButtons" style="display:flex; flex-direction:column; gap:0.75rem;"></div>
                 </div>
 
-                <!-- Hidden wiring buttons (driven by the inline choice) -->
+                <!-- Hidden wiring buttons -->
                 <button type="button" id="btnPetition" style="display:none;" onclick="submitForm(false)"></button>
                 <button type="button" id="btnMeeting"  style="display:none;" onclick="openSlotPicker()"></button>
                 <button type="button" id="btnWaitlist" style="display:none;" onclick="startWaitlist()"></button>
@@ -1126,17 +1034,14 @@
         </div>
     </div>
 
-    <!-- Consent Dialog — shown before meeting submission -->
-    <div id="consentOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; display:none; align-items:center; justify-content:center; padding:1rem;">
+    <!-- Consent Dialog -->
+    <div id="consentOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
         <div style="background:#fff; border-radius:16px; max-width:420px; width:100%; padding:1.5rem; box-shadow:0 20px 60px rgba(0,0,0,0.25); max-height:90vh; overflow-y:auto;">
-            <!-- Header -->
             <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
                 <span style="font-size:1.3rem;">📋</span>
                 <span class="consent-en" style="font-weight:800; font-size:1rem; color:#1e293b;">Declaration</span>
                 <span class="consent-ta" style="font-weight:800; font-size:1rem; color:#1e293b; display:none;">அறிவிப்பு</span>
             </div>
-
-            <!-- English text -->
             <div class="consent-en" style="font-size:0.88rem; color:#374151; line-height:1.7; margin-bottom:1.25rem;">
                 <p style="margin-bottom:0.75rem;">I kindly accept that:</p>
                 <ul style="margin-left:1.25rem; margin-bottom:0;">
@@ -1144,8 +1049,6 @@
                     <li>The allotted date and time may be rescheduled, postponed, or cancelled due to administrative or official requirements.</li>
                 </ul>
             </div>
-
-            <!-- Tamil text -->
             <div class="consent-ta" style="font-size:0.88rem; color:#374151; line-height:1.8; margin-bottom:1.25rem; display:none;">
                 <p style="margin-bottom:0.75rem;">கீழ்க்கண்ட நிபந்தனைகளை நான் கனிவுடன் ஏற்றுக் கொள்கிறேன்:</p>
                 <ul style="margin-left:1.25rem; margin-bottom:0;">
@@ -1153,15 +1056,11 @@
                     <li>நிர்வாகக் காரணங்களினால் எனக்கு ஒதுக்கப்பட்ட தேதியும் நேரமும் மாற்றப்படவோ, ஒத்திவைக்கப்படவோ அல்லது ரத்து செய்யப்படவோ வாய்ப்புள்ளது என்பதை ஏற்றுக் கொள்கிறேன்.</li>
                 </ul>
             </div>
-
-            <!-- Checkbox -->
             <label style="display:flex; align-items:flex-start; gap:0.65rem; cursor:pointer; margin-bottom:1.25rem; padding:0.75rem; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
-                <input type="checkbox" id="consentCheck" onchange="onConsentChange()" style="margin-top:2px; width:18px; height:18px; accent-color:#7c3aed; flex-shrink:0;">
+                <input type="checkbox" id="consentCheck" onchange="onConsentChange()" style="margin-top:2px; width:18px; height:18px; accent-color:#059669; flex-shrink:0;">
                 <span class="consent-en" style="font-size:0.83rem; color:#4b5563; font-weight:600;">I have read and agree to the above conditions.</span>
                 <span class="consent-ta" style="font-size:0.83rem; color:#4b5563; font-weight:600; display:none;">மேற்கண்ட நிபந்தனைகளை படித்து ஏற்றுக்கொள்கிறேன்.</span>
             </label>
-
-            <!-- Buttons -->
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
                 <button type="button" onclick="closeConsentDialog()"
                     style="padding:0.7rem; border:1.5px solid #e2e8f0; border-radius:8px; background:#fff; color:#374151; font-weight:700; font-size:0.88rem; cursor:pointer;">
@@ -1169,7 +1068,7 @@
                     <span class="consent-ta" style="display:none;">ரத்து செய்</span>
                 </button>
                 <button type="button" id="btnConsentConfirm" onclick="submitForm(true)" disabled
-                    style="padding:0.7rem; border:none; border-radius:8px; background:rgba(139,92,246,0.85); color:#fff; font-weight:700; font-size:0.88rem; cursor:pointer; opacity:0.45; transition:opacity 0.2s;">
+                    style="padding:0.7rem; border:none; border-radius:8px; background:rgba(5,150,105,0.85); color:#fff; font-weight:700; font-size:0.88rem; cursor:pointer; opacity:0.45; transition:opacity 0.2s;">
                     <span class="consent-en">Confirm &amp; Submit</span>
                     <span class="consent-ta" style="display:none;">உறுதிசெய் &amp; சமர்ப்பி</span>
                 </button>
@@ -1177,15 +1076,12 @@
         </div>
     </div>
 
-    <!-- Application Submission Success View Modal Component Layout -->
+    <!-- Success Modal -->
     <div class="modal-overlay" id="successModal">
         <div class="modal-box">
-            <div class="success-icon-container">
-                <i class="fa-solid fa-check"></i>
-            </div>
+            <div class="success-icon-container"><i class="fa-solid fa-check"></i></div>
             <h4 id="lbl-modal-title" style="font-size: 1.3rem; font-weight: 800; margin-bottom: 0.5rem;">Submission Successful</h4>
             <p id="lbl-modal-body" style="font-size: 0.87rem; color: #4b5563;">Your grievance registration has been parsed and logged securely into the regional database core.</p>
-            
             <div class="receipt-card">
                 <div class="receipt-row">
                     <span class="receipt-label" id="lbl-modal-id">Reference ID</span>
@@ -1196,19 +1092,51 @@
                     <span class="receipt-val" id="valReceiptDate">-</span>
                 </div>
             </div>
-
             <button type="button" class="base-btn btn-modal-close" onclick="dismissModalScreen()">Close Screen</button>
         </div>
     </div>
 
-    <!-- Runtime JavaScript Execution Layer -->
+    <!-- Runtime JavaScript -->
     <script>
-        // Storage Registry Object arrays
         let registeredFileList = [];
-        let runtimeActiveLanguage = 'ta';  // Default to Tamil
+        let runtimeActiveLanguage = 'ta';
         let isSystemPhoneVerified = false;
-        
-        // Validation helper function
+
+        // ── Stepper tracking ──────────────────────────────────────────────
+        function updateStepper() {
+            const step1El = document.getElementById('step1');
+            const step2El = document.getElementById('step2');
+            const step3El = document.getElementById('step3');
+            const line1   = document.getElementById('stepLine1');
+            const line2   = document.getElementById('stepLine2');
+
+            const detailsDone = isPhase1Complete();
+            const verifyDone  = isSystemPhoneVerified;
+
+            step1El.className = detailsDone ? 'step done' : 'step active';
+            line1.className   = detailsDone ? 'step-line done' : 'step-line';
+            step2El.className = verifyDone ? 'step done' : (detailsDone ? 'step active' : 'step');
+            line2.className   = verifyDone ? 'step-line done' : 'step-line';
+            step3El.className = verifyDone ? 'step active' : 'step';
+        }
+
+        function _smoothScrollTo(el) {
+            if (!el) return;
+            var lb = document.querySelector('.lang-bar');
+            var offset = (lb ? lb.offsetHeight : 48) + 64;
+            var top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+            window.scrollTo({ top: top, behavior: 'smooth' });
+        }
+
+        function isPhase1Complete() {
+            const name = document.getElementById('txtName').value.trim();
+            const hasCategory = document.getElementById('ddlCategory').value !== '';
+            const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
+            const hasAudio = document.getElementById('audioRecordingData').value !== '';
+            const description = document.getElementById('txtDesc').value.trim();
+            return name && hasCategory && (description || hasFiles || hasAudio);
+        }
+
         function validateFormForOTP() {
             const name = document.getElementById('txtName').value.trim();
             const mobile = document.getElementById('txtMobile').value.trim();
@@ -1216,23 +1144,22 @@
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
             const hasCategory = document.getElementById('ddlCategory').value !== '';
-            
-            // All fields must be filled: name, mobile, category, and (description OR files OR audio)
+
             const isValid = name && mobile && hasCategory && (description || hasFiles || hasAudio);
-            
-            // Enable/disable OTP button based on validation
             document.getElementById('btnGenOtp').disabled = !isValid;
-            
+
+            updateStepper();
             return isValid;
         }
 
         const dynamicLocalizationDictionary = {
             en: {
-                portalTitle: "Grievance Registration", secTitle: "Grievance Form",
+                portalTitle: "Grievance Registration", secTitle: "Grievance Details",
+                phaseVerify: "Verify Identity", phaseSubmit: "How to Proceed",
+                stepDetails: "Details", stepVerify: "Verify", stepSubmit: "Submit",
                 name: "Full Name", phone: "Mobile Number", otp: "Enter OTP", desc: "Grievance Description",
                 upload: "Upload Attachments", uploadText: "Click or drag file to upload",
                 uploadHint: "Supported formats: PDF, JPG, PNG (Max {{ max_file_size_mb }}MB)",
-                btnSubmit: "Submit Grievance Application", btnPetition: "Submit Petition", btnMeeting: "Submit & Request Meeting",
                 errMob: "Invalid 10-digit number", errOtp: "Invalid 6-digit OTP",
                 modalTitle: "Submission Successful",
                 modalBody: "Your grievance registration has been parsed and logged securely into the regional database core.",
@@ -1240,74 +1167,54 @@
                 placeholderName: "Enter full legal name",
                 placeholderMobile: "Enter 10 digit mobile number",
                 placeholderDesc: "Describe your issue or application details clearly...",
-                // Recording
                 audio: "Voice Recording", audioHint: "(Speak your grievance)",
                 record: "Start Recording", stop: "Stop Recording",
                 recordingSaved: "Recording saved", deleteRec: "Delete Recording",
-                // OTP buttons
                 sendOtp: "Send OTP", sending: "Sending...", sent: "Sent ✓",
                 verifyOtp: "Verify OTP", verifying: "Verifying...", verified: "✓ Verified",
                 otpSuccess: "OTP verified successfully ✓",
-                // Submit loading
                 submitting: "Submitting...",
-                // Errors / alerts
                 networkError: "Network error. Please try again.",
                 micError: "Microphone access denied. Please allow microphone access to record audio.",
-                alertFillFields: "Please fill in Name, Mobile Number, and either Description or upload files before requesting OTP.",
+                alertFillFields: "Please fill in Name, Category, and either upload files or record audio before requesting OTP.",
                 alertVerifyFirst: "Please verify your OTP before submitting.",
                 alertSessionMissing: "Session token not found. Please scan QR code again.",
                 submitError: "Submission failed. Please try again.",
-                // Slot picker
                 slotTitle: "Select Meeting Slot",
-                slotLoading: "Loading available slots…",
+                slotLoading: "Loading available slots...",
                 slotNone: "No meeting slots available",
-                slotNoneHint: "You can still submit — your request will join the waiting queue.",
+                slotNoneHint: "You can still submit - your request will join the waiting queue.",
                 slotAllFull: "All slots are full for this date.",
-                slotHint: "Select a time — green = available, amber = filling up, red = full",
-                slotFail: "Failed to load slots. You can still submit — your request will join the waiting queue.",
+                slotHint: "Select a time - green = available, amber = filling up, red = full",
+                slotFail: "Failed to load slots. You can still submit - your request will join the waiting queue.",
                 slotConfirm: "Confirm & Submit",
                 slotSelectFirst: "Please select a meeting time slot first.",
                 slotSelectedGone: "Your selected slot is no longer available. Please choose another.",
                 slotSelectedPast: "Your selected slot has passed. Please choose an upcoming slot.",
                 slotSelectDate: "Select a date",
-                slotPassed: "Passed",
-                slotFull: "Full",
-                slotLeft: "left",
-                slotAvailable: "Available",
-                // Category
-                category: "Category",
-                categorySelect: "— Select —",
-                catActionRequired: "Action Required",
-                catProposals: "Proposals",
-                catTransferRequests: "Transfer Requests",
-                catPensionRequests: "Pension Requests",
-                catSchoolAdmission: "School Admission",
-                catJobRequests: "Job Requests",
-                catRti: "RTI",
-                catAssociationsUnions: "Associations / Unions",
-                catOther: "Other",
-                catGeneral: "General",
-                catGreetings: "Greetings",
+                slotPassed: "Passed", slotFull: "Full", slotLeft: "left", slotAvailable: "Available",
+                category: "Category", categorySelect: "- Select -",
+                catActionRequired: "Action Required", catProposals: "Proposals",
+                catTransferRequests: "Transfer Requests", catPensionRequests: "Pension Requests",
+                catSchoolAdmission: "School Admission", catJobRequests: "Job Requests",
+                catRti: "RTI", catAssociationsUnions: "Associations / Unions",
+                catOther: "Other", catGeneral: "General", catGreetings: "Greetings",
                 alertSelectCategory: "Please select a category.",
-                // Action choice dialog
-                choiceTitle: "How would you like to proceed?",
+                choiceTitle: "Choose an option below",
                 choicePetitionSub: "Submit your petition for review",
                 choiceMeetingSub: "Book a slot to meet in person",
-                btnSubmit: "Submit",
-                // Persons attending
                 numPersonsLabel: "Number of Persons Attending",
-                optPersons1: "1 — Just me",
-                optPersons2: "2 Persons",
-                optPersons3: "3 Persons",
-                optPersons4: "4 Persons (maximum)",
+                optPersons1: "1 - Just me", optPersons2: "2 Persons",
+                optPersons3: "3 Persons", optPersons4: "4 Persons (maximum)",
             },
             ta: {
-                portalTitle: "குறைதீர்க்கும் பதிவு", secTitle: "புகார் படிவம்",
+                portalTitle: "குறைதீர்க்கும் பதிவு", secTitle: "புகார் விவரங்கள்",
+                phaseVerify: "அடையாளச் சரிபார்ப்பு", phaseSubmit: "எவ்வாறு தொடர்வது",
+                stepDetails: "விவரங்கள்", stepVerify: "சரிபார்", stepSubmit: "சமர்ப்பி",
                 name: "முழு பெயர்", phone: "அலைபேசி எண்", otp: "ஒடிபி (OTP) உள்ளிடவும்",
-                desc: "புகார் விவரம் (அல்லது கோப்புகளை பதிவேற்றவும்)",
+                desc: "புகார் விவரம்",
                 upload: "ஆவணங்களை பதிவேற்றவும்", uploadText: "கோப்புகளைத் தேர்ந்தெடுக்க இங்கே கிளிக் செய்யவும்",
                 uploadHint: "ஆதரிக்கப்படும் வடிவங்கள்: PDF, JPG, PNG (அதிகபட்சம் {{ max_file_size_mb }}MB)",
-                btnSubmit: "புகாரைப் பதிவு செய்க", btnPetition: "மனுவை சமர்ப்பிக்கவும்", btnMeeting: "மனு & சந்திப்பு கோரிக்கை",
                 errMob: "சரியான 10 இலக்க எண் தேவை", errOtp: "தவறான ஒடிபி எண்",
                 modalTitle: "வெற்றிகரமாக சமர்ப்பிக்கப்பட்டது!",
                 modalBody: "உங்கள் மனு வெற்றிகரமாக பதிவு செய்யப்பட்டு மாவட்ட தரவுத்தளத்தில் சேர்க்கப்பட்டுள்ளது.",
@@ -1315,71 +1222,48 @@
                 placeholderName: "உங்கள் முழு பெயரை உள்ளிடவும்",
                 placeholderMobile: "10 இலக்க அலைபேசி எண்ணை உள்ளிடவும்",
                 placeholderDesc: "உங்கள் புகாரை விரிவாக இங்கே எழுதவும்...",
-                // Recording
                 audio: "குரல் பதிவு", audioHint: "(உங்கள் புகாரை பேசுங்கள்)",
                 record: "பதிவு தொடங்கு", stop: "நிறுத்து",
                 recordingSaved: "பதிவு சேமிக்கப்பட்டது", deleteRec: "பதிவை நீக்கு",
-                // OTP buttons
                 sendOtp: "OTP அனுப்பு", sending: "அனுப்புகிறோம்...", sent: "அனுப்பப்பட்டது ✓",
                 verifyOtp: "OTP சரிபார்", verifying: "சரிபார்க்கிறோம்...", verified: "✓ சரிபார்க்கப்பட்டது",
                 otpSuccess: "OTP சரிபார்க்கப்பட்டது ✓",
-                // Submit loading
                 submitting: "சமர்ப்பிக்கிறோம்...",
-                // Errors / alerts
                 networkError: "இணைய பிழை. மீண்டும் முயற்சிக்கவும்.",
                 micError: "மைக்ரோஃபோன் அனுமதி மறுக்கப்பட்டது. தயவுசெய்து அனுமதியை வழங்கவும்.",
-                alertFillFields: "OTP கோருவதற்கு முன் பெயர், அலைபேசி எண் மற்றும் விவரம் அல்லது ஆவணம் உள்ளிடவும்.",
+                alertFillFields: "OTP கோருவதற்கு முன் பெயர், பிரிவு மற்றும் ஆவணம் அல்லது குரல் பதிவு உள்ளிடவும்.",
                 alertVerifyFirst: "சமர்ப்பிக்கும் முன் OTP சரிபார்க்கவும்.",
                 alertSessionMissing: "அமர்வு குறியீடு இல்லை. QR குறியீட்டை மீண்டும் ஸ்கேன் செய்யவும்.",
                 submitError: "சமர்ப்பிப்பு தோல்வியடைந்தது. மீண்டும் முயற்சிக்கவும்.",
-                // Slot picker
                 slotTitle: "சந்திப்பு நேரத்தைத் தேர்ந்தெடுக்கவும்",
-                slotLoading: "கிடைக்கும் நேரங்களை ஏற்றுகிறோம்…",
+                slotLoading: "கிடைக்கும் நேரங்களை ஏற்றுகிறோம்...",
                 slotNone: "சந்திப்பு நேரங்கள் எதுவும் கிடைக்கவில்லை.",
-                slotNoneHint: "நீங்கள் இன்னும் சமர்ப்பிக்கலாம் — உங்கள் கோரிக்கை காத்திர வரிசையில் சேர்க்கப்படும்.",
+                slotNoneHint: "நீங்கள் இன்னும் சமர்ப்பிக்கலாம் - உங்கள் கோரிக்கை காத்திர வரிசையில் சேர்க்கப்படும்.",
                 slotAllFull: "இந்த தேதிக்கான அனைத்து நேரங்களும் நிரம்பிவிட்டன.",
-                slotHint: "நேரத்தைத் தேர்ந்தெடுக்கவும் — பச்சை = கிடைக்கிறது, மஞ்சள் = நிரம்பிக்கொண்டிருக்கிறது, சிவப்பு = நிரம்பியது",
-                slotFail: "நேரங்களை ஏற்ற முடியவில்லை. நீங்கள் இன்னும் சமர்ப்பிக்கலாம் — உங்கள் கோரிக்கை காத்திர வரிசையில் சேர்க்கப்படும்.",
+                slotHint: "நேரத்தைத் தேர்ந்தெடுக்கவும் - பச்சை = கிடைக்கிறது, மஞ்சள் = நிரம்பிக்கொண்டிருக்கிறது, சிவப்பு = நிரம்பியது",
+                slotFail: "நேரங்களை ஏற்ற முடியவில்லை. நீங்கள் இன்னும் சமர்ப்பிக்கலாம் - உங்கள் கோரிக்கை காத்திர வரிசையில் சேர்க்கப்படும்.",
                 slotConfirm: "உறுதிசெய் & சமர்ப்பி",
                 slotSelectFirst: "முதலில் சந்திப்பு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectedGone: "நீங்கள் தேர்ந்தெடுத்த நேரம் இனி கிடைக்கவில்லை. வேறு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectedPast: "நீங்கள் தேர்ந்தெடுத்த நேரம் கடந்துவிட்டது. வரவிருக்கும் நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectDate: "தேதியைத் தேர்ந்தெடுக்கவும்",
-                slotPassed: "முடிந்தது",
-                slotFull: "நிரம்பியது",
-                slotLeft: "மீதம்",
-                slotAvailable: "கிடைக்கிறது",
-                // Category
-                category: "பிரிவு",
-                categorySelect: "— தேர்ந்தெடுக்கவும் —",
-                catActionRequired: "உடனடி நடவடிக்கை தேவை",
-                catProposals: "முன்மொழிவுகள்",
-                catTransferRequests: "பணியிட மாற்றக் கோரிக்கைகள்",
-                catPensionRequests: "ஓய்வூதியக் கோரிக்கைகள்",
-                catSchoolAdmission: "பள்ளி சேர்க்கை",
-                catJobRequests: "வேலைவாய்ப்பு கோரிக்கைகள்",
-                catRti: "தகவல் அறியும் உரிமை",
-                catAssociationsUnions: "சங்கங்கள் / தொழிற்சங்கங்கள்",
-                catOther: "பிற",
-                catGeneral: "பொது மனுக்கள்",
-                catGreetings: "வாழ்த்து செய்திகள்",
+                slotPassed: "முடிந்தது", slotFull: "நிரம்பியது", slotLeft: "மீதம்", slotAvailable: "கிடைக்கிறது",
+                category: "பிரிவு", categorySelect: "- தேர்ந்தெடுக்கவும் -",
+                catActionRequired: "உடனடி நடவடிக்கை தேவை", catProposals: "முன்மொழிவுகள்",
+                catTransferRequests: "பணியிட மாற்றக் கோரிக்கைகள்", catPensionRequests: "ஓய்வூதியக் கோரிக்கைகள்",
+                catSchoolAdmission: "பள்ளி சேர்க்கை", catJobRequests: "வேலைவாய்ப்பு கோரிக்கைகள்",
+                catRti: "தகவல் அறியும் உரிமை", catAssociationsUnions: "சங்கங்கள் / தொழிற்சங்கங்கள்",
+                catOther: "பிற", catGeneral: "பொது மனுக்கள்", catGreetings: "வாழ்த்து செய்திகள்",
                 alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
-                // Action choice dialog
-                choiceTitle: "எவ்வாறு தொடர்வது?",
+                choiceTitle: "கீழே ஒரு விருப்பத்தைத் தேர்ந்தெடுக்கவும்",
                 choicePetitionSub: "மனுவை பரிசீலிக்க சமர்பிக்கவும்",
                 choiceMeetingSub: "சந்திப்பிற்கு நேரம் பதிவு செய்யவும்",
-                btnSubmit: "சமர்பிக்கவும்",
-                // Persons attending
                 numPersonsLabel: "சந்திப்பிற்கு வரும் நபர்களின் எண்ணிக்கை",
-                optPersons1: "1 — நான் மட்டும்",
-                optPersons2: "2 நபர்கள்",
-                optPersons3: "3 நபர்கள்",
-                optPersons4: "4 நபர்கள் (அதிகபட்சம்)",
+                optPersons1: "1 - நான் மட்டும்", optPersons2: "2 நபர்கள்",
+                optPersons3: "3 நபர்கள்", optPersons4: "4 நபர்கள் (அதிகபட்சம்)",
             }
         };
 
-        // Null-safe text setter — silently skips missing elements so one
-        // absent id never kills the rest of the localization pass.
         function _setText(id, text) {
             const el = document.getElementById(id);
             if (el) el.innerText = text;
@@ -1395,17 +1279,11 @@
             'other', 'general', 'greetings',
         ];
         const CATEGORY_LABEL_KEYS = {
-            action_required:      'catActionRequired',
-            proposals:            'catProposals',
-            transfer_requests:    'catTransferRequests',
-            pension_requests:     'catPensionRequests',
-            school_admission:     'catSchoolAdmission',
-            job_requests:         'catJobRequests',
-            rti:                  'catRti',
-            associations_unions:  'catAssociationsUnions',
-            other:                'catOther',
-            general:              'catGeneral',
-            greetings:            'catGreetings',
+            action_required: 'catActionRequired', proposals: 'catProposals',
+            transfer_requests: 'catTransferRequests', pension_requests: 'catPensionRequests',
+            school_admission: 'catSchoolAdmission', job_requests: 'catJobRequests',
+            rti: 'catRti', associations_unions: 'catAssociationsUnions',
+            other: 'catOther', general: 'catGeneral', greetings: 'catGreetings',
         };
 
         function _populateCategoryDropdown() {
@@ -1429,10 +1307,8 @@
 
         function switchLocalization(isChecked) {
             runtimeActiveLanguage = isChecked ? 'ta' : 'en';
-            // Persist choice so the success page can read it and stay in sync
             try { localStorage.setItem('vpa_lang', runtimeActiveLanguage); } catch(e) {}
 
-            // Update the segmented language pills' active state
             const enBtn = document.getElementById('langBtnEn');
             const taBtn = document.getElementById('langBtnTa');
             if (enBtn && taBtn) {
@@ -1442,12 +1318,12 @@
 
             const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
 
-            // Header & section titles
-            _setText('lbl-dist',         copy.dist);
             _setText('lbl-portal-title', copy.portalTitle);
             _setText('lbl-sec-title',    copy.secTitle);
-
-            // Field labels
+            _setText('lbl-phase-verify', copy.phaseVerify);
+            _setText('stepLabel1', copy.stepDetails);
+            _setText('stepLabel2', copy.stepVerify);
+            _setText('stepLabel3', copy.stepSubmit);
             _setText('lbl-name',        copy.name);
             _setText('lbl-phone',       copy.phone);
             _setText('lbl-otp',         copy.otp);
@@ -1455,61 +1331,44 @@
             _setText('lbl-upload',      copy.upload);
             _setText('lbl-upload-text', copy.uploadText);
             _setText('lbl-upload-hint', copy.uploadHint);
-
-            // Re-render the inline proceed-choice in the new language (if it's showing)
-            const _choiceBox = document.getElementById('actionChoiceInline');
-            if (_choiceBox && _choiceBox.style.display !== 'none' && typeof renderChoiceButtons === 'function') {
-                renderChoiceButtons();
-            }
-
-            // Category dropdown
             _setText('lbl-category', copy.category);
             _populateCategoryDropdown();
-
-            // Slot picker
             _setText('lbl-slot-title',   copy.slotTitle);
-            _setText('lbl-slot-loading', copy.slotLoading);
             _setText('lbl-slot-confirm', copy.slotConfirm);
             _setText('lbl-slot-date',    copy.slotSelectDate);
-
-            // Persons attending dropdown
             _setText('lbl-num-persons', copy.numPersonsLabel);
             _setText('opt-persons-1',   copy.optPersons1);
             _setText('opt-persons-2',   copy.optPersons2);
             _setText('opt-persons-3',   copy.optPersons3);
             _setText('opt-persons-4',   copy.optPersons4);
-            // Rebuild date picker chips with new language if picker is visible
             if (document.getElementById('slotPickerSection').style.display !== 'none') {
-                _buildDatePicker();
+                _relabelDateChips();
             }
-
-            // Recording section
             _setText('lbl-audio',           copy.audio);
             _setText('lbl-audio-hint',      copy.audioHint);
-            // Only overwrite label if not currently recording
             const micBtn = document.getElementById('btnStartRecording');
             if (!micBtn || !micBtn.classList.contains('recording')) {
-                _setText('lbl-record',          copy.record);
+                _setText('lbl-record', copy.record);
             } else {
-                _setText('lbl-record',          copy.stop);
+                _setText('lbl-record', copy.stop);
             }
             _setText('lbl-recording-saved', copy.recordingSaved);
             _setText('lbl-delete-rec',      copy.deleteRec);
-
-            // OTP action buttons
             _setText('lbl-send-otp',   copy.sendOtp);
             _setText('lbl-verify-otp', copy.verifyOtp);
-
-            // Input placeholders
             _setAttr('txtName',   'placeholder', copy.placeholderName);
             _setAttr('txtMobile', 'placeholder', copy.placeholderMobile);
             _setAttr('txtDesc',   'placeholder', copy.placeholderDesc);
-
-            // Success modal
             _setText('lbl-modal-title', copy.modalTitle);
             _setText('lbl-modal-body',  copy.modalBody);
             _setText('lbl-modal-id',    copy.modalId);
             _setText('lbl-modal-date',  copy.modalDate);
+
+            const _choiceBox = document.getElementById('actionChoiceInline');
+            if (_choiceBox && _choiceBox.style.display !== 'none' && typeof renderChoiceButtons === 'function') {
+                renderChoiceButtons();
+            }
+            updateConfirmBtnLabel();
         }
 
         async function generateVerificationOtp() {
@@ -1559,15 +1418,15 @@
                         syncOtpHidden();
                         const msg = document.getElementById('otpStatusMsg');
                         msg.className = 'otp-status-msg error';
-                        msg.textContent = `[Dev] OTP auto-filled: ${data.otp_code} — SMS not configured`;
+                        msg.textContent = '[Dev] OTP auto-filled: ' + data.otp_code + ' - SMS not configured';
                         msg.style.display = 'block';
                     }
 
+                    _smoothScrollTo(document.getElementById('otpVerificationWrapper'));
                     document.getElementById('otp0').focus();
                 } else {
                     const error = await response.json();
                     const errEl = document.getElementById('errMobile');
-                    // Handle structured duplicate-submission error with bilingual messages
                     const detail = error.detail;
                     if (detail && typeof detail === 'object' && detail.code === 'ALREADY_SUBMITTED_TODAY') {
                         const isTamil = runtimeActiveLanguage === 'ta';
@@ -1595,7 +1454,7 @@
             }
         }
 
-        /* ── OTP box keyboard navigation & auto-advance ── */
+        /* OTP box keyboard navigation */
         function initOtpBoxes() {
             const boxes = Array.from(document.querySelectorAll('.otp-box'));
             boxes.forEach((box, i) => {
@@ -1606,7 +1465,6 @@
                     if (val && i < 5) boxes[i + 1].focus();
                     syncOtpHidden();
                 });
-
                 box.addEventListener('keydown', e => {
                     if (e.key === 'Backspace' && !box.value && i > 0) {
                         boxes[i - 1].value = '';
@@ -1616,7 +1474,6 @@
                     if (e.key === 'ArrowLeft' && i > 0) boxes[i - 1].focus();
                     if (e.key === 'ArrowRight' && i < 5) boxes[i + 1].focus();
                 });
-
                 box.addEventListener('paste', e => {
                     e.preventDefault();
                     const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
@@ -1642,7 +1499,6 @@
         }
 
         function setOtpBoxState(state, message) {
-            // state: 'valid' | 'invalid'
             document.querySelectorAll('.otp-box').forEach(b => {
                 b.classList.remove('otp-valid', 'otp-invalid');
                 b.classList.add(state === 'valid' ? 'otp-valid' : 'otp-invalid');
@@ -1684,7 +1540,7 @@
                     setOtpBoxState('valid', copy.otpSuccess);
                     verifyBtn.innerHTML = copy.verified;
                     document.querySelectorAll('.otp-box').forEach(b => b.disabled = true);
-                    // Reveal the inline proceed-choice (Meeting / Petition / Waitlist)
+                    updateStepper();
                     revealActionChoice();
                 } else {
                     const err = await response.json();
@@ -1711,74 +1567,80 @@
 
                 const fileBadgeNode = document.createElement('div');
                 fileBadgeNode.className = 'file-badge';
-                fileBadgeNode.id = `badge-${itemIndex}`;
+                fileBadgeNode.id = 'badge-' + itemIndex;
 
                 if (file.type.startsWith('image/')) {
                     const reader = new FileReader();
                     reader.onload = e => {
-                        fileBadgeNode.innerHTML = `
-                            <div class="file-badge-inner">
-                                <img src="${e.target.result}" class="file-thumb" alt="${file.name}">
-                                <div class="file-badge-info">
-                                    <strong>${file.name}</strong>
-                                    <span>${(file.size/1024).toFixed(1)} KB</span>
-                                </div>
-                            </div>
-                            <button type="button" class="remove-file-btn" onclick="purgeUploadedFile(${itemIndex})"><i class="fa-solid fa-trash-can"></i></button>
-                        `;
+                        fileBadgeNode.innerHTML =
+                            '<div class="file-badge-inner">' +
+                                '<img src="' + e.target.result + '" class="file-thumb" alt="' + file.name + '">' +
+                                '<div class="file-badge-info">' +
+                                    '<strong>' + file.name + '</strong>' +
+                                    '<span>' + (file.size/1024).toFixed(1) + ' KB</span>' +
+                                '</div>' +
+                            '</div>' +
+                            '<button type="button" class="remove-file-btn" onclick="purgeUploadedFile(' + itemIndex + ')"><i class="fa-solid fa-trash-can"></i></button>';
                     };
                     reader.readAsDataURL(file);
                 } else {
-                    fileBadgeNode.innerHTML = `
-                        <div class="file-badge-inner">
-                            <i class="fa-solid fa-file-shield" style="font-size:1.5rem; color:#10b981;"></i>
-                            <div class="file-badge-info">
-                                <strong>${file.name}</strong>
-                                <span>${(file.size/1024).toFixed(1)} KB</span>
-                            </div>
-                        </div>
-                        <button type="button" class="remove-file-btn" onclick="purgeUploadedFile(${itemIndex})"><i class="fa-solid fa-trash-can"></i></button>
-                    `;
+                    fileBadgeNode.innerHTML =
+                        '<div class="file-badge-inner">' +
+                            '<i class="fa-solid fa-file-shield" style="font-size:1.5rem; color:#10b981;"></i>' +
+                            '<div class="file-badge-info">' +
+                                '<strong>' + file.name + '</strong>' +
+                                '<span>' + (file.size/1024).toFixed(1) + ' KB</span>' +
+                            '</div>' +
+                        '</div>' +
+                        '<button type="button" class="remove-file-btn" onclick="purgeUploadedFile(' + itemIndex + ')"><i class="fa-solid fa-trash-can"></i></button>';
                 }
 
                 previewContainer.appendChild(fileBadgeNode);
             });
-            input.value = ""; // Reset input capture target stream
+            input.value = "";
+            validateFormForOTP();
+            if (registeredFileList.some(function(f) { return f !== null; })) {
+                _smoothScrollTo(document.getElementById('sectionVoice'));
+            }
         }
 
         function purgeUploadedFile(index) {
-            document.getElementById(`badge-${index}`).remove();
-            registeredFileList[index] = null; // Purge contents cleanly from array space
-            validateFormForOTP(); // Re-validate after file removal
+            document.getElementById('badge-' + index).remove();
+            registeredFileList[index] = null;
+            validateFormForOTP();
         }
-        
-        // Initialize form validation on page load
+
+        function _syncLangBarHeight() {
+            var lb = document.querySelector('.lang-bar');
+            if (!lb) return;
+            var h = lb.offsetHeight;
+            document.documentElement.style.setProperty('--lang-bar-h', h + 'px');
+            document.body.style.paddingTop = (h + 56) + 'px';
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
+            _syncLangBarHeight();
+            window.addEventListener('resize', _syncLangBarHeight);
+            window.addEventListener('load', _syncLangBarHeight);
             initOtpBoxes();
             _populateCategoryDropdown();
-
-            // Disable OTP button initially
             document.getElementById('btnGenOtp').disabled = true;
-            
-            // Add input event listeners to validate form
             document.getElementById('txtName').addEventListener('input', validateFormForOTP);
             document.getElementById('txtMobile').addEventListener('input', validateFormForOTP);
             document.getElementById('txtDesc').addEventListener('input', validateFormForOTP);
-            document.getElementById('ddlCategory').addEventListener('change', validateFormForOTP);
+            document.getElementById('ddlCategory').addEventListener('change', function() {
+                validateFormForOTP();
+                if (this.value) _smoothScrollTo(document.getElementById('sectionUpload'));
+            });
             document.getElementById('fileAttachments').addEventListener('change', function(e) {
                 renderUploadedFiles(e.target);
                 validateFormForOTP();
             });
-
+            updateStepper();
         });
 
-        // Detect back-button (bfcache restore) and force a server round-trip
-        // so the backend re-validates the session token and redirects to
-        // the error page if it's already been used.
         window.addEventListener('pageshow', function(event) {
-            if (event.persisted) {
-                window.location.reload();
-            }
+            if (event.persisted) window.location.reload();
         });
 
         async function submitForm(scheduleMeeting) {
@@ -1812,11 +1674,8 @@
                 return;
             }
 
-            // Validate audio recording size (max duration from .env)
             if (hasAudio) {
                 const audioData = document.getElementById('audioRecordingData').value;
-                // base64 encoding inflates size by ~33%
-                // max bytes = seconds * 16 KB * 1.2, encoded ≈ *1.33
                 const maxEncodedSize = {{ audio_max_seconds | default(300) }} * 16 * 1024 * 1.2 * 1.33;
                 if (audioData.length > maxEncodedSize) {
                     alert(copy.recordingLimit || 'Audio recording exceeds maximum duration. Please re-record.');
@@ -1824,8 +1683,6 @@
                 }
             }
 
-            // For meeting requests, a slot must be selected UNLESS there are
-            // genuinely no slots available (then the request joins the waiting queue).
             const slotId = document.getElementById('selectedSlotId').value;
             if (scheduleMeeting && !slotId && !noSlotsAvailable) {
                 showOtpFieldError(copy.slotSelectFirst);
@@ -1854,7 +1711,6 @@
                 formData.append('files', file);
             });
 
-            // Close consent dialog immediately when submission starts
             document.getElementById('consentOverlay').style.display = 'none';
 
             const btnConfirm   = document.getElementById('btnConfirmMeeting');
@@ -1862,8 +1718,6 @@
             const choiceHTML   = choiceWrap ? choiceWrap.innerHTML : '';
             const pickerOpen   = document.getElementById('slotPickerSection').style.display !== 'none';
 
-            // Spinner: on the slot-picker's Confirm button when booking a meeting,
-            // otherwise replace the inline choice with a "submitting" indicator.
             let spinnerOn = null, spinnerOrig = '';
             if (btnConfirm) btnConfirm.disabled = true;
             if (choiceWrap) choiceWrap.querySelectorAll('button').forEach(b => b.disabled = true);
@@ -1902,15 +1756,14 @@
                     if (data.scheduled_date) params.set('date', data.scheduled_date);
                     if (data.scheduled_time) params.set('time', data.scheduled_time);
                     if (data.scheduled_end)  params.set('time_end', data.scheduled_end);
-                    window.location.href = `/form/success?${params.toString()}`;
+                    window.location.href = '/form/success?' + params.toString();
                 } else {
                     const error = await response.json();
                     const errMsg = error.detail || copy.submitError;
                     showOtpFieldError(errMsg);
-                    // If slot filled up mid-submit, re-fetch slots so citizen can pick another
                     if (scheduleMeeting && errMsg && errMsg.toLowerCase().includes('slot')) {
                         document.getElementById('selectedSlotId').value = '';
-                        document.getElementById('selectedSlotLabel').style.display = 'none';
+                        _selectedSlotTime = '';
                         if (btnConfirm) { btnConfirm.disabled = true; }
                         await loadSlots();
                     }
@@ -1923,20 +1776,16 @@
         }
 
         // ── Slot picker ────────────────────────────────────────────────────
-
         let slotRefreshInterval = null;
-        let selectedPickerDate  = null;  // YYYY-MM-DD chosen by user
-        let slotPickerFirstLoad = true;  // controls the one-time "loading" message
-        let noSlotsAvailable    = false; // true when no bookable slot exists → waiting queue
+        let selectedPickerDate  = null;
+        let slotPickerFirstLoad = true;
+        let noSlotsAvailable    = false;
 
-        // Tamil weekday names (0=Sun … 6=Sat)
         const TA_WEEKDAYS = ['ஞாயிறு', 'திங்கள்', 'செவ்வாய்', 'புதன்', 'வியாழன்', 'வெள்ளி', 'சனி'];
         const EN_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const TA_MONTHS   = ['ஜன', 'பிப்', 'மார்', 'ஏப்', 'மே', 'ஜூன்', 'ஜூலை', 'ஆக', 'செப்', 'அக்', 'நவ', 'டிச'];
         const EN_MONTHS   = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-        // Build date chips ONLY for dates the PA has opened in scheduling.
-        // Returns the number of open dates found.
         async function _buildDatePicker() {
             const row = document.getElementById('datePickerRow');
             if (!row) return 0;
@@ -1944,49 +1793,45 @@
             const weekdays = isTa ? TA_WEEKDAYS : EN_WEEKDAYS;
             const months   = isTa ? TA_MONTHS   : EN_MONTHS;
 
-            row.innerHTML = `<div style="font-size:0.78rem;color:#94a3b8;padding:0.4rem;">${dynamicLocalizationDictionary[runtimeActiveLanguage].slotLoading}</div>`;
+            row.innerHTML = '<div style="font-size:0.78rem;color:#94a3b8;padding:0.4rem;">' + dynamicLocalizationDictionary[runtimeActiveLanguage].slotLoading + '</div>';
 
-            // Fetch the dates that are actually open for bookings.
             let openDates = [];
             try {
                 const res  = await fetch('/api/v1/scheduling/open-dates');
                 const data = await res.json();
                 if (Array.isArray(data)) openDates = data;
-            } catch (e) { /* network error — handled below */ }
+            } catch (e) {}
 
             row.innerHTML = '';
             selectedPickerDate = null;
 
             if (openDates.length === 0) {
-                // No open dates at all — nothing the citizen can book.
-                row.innerHTML = `<div style="font-size:0.8rem;color:#b45309;padding:0.4rem;">${dynamicLocalizationDictionary[runtimeActiveLanguage].slotNone}</div>`;
+                row.innerHTML = '<div style="font-size:0.8rem;color:#b45309;padding:0.4rem;">' + dynamicLocalizationDictionary[runtimeActiveLanguage].slotNone + '</div>';
                 return 0;
             }
 
             openDates.forEach((od, idx) => {
-                const dateStr = od.date;                 // "YYYY-MM-DD"
-                const [yy, mm, dd] = dateStr.split('-').map(Number);
-                const d = new Date(yy, mm - 1, dd);      // local midnight
+                const dateStr = od.date;
+                const parts = dateStr.split('-').map(Number);
+                const d = new Date(parts[0], parts[1] - 1, parts[2]);
                 const dow = d.getDay();
 
                 const chip = document.createElement('div');
                 chip.className = 'date-chip' + (idx === 0 ? ' selected' : '');
                 chip.dataset.date = dateStr;
-                chip.innerHTML = `
-                    <div class="dc-weekday">${weekdays[dow]}</div>
-                    <div class="dc-day">${d.getDate()}</div>
-                    <div class="dc-month">${months[d.getMonth()]}</div>
-                `;
+                chip.innerHTML =
+                    '<div class="dc-weekday">' + weekdays[dow] + '</div>' +
+                    '<div class="dc-day">' + d.getDate() + '</div>' +
+                    '<div class="dc-month">' + months[d.getMonth()] + '</div>';
                 chip.addEventListener('click', function() {
                     document.querySelectorAll('.date-chip').forEach(c => c.classList.remove('selected'));
                     chip.classList.add('selected');
                     selectedPickerDate = dateStr;
-                    // Reset slot selection when date changes
                     document.getElementById('selectedSlotId').value = '';
-                    document.getElementById('selectedSlotLabel').style.display = 'none';
+                    _selectedSlotTime = '';
                     document.getElementById('numPersonsSection').style.display = 'none';
                     document.getElementById('btnConfirmMeeting').disabled = true;
-                    slotPickerFirstLoad = true;          // show loading state for new date
+                    slotPickerFirstLoad = true;
                     document.getElementById('slotGrid').innerHTML = '';
                     loadSlots();
                 });
@@ -1996,14 +1841,29 @@
             return openDates.length;
         }
 
+        function _relabelDateChips() {
+            var isTa = runtimeActiveLanguage === 'ta';
+            var weekdays = isTa ? TA_WEEKDAYS : EN_WEEKDAYS;
+            var months   = isTa ? TA_MONTHS   : EN_MONTHS;
+            document.querySelectorAll('.date-chip').forEach(function(chip) {
+                var dateStr = chip.dataset.date;
+                if (!dateStr) return;
+                var parts = dateStr.split('-').map(Number);
+                var d = new Date(parts[0], parts[1] - 1, parts[2]);
+                var dow = d.getDay();
+                chip.querySelector('.dc-weekday').textContent = weekdays[dow];
+                chip.querySelector('.dc-month').textContent = months[d.getMonth()];
+            });
+        }
+
         async function openSlotPicker() {
-            // One action at a time: hide the inline choice while the slot picker is open
             document.getElementById('actionChoiceInline').style.display = 'none';
             document.getElementById('slotPickerSection').style.display = 'block';
             document.getElementById('selectedSlotId').value = '';
-            document.getElementById('selectedSlotLabel').style.display = 'none';
+            _selectedSlotTime = '';
             document.getElementById('numPersonsSection').style.display = 'none';
             document.getElementById('btnConfirmMeeting').disabled = true;
+            updateConfirmBtnLabel();
             document.getElementById('slotGrid').innerHTML = '';
             slotPickerFirstLoad = true;
             noSlotsAvailable    = false;
@@ -2011,19 +1871,14 @@
             const numOpenDates = await _buildDatePicker();
 
             if (numOpenDates === 0) {
-                // No open dates — guide citizen to submit into the waiting queue.
-                const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
                 noSlotsAvailable = true;
                 document.getElementById('slotGrid').innerHTML = '';
-                document.getElementById('slotPickerMsg').innerHTML =
-                    '<span style="color:#b45309;">⚠ ' + copy.slotNone + '</span> ' + copy.slotNoneHint;
                 document.getElementById('btnConfirmMeeting').disabled = false;
                 document.getElementById('slotPickerSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 return;
             }
 
             await loadSlots();
-            // Auto-refresh every 5 s so admin block/close/full changes reflect immediately
             if (slotRefreshInterval) clearInterval(slotRefreshInterval);
             slotRefreshInterval = setInterval(loadSlots, 5000);
             document.getElementById('slotPickerSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -2035,221 +1890,227 @@
             document.getElementById('numPersonsSection').style.display = 'none';
             document.getElementById('selNumPersons').value = '1';
             if (slotRefreshInterval) { clearInterval(slotRefreshInterval); slotRefreshInterval = null; }
-            // Bring back the inline choice (Meeting / Petition) when the picker closes
             if (isSystemPhoneVerified) {
                 document.getElementById('actionChoiceInline').style.display = 'block';
             }
         }
 
+        function _to12h(t) {
+            var p = t.split(':');
+            var h = parseInt(p[0], 10);
+            var m = p[1];
+            var ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            return h + ':' + m + ' ' + ampm;
+        }
+
         async function loadSlots() {
-            const msg  = document.getElementById('slotPickerMsg');
-            const grid = document.getElementById('slotGrid');
-            const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
-            const selectedId = document.getElementById('selectedSlotId').value;
+            var grid = document.getElementById('slotGrid');
+            var copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
+            var selectedId = document.getElementById('selectedSlotId').value;
 
-            // Only show the "loading" message on the very first load for a date,
-            // never on the 5-second background polls (prevents flicker).
-            if (slotPickerFirstLoad) {
-                msg.textContent = copy.slotLoading;
-            }
-
-            const targetDate = selectedPickerDate || (() => {
-                const now = new Date();
-                return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            var targetDate = selectedPickerDate || (function() {
+                var now = new Date();
+                return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
             })();
 
             try {
-                const res  = await fetch('/api/v1/scheduling/slots/available?target_date=' + targetDate);
-                const data = await res.json();
+                var res  = await fetch('/api/v1/scheduling/slots/available?target_date=' + targetDate);
+                var data = await res.json();
 
-                // No non-blocked slots exist for this date at all.
                 if (!data.slots || data.slots.length === 0) {
                     grid.innerHTML = '';
                     noSlotsAvailable = true;
-                    msg.innerHTML = '<span style="color:#b45309;">⚠ ' + copy.slotNone + '</span> ' + copy.slotNoneHint;
                     document.getElementById('btnConfirmMeeting').disabled = false;
                     slotPickerFirstLoad = false;
                     return;
                 }
 
-                // Time-of-day comparison for greying past slots (only when date is today).
-                const nowLocal   = new Date();
-                const nowMinutes = nowLocal.getHours() * 60 + nowLocal.getMinutes();
-                const todayStr   = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
-                const isToday    = targetDate === todayStr;
+                var nowLocal   = new Date();
+                var nowMinutes = nowLocal.getHours() * 60 + nowLocal.getMinutes();
+                var todayStr   = nowLocal.getFullYear() + '-' + String(nowLocal.getMonth() + 1).padStart(2, '0') + '-' + String(nowLocal.getDate()).padStart(2, '0');
+                var isToday    = targetDate === todayStr;
 
                 grid.innerHTML = '';
-                let bookableCount = 0;   // counts slots actually selectable (after past-filter)
-                let selectionLost = false; // true if the citizen's picked slot just became unavailable
+                var bookableCount = 0;
 
-                data.slots.forEach(slot => {
-                    const card = document.createElement('div');
+                data.slots.forEach(function(slot) {
+                    var card = document.createElement('div');
 
-                    const [sh, sm]  = slot.start.split(':').map(Number);
-                    const slotStart = sh * 60 + sm;
-                    const isPast    = isToday && (slotStart <= nowMinutes);
+                    var timeParts = slot.start.split(':').map(Number);
+                    var slotStart = timeParts[0] * 60 + timeParts[1];
+                    var isPast    = isToday && (slotStart <= nowMinutes);
 
-                    // Dynamic state — backend already excludes BLOCKED slots.
-                    //   FULL    : remaining === 0 OR status === 'FULL' (admin-closed)  → red, not clickable
-                    //   PARTIAL : 0 < booked < max AND bookable                        → amber, clickable
-                    //   OPEN    : booked === 0 AND bookable                            → green, clickable
-                    const isFull    = !isPast && (slot.remaining === 0 || slot.status === 'FULL');
-                    const isPartial = !isPast && !isFull && slot.available && slot.booked_count > 0;
-                    const isOpen    = !isPast && !isFull && slot.available && slot.booked_count === 0;
-                    const isBookable = isPartial || isOpen;
+                    var isFull    = !isPast && (slot.remaining === 0 || slot.status === 'FULL');
+                    var isPartial = !isPast && !isFull && slot.available && slot.booked_count > 0;
+                    var isOpen    = !isPast && !isFull && slot.available && slot.booked_count === 0;
+                    var isBookable = isPartial || isOpen;
                     if (isBookable) bookableCount++;
-                    const isSelected = String(slot.id) === String(selectedId);
+                    var isSelected = String(slot.id) === String(selectedId);
 
-                    let stateClass, pillText;
+                    var stateClass, pillText;
                     if (isPast)         { stateClass = 'slot-card--past';    pillText = copy.slotPassed; }
                     else if (isFull)    { stateClass = 'slot-card--full';    pillText = copy.slotFull; }
                     else if (isPartial) { stateClass = 'slot-card--partial'; pillText = slot.remaining + ' ' + copy.slotLeft; }
                     else                { stateClass = 'slot-card--open';    pillText = copy.slotAvailable; }
 
-                    const selectedCls = (isSelected && isBookable) ? ' slot-card--selected' : '';
+                    var selectedCls = (isSelected && isBookable) ? ' slot-card--selected' : '';
                     card.className = 'slot-card ' + stateClass + selectedCls;
                     card.innerHTML =
-                        `<div class="slot-card__time">${slot.start} – ${slot.end}</div>` +
-                        `<span class="slot-card__pill">${pillText}</span>`;
+                        '<div class="slot-card__time">' + _to12h(slot.start) + ' - ' + _to12h(slot.end) + '</div>' +
+                        '<span class="slot-card__pill">' + pillText + '</span>';
 
                     if (isBookable) {
-                        card.addEventListener('click', () => selectSlot(slot.id, slot.label, card));
+                        card.addEventListener('click', function() { selectSlot(slot.id, slot.label, card); });
                     } else if (isSelected) {
-                        // The slot the citizen had selected just became full/passed during polling.
-                        selectionLost = true;
                         document.getElementById('selectedSlotId').value = '';
-                        document.getElementById('selectedSlotLabel').style.display = 'none';
+                        _selectedSlotTime = '';
                         document.getElementById('numPersonsSection').style.display = 'none';
                         document.getElementById('btnConfirmMeeting').disabled = true;
-                        msg.innerHTML = '<span style="color:#dc2626;">⚠ ' +
-                            (isPast ? copy.slotSelectedPast : copy.slotSelectedGone) + '</span>';
+                        updateConfirmBtnLabel();
                     }
                     grid.appendChild(card);
                 });
 
-                // Decide final availability state from what is actually bookable now
-                // (accounts for today's past slots that the backend can't know about).
                 if (bookableCount > 0) {
                     noSlotsAvailable = false;
-                    if (!selectionLost) msg.textContent = copy.slotHint;
                 } else {
                     noSlotsAvailable = true;
                     document.getElementById('btnConfirmMeeting').disabled = false;
-                    if (!selectionLost) {
-                        msg.innerHTML = '<span style="color:#b45309;">⚠ ' + copy.slotAllFull + '</span> ' + copy.slotNoneHint;
-                    }
                 }
 
                 slotPickerFirstLoad = false;
 
             } catch (e) {
                 if (slotPickerFirstLoad) {
-                    msg.textContent = copy.slotFail;
                     document.getElementById('btnConfirmMeeting').disabled = false;
                     slotPickerFirstLoad = false;
                 }
             }
         }
 
+        var _selectedSlotTime = '';
+
         function selectSlot(slotId, label, cardEl) {
             document.querySelectorAll('#slotGrid .slot-card').forEach(c => {
                 c.classList.remove('slot-card--selected');
             });
             cardEl.classList.add('slot-card--selected');
-
-            document.getElementById('selectedSlotId').value          = slotId;
-            document.getElementById('selectedSlotText').textContent   = label;
-            document.getElementById('selectedSlotLabel').style.display = 'block';
+            document.getElementById('selectedSlotId').value = slotId;
+            document.getElementById('selectedSlotText').textContent = label;
+            _selectedSlotTime = cardEl.querySelector('.slot-card__time').textContent;
             document.getElementById('numPersonsSection').style.display = 'block';
-            document.getElementById('selNumPersons').value             = '1';
-            document.getElementById('btnConfirmMeeting').disabled     = false;
+            document.getElementById('selNumPersons').value = '1';
+            document.getElementById('btnConfirmMeeting').disabled = false;
+            updateConfirmBtnLabel();
         }
 
-        // ── Inline action choice (Meeting / Petition / Waitlist) ────────────
+        function updateConfirmBtnLabel() {
+            var btn = document.getElementById('btnConfirmMeetingInner');
+            if (!btn) return;
+            var slotId = document.getElementById('selectedSlotId').value;
+            var copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
+            var ta = runtimeActiveLanguage === 'ta';
 
-        let meetingAvailable = null;   // cached availability boolean
+            if (!slotId) {
+                btn.innerHTML = '<i class="fa-solid fa-handshake"></i> ' + copy.slotConfirm;
+                return;
+            }
+
+            var numPersons = parseInt(document.getElementById('selNumPersons').value) || 1;
+            var personLabel = numPersons === 1
+                ? (ta ? '1 நபர்' : '1 person')
+                : (numPersons + (ta ? ' நபர்கள்' : ' persons'));
+
+            btn.innerHTML =
+                '<i class="fa-solid fa-handshake"></i> ' +
+                (ta ? 'உறுதிசெய்' : 'Confirm') +
+                '<span style="margin:0 0.4rem; opacity:0.5;">|</span>' +
+                '<i class="fa-regular fa-clock" style="font-size:0.8em;"></i> ' + _selectedSlotTime +
+                '<span style="margin:0 0.4rem; opacity:0.5;">|</span>' +
+                '<i class="fa-solid fa-user" style="font-size:0.8em;"></i> ' + personLabel;
+        }
+
+        // ── Inline action choice ───────────────────────────────────────────
+        let meetingAvailable = null;
 
         async function revealActionChoice() {
-            // Check whether any meeting slot is bookable, then render the choice.
             try {
                 const res  = await fetch('/api/v1/scheduling/meeting-availability');
                 const data = await res.json();
                 meetingAvailable = !!data.available;
             } catch (e) {
-                meetingAvailable = true;   // fail-safe: never wrongly hide meetings
+                meetingAvailable = true;
             }
             renderChoiceButtons();
-            const box = document.getElementById('actionChoiceInline');
+            var box = document.getElementById('actionChoiceInline');
             box.style.display = 'block';
-            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            box.classList.add('revealed');
+            _smoothScrollTo(box);
         }
 
         function renderChoiceButtons() {
             const ta   = runtimeActiveLanguage === 'ta';
+            const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
             const wrap = document.getElementById('choiceButtons');
-            document.getElementById('lbl-choice-heading').textContent =
-                ta ? 'எப்படி தொடர விரும்புகிறீர்கள்?' : 'How would you like to proceed?';
 
-            // Modular card builder (uses CSS component classes — no inline styling)
-            const card = (type, primary, emoji, title, sub, onclick) => `
-                <button type="button" class="choice-card choice-card--${type}${primary ? ' choice-card--primary' : ''}" onclick="${onclick}">
-                    <span class="choice-card__icon">${emoji}</span>
-                    <span>
-                        <span class="choice-card__title">${title}</span>
-                        <span class="choice-card__sub">${sub}</span>
-                    </span>
-                </button>`;
+            function card(type, primary, emoji, title, sub, onclick) {
+                return '<button type="button" class="choice-card choice-card--' + type + (primary ? ' choice-card--primary' : '') + '" onclick="' + onclick + '">' +
+                    '<span class="choice-card__icon">' + emoji + '</span>' +
+                    '<span>' +
+                        '<span class="choice-card__title">' + title + '</span>' +
+                        '<span class="choice-card__sub">' + sub + '</span>' +
+                    '</span>' +
+                '</button>';
+            }
 
-            const meeting = (primary) => card('meeting', primary, '🤝',
-                ta ? 'அமைச்சரை நேரில் சந்திக்க' : 'Meet the Minister in person',
-                ta ? 'நேரத்தைத் தேர்ந்தெடுக்கவும்' : 'Book a time slot',
-                "document.getElementById('btnMeeting').click()");
+            var meeting = function(primary) {
+                return card('meeting', primary, '🤝',
+                    ta ? 'அமைச்சரை நேரில் சந்திக்க' : 'Meet the Minister in person',
+                    ta ? 'நேரத்தைத் தேர்ந்தெடுக்கவும்' : 'Book a time slot',
+                    "document.getElementById('btnMeeting').click()");
+            };
+            var petition = function(primary) {
+                return card('petition', primary, '📄',
+                    ta ? 'மனுவை மட்டும் சமர்ப்பிக்க' : 'Submit petition only',
+                    ta ? 'சந்திப்பு இல்லை — பதிவு மட்டும்' : 'No meeting - just register it',
+                    "document.getElementById('btnPetition').click()");
+            };
+            var waitlist = function(primary) {
+                return card('waitlist', primary, '⌛',
+                    ta ? 'காத்திருப்பு பட்டியலில் சேர' : 'Join the waiting list',
+                    ta ? 'இடம் கிடைத்ததும் தொடர்பு கொள்வோம்' : "We'll contact you when a slot opens",
+                    "document.getElementById('btnWaitlist').click()");
+            };
 
-            const petition = (primary) => card('petition', primary, '📄',
-                ta ? 'மனுவை மட்டும் சமர்ப்பிக்க' : 'Submit petition only',
-                ta ? 'சந்திப்பு இல்லை — பதிவு மட்டும்' : 'No meeting — just register it',
-                "document.getElementById('btnPetition').click()");
-
-            const waitlist = (primary) => card('waitlist', primary, '⏳',
-                ta ? 'காத்திருப்பு பட்டியலில் சேர' : 'Join the waiting list',
-                ta ? 'இடம் கிடைத்ததும் தொடர்பு கொள்வோம்' : "We'll contact you when a slot opens",
-                "document.getElementById('btnWaitlist').click()");
-
-            // Professional notice shown only when no meeting slots remain
-            const fullNotice = `
-                <div class="slots-alert">
-                    <span class="slots-alert__icon"><i class="fa-solid fa-circle-info"></i></span>
-                    <div class="slots-alert__text">
-                        ${ta
+            var fullNotice =
+                '<div class="slots-alert">' +
+                    '<span class="slots-alert__icon"><i class="fa-solid fa-circle-info"></i></span>' +
+                    '<div class="slots-alert__text">' +
+                        (ta
                             ? '<strong>தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.</strong> நீங்கள் உங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் உங்களைத் தொடர்பு கொள்வோம்.'
-                            : "<strong>All meeting slots are currently full.</strong> You can still submit your petition, or join the waiting list — we'll contact you as soon as a slot opens."}
-                    </div>
-                </div>`;
+                            : "<strong>All meeting slots are currently full.</strong> You can still submit your petition, or join the waiting list - we'll contact you as soon as a slot opens.") +
+                    '</div>' +
+                '</div>';
 
-            // Dynamic: meeting only when slots exist; otherwise notice + waitlist.
             wrap.innerHTML = meetingAvailable
                 ? meeting(true) + petition(false)
                 : fullNotice + petition(true) + waitlist(false);
         }
 
-        // Waitlist = request a meeting with no slot → backend puts it in the queue.
-        // Goes through the same consent step as a meeting.
         function startWaitlist() {
-            noSlotsAvailable = true;   // lets submitForm(true) proceed without a slot
+            noSlotsAvailable = true;
             openConsentDialog();
         }
 
         // ── Consent dialog ─────────────────────────────────────────────────
-
         function openConsentDialog() {
-            const isTamil   = runtimeActiveLanguage === 'ta';
-            const overlay   = document.getElementById('consentOverlay');
+            var isTamil   = runtimeActiveLanguage === 'ta';
+            var overlay   = document.getElementById('consentOverlay');
 
-            // Show the right language
-            document.querySelectorAll('.consent-en').forEach(el => el.style.display = isTamil ? 'none' : '');
-            document.querySelectorAll('.consent-ta').forEach(el => el.style.display = isTamil ? '' : 'none');
+            document.querySelectorAll('.consent-en').forEach(function(el) { el.style.display = isTamil ? 'none' : ''; });
+            document.querySelectorAll('.consent-ta').forEach(function(el) { el.style.display = isTamil ? '' : 'none'; });
 
-            // Reset checkbox + confirm button on every open
             document.getElementById('consentCheck').checked     = false;
             document.getElementById('btnConsentConfirm').disabled = true;
             document.getElementById('btnConsentConfirm').style.opacity = '0.45';
@@ -2262,27 +2123,27 @@
         }
 
         function onConsentChange() {
-            const checked = document.getElementById('consentCheck').checked;
-            const btn     = document.getElementById('btnConsentConfirm');
+            var checked = document.getElementById('consentCheck').checked;
+            var btn     = document.getElementById('btnConsentConfirm');
             btn.disabled  = !checked;
             btn.style.opacity = checked ? '1' : '0.45';
         }
 
-        // Audio recording — module-level variables
+        // ── Audio recording ────────────────────────────────────────────────
         let mediaRecorder;
         let audioChunks    = [];
         let recordingStartTime;
         let timerInterval;
         let currentAudioMime = '';
-        let activeStream   = null;   // kept here so stopRecording() can stop tracks
+        let activeStream   = null;
         let audioContext    = null;
         let analyser        = null;
-        let waveformRAF     = null;   // requestAnimationFrame ID for waveform drawing
+        let waveformRAF     = null;
 
         function _resetRecordingUI() {
-            const btn   = document.getElementById('btnStartRecording');
-            const label = document.getElementById('lbl-record');
-            const copy  = dynamicLocalizationDictionary[runtimeActiveLanguage];
+            var btn   = document.getElementById('btnStartRecording');
+            var label = document.getElementById('lbl-record');
+            var copy  = dynamicLocalizationDictionary[runtimeActiveLanguage];
             btn.classList.remove('recording');
             btn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
             btn.onclick = startRecording;
@@ -2299,25 +2160,23 @@
 
         function _stopActiveTracks() {
             if (activeStream) {
-                activeStream.getTracks().forEach(t => t.stop());
+                activeStream.getTracks().forEach(function(t) { t.stop(); });
                 activeStream = null;
             }
         }
 
-        // ── Waveform drawing ─────────────────────────────────────────────
-
         function _drawFlatLine() {
-            const canvas = document.getElementById('waveformCanvas');
+            var canvas = document.getElementById('waveformCanvas');
             if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            const dpr = window.devicePixelRatio || 1;
-            const rect = canvas.getBoundingClientRect();
+            var ctx = canvas.getContext('2d');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
             canvas.width  = rect.width * dpr;
             canvas.height = rect.height * dpr;
             ctx.scale(dpr, dpr);
-            const w = rect.width;
-            const h = rect.height;
-            const midY = h / 2;
+            var w = rect.width;
+            var h = rect.height;
+            var midY = h / 2;
             ctx.clearRect(0, 0, w, h);
             ctx.strokeStyle = '#cbd5e1';
             ctx.lineWidth = 2;
@@ -2329,79 +2188,68 @@
         }
 
         function _startWaveform(stream) {
-            const canvas = document.getElementById('waveformCanvas');
+            var canvas = document.getElementById('waveformCanvas');
             if (!canvas) return;
-            const ctx    = canvas.getContext('2d');
-            const dpr    = window.devicePixelRatio || 1;
+            var ctx    = canvas.getContext('2d');
+            var dpr    = window.devicePixelRatio || 1;
 
-            function resize() {
-                const rect = canvas.getBoundingClientRect();
-                canvas.width  = rect.width * dpr;
-                canvas.height = rect.height * dpr;
-                ctx.scale(dpr, dpr);
-            }
-            resize();
+            var rect = canvas.getBoundingClientRect();
+            canvas.width  = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
 
-            // Web Audio API — analyse mic input amplitude
             try {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioContext.createMediaStreamSource(stream);
+                var source = audioContext.createMediaStreamSource(stream);
                 analyser     = audioContext.createAnalyser();
                 analyser.fftSize = 256;
                 source.connect(analyser);
             } catch (e) {
-                console.warn('[Waveform] Web Audio API not available, drawing static wave.', e);
+                console.warn('[Waveform] Web Audio API not available.', e);
             }
 
-            const bufferLength = analyser ? analyser.frequencyBinCount : 0;
-            const dataArray    = analyser ? new Uint8Array(bufferLength) : null;
+            var bufferLength = analyser ? analyser.frequencyBinCount : 0;
+            var dataArray    = analyser ? new Uint8Array(bufferLength) : null;
 
             function draw() {
                 waveformRAF = requestAnimationFrame(draw);
-                const rect = canvas.getBoundingClientRect();
-                const w = rect.width;
-                const h = rect.height;
-                const midY = h / 2;
+                var rect2 = canvas.getBoundingClientRect();
+                var w = rect2.width;
+                var h = rect2.height;
+                var midY = h / 2;
 
                 ctx.clearRect(0, 0, w, h);
 
-                // Get amplitude from mic input
-                let amplitude = 0;
+                var amplitude = 0;
                 if (analyser && dataArray) {
                     analyser.getByteTimeDomainData(dataArray);
-                    // Calculate RMS amplitude (0–1 scale)
-                    let sum = 0;
-                    for (let i = 0; i < bufferLength; i++) {
-                        const v = (dataArray[i] - 128) / 128;
+                    var sum = 0;
+                    for (var i = 0; i < bufferLength; i++) {
+                        var v = (dataArray[i] - 128) / 128;
                         sum += v * v;
                     }
                     amplitude = Math.sqrt(sum / bufferLength);
                 }
 
-                // Map amplitude (0–~0.3 typical speech) to pixel height
-                const maxBarHeight = h * 0.8;
-                const barHeight    = Math.min(amplitude * maxBarHeight * 3, maxBarHeight);
+                var maxBarHeight = h * 0.8;
+                var barHeight    = Math.min(amplitude * maxBarHeight * 3, maxBarHeight);
+                var numBars = 48;
+                var barWidth = w / numBars;
+                var barGap   = barWidth * 0.3;
+                var actualBarW = barWidth - barGap;
 
-                // Draw centered vertical bar waveform
-                const numBars = 48;
-                const barWidth = w / numBars;
-                const barGap   = barWidth * 0.3;
-                const actualBarW = barWidth - barGap;
+                for (var j = 0; j < numBars; j++) {
+                    var phase    = (Date.now() / 200 + j * 0.5);
+                    var wave     = Math.sin(phase) * 0.3 + 0.7;
+                    var barH     = barHeight * wave;
+                    var x        = j * barWidth + barGap / 2;
+                    var yTop     = midY - barH / 2;
 
-                for (let i = 0; i < numBars; i++) {
-                    // Create a slight wave pattern modulated by amplitude
-                    const phase    = (Date.now() / 200 + i * 0.5);
-                    const wave     = Math.sin(phase) * 0.3 + 0.7;  // 0.4–1.0
-                    const barH     = barHeight * wave;
-                    const x        = i * barWidth + barGap / 2;
-                    const yTop     = midY - barH / 2;
-
-                    // Color: louder = more red, quieter = lighter
-                    const intensity = Math.min(amplitude * 4, 1);
-                    const r = 239;
-                    const g = Math.round(68 + (1 - intensity) * 120);
-                    const b = Math.round(68 + (1 - intensity) * 120);
-                    ctx.fillStyle = `rgb(${r},${g},${b})`;
+                    var intensity = Math.min(amplitude * 4, 1);
+                    var r = 239;
+                    var g = Math.round(68 + (1 - intensity) * 120);
+                    var b = Math.round(68 + (1 - intensity) * 120);
+                    ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
                     ctx.fillRect(x, yTop, actualBarW, barH);
                 }
             }
@@ -2422,76 +2270,64 @@
 
         async function startRecording() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                activeStream  = stream;   // save at module level
+                var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                activeStream  = stream;
                 audioChunks   = [];
                 currentAudioMime = '';
 
-                // Do NOT pass a mimeType option — each browser uses its native format:
-                //   iOS Safari   → audio/mp4  (readable natively on iPhone)
-                //   Chrome/Android → audio/webm (readable natively on Android)
-                // Passing a forced codec string breaks iOS Safari's recorder.
                 mediaRecorder = new MediaRecorder(stream);
 
-                // Capture the actual MIME type the recorder chose
-                mediaRecorder.onstart = () => {
+                mediaRecorder.onstart = function() {
                     currentAudioMime = mediaRecorder.mimeType || '';
                 };
 
-                mediaRecorder.ondataavailable = (event) => {
+                mediaRecorder.ondataavailable = function(event) {
                     if (event.data && event.data.size > 0) {
                         audioChunks.push(event.data);
                     }
                 };
 
-                mediaRecorder.onstop = () => {
-                    // iOS Safari: ondataavailable may arrive slightly after onstop.
-                    // A 150 ms delay ensures the last chunk lands before we build the blob.
-                    setTimeout(() => {
-                        const blobMime = currentAudioMime || 'audio/webm';
+                mediaRecorder.onstop = function() {
+                    setTimeout(function() {
+                        var blobMime = currentAudioMime || 'audio/webm';
                         if (audioChunks.length === 0) {
-                            console.warn('[Audio] No data chunks — recording may have failed.');
+                            console.warn('[Audio] No data chunks.');
                             _resetRecordingUI();
                             _stopActiveTracks();
                             return;
                         }
-                        const audioBlob = new Blob(audioChunks, { type: blobMime });
-                        const audioUrl  = URL.createObjectURL(audioBlob);
+                        var audioBlob = new Blob(audioChunks, { type: blobMime });
+                        var audioUrl  = URL.createObjectURL(audioBlob);
 
                         document.getElementById('audioPlayer').src              = audioUrl;
                         document.getElementById('audioPreview').style.display   = 'block';
 
-                        // Show total recorded duration
-                        const totalElapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-                        const totalMin = Math.floor(totalElapsed / 60);
-                        const totalSec = totalElapsed % 60;
-                        const durEl = document.getElementById('recordingDuration');
+                        var totalElapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                        var totalMin = Math.floor(totalElapsed / 60);
+                        var totalSec = totalElapsed % 60;
+                        var durEl = document.getElementById('recordingDuration');
                         if (durEl) {
-                            durEl.textContent = `${totalMin}:${totalSec.toString().padStart(2, '0')}`;
+                            durEl.textContent = totalMin + ':' + totalSec.toString().padStart(2, '0');
                         }
 
-                        const reader = new FileReader();
+                        var reader = new FileReader();
                         reader.readAsDataURL(audioBlob);
-                        reader.onloadend = () => {
+                        reader.onloadend = function() {
                             document.getElementById('audioRecordingData').value = reader.result;
                             validateFormForOTP();
                         };
 
-                        // Release mic AFTER blob is ready
                         _stopActiveTracks();
+                        _smoothScrollTo(document.getElementById('phaseVerify'));
                     }, 150);
                 };
 
-                // timeslice = 1000 ms — forces ondataavailable to fire every second.
-                // Without this, iOS Safari delivers NO data at all until stop() is called,
-                // and then the timing between ondataavailable and onstop is unreliable.
                 mediaRecorder.start(1000);
                 recordingStartTime = Date.now();
 
-                // Toggle button to recording state
-                const btn   = document.getElementById('btnStartRecording');
-                const label = document.getElementById('lbl-record');
-                const copy  = dynamicLocalizationDictionary[runtimeActiveLanguage];
+                var btn   = document.getElementById('btnStartRecording');
+                var label = document.getElementById('lbl-record');
+                var copy  = dynamicLocalizationDictionary[runtimeActiveLanguage];
                 btn.classList.add('recording');
                 btn.innerHTML = '<i class="fa-solid fa-stop"></i>';
                 btn.onclick = stopRecording;
@@ -2515,43 +2351,37 @@
 
             clearInterval(timerInterval);
 
-            // Update timer to show final recorded time before resetting
-            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            const timerEl = document.getElementById('recordingTimer');
-            timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            var elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            var minutes = Math.floor(elapsed / 60);
+            var seconds = elapsed % 60;
+            var timerEl = document.getElementById('recordingTimer');
+            timerEl.textContent = minutes + ':' + seconds.toString().padStart(2, '0');
 
-            // Stop mic pulse + waveform immediately, but keep timer visible
-            const btn = document.getElementById('btnStartRecording');
+            var btn = document.getElementById('btnStartRecording');
             btn.classList.remove('recording');
             document.getElementById('micWaveRing').classList.remove('animate');
             document.getElementById('micWaveRing2').classList.remove('animate');
             _stopWaveform();
             _drawFlatLine();
 
-            // Normal stop — onstop handler will build blob and show preview
             mediaRecorder.stop();
-            // Reset the button + label, but DON'T hide the timer yet —
-            // it stays visible until the audio preview replaces it.
-            const label = document.getElementById('lbl-record');
-            const copy  = dynamicLocalizationDictionary[runtimeActiveLanguage];
+            var label = document.getElementById('lbl-record');
+            var copy  = dynamicLocalizationDictionary[runtimeActiveLanguage];
             btn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
             btn.onclick = startRecording;
             label.textContent = copy.record;
             label.style.color = '#374151';
         }
 
-        const MAX_RECORDING_SECONDS = {{ audio_max_seconds | default(300) }}; // configurable via .env
+        var MAX_RECORDING_SECONDS = {{ audio_max_seconds | default(300) }};
 
         function updateTimer() {
-            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            const timerEl = document.getElementById('recordingTimer');
-            timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            var elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            var minutes = Math.floor(elapsed / 60);
+            var seconds = elapsed % 60;
+            var timerEl = document.getElementById('recordingTimer');
+            timerEl.textContent = minutes + ':' + seconds.toString().padStart(2, '0');
 
-            // Turn red in last 30 seconds
             if (elapsed >= MAX_RECORDING_SECONDS - 30) {
                 timerEl.style.color = '#dc2626';
             }
@@ -2570,7 +2400,6 @@
             document.getElementById('recordingTimer').style.display = 'none';
             document.getElementById('recordingTimer').textContent = '0:00';
             document.getElementById('recordingTimer').style.color = '';
-            // Trigger validation to update OTP button state
             validateFormForOTP();
         }
 
@@ -2579,43 +2408,36 @@
             document.getElementById('submissionForm').reset();
             document.getElementById('filePreviews').innerHTML = "";
             registeredFileList = [];
-            
-            // Reset audio recording
             deleteRecording();
-            
-            // Soft reset OTP verification state
             isSystemPhoneVerified = false;
             document.getElementById('otpVerificationWrapper').style.display = 'none';
             document.getElementById('txtMobile').disabled = false;
-
-            document.querySelectorAll('.otp-box').forEach(b => {
+            document.querySelectorAll('.otp-box').forEach(function(b) {
                 b.value = '';
                 b.disabled = false;
                 b.classList.remove('otp-valid', 'otp-invalid');
             });
             document.getElementById('txtOtp').value = '';
             clearOtpState();
-
-            const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
-            const genBtn = document.getElementById('btnGenOtp');
+            var copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
+            var genBtn = document.getElementById('btnGenOtp');
             genBtn.innerHTML = '<span id="lbl-send-otp">' + copy.sendOtp + '</span>';
             genBtn.disabled = false;
-
-            const verifyBtn = document.getElementById('btnVerifyOtp');
+            var verifyBtn = document.getElementById('btnVerifyOtp');
             verifyBtn.innerHTML = '<span id="lbl-verify-otp">' + copy.verifyOtp + '</span>';
             verifyBtn.disabled = false;
-            
-            document.getElementById('btnSubmitPetition').disabled = true;
-            document.getElementById('btnSubmitMeeting').disabled = true;
+            document.getElementById('actionChoiceInline').style.display = 'none';
+            document.getElementById('slotPickerSection').style.display = 'none';
+            if (slotRefreshInterval) { clearInterval(slotRefreshInterval); slotRefreshInterval = null; }
+            updateStepper();
         }
 
-        // Apply saved language preference (or default Tamil).
-        // switchLocalization(true) = Tamil, switchLocalization(false) = English.
+        // Apply saved language preference
         (function() {
-            let savedLang = 'ta';
+            var savedLang = 'ta';
             try { savedLang = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
-            const isTamil = savedLang === 'ta';
-            switchLocalization(isTamil);   // also sets the active pill
+            var isTamil = savedLang === 'ta';
+            switchLocalization(isTamil);
             _drawFlatLine();
         })();
     </script>

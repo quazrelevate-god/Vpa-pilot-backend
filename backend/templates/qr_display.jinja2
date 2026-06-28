@@ -6,7 +6,7 @@
     <title>QR Code - Grievance Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
         * {
@@ -17,247 +17,355 @@
 
         body {
             font-family: 'Inter', 'Mukta Malar', sans-serif;
-            background: #ffffff;
+            /* Soft cool-white gradient — gives the glass card something real to blur against */
+            background: linear-gradient(145deg, #e8f0fe 0%, #f0f7ff 50%, #e8f4fd 100%);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             padding: 2rem;
-            overflow: hidden;
         }
 
-        .container {
-            position: relative;
-            width: 100%;
-            max-width: 1200px;
-            background: rgba(255, 255, 255, 0.65);
-            backdrop-filter: blur(40px) saturate(200%);
-            -webkit-backdrop-filter: blur(40px) saturate(200%);
-            border: 1px solid rgba(255, 255, 255, 0.8);
-            border-radius: 24px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 1);
-            padding: 2rem;
+        /* ── Full-width refresh banner (slides in from top) ─────────────────── */
+        .refresh-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(90deg, #d97706, #f59e0b, #d97706);
+            color: #1c1917;
             text-align: center;
+            padding: 0.9rem 1.5rem;
+            font-size: clamp(0.95rem, 1.6vw, 1.15rem);
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            z-index: 100;
+            transform: translateY(-100%);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .refresh-banner.show {
+            transform: translateY(0);
         }
 
-        /* ── Header ─────────────────────────────────────────────── */
-        .header {
-            display: flex;
-            flex-direction: column;
+        /* ── Error overlay ──────────────────────────────────────────────────── */
+        .error-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(241, 245, 249, 0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            display: none;
             align-items: center;
-            gap: 0.4rem;
-            margin-bottom: 2rem;
-            text-align: center;
+            justify-content: center;
+            z-index: 200;
         }
-
-        .title-en {
-            color: #1f2937;
-            font-size: 1.75rem;
+        .error-overlay.show {
+            display: flex;
+        }
+        .error-card {
+            background: #ffffff;
+            border: 2px solid rgba(239, 68, 68, 0.35);
+            border-radius: 24px;
+            padding: 3rem 3.5rem;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.10);
+        }
+        .error-icon {
+            font-size: clamp(2.5rem, 4vw, 3.5rem);
+            margin-bottom: 1.25rem;
+        }
+        .error-title-en {
+            color: #b91c1c;
+            font-size: clamp(1.2rem, 2vw, 1.6rem);
             font-weight: 800;
         }
-
-        .title-ta {
-            color: #1f2937;
-            font-size: 1.4rem;
+        .error-title-ta {
+            color: #dc2626;
+            font-size: clamp(0.95rem, 1.6vw, 1.25rem);
             font-weight: 700;
+            margin-top: 0.2rem;
+            opacity: 0.8;
         }
-
-        .subtitle-en {
+        .error-hint {
             color: #6b7280;
-            font-size: 0.9rem;
-            margin-top: 0.35rem;
+            font-size: clamp(0.8rem, 1.2vw, 0.95rem);
+            margin-top: 1rem;
+            line-height: 1.6;
+        }
+        .retry-label {
+            display: inline-block;
+            margin-top: 1.5rem;
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+            font-size: clamp(0.85rem, 1.3vw, 1rem);
+            font-weight: 700;
+            padding: 0.55rem 1.25rem;
+            border-radius: 50px;
         }
 
-        .subtitle-ta {
+        /* ── Main container ─────────────────────────────────────────────────── */
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            /* Now that body has a gradient, the glass blur is meaningful */
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            border-radius: 28px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 1);
+            padding: 2.5rem 2rem 2rem;
+            text-align: center;
+        }
+
+        /* ── Header ─────────────────────────────────────────────────────────── */
+        .header {
+            margin-bottom: 2.5rem;
+        }
+        .title-en {
+            color: #1f2937;
+            font-size: clamp(2rem, 3.5vw, 3.2rem);
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
+        .title-ta {
+            color: #374151;
+            font-size: clamp(1.3rem, 2.4vw, 2.2rem);
+            font-weight: 700;
+            margin-top: 0.3rem;
+            line-height: 1.2;
+        }
+        .subtitle {
             color: #6b7280;
-            font-size: 0.85rem;
+            font-size: clamp(0.82rem, 1.25vw, 1rem);
+            margin-top: 0.85rem;
+            line-height: 1.7;
         }
 
-        /* ── Three-column content grid ──────────────────────────── */
+        /* ── Three-column content grid ──────────────────────────────────────── */
         .content-grid {
             display: grid;
-            grid-template-columns: 260px 1fr 260px;
+            grid-template-columns: minmax(190px, 260px) 1fr minmax(190px, 260px);
             gap: 2rem;
             align-items: center;
-            max-width: 1000px;
+            max-width: 1050px;
             margin: 0 auto;
         }
 
-        /* ── QR card + code ─────────────────────────────────────── */
+        /* ── Instructions (left) ────────────────────────────────────────────── */
+        .instructions {
+            background: rgba(16, 185, 129, 0.07);
+            border: 2px solid rgba(16, 185, 129, 0.35);
+            padding: 1.5rem 1.25rem;
+            border-radius: 18px;
+            text-align: left;
+            align-self: center;
+        }
+        .instr-head-en {
+            color: #065f46;
+            font-size: clamp(1rem, 1.6vw, 1.2rem);
+            font-weight: 800;
+        }
+        .instr-head-ta {
+            color: #047857;
+            font-size: clamp(0.82rem, 1.2vw, 0.98rem);
+            font-weight: 600;
+            margin-top: 0.1rem;
+            margin-bottom: 1.1rem;
+            opacity: 0.8;
+        }
+        .instructions ul {
+            list-style: none;
+            padding: 0;
+            counter-reset: step;
+        }
+        .instructions li {
+            counter-increment: step;
+            position: relative;
+            padding: 0.65rem 0 0.65rem 2.1rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        .instructions li:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        .instructions li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            top: 0.7rem;
+            width: 22px;
+            height: 22px;
+            background: #10b981;
+            color: #fff;
+            border-radius: 50%;
+            font-size: 0.68rem;
+            font-weight: 800;
+            text-align: center;
+            line-height: 22px;
+        }
+        .step-en {
+            display: block;
+            color: #1f2937;
+            font-size: clamp(0.82rem, 1.3vw, 1rem);
+            font-weight: 600;
+        }
+        .step-ta {
+            display: block;
+            color: #6b7280;
+            font-size: clamp(0.7rem, 1.05vw, 0.85rem);
+            margin-top: 0.1rem;
+        }
+
+        /* ── QR card (center) ───────────────────────────────────────────────── */
+        .qr-center {
+            display: flex;
+            justify-content: center;
+        }
         .qr-card {
             background: #ffffff;
-            border-radius: 20px;
+            border-radius: 24px;
             padding: 1.5rem;
             box-shadow:
-                0 4px 6px -1px rgba(0, 0, 0, 0.07),
-                0 10px 24px -4px rgba(0, 0, 0, 0.10),
-                0 0 0 1px rgba(0, 0, 0, 0.04);
+                0 4px 6px rgba(0, 0, 0, 0.05),
+                0 10px 40px rgba(0, 0, 0, 0.12);
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            animation: qr-glow 3s ease-in-out infinite;
         }
-
+        @keyframes qr-glow {
+            0%, 100% { box-shadow: 0 4px 6px rgba(0,0,0,0.05), 0 10px 40px rgba(0,0,0,0.12); }
+            50%       { box-shadow: 0 4px 6px rgba(0,0,0,0.05), 0 10px 48px rgba(59,130,246,0.18); }
+        }
         #qrcode {
             display: flex;
             justify-content: center;
             align-items: center;
-            width: 300px;
-            height: 300px;
+            width: 440px;
+            height: 440px;
+        }
+        .qr-loading {
+            color: #9ca3af;
+            font-size: 1rem;
         }
 
-        /* ── Instructions (left column) ─────────────────────────── */
-        .instructions {
-            background: rgba(16, 185, 129, 0.08);
-            border: 2px solid #10b981;
-            padding: 1.5rem;
-            border-radius: 16px;
-            text-align: left;
-            align-self: center;
-        }
-
-        .instructions h3 {
-            color: #065f46;
-            font-size: 0.95rem;
-            font-weight: 700;
-            margin-bottom: 0.2rem;
-        }
-
-        .instructions h3 span {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #047857;
-            margin-top: 0.1rem;
-        }
-
-        .instructions ul {
-            list-style: none;
-            padding: 0;
-            margin-top: 1rem;
-            color: #374151;
-            font-size: 0.85rem;
-        }
-
-        .instructions li {
-            margin-bottom: 0.8rem;
-            padding-left: 1.5rem;
-            position: relative;
-            line-height: 1.4;
-        }
-
-        .instructions li:last-child {
-            margin-bottom: 0;
-        }
-
-        .instructions li::before {
-            content: "✓";
-            position: absolute;
-            left: 0;
-            color: #10b981;
-            font-weight: bold;
-        }
-
-        .instructions li .step-en {
-            display: block;
-            font-weight: 600;
-            color: #1f2937;
-        }
-
-        .instructions li .step-ta {
-            display: block;
-            font-size: 0.78rem;
-            color: #6b7280;
-            margin-top: 0.05rem;
-        }
-
-        /* ── Timer (right column) ────────────────────────────────── */
+        /* ── Timer with SVG ring (right) ────────────────────────────────────── */
         .timer-container {
-            background: rgba(59, 130, 246, 0.08);
-            border: 2px solid #3b82f6;
-            padding: 2rem 1.5rem;
-            border-radius: 16px;
+            background: rgba(59, 130, 246, 0.07);
+            border: 2px solid rgba(59, 130, 246, 0.28);
+            padding: 1.75rem 1.25rem;
+            border-radius: 18px;
             text-align: center;
             align-self: center;
         }
-
         .timer-label-en {
             color: #1e40af;
-            font-size: 0.95rem;
-            font-weight: 600;
-            margin-bottom: 0.15rem;
+            font-size: clamp(0.85rem, 1.3vw, 1rem);
+            font-weight: 700;
         }
-
         .timer-label-ta {
-            color: #1e40af;
-            font-size: 0.85rem;
+            color: #1d4ed8;
+            font-size: clamp(0.72rem, 1.1vw, 0.88rem);
             font-weight: 600;
-            margin-bottom: 1rem;
+            margin-top: 0.1rem;
+            margin-bottom: 1.1rem;
+            opacity: 0.75;
         }
 
-        .timer-display {
-            font-size: 3.5rem;
+        /* SVG ring wrapping the countdown number */
+        .timer-ring-wrap {
+            position: relative;
+            width: 140px;
+            height: 140px;
+            margin: 0 auto;
+        }
+        .timer-ring {
+            width: 140px;
+            height: 140px;
+            transform: rotate(-90deg);
+        }
+        .ring-bg {
+            fill: none;
+            stroke: #e2e8f0;
+            stroke-width: 9;
+        }
+        .ring-progress {
+            fill: none;
+            stroke: #10b981;
+            stroke-width: 9;
+            stroke-linecap: round;
+            /* circumference = 2π × 54 ≈ 339.29 */
+            stroke-dasharray: 339.29;
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset 0.9s linear, stroke 0.5s ease;
+        }
+        .timer-number {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(2.2rem, 3.5vw, 3rem);
             font-weight: 900;
             color: #1f2937;
             font-variant-numeric: tabular-nums;
-            line-height: 1;
+            letter-spacing: -0.02em;
         }
-
         .timer-unit {
-            color: #6b7280;
-            font-size: 0.85rem;
-            margin-top: 0.5rem;
-            line-height: 1.6;
+            color: #9ca3af;
+            font-size: clamp(0.7rem, 1vw, 0.82rem);
+            margin-top: 0.85rem;
+            line-height: 1.7;
         }
 
-        .refresh-message {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            margin-top: 1rem;
-            display: none;
-        }
-
-        .refresh-message.show {
-            display: block;
-        }
-
-        .refresh-text-en {
-            color: #92400e;
-            font-weight: 600;
-            font-size: 0.85rem;
-        }
-
-        .refresh-text-ta {
-            color: #92400e;
-            font-size: 0.8rem;
-            margin-top: 0.1rem;
-        }
-
-        /* ── Footer ─────────────────────────────────────────────── */
-        .footer-text {
-            color: #6b7280;
-            font-size: 0.82rem;
+        /* ── Footer ─────────────────────────────────────────────────────────── */
+        .footer {
+            color: #9ca3af;
+            font-size: clamp(0.68rem, 0.95vw, 0.8rem);
             margin-top: 2rem;
-            text-align: center;
-        }
-
-        .loading {
-            color: #6b7280;
-            font-size: 1rem;
+            letter-spacing: 0.06em;
         }
     </style>
 </head>
 <body>
+
+    <!-- Full-width banner: slides in from top 5 seconds before refresh -->
+    <div class="refresh-banner" id="refreshBanner">
+        &#x21BB;&ensp; QR code refreshing — please wait
+        &ensp;/&ensp;
+        QR குறியீடு புதுப்பிக்கப்படுகிறது — காத்திருக்கவும்
+    </div>
+
+    <!-- Error overlay with auto-retry countdown -->
+    <div class="error-overlay" id="errorOverlay">
+        <div class="error-card">
+            <div class="error-icon">⚠️</div>
+            <div class="error-title-en">Unable to load QR code</div>
+            <div class="error-title-ta">QR குறியீட்டை ஏற்ற முடியவில்லை</div>
+            <div class="error-hint">
+                Check network connection and server status<br>
+                இணைப்பு மற்றும் சேவையகத்தை சரிபார்க்கவும்
+            </div>
+            <div class="retry-label" id="retryLabel">Retrying in 5s…</div>
+        </div>
+    </div>
+
     <div class="container">
 
-        <!-- Header: logo + bilingual title + subtitle -->
+        <!-- Header: EN primary / Tamil secondary — clear hierarchy -->
         <div class="header">
             <div class="title-en">Scan QR Code</div>
             <div class="title-ta">QR குறியீட்டை ஸ்கேன் செய்யவும்</div>
-            <div class="subtitle-en">Scan with your mobile device to access the grievance form</div>
-            <div class="subtitle-ta">புகார் படிவத்தை அணுக உங்கள் மொபைல் சாதனத்தில் ஸ்கேன் செய்யவும்</div>
+            <div class="subtitle">
+                Open your phone camera and point at the code to submit your grievance<br>
+                புகார் படிவத்தை திறக்க உங்கள் மொபைல் கேமராவை QR குறியீட்டை நோக்கி சுட்டிக்காட்டவும்
+            </div>
         </div>
 
         <!-- Three-column grid: instructions | QR | timer -->
@@ -265,10 +373,8 @@
 
             <!-- Left: How to use -->
             <div class="instructions">
-                <h3>
-                    How to use
-                    <span>எப்படி பயன்படுத்துவது</span>
-                </h3>
+                <div class="instr-head-en">How to use</div>
+                <div class="instr-head-ta">எப்படி பயன்படுத்துவது</div>
                 <ul>
                     <li>
                         <span class="step-en">Open phone camera</span>
@@ -279,114 +385,152 @@
                         <span class="step-ta">QR குறியீட்டை நோக்கவும்</span>
                     </li>
                     <li>
-                        <span class="step-en">Tap notification</span>
+                        <span class="step-en">Tap the notification</span>
                         <span class="step-ta">அறிவிப்பைத் தட்டவும்</span>
                     </li>
                     <li>
-                        <span class="step-en">Fill the form</span>
+                        <span class="step-en">Fill &amp; submit the form</span>
                         <span class="step-ta">படிவத்தை பூர்த்தி செய்யவும்</span>
                     </li>
                 </ul>
             </div>
 
-            <!-- Center: QR Code -->
-            <div style="display:flex;justify-content:center;">
+            <!-- Center: QR code -->
+            <div class="qr-center">
                 <div class="qr-card">
                     <div id="qrcode">
-                        <div id="qr-loading" class="loading">Generating...</div>
+                        <div class="qr-loading">Generating…</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Right: Timer -->
+            <!-- Right: Countdown ring timer -->
             <div class="timer-container">
                 <div class="timer-label-en">Valid for</div>
-                <div class="timer-label-ta">செல்லுபடியாகும்</div>
-                <div class="timer-display" id="timer">60</div>
-                <div class="timer-unit">seconds<br>விநாடிகள்</div>
-                <div class="refresh-message" id="refreshMessage">
-                    <div class="refresh-text-en">Refreshing...</div>
-                    <div class="refresh-text-ta">புதுப்பிக்கப்படுகிறது...</div>
+                <div class="timer-label-ta">செல்லுபடியாகும் நேரம்</div>
+                <div class="timer-ring-wrap">
+                    <svg class="timer-ring" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                        <circle class="ring-bg"       cx="60" cy="60" r="54"/>
+                        <circle class="ring-progress" cx="60" cy="60" r="54" id="ringProgress"/>
+                    </svg>
+                    <div class="timer-number" id="timerNumber">{{ expiry_seconds }}</div>
                 </div>
+                <div class="timer-unit">seconds&ensp;/&ensp;விநாடிகள்</div>
             </div>
+
         </div>
 
-        <!-- Footer -->
-        <div class="footer-text">
-            Grievance Portal &nbsp;|&nbsp; குறைதீர்க்கும் போர்ட்டல்
-        </div>
-
+        <div class="footer">Grievance Portal &nbsp;|&nbsp; குறைதீர்க்கும் போர்ட்டல்</div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
-        const EXPIRY = {{ expiry_seconds }};
-        let countdown = EXPIRY;
+        const EXPIRY        = {{ expiry_seconds }};
+        const CIRCUMFERENCE = 2 * Math.PI * 54; // 339.29px
+        const VENUE_ID      = '{{ venue_id }}';
 
-        // Clear "Generating..." placeholder, then render QR
-        const qrContainer = document.getElementById('qrcode');
-        qrContainer.innerHTML = '';
-        new QRCode(qrContainer, {
-            text: '{{ qr_url }}',
-            width: 300,
-            height: 300,
-            colorDark: '#000000',
-            colorLight: '#ffffff',
-            correctLevel: QRCode.CorrectLevel.M
-        });
+        let countdown  = EXPIRY;
+        let retryTimer = null;
+        let retrySecs  = 5;
 
-        // Hide the "Generating..." placeholder once the QR image appears
-        const loadingEl = document.getElementById('qr-loading');
-        const observer = new MutationObserver(() => {
-            if (qrContainer.querySelector('img, canvas')) {
-                loadingEl.style.display = 'none';
-                observer.disconnect();
+        const timerNumEl    = document.getElementById('timerNumber');
+        const ringEl        = document.getElementById('ringProgress');
+        const refreshBanner = document.getElementById('refreshBanner');
+        const errorOverlay  = document.getElementById('errorOverlay');
+        const retryLabel    = document.getElementById('retryLabel');
+        const qrContainer   = document.getElementById('qrcode');
+
+        /* ── QR rendering ───────────────────────────────────────────────────── */
+        function renderQR(url) {
+            qrContainer.innerHTML = '';
+            try {
+                new QRCode(qrContainer, {
+                    text: url,
+                    width: 440,
+                    height: 440,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M,
+                });
+                hideError();
+            } catch (e) {
+                showError();
             }
-        });
-        observer.observe(qrContainer, { childList: true, subtree: true });
-
-        // Countdown timer
-        const timerEl = document.getElementById('timer');
-        const refreshMsg = document.getElementById('refreshMessage');
-
-        function updateTimerColor() {
-            // Calculate color from green (100%) to red (0%)
-            const percentage = (countdown / EXPIRY) * 100;
-            let color;
-            
-            if (percentage > 66) {
-                // Green zone (100% - 66%)
-                color = '#10b981'; // green
-            } else if (percentage > 33) {
-                // Yellow/Orange zone (66% - 33%)
-                color = '#f59e0b'; // orange
-            } else if (percentage > 0) {
-                // Red zone (33% - 0%)
-                color = '#ef4444'; // red
-            } else {
-                // Expired
-                color = '#dc2626'; // dark red
-            }
-            
-            timerEl.style.color = color;
         }
 
+        /* ── Ring + number update ───────────────────────────────────────────── */
+        function updateTimer() {
+            const pct    = countdown / EXPIRY;
+            const offset = CIRCUMFERENCE * (1 - pct);
+            ringEl.style.strokeDashoffset = offset;
+            timerNumEl.textContent = countdown;
+
+            if (pct > 0.66)      ringEl.style.stroke = '#10b981'; // green
+            else if (pct > 0.33) ringEl.style.stroke = '#f59e0b'; // amber
+            else                 ringEl.style.stroke = '#ef4444'; // red
+        }
+
+        /* ── Error state ────────────────────────────────────────────────────── */
+        function showError() {
+            errorOverlay.classList.add('show');
+            startRetryCountdown();
+        }
+
+        function hideError() {
+            errorOverlay.classList.remove('show');
+            if (retryTimer) { clearInterval(retryTimer); retryTimer = null; }
+        }
+
+        function startRetryCountdown() {
+            retrySecs = 5;
+            retryLabel.textContent = `Retrying in ${retrySecs}s…`;
+            retryTimer = setInterval(() => {
+                retrySecs--;
+                retryLabel.textContent = retrySecs > 0
+                    ? `Retrying in ${retrySecs}s…`
+                    : 'Retrying…';
+                if (retrySecs <= 0) {
+                    clearInterval(retryTimer);
+                    retryTimer = null;
+                    retryFetchQR();
+                }
+            }, 1000);
+        }
+
+        async function retryFetchQR() {
+            try {
+                const res = await fetch(`/api/v1/qr/generate?venue_id=${encodeURIComponent(VENUE_ID)}`);
+                if (!res.ok) throw new Error('Server error');
+                const data = await res.json();
+                const url  = window.location.origin + (data.verification_url || '');
+                renderQR(url);
+                countdown = EXPIRY;
+                updateTimer();
+            } catch {
+                startRetryCountdown();
+            }
+        }
+
+        /* ── Main countdown tick ────────────────────────────────────────────── */
         setInterval(() => {
             if (countdown > 0) {
                 countdown--;
-                timerEl.textContent = countdown;
-                updateTimerColor();
-                
-                if (countdown <= 5) refreshMsg.classList.add('show');
-                
+                updateTimer();
+                if (countdown <= 5) refreshBanner.classList.add('show');
                 if (countdown === 0) {
-                    setTimeout(() => window.location.href = window.location.pathname + '?venue_id=' + encodeURIComponent('{{ venue_id }}') + '&_t=' + Date.now(), 1000);
+                    setTimeout(() => {
+                        window.location.href =
+                            window.location.pathname +
+                            '?venue_id=' + encodeURIComponent(VENUE_ID) +
+                            '&_t=' + Date.now();
+                    }, 1000);
                 }
             }
         }, 1000);
-        
-        // Initial color
-        updateTimerColor();
+
+        /* ── Boot ───────────────────────────────────────────────────────────── */
+        renderQR('{{ qr_url }}');
+        updateTimer();
     </script>
 </body>
 </html>
