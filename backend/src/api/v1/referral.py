@@ -3,7 +3,7 @@ Referral API — daily-reset QR + isolated slot booking (11 AM – 1 PM).
 
 Public (no auth — accessed via the shared daily QR):
   GET  /api/v1/referral/scan?d=<token>      → verify token, redirect to form
-  GET  /referral                            → referral form page (jinja2)
+  GET  /form/referral                       → referral form page (jinja2)
   GET  /api/v1/referral/slots?d=<token>     → today's slots for the form
   POST /api/v1/referral/submit              → book a referral slot
 
@@ -34,7 +34,7 @@ from src.api.v1.dashboard import require_auth
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
-# Two routers: one under /api/v1/referral (JSON + scan), one bare (/referral page)
+# Two routers: one under /api/v1/referral (JSON + scan), one for the /form/referral page
 router = APIRouter(prefix="/api/v1/referral", tags=["Referral"])
 page_router = APIRouter(tags=["Referral"])
 
@@ -61,12 +61,12 @@ async def referral_scan(d: str):
         referral_service.verify_daily_token(d)
     except ValueError as e:
         return RedirectResponse(url="/form/error?" + urlencode({"type": "qr_expired", "message": str(e)}), status_code=302)
-    return RedirectResponse(url=f"/referral?d={d}", status_code=307)
+    return RedirectResponse(url=f"/form/referral?d={d}", status_code=307)
 
 
 # ── Public: referral form page ────────────────────────────────────────────────
 
-@page_router.get("/referral", response_class=HTMLResponse)
+@page_router.get("/form/referral", response_class=HTMLResponse)
 async def referral_form_page(request: Request, d: str = ""):
     """Render the referral form. Requires a valid daily token in ?d=."""
     try:
