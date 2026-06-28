@@ -2,383 +2,330 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Users, Heart, Clock4, Briefcase, Handshake, RefreshCw, ArrowRight,
-  Megaphone, Send, Flame, Calendar,
+  Users, Megaphone, Flame, Handshake, ClipboardList, RefreshCw, Download, X,
+  ChevronLeft, ChevronRight, ArrowUpDown, Radio,
 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import TopBar from "@/components/TopBar";
 import MetricTile from "@/components/MetricTile";
-import { useLang } from "@/lib/lang-context";
-import DualTrend from "@/components/charts/DualTrend";
-import CategoryBar from "@/components/charts/CategoryBar";
-import StatusDoughnut from "@/components/charts/StatusDoughnut";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchStats } from "@/lib/api";
-import type { StatsResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type Range = "7d" | "30d" | "90d" | "year" | "all";
+// ── Types ──────────────────────────────────────────────────────────────────────
+interface Bar { key: string; label: string; count: number }
+interface Analytics {
+  kpis: { received: number; citizens: number; urgent: number; meetings: number; meeting_persons: number; awaiting_review: number; growth_pct: number | null };
+  categories: Bar[]; departments: Bar[]; channels: Bar[];
+  urgency: { critical: number; high: number; medium: number; low: number };
+  trend: { date: string; count: number }[];
+}
+interface Petition {
+  id: number; token: string; name: string; mobile: string; category: string | null;
+  category_label: string; urgency: string | null; status: string; source: string;
+  source_label: string; schedule_meeting: boolean; created_at: string | null;
+}
+type Filters = { category?: string; urgency?: string; department?: string; channel?: string };
 
-const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from({ length: 4 }, (_, i) => CURRENT_YEAR - i);
-
-function rangeToDates(r: Range, year: number): { from?: string; to?: string } {
-  if (r === "all") return {};
-  if (r === "year") {
-    return { from: `${year}-01-01`, to: `${year}-12-31` };
-  }
-  const days = r === "7d" ? 7 : r === "30d" ? 30 : 90;
-  const to = new Date();
-  const from = new Date();
-  from.setDate(to.getDate() - days + 1);
-  const iso = (d: Date) => d.toISOString().split("T")[0];
-  return { from: iso(from), to: iso(to) };
+// ── Date presets ────────────────────────────────────────────────────────────────
+type Preset = "today" | "7d" | "30d" | "90d" | "month" | "lastmonth" | "quarter" | "year" | "all";
+const PRESETS: { key: Preset; label: string }[] = [
+  { key: "today", label: "Today" }, { key: "7d", label: "7 days" }, { key: "30d", label: "30 days" },
+  { key: "90d", label: "90 days" }, { key: "month", label: "This month" }, { key: "lastmonth", label: "Last month" },
+  { key: "quarter", label: "This quarter" }, { key: "year", label: "This year" }, { key: "all", label: "All time" },
+];
+const iso = (d: Date) => d.toISOString().split("T")[0];
+function presetDates(p: Preset): { from?: string; to?: string } {
+  const now = new Date();
+  if (p === "all") return {};
+  if (p === "today") return { from: iso(now), to: iso(now) };
+  if (p === "month") return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: iso(now) };
+  if (p === "lastmonth") return { from: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: iso(new Date(now.getFullYear(), now.getMonth(), 0)) };
+  if (p === "quarter") return { from: iso(new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)), to: iso(now) };
+  if (p === "year") return { from: iso(new Date(now.getFullYear(), 0, 1)), to: iso(now) };
+  const days = p === "7d" ? 7 : p === "30d" ? 30 : 90;
+  const f = new Date(now); f.setDate(now.getDate() - days + 1);
+  return { from: iso(f), to: iso(now) };
 }
 
-function rangeLabel(r: Range, year: number): string {
-  return ({
-    "7d":   "Last 7 days",
-    "30d":  "Last 30 days",
-    "90d":  "Last 90 days",
-    "year": `Year ${year}`,
-    "all":  "All time",
-  } as Record<Range, string>)[r];
-}
-
-const URGENCY_TONE: Record<string, string> = {
-  critical: "bg-rose-500",
-  high:     "bg-orange-500",
-  medium:   "bg-amber-400",
-  low:      "bg-emerald-500",
-};
+const URGENCY_TONE: Record<string, string> = { critical: "bg-rose-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-emerald-500" };
+const fmt = (v: number | undefined | null) => (v == null ? "—" : v.toLocaleString());
 
 export default function OverviewPage() {
-  const { t } = useLang();
-  const [range, setRange] = useState<Range>("year");
-  const [year, setYear] = useState<number>(CURRENT_YEAR);
-  const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [preset, setPreset] = useState<Preset>("30d");
+  const [filters, setFilters] = useState<Filters>({});
+  const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(false);
-  const [updated, setUpdated] = useState<string>("");
 
-  const load = useCallback(async () => {
+  // table
+  const [pets, setPets] = useState<{ items: Petition[]; total: number; page: number; pages: number } | null>(null);
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<{ by: string; dir: "asc" | "desc" }>({ by: "created_at", dir: "desc" });
+
+  const qs = useCallback((extra: Record<string, any> = {}) => {
+    const { from, to } = presetDates(preset);
+    const p = new URLSearchParams();
+    if (from) p.set("date_from", from); if (to) p.set("date_to", to);
+    Object.entries(filters).forEach(([k, v]) => v && p.set(k, v));
+    Object.entries(extra).forEach(([k, v]) => v != null && p.set(k, String(v)));
+    return p.toString();
+  }, [preset, filters]);
+
+  const loadAnalytics = useCallback(async () => {
     setLoading(true);
     try {
-      const { from, to } = rangeToDates(range, year);
-      const s = await fetchStats(from, to);
-      setStats(s);
-      setUpdated(new Date().toLocaleTimeString());
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }, [range, year]);
+      const r = await fetch(`/api/analytics?${qs()}`, { credentials: "include" });
+      setData(await r.json());
+    } catch { /* keep */ } finally { setLoading(false); }
+  }, [qs]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadPetitions = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/analytics/petitions?${qs({ page, page_size: 50, sort: sort.by, direction: sort.dir })}`, { credentials: "include" });
+      setPets(await r.json());
+    } catch { /* keep */ }
+  }, [qs, page, sort]);
 
-  const urgencyMix = useMemo(() => {
-    if (!stats) return { total: 0, parts: [] as { key: string; value: number; pct: number }[] };
-    const u = stats.urgency ?? {};
-    const order = ["critical", "high", "medium", "low"] as const;
-    const total = order.reduce((a, k) => a + (u[k] ?? 0), 0);
-    const parts = order.map((k) => ({ key: k, value: u[k] ?? 0, pct: total ? Math.round(((u[k] ?? 0) / total) * 100) : 0 }));
-    return { total, parts };
-  }, [stats]);
+  useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
+  useEffect(() => { loadPetitions(); }, [loadPetitions]);
+  // reset to page 1 whenever the scope changes
+  useEffect(() => { setPage(1); }, [preset, filters]);
 
-  const fmt = (v: number | undefined | null) => (v == null ? "—" : v.toLocaleString());
+  // toggle a filter (click again to clear)
+  function toggle(dim: keyof Filters, key: string) {
+    setFilters(f => ({ ...f, [dim]: f[dim] === key ? undefined : key }));
+  }
+  const activeChips = Object.entries(filters).filter(([, v]) => v) as [keyof Filters, string][];
+  const chipLabel = (dim: keyof Filters, v: string) => {
+    if (dim === "category") return data?.categories.find(c => c.key === v)?.label ?? v;
+    if (dim === "department") return data?.departments.find(c => c.key === v)?.label ?? v;
+    if (dim === "channel") return data?.channels.find(c => c.key === v)?.label ?? v;
+    return v;
+  };
+
+  const k = data?.kpis;
+  const urgencyTotal = data ? Object.values(data.urgency).reduce((a, b) => a + b, 0) : 0;
+  const maxCat = Math.max(1, ...(data?.categories ?? []).map(c => c.count));
+  const maxDept = Math.max(1, ...(data?.departments ?? []).map(c => c.count));
+  const maxChan = Math.max(1, ...(data?.channels ?? []).map(c => c.count));
 
   return (
     <>
-      <TopBar
-        rightSlot={
-          updated ? (
-            <span className="inline-flex items-center gap-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-              </span>
-              Live · {updated}
-            </span>
-          ) : null
-        }
-      />
-
-      <main className="flex-1 overflow-hidden bg-background">
-        <div className="flex h-full flex-col gap-3 p-5 animate-in-up">
-          {/* Header row — title + range tabs + refresh */}
-          <div className="flex flex-shrink-0 flex-wrap items-end justify-between gap-3">
+      <TopBar />
+      <main className="flex-1 overflow-y-auto bg-background">
+        <div className="mx-auto max-w-[1280px] space-y-4 p-5 animate-in-up">
+          {/* Header */}
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
-                {t("overview.title")}
-              </h1>
-              <p className="text-[12.5px] text-muted-foreground">
-                {rangeLabel(range, year)} · {t("overview.subtitle")}
-              </p>
+              <h1 className="text-[22px] font-extrabold tracking-tight">Voice of the People</h1>
+              <p className="text-[12.5px] text-muted-foreground">Live petition analytics · click any chart to filter the whole page</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-card">
-                {(["7d", "30d", "90d", "all"] as Range[]).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRange(r)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-semibold transition-colors",
-                      r === range
-                        ? "bg-brand text-white shadow-card"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    {r === "all" ? t("overview.allTime") : r.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-              {/* Year dropdown — for annual reporting cuts */}
-              <Select
-                value={year.toString()}
-                onValueChange={(v) => { setYear(parseInt(v)); setRange("year"); }}
-              >
-                <SelectTrigger className={cn(
-                  "h-8 w-[110px] gap-1 text-xs font-semibold",
-                  range === "year" && "border-brand text-brand ring-1 ring-brand/20"
-                )}>
-                  <Calendar className="h-3.5 w-3.5" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {YEAR_OPTIONS.map((y) => (
-                    <SelectItem key={y} value={y.toString()}>Year {y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <select value={preset} onChange={e => setPreset(e.target.value as Preset)}
+                className="rounded-lg border border-input bg-card px-3 py-1.5 text-xs font-semibold focus:border-brand focus:outline-none">
+                {PRESETS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+              </select>
+              <Button variant="outline" size="sm" onClick={() => { loadAnalytics(); loadPetitions(); }} disabled={loading}>
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-                Refresh
               </Button>
             </div>
           </div>
 
-          {/* Hero KPI strip — the credibility numbers */}
-          {!stats ? (
-            <div className="grid flex-shrink-0 grid-cols-5 gap-3">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[112px] rounded-2xl" />)}
-            </div>
-          ) : (
-            <div className="grid flex-shrink-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              <MetricTile
-                label={t("overview.citizens")}
-                value={fmt(stats.unique_citizens ?? stats.total)}
-                caption={t("overview.citizensSub")}
-                icon={Users}
-                tone="brand"
-                deltaPct={stats.growth_pct ?? undefined}
-              />
-              <MetricTile
-                label={t("overview.resolution")}
-                value={`${stats.resolution_rate}%`}
-                caption={t("overview.resolutionSub")}
-                icon={Heart}
-                tone="emerald"
-              />
-              <MetricTile
-                label={t("overview.avgResponse")}
-                value={stats.avg_response_hours ? `${stats.avg_response_hours}h` : "—"}
-                caption={t("overview.avgResponseSub")}
-                icon={Clock4}
-                tone="violet"
-                invertDelta
-              />
-              <MetricTile
-                label={t("overview.meetings")}
-                value={fmt(stats.meetings_held)}
-                caption={t("overview.meetingsSub")}
-                icon={Handshake}
-                tone="amber"
-              />
-              <MetricTile
-                label={t("overview.activeCases")}
-                value={fmt(stats.active_cases)}
-                caption={t("overview.activeCasesSub")}
-                icon={Briefcase}
-                tone={stats.active_cases && stats.active_cases > 50 ? "rose" : "slate"}
-              />
+          {/* Active filter chips */}
+          {activeChips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Filtered:</span>
+              {activeChips.map(([dim, v]) => (
+                <button key={dim} onClick={() => toggle(dim, v)}
+                  className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand/20">
+                  {dim}: {chipLabel(dim, v)} <X className="h-3 w-3" />
+                </button>
+              ))}
+              <button onClick={() => setFilters({})} className="text-xs font-medium text-muted-foreground hover:text-foreground">Clear all</button>
             </div>
           )}
 
-          {/* Middle band — trend + issue landscape */}
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-5">
-            {/* Submissions vs Resolved trend */}
-            <Card className="flex min-h-0 flex-col p-4 lg:col-span-3">
-              <div className="mb-2 flex flex-shrink-0 items-start justify-between">
-                <div>
-                  <div className="text-[13px] font-bold text-foreground">{t("overview.trendTitle")}</div>
-                  <div className="text-[11px] text-muted-foreground">{t("overview.trendSub")}</div>
-                </div>
-                <div className="flex items-center gap-3 text-[11px] font-semibold text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-brand" /> {t("overview.submissions")}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" /> {t("overview.resolved")}
-                  </span>
-                </div>
-              </div>
-              <div className="min-h-0 flex-1">
-                {stats ? (
-                  <DualTrend
-                    labels={stats.trend_labels}
-                    incoming={stats.trend_counts}
-                    resolved={stats.trend_resolved}
-                  />
-                ) : (
-                  <Skeleton className="h-full w-full" />
-                )}
+          {/* KPIs */}
+          {!data ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[108px] rounded-2xl" />)}</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <MetricTile label="Petitions" value={fmt(k!.received)} caption="received" icon={Megaphone} tone="brand" deltaPct={k!.growth_pct ?? undefined} />
+              <MetricTile label="Citizens" value={fmt(k!.citizens)} caption="unique people" icon={Users} tone="violet" />
+              <MetricTile label="Urgent" value={fmt(k!.urgent)} caption="critical + high" icon={Flame} tone="rose" />
+              <MetricTile label="Meetings" value={fmt(k!.meetings)} caption={`${fmt(k!.meeting_persons)} people`} icon={Handshake} tone="amber" />
+              <MetricTile label="Awaiting review" value={fmt(k!.awaiting_review)} caption="pending PA" icon={ClipboardList} tone={k!.awaiting_review > 50 ? "rose" : "slate"} />
+            </div>
+          )}
+
+          {/* Charts */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {/* Voice of the People — categories (hero) */}
+            <Card className="p-4 lg:col-span-2">
+              <ChartHead icon={Megaphone} title="Voice of the People" sub="Top categories — click a bar to filter" />
+              <div className="space-y-1.5">
+                {(data?.categories ?? []).map(c => (
+                  <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxCat * 100)}
+                    active={filters.category === c.key} onClick={() => toggle("category", c.key)} tone="bg-brand" total={k?.received} />
+                ))}
+                {data && data.categories.length === 0 && <Empty />}
               </div>
             </Card>
 
-            {/* Top issue categories — voice of the people */}
-            <Card className="flex min-h-0 flex-col p-4 lg:col-span-2">
-              <div className="mb-2 flex flex-shrink-0 items-start justify-between">
-                <div>
-                  <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
-                    <Megaphone className="h-3.5 w-3.5 text-brand" />
-                    {t("overview.voiceTitle")}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">{t("overview.voiceSub")}</div>
-                </div>
+            {/* Trend */}
+            <Card className="flex flex-col p-4">
+              <ChartHead icon={Radio} title="Daily volume" sub="Petitions received over the period" />
+              <div className="min-h-[160px] flex-1">{data ? <Trend points={data.trend} /> : <Skeleton className="h-full w-full" />}</div>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {/* Urgency */}
+            <Card className="p-4">
+              <ChartHead icon={Flame} title="Urgency mix" sub="Click a level to filter" />
+              <div className="mb-2 flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                {(["critical", "high", "medium", "low"] as const).map(lv => {
+                  const v = data?.urgency[lv] ?? 0; const pct = urgencyTotal ? v / urgencyTotal * 100 : 0;
+                  return <div key={lv} className={URGENCY_TONE[lv]} style={{ width: `${pct}%` }} title={`${lv}: ${v}`} />;
+                })}
               </div>
-              <div className="min-h-0 flex-1">
-                {stats ? (
-                  <CategoryBar items={(stats.categories ?? []).slice(0, 6)} />
-                ) : (
-                  <Skeleton className="h-full w-full" />
-                )}
+              <div className="space-y-1">
+                {(["critical", "high", "medium", "low"] as const).map(lv => {
+                  const v = data?.urgency[lv] ?? 0;
+                  return (
+                    <button key={lv} onClick={() => toggle("urgency", lv)}
+                      className={cn("flex w-full items-center justify-between rounded-md px-1.5 py-1 text-[12px] transition-colors hover:bg-muted", filters.urgency === lv && "bg-brand/10 ring-1 ring-brand/20")}>
+                      <span className="inline-flex items-center gap-2 capitalize"><span className={cn("h-2 w-2 rounded-full", URGENCY_TONE[lv])} />{lv}</span>
+                      <span className="font-semibold tabular-nums">{v}<span className="ml-1 text-[10px] text-muted-foreground">{urgencyTotal ? Math.round(v / urgencyTotal * 100) : 0}%</span></span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* Departments */}
+            <Card className="p-4">
+              <ChartHead icon={Megaphone} title="Departments" sub="Where the load falls" />
+              <div className="space-y-1.5">
+                {(data?.departments ?? []).slice(0, 6).map(c => (
+                  <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxDept * 100)}
+                    active={filters.department === c.key} onClick={() => toggle("department", c.key)} tone="bg-cyan-500" />
+                ))}
+                {data && data.departments.length === 0 && <Empty />}
+              </div>
+            </Card>
+
+            {/* Channels */}
+            <Card className="p-4">
+              <ChartHead icon={Radio} title="Channels" sub="How petitions arrive" />
+              <div className="space-y-1.5">
+                {(data?.channels ?? []).map(c => (
+                  <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxChan * 100)}
+                    active={filters.channel === c.key} onClick={() => toggle("channel", c.key)} tone="bg-violet-500" total={k?.received} />
+                ))}
+                {data && data.channels.length === 0 && <Empty />}
               </div>
             </Card>
           </div>
 
-          {/* Bottom band — urgency pulse + dept leadership + status mix */}
-          <div className="grid flex-shrink-0 grid-cols-1 gap-3 lg:grid-cols-5">
-            {/* Urgency pulse */}
-            <Card className="flex min-h-[180px] flex-col p-4 lg:col-span-2">
-              <div className="mb-2.5 flex items-start justify-between">
-                <div>
-                  <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
-                    <Flame className="h-3.5 w-3.5 text-rose-500" />
-                    {t("overview.urgency")}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">{t("overview.urgencySub")}</div>
+          {/* Full petitions table */}
+          <Card className="overflow-hidden p-0">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
+              <h2 className="text-sm font-bold">All petitions {pets && <span className="text-muted-foreground">· {pets.total.toLocaleString()}</span>}</h2>
+              <a href={`/api/analytics/export?${qs()}`} className="ml-auto">
+                <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV</Button>
+              </a>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px] text-left text-sm">
+                <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <Th label="Token" col="token" sort={sort} onSort={setSort} />
+                    <th className="px-4 py-2.5">Name</th>
+                    <th className="px-4 py-2.5">Mobile</th>
+                    <Th label="Category" col="category" sort={sort} onSort={setSort} />
+                    <th className="px-4 py-2.5">Urgency</th>
+                    <Th label="Status" col="status" sort={sort} onSort={setSort} />
+                    <th className="px-4 py-2.5">Channel</th>
+                    <Th label="Submitted" col="created_at" sort={sort} onSort={setSort} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {!pets ? (
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">Loading…</td></tr>
+                  ) : pets.items.length === 0 ? (
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No petitions match the filters.</td></tr>
+                  ) : pets.items.map(p => (
+                    <tr key={p.id} className="border-t border-border/70 hover:bg-muted/30">
+                      <td className="px-4 py-2.5 font-mono text-[11px] text-brand">{p.token}</td>
+                      <td className="px-4 py-2.5 font-medium">{p.name}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{p.mobile}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{p.category_label}</td>
+                      <td className="px-4 py-2.5">{p.urgency ? <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold capitalize text-white", URGENCY_TONE[p.urgency])}>{p.urgency}</span> : "—"}</td>
+                      <td className="px-4 py-2.5 text-[12px]">{p.status.replace(/_/g, " ").toLowerCase()}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-muted-foreground">{p.source_label}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-muted-foreground">{p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {pets && pets.pages > 1 && (
+              <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs">
+                <span className="text-muted-foreground">Page {pets.page} of {pets.pages}</span>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                  <Button size="sm" variant="outline" disabled={page >= pets.pages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
                 </div>
-                {stats && <span className="text-[11px] font-semibold text-muted-foreground">{urgencyMix.total} {t("overview.cases")}</span>}
               </div>
-              {stats ? (
-                <div className="flex-1 space-y-1.5">
-                  {/* Combined bar */}
-                  <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                    {urgencyMix.parts.map((p) => (
-                      <div key={p.key} className={cn(URGENCY_TONE[p.key])} style={{ width: `${p.pct}%` }} title={`${p.key}: ${p.value}`} />
-                    ))}
-                  </div>
-                  {/* Per-tier rows */}
-                  <div className="space-y-1 pt-1">
-                    {urgencyMix.parts.map((p) => (
-                      <div key={p.key} className="flex items-center justify-between text-[11.5px]">
-                        <span className="inline-flex items-center gap-2 capitalize text-foreground/80">
-                          <span className={cn("h-2 w-2 rounded-full", URGENCY_TONE[p.key])} />
-                          {p.key}
-                        </span>
-                        <span className="font-semibold tabular-nums text-foreground">
-                          {p.value} <span className="ml-1 text-[10px] font-medium text-muted-foreground">{p.pct}%</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <Skeleton className="h-full w-full" />
-              )}
-            </Card>
-
-            {/* Forwarded-to Departments — outbound routing from Education */}
-            <Card className="flex min-h-[180px] flex-col p-4 lg:col-span-2">
-              <div className="mb-2 flex items-start justify-between">
-                <div>
-                  <div className="inline-flex items-center gap-1.5 text-[13px] font-bold text-foreground">
-                    <Send className="h-3.5 w-3.5 text-cyan-600" />
-                    {t("overview.forwarded")}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">{t("overview.forwardedSub")}</div>
-                </div>
-                {stats && (
-                  <span className="rounded-md bg-cyan-50 px-1.5 py-0.5 text-[11px] font-bold text-cyan-700">
-                    {stats.total_forwarded ?? 0} {t("overview.total")}
-                  </span>
-                )}
-              </div>
-              {stats ? (
-                <div className="flex-1 space-y-1.5">
-                  {(stats.forwarded_departments ?? []).slice(0, 5).map((d, i) => {
-                    const max = stats.forwarded_departments?.[0]?.count ?? 1;
-                    const pct = Math.round((d.count / max) * 100);
-                    return (
-                      <div key={d.label} className="space-y-0.5">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="truncate font-medium text-foreground/85">
-                            <span className="mr-1 text-[10px] font-bold text-muted-foreground">{i + 1}.</span>
-                            {d.label}
-                          </span>
-                          <span className="ml-2 font-bold tabular-nums text-foreground">{d.count}</span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-cyan-300" style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {(!stats.forwarded_departments || stats.forwarded_departments.length === 0) && (
-                    <div className="grid h-full place-items-center text-center text-[11px] italic text-muted-foreground">
-                      {t("overview.noForwards")}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <Skeleton className="h-full w-full" />
-              )}
-            </Card>
-
-            {/* Status mix — small donut */}
-            <Card className="flex min-h-[180px] flex-col p-4 lg:col-span-1">
-              <div className="mb-1">
-                <div className="text-[13px] font-bold text-foreground">{t("overview.statusMix")}</div>
-                <div className="text-[11px] text-muted-foreground">{t("overview.statusMixSub")}</div>
-              </div>
-              <div className="min-h-0 flex-1">
-                {stats ? (
-                  <StatusDoughnut
-                    scheduled={stats.scheduled}
-                    reviewed={stats.reviewed}
-                    awaiting_review={stats.awaiting_review}
-                    waiting={stats.waiting}
-                    rescheduled={stats.rescheduled}
-                  />
-                ) : (
-                  <Skeleton className="h-full w-full" />
-                )}
-              </div>
-            </Card>
-          </div>
-
-          {/* Footer micro — link to operations */}
-          <div className="flex flex-shrink-0 items-center justify-between rounded-lg border border-dashed border-border bg-card/40 px-3 py-1.5 text-[11px] text-muted-foreground">
-            <span>{t("overview.footer")}</span>
-            <a href="/operations" className="inline-flex items-center gap-1 font-semibold text-brand hover:underline">
-              {t("overview.goOps")} <ArrowRight className="h-3 w-3" />
-            </a>
-          </div>
+            )}
+          </Card>
         </div>
       </main>
     </>
   );
 }
+
+// ── Small components ─────────────────────────────────────────────────────────────
+function ChartHead({ icon: Icon, title, sub }: { icon: any; title: string; sub: string }) {
+  return (
+    <div className="mb-3">
+      <div className="inline-flex items-center gap-1.5 text-[13px] font-bold"><Icon className="h-3.5 w-3.5 text-brand" /> {title}</div>
+      <div className="text-[11px] text-muted-foreground">{sub}</div>
+    </div>
+  );
+}
+function BarRow({ label, count, pct, active, onClick, tone, total }: { label: string; count: number; pct: number; active: boolean; onClick: () => void; tone: string; total?: number }) {
+  return (
+    <button onClick={onClick} className={cn("group block w-full rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted", active && "bg-brand/10 ring-1 ring-brand/20")}>
+      <div className="mb-0.5 flex items-center justify-between text-[12px]">
+        <span className="truncate pr-2 font-medium text-foreground/90">{label}</span>
+        <span className="shrink-0 font-bold tabular-nums">{count}{total ? <span className="ml-1 text-[10px] font-medium text-muted-foreground">{Math.round(count / total * 100)}%</span> : null}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted"><div className={cn("h-full rounded-full", tone)} style={{ width: `${pct}%` }} /></div>
+    </button>
+  );
+}
+function Th({ label, col, sort, onSort }: { label: string; col: string; sort: { by: string; dir: "asc" | "desc" }; onSort: (s: any) => void }) {
+  return (
+    <th className="cursor-pointer select-none px-4 py-2.5 hover:text-foreground" onClick={() => onSort((s: any) => ({ by: col, dir: s.by === col && s.dir === "desc" ? "asc" : "desc" }))}>
+      <span className="inline-flex items-center gap-1">{label} <ArrowUpDown className={cn("h-3 w-3", sort.by === col ? "text-brand" : "opacity-30")} /></span>
+    </th>
+  );
+}
+function Trend({ points }: { points: { date: string; count: number }[] }) {
+  if (!points.length) return <div className="grid h-full place-items-center text-[12px] italic text-muted-foreground">No data</div>;
+  const max = Math.max(1, ...points.map(p => p.count));
+  const W = 100, H = 100;
+  const step = points.length > 1 ? W / (points.length - 1) : 0;
+  const pts = points.map((p, i) => `${i * step},${H - (p.count / max) * H}`);
+  const area = `0,${H} ${pts.join(" ")} ${(points.length - 1) * step},${H}`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
+      <polygon points={area} fill="currentColor" fillOpacity="0.12" className="text-brand" />
+      <polyline points={pts.join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" className="text-brand" />
+    </svg>
+  );
+}
+function Empty() { return <div className="grid h-24 place-items-center text-[12px] italic text-muted-foreground">No data in this scope</div>; }

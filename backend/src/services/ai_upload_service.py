@@ -385,6 +385,7 @@ class AiUploadService:
             status="AWAITING_REVIEW",
             schedule_meeting=False,
             priority_score=0,
+            source="ai_scan",
             created_at=now,
         )
         db.add(appt)

@@ -1296,6 +1296,7 @@ class AppointmentService:
                 grievance_category=None,
                 status="AWAITING_REVIEW",
                 schedule_meeting=False,
+                source="manual_staff",
                 created_at=current_time,
             )
             db.add(appointment)

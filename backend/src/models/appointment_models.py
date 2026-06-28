@@ -284,7 +284,15 @@ class Appointment(Base):
         default=1,
         comment="Number of persons attending the meeting (1-4, citizen-selected at booking)"
     )
-    
+
+    source = Column(
+        String(20),
+        nullable=False,
+        default="qr_citizen",
+        server_default="qr_citizen",
+        comment="Intake channel: qr_citizen (self-submit) | ai_scan (AI uploads) | manual_staff (staff scan)"
+    )
+
     created_at = Column(
         DateTime,
         nullable=False,

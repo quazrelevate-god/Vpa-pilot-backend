@@ -31,6 +31,58 @@ async def display_qr_info(request: Request, user: str = Depends(require_auth)):
     return JSONResponse({"board_url": f"{base}/display", "login_url": f"{base}/display/login"})
 
 
+# ── Analytics dashboard ─────────────────────────────────────────────────────────
+def _analytics_filters(date_from, date_to, category, urgency, department, channel, status):
+    from src.services.analytics_service import Filters
+    return Filters(date_from=date_from, date_to=date_to, category=category,
+                   urgency=urgency, department=department, channel=channel, status=status)
+
+
+@router.get("/api/analytics")
+async def api_analytics(
+    date_from: str = None, date_to: str = None, category: str = None, urgency: str = None,
+    department: str = None, channel: str = None, status: str = None,
+    db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
+):
+    from src.services.analytics_service import analytics_service
+    f = _analytics_filters(date_from, date_to, category, urgency, department, channel, status)
+    return JSONResponse(await analytics_service.get_analytics(db, f))
+
+
+@router.get("/api/analytics/petitions")
+async def api_analytics_petitions(
+    date_from: str = None, date_to: str = None, category: str = None, urgency: str = None,
+    department: str = None, channel: str = None, status: str = None,
+    page: int = 1, page_size: int = 50, sort: str = "created_at", direction: str = "desc",
+    db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
+):
+    from src.services.analytics_service import analytics_service
+    f = _analytics_filters(date_from, date_to, category, urgency, department, channel, status)
+    return JSONResponse(await analytics_service.get_petitions(db, f, page, page_size, sort, direction))
+
+
+@router.get("/api/analytics/export")
+async def api_analytics_export(
+    date_from: str = None, date_to: str = None, category: str = None, urgency: str = None,
+    department: str = None, channel: str = None, status: str = None,
+    db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
+):
+    import csv, io
+    from src.services.analytics_service import analytics_service
+    f = _analytics_filters(date_from, date_to, category, urgency, department, channel, status)
+    data = await analytics_service.get_petitions(db, f, page=1, page_size=5000)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Token", "Name", "Mobile", "Category", "Urgency", "Status", "Channel", "Meeting", "Created"])
+    for r in data["items"]:
+        w.writerow([r["token"], r["name"], r["mobile"], r["category_label"], r["urgency"] or "",
+                    r["status"], r["source_label"], "Yes" if r["schedule_meeting"] else "No", r["created_at"] or ""])
+    return Response(
+        content=buf.getvalue(), media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=petitions.csv"},
+    )
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @router.get("/login", include_in_schema=False)

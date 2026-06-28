@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  CalendarDays, LayoutDashboard, LogOut, Clock, Ticket, Landmark, Activity, UserPlus, Sparkles, ClipboardCheck, QrCode,
+  CalendarDays, LayoutDashboard, LogOut, Clock, Ticket, Landmark, UserPlus, Sparkles, ClipboardCheck, QrCode,
 } from "lucide-react";
 import { fetchTicketsOpenCount } from "@/lib/api";
 import { useLang } from "@/lib/lang-context";
@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/overview",      tKey: "nav.performance",  icon: LayoutDashboard },
-  { href: "/operations",    tKey: "nav.operations",   icon: Activity },
   { href: "/tickets",       tKey: "nav.tickets",      icon: Ticket, badge: "openTickets" as const },
   { href: "/appointments",  tKey: "nav.appointments", icon: CalendarDays },
   { href: "/scheduling",    tKey: "nav.scheduling",   icon: Clock },
