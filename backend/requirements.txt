@@ -28,6 +28,9 @@ mutagen>=1.47   # audio duration probe for routing REST vs Batch
 google-genai>=2.8.0
 twilio>=9.0.0
 
+# PII field-level encryption (Fernet)
+cryptography>=44.0.0
+
 # Rate Limiting
 slowapi>=0.1.9
 

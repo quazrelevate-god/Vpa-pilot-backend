@@ -31,10 +31,9 @@ from src.core.utils import utc_iso
 
 
 def _decrypt(ciphertext: str) -> str:
-    try:
-        return base64.b64decode(ciphertext.encode()).decode("utf-8")
-    except Exception:
-        return ciphertext
+    """Decrypt a PII field (Fernet, with legacy-base64 fallback). See src.core.crypto."""
+    from src.core import crypto
+    return crypto.decrypt(ciphertext) if ciphertext is not None else ciphertext
 
 
 def _slot_times() -> List[tuple]:

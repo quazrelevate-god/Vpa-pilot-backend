@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     
     # Security Configuration
     SECRET_KEY: str
+    # Dedicated key for encrypting citizen PII at rest. MUST be set in production
+    # and never changed (changing it makes existing data unreadable). Falls back to
+    # SECRET_KEY in dev. Generate one with: python -c "import secrets;print(secrets.token_urlsafe(48))"
+    ENCRYPTION_KEY: Optional[str] = None
     # Set true in production (HTTPS) so session cookies get the Secure flag + HSTS.
     COOKIE_SECURE: bool = False
     # Comma-separated allowed CORS origins for the PA portal. In prod the portal is

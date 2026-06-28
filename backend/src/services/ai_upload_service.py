@@ -365,13 +365,15 @@ class AiUploadService:
         enc_mobile = appointment_service._encrypt_field(mobile or "")
         token_assigned, legacy_slot_ref = await appointment_service._assign_daily_token(db, now)
 
+        from src.core import crypto
+        mobile_idx = crypto.blind_index(mobile) if mobile else None
         citizen = None
         if mobile:
-            citizen = await db.scalar(select(Citizen).where(Citizen.encrypted_mobile == enc_mobile))
+            citizen = await db.scalar(select(Citizen).where(Citizen.mobile_index == mobile_idx))
         if citizen is None:
             citizen = Citizen(
                 encrypted_name=enc_name, encrypted_mobile=enc_mobile,
-                ward_or_region="Tamil Nadu", created_at=now,
+                mobile_index=mobile_idx, ward_or_region="Tamil Nadu", created_at=now,
             )
             db.add(citizen)
             await db.flush()

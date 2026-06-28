@@ -88,29 +88,9 @@ class AppointmentService:
     
     @staticmethod
     def _encrypt_field(plaintext: str) -> str:
-        """
-        Encrypt sensitive field using AES-256 (placeholder implementation).
-        
-        In production, use a proper encryption library like cryptography.fernet
-        with key rotation and secure key management (e.g., AWS KMS, HashiCorp Vault).
-        
-        Args:
-            plaintext: Sensitive data to encrypt
-        
-        Returns:
-            str: Encrypted ciphertext (base64 encoded)
-        
-        TODO: Replace with actual AES-256 encryption implementation
-        """
-        # Placeholder: In production, implement proper AES-256 encryption
-        # Example using cryptography library:
-        # from cryptography.fernet import Fernet
-        # cipher = Fernet(settings.ENCRYPTION_KEY)
-        # return cipher.encrypt(plaintext.encode()).decode()
-        
-        # For now, return base64-encoded plaintext as placeholder
-        import base64
-        return base64.b64encode(plaintext.encode('utf-8')).decode('utf-8')
+        """Encrypt a PII field with Fernet (real encryption). See src.core.crypto."""
+        from src.core import crypto
+        return crypto.encrypt(plaintext or "")
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
@@ -168,20 +148,9 @@ class AppointmentService:
 
     @staticmethod
     def _decrypt_field(ciphertext: str) -> str:
-        """
-        Decrypt sensitive field (placeholder implementation).
-        
-        Args:
-            ciphertext: Encrypted data
-        
-        Returns:
-            str: Decrypted plaintext
-        
-        TODO: Replace with actual AES-256 decryption implementation
-        """
-        # Placeholder: In production, implement proper AES-256 decryption
-        import base64
-        return base64.b64decode(ciphertext.encode('utf-8')).decode('utf-8')
+        """Decrypt a PII field (Fernet, with legacy-base64 fallback). See src.core.crypto."""
+        from src.core import crypto
+        return crypto.decrypt(ciphertext) or ""
     
     async def _send_otp_sms(self, mobile_number: str) -> Optional[str]:
         """
@@ -447,12 +416,13 @@ class AppointmentService:
                 )
             
             # Step 1b: Duplicate-submission guard — one petition per phone per day.
-            encrypted_mobile_check = self._encrypt_field(mobile_number)
+            from src.core import crypto
+            mobile_idx_check = crypto.blind_index(mobile_number)
             today_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
             existing_today = await db.scalar(
                 select(func.count(Appointment.id))
                 .join(Citizen, Citizen.id == Appointment.citizen_id)
-                .where(Citizen.encrypted_mobile == encrypted_mobile_check)
+                .where(Citizen.mobile_index == mobile_idx_check)
                 .where(Appointment.created_at >= today_start)
                 .where(Appointment.status.notin_(["CANCELLED"]))
             ) or 0
@@ -778,18 +748,19 @@ class AppointmentService:
                 encrypted_mobile = self._encrypt_field(mobile)
                 encrypted_grievance = self._encrypt_field(description)
                 
-                # Step 8: Create or get existing citizen record
-                citizen_stmt = select(Citizen).where(
-                    Citizen.encrypted_mobile == encrypted_mobile
-                )
+                # Step 8: Create or get existing citizen record (dedup by mobile_index)
+                from src.core import crypto
+                mobile_idx = crypto.blind_index(mobile)
+                citizen_stmt = select(Citizen).where(Citizen.mobile_index == mobile_idx)
                 citizen_result = await db.execute(citizen_stmt)
                 citizen = citizen_result.scalar_one_or_none()
-                
+
                 if not citizen:
                     # Create new citizen record
                     citizen = Citizen(
                         encrypted_name=encrypted_name,
                         encrypted_mobile=encrypted_mobile,
+                        mobile_index=mobile_idx,
                         ward_or_region=constituency,
                         created_at=current_time
                     )
@@ -1267,19 +1238,19 @@ class AppointmentService:
             encrypted_mobile = self._encrypt_field(mobile or "")
             description_text = f"Handwritten petition scanned by {submitted_by}. {len(valid_files)} page(s) uploaded."
 
-            # ── Citizen ───────────────────────────────────────────────────────
+            # ── Citizen (dedup by mobile_index) ───────────────────────────────
+            from src.core import crypto
+            mobile_idx = crypto.blind_index(mobile) if mobile else None
             citizen = None
             if mobile:
-                citizen_stmt = select(Citizen).where(
-                    Citizen.encrypted_mobile == encrypted_mobile
-                )
-                result = await db.execute(citizen_stmt)
+                result = await db.execute(select(Citizen).where(Citizen.mobile_index == mobile_idx))
                 citizen = result.scalar_one_or_none()
 
             if not citizen:
                 citizen = Citizen(
                     encrypted_name=encrypted_name,
                     encrypted_mobile=encrypted_mobile,
+                    mobile_index=mobile_idx,
                     ward_or_region=constituency,
                     created_at=current_time,
                 )

@@ -160,12 +160,19 @@ class Citizen(Base):
     )
     
     encrypted_mobile = Column(
-        String(255),
+        String(512),
         nullable=False,
-        unique=True,
-        comment="AES-256 encrypted mobile number (unique constraint for deduplication)"
+        comment="Fernet-encrypted mobile number (non-deterministic; dedup via mobile_index)"
     )
-    
+
+    mobile_index = Column(
+        String(64),
+        nullable=True,
+        index=True,
+        comment="Deterministic HMAC of the mobile — for return-citizen lookup/dedup "
+                "(Fernet ciphertext can't be compared directly)"
+    )
+
     ward_or_region = Column(
         String(100),
         nullable=True,

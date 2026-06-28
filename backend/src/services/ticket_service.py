@@ -29,13 +29,11 @@ from src.models.ticket_models import (
 
 
 def _decode(value: Optional[str]) -> Optional[str]:
-    """Decode base64 PII (mirrors dashboard_service helper)."""
+    """Decrypt a PII field (Fernet, with legacy-base64 fallback). See src.core.crypto."""
     if not value:
         return None
-    try:
-        return base64.b64decode(value.encode()).decode("utf-8")
-    except Exception:
-        return value
+    from src.core import crypto
+    return crypto.decrypt(value)
 
 
 def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:

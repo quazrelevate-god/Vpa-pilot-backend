@@ -64,11 +64,9 @@ def _resolve_display_status(appt) -> str:
 
 
 def _decode(value: str) -> str:
-    """Base64-decode a PII field."""
-    try:
-        return base64.b64decode(value.encode()).decode("utf-8")
-    except Exception:
-        return value
+    """Decrypt a PII field (Fernet, with legacy-base64 fallback). See src.core.crypto."""
+    from src.core import crypto
+    return crypto.decrypt(value) if value is not None else value
 
 
 async def get_stats(
