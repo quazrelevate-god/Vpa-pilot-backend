@@ -20,6 +20,17 @@ _TMPL_DIR = Path(__file__).resolve().parents[3] / "templates" / "dashboard"
 templates = Jinja2Templates(directory=str(_TMPL_DIR))
 
 
+@router.get("/api/display-qr")
+async def display_qr_info(request: Request, user: str = Depends(require_auth)):
+    """Public URL of the crowd-management board — the PA portal renders this as a
+    QR the floor team scans to open + install the PWA (and a link to re-share)."""
+    if settings.SERVER_BASE_URL and settings.SERVER_BASE_URL != "http://localhost:8000":
+        base = settings.SERVER_BASE_URL.rstrip("/")
+    else:
+        base = str(request.base_url).rstrip("/")
+    return JSONResponse({"board_url": f"{base}/display", "login_url": f"{base}/display/login"})
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @router.get("/login", include_in_schema=False)
