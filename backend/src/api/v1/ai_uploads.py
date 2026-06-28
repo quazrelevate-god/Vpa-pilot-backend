@@ -33,12 +33,14 @@ async def upload_batch(
     return JSONResponse(await ai_upload_service.create_batch(files, db), status_code=201)
 
 
-@router.get("/")
+@router.get("")
 async def list_uploads(
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
+    # No trailing slash: the PA-portal proxy strips it, and a 307 redirect to the
+    # slashed path would escape the proxy and lose the response.
     return JSONResponse(await ai_upload_service.list_uploads(db, status))
 
 

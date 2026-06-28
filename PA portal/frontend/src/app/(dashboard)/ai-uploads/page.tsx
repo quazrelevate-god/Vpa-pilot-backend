@@ -58,7 +58,7 @@ export default function AiUploadsPage() {
   // ── Load + poll ───────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     try {
-      const r = await fetch(api("/"), { credentials: "include" });
+      const r = await fetch(api(""), { credentials: "include" });
       const d = await r.json();
       if (Array.isArray(d)) setUploads(d);
     } catch { /* keep last */ }
@@ -89,8 +89,19 @@ export default function AiUploadsPage() {
       arr.forEach(f => fd.append("files", f));
       const r = await fetch(api("/upload"), { method: "POST", body: fd, credentials: "include" });
       const d = await r.json();
-      if (r.ok) { toast.success(`${d.count} file(s) queued`); load(); }
-      else toast.error(d.detail || d.error || "Upload failed");
+      if (r.ok) {
+        toast.success(`${d.count} file(s) queued`);
+        // Optimistic: show the rows instantly as Queued so the team sees the job
+        // started; polling then flips each to Processing → Awaiting Review.
+        const optimistic = (d.items || []).map((it: { id: number; filename: string }) => ({
+          id: it.id, filename: it.filename, status: "QUEUED",
+        })) as Upload[];
+        setUploads(prev => [
+          ...optimistic,
+          ...prev.filter(p => !optimistic.some(o => o.id === p.id)),
+        ]);
+        load();
+      } else toast.error(d.detail || d.error || "Upload failed");
     } catch { toast.error("Network error"); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
   }
