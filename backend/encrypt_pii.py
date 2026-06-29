@@ -24,6 +24,16 @@ def _reencrypt(value):
     return None
 
 
+def _encrypt_plaintext(value):
+    """Encrypt a plaintext value (referral rows were never base64; encrypt as-is).
+
+    Returns new ciphertext if `value` is plaintext, else None (already Fernet).
+    """
+    if value and not crypto.is_encrypted(value):
+        return crypto.encrypt(value)
+    return None
+
+
 def main() -> None:
     url = re.sub(r"postgresql\+\w+://", "postgresql://", settings.DATABASE_URL)
     citizens_updated = appts_updated = idx_filled = 0
@@ -65,10 +75,26 @@ def main() -> None:
                 c.execute(f"UPDATE appointments SET {cols} WHERE id=%s", (*updates.values(), aid))
                 appts_updated += 1
 
+        # ── Referral bookings (plaintext -> Fernet) ───────────────────────────
+        referrals_updated = 0
+        c.execute("SELECT id, name, mobile FROM referral_bookings")
+        for rid, name, mobile in c.fetchall():
+            updates = {}
+            x = _encrypt_plaintext(name)
+            if x is not None:
+                updates["name"] = x
+            x = _encrypt_plaintext(mobile)
+            if x is not None:
+                updates["mobile"] = x
+            if updates:
+                cols = ", ".join(f"{k}=%s" for k in updates)
+                c.execute(f"UPDATE referral_bookings SET {cols} WHERE id=%s", (*updates.values(), rid))
+                referrals_updated += 1
+
         conn.commit()
 
     print(f"citizens re-encrypted: {citizens_updated} | mobile_index filled: {idx_filled} | "
-          f"appointments re-encrypted: {appts_updated}")
+          f"appointments re-encrypted: {appts_updated} | referrals re-encrypted: {referrals_updated}")
     print("done.")
 
 

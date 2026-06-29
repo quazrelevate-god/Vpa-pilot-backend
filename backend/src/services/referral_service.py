@@ -17,6 +17,7 @@ from sqlalchemy import select, func, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
+from src.core import crypto
 from src.models.referral_models import (
     ReferralAvailability,
     ReferralSlot,
@@ -266,8 +267,8 @@ class ReferralService:
         booking = ReferralBooking(
             slot_id              = slot.id,
             token_number         = token_number,
-            name                 = name.strip(),
-            mobile               = (mobile or "").strip() or None,
+            name                 = crypto.encrypt(name.strip()),
+            mobile               = crypto.encrypt((mobile or "").strip() or None),
             num_persons          = num_persons,
             referred_by          = referred_by.strip(),
             reason               = reason.strip(),
@@ -446,8 +447,8 @@ class ReferralService:
             out.append({
                 "id":           b.id,
                 "token":        f"REF{b.token_number}",
-                "name":         b.name,
-                "mobile":       b.mobile,
+                "name":         crypto.decrypt(b.name),
+                "mobile":       crypto.decrypt(b.mobile),
                 "num_persons":  b.num_persons,
                 "referred_by":  b.referred_by,
                 "reason":       b.reason,
