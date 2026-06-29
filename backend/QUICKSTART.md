@@ -46,7 +46,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 ### 3. Create Database Tables (30 seconds)
 
 ```bash
-python create_tables.py
+alembic upgrade head
 ```
 
 Expected output:
@@ -153,7 +153,7 @@ lsof -ti:8000 | xargs kill -9
 python -c "from src.core.database import Base, engine; import asyncio; asyncio.run(Base.metadata.drop_all(bind=engine))"
 
 # Recreate tables
-python create_tables.py
+alembic upgrade head
 ```
 
 ### Run Tests

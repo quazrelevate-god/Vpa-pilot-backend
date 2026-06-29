@@ -41,7 +41,6 @@ backend/
 │       └── v1/
 │           ├── __init__.py
 │           └── qr.py              # QR generation & verification routes
-├── create_tables.py               # Database initialization script
 ├── requirements.txt               # Python dependencies
 ├── .env                          # Environment variables (gitignored)
 └── .env.example                  # Example environment configuration
@@ -108,7 +107,7 @@ cp .env.example .env
 ### 3. Create Database Tables
 
 ```bash
-python create_tables.py
+alembic upgrade head
 ```
 
 ### 4. Run the Application

@@ -1,7 +1,7 @@
 # Production Deployment Checklist
 
 ## Database Tables
-The following tables will be created by `create_tables.py`:
+The following tables will be created by Alembic migrations (`alembic upgrade head`):
 
 ### QR & Session Management
 - `qr_logs` - QR code generation and verification tracking
@@ -65,7 +65,7 @@ MSG91_SENDER_ID=
 pip install -r requirements.txt
 
 # Create all tables
-python create_tables.py
+alembic upgrade head
 
 # Verify tables were created
 python check_all_tables.py
@@ -136,7 +136,7 @@ gunicorn src.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 ### Common Issues
 
 1. **Tables not created**
-   - Run `python create_tables.py` again
+   - Run `alembic upgrade head` again
    - Check database connection string
    - Verify PostgreSQL is running
 
