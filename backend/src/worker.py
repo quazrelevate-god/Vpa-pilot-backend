@@ -24,6 +24,18 @@ if sys.platform == "win32":
 
 from src.core.logging_config import setup_logging, init_sentry
 
+# Register every ORM model so SQLAlchemy can resolve relationship targets by name
+# (e.g. Appointment -> GrievanceSummaryRecord / Ticket). The web app imports these
+# at startup; the worker is a separate process and must do the same, or mapper
+# configuration fails on the first query.
+import src.models.appointment_models        # noqa: F401
+import src.models.grievance_summary_record  # noqa: F401
+import src.models.ticket_models             # noqa: F401
+import src.models.scheduling_models         # noqa: F401
+import src.models.referral_models           # noqa: F401
+import src.models.ai_upload_models          # noqa: F401
+import src.models.qr_models                 # noqa: F401
+
 POLL_SECONDS = 5
 CLEANUP_EVERY_SECONDS = 3600  # prune expired OTP/session rows hourly
 
