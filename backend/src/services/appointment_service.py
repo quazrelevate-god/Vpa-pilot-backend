@@ -128,22 +128,23 @@ class AppointmentService:
         ist_date = ist_now.date()
         date_key = int(ist_date.strftime("%Y%m%d"))
 
-        # IST midnight expressed back in UTC, since created_at is stored in UTC.
-        ist_midnight_utc = datetime(
-            ist_date.year, ist_date.month, ist_date.day
-        ) - timedelta(hours=5, minutes=30)
-
         # Serialise token assignment for this IST day across concurrent requests.
         await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": date_key})
 
-        daily_count = await db.scalar(
-            select(func.count(Appointment.id)).where(
-                Appointment.created_at >= ist_midnight_utc
+        # Use MAX(token)+1 rather than COUNT: tokens embed the date as
+        # date_key*100000 + sequence, so the highest token within today's numeric
+        # range gives the last sequence issued. COUNT was delete-unsafe — removing
+        # any appointment would make the next token reuse an existing number.
+        day_floor = date_key * 100000
+        day_ceil = (date_key + 1) * 100000
+        last_token = await db.scalar(
+            select(func.max(Appointment.token_assigned)).where(
+                Appointment.token_assigned >= day_floor,
+                Appointment.token_assigned < day_ceil,
             )
-        ) or 0
-
-        sequence = daily_count + 1
-        token_assigned = date_key * 100000 + sequence
+        )
+        sequence = (last_token - day_floor + 1) if last_token else 1
+        token_assigned = day_floor + sequence
         return token_assigned, sequence
 
     @staticmethod
