@@ -35,11 +35,13 @@ async def main() -> None:
     log.info("AI-upload worker started (poll=%ss)", POLL_SECONDS)
 
     from src.services.ai_upload_service import ai_upload_service
+    from src.services.appointment_service import appointment_service
     from src.services import maintenance_service
 
     last_cleanup = 0.0
     while True:
         try:
+            # 1) AI document uploads (own queue).
             await ai_upload_service.recover_stale()
             while True:  # drain everything currently queued
                 upload_id = await ai_upload_service._claim_next_queued()
@@ -47,7 +49,12 @@ async def main() -> None:
                     break
                 await ai_upload_service._process_one(upload_id)
 
-            # Hourly housekeeping — keep auth tables from growing forever.
+            # 2) Petition summarisation (durable, restart-safe). recover_stale_
+            # summaries re-queues anything a crashed web/worker left PROCESSING.
+            await appointment_service.recover_stale_summaries()
+            await appointment_service.drain_pending_summaries()
+
+            # 3) Hourly housekeeping — keep auth tables from growing forever.
             if time.monotonic() - last_cleanup >= CLEANUP_EVERY_SECONDS:
                 await maintenance_service.cleanup_expired()
                 last_cleanup = time.monotonic()

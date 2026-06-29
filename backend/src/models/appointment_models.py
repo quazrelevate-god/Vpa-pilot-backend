@@ -352,7 +352,34 @@ class Appointment(Base):
         default=0,
         comment="Priority score for queue processing (higher = older/more urgent)"
     )
-    
+
+    # ── Durable AI-summarisation state ──────────────────────────────────────
+    # Replaces the old fire-and-forget asyncio task: a submission lands as
+    # PENDING and is summarised by the worker (with an optimistic web attempt),
+    # so a restart can never silently drop a summary. ai_scan rows are created
+    # DONE because that path summarises inline.
+    summary_status = Column(
+        String(20),
+        nullable=False,
+        default="PENDING",
+        server_default="PENDING",
+        comment="PENDING / PROCESSING / DONE / FAILED",
+    )
+
+    summary_attempts = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="Number of summarisation attempts (capped, then FAILED)",
+    )
+
+    summary_claimed_at = Column(
+        DateTime,
+        nullable=True,
+        comment="When the current PROCESSING claim was taken — for stale recovery",
+    )
+
     # Relationships
     citizen = relationship("Citizen", back_populates="appointments")
     attachments = relationship(
@@ -392,6 +419,9 @@ class Appointment(Base):
         Index('ix_appointments_scheduled_date', 'scheduled_date'),
         Index('ix_appointments_queue_position', 'queue_position'),
         Index('ix_appointments_waiting_since', 'waiting_since'),
+        # Partial index: the worker only ever scans not-yet-done rows.
+        Index('ix_appointments_summary_pending', 'summary_status',
+              postgresql_where=(summary_status.in_(('PENDING', 'PROCESSING')))),
     )
 
 

@@ -882,35 +882,19 @@ class AppointmentService:
             #     citizen_name=name,
             # ))
 
-            # Step 14: Fire-and-forget Gemini summarisation.
-            # Snapshot attachments to plain dicts BEFORE the background task
-            # starts. Once db.commit() expires the ORM instances, reading
-            # `.attachment_type` etc. would trigger a lazy-load on a closed
-            # session and silently fail — which previously caused summarisation
-            # to never run for some submissions.
-            attachment_snapshots = [
-                {
-                    "attachment_type": att.attachment_type,
-                    "storage_url": att.storage_url,
-                    "mime_type": att.mime_type,
-                }
-                for att in attachments_created
-            ]
+            # Step 14: Durable summarisation. The appointment is already
+            # summary_status='PENDING'; fire an optimistic attempt now for low
+            # latency. If this process dies before it finishes, the standalone
+            # worker picks the row up — the summary can no longer be silently
+            # lost the way the old fire-and-forget task could.
             logger.info(
                 f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
                 f"schedule_meeting={schedule_meeting} | "
-                f"attachments={len(attachment_snapshots)} | "
+                f"attachments={len(attachments_created)} | "
                 f"audio_url={'yes' if audio_url else 'no'} | "
                 f"desc_chars={len(description or '')}"
             )
-            asyncio.create_task(self._trigger_summarisation(
-                appointment_id=appointment.id,
-                citizen_name=name,
-                constituency=constituency,
-                description=description,
-                attachments_created=attachment_snapshots,
-                audio_recording_url=audio_url,
-            ))
+            asyncio.create_task(self.try_summarise_now(appointment.id))
 
             if final_status == 'WAITING':
                 message = f"No slots available right now. Your token number is {token_assigned} and you have been added to the waiting queue."
@@ -1173,6 +1157,7 @@ class AppointmentService:
         except Exception as exc:
             logger.info(f"[GEMINI WARN] appointment_id={appointment_id}: "
                   f"Summarisation failed (appointment unaffected): {exc}")
+            raise  # let the durable wrapper mark the row for retry / FAILED
 
 
     # ── Manual / scan petition (staff-operated, no OTP) ─────────────────────
@@ -1304,14 +1289,10 @@ class AppointmentService:
 
             await db.commit()
 
-            # ── Fire background Gemini summarisation ──────────────────────────
-            # Hold a strong reference — without it the task can be GC'd mid-run.
-            _task = asyncio.create_task(self._trigger_manual_summarisation(
-                appointment_id=appointment.id,
-                citizen_name=name,
-                constituency=constituency,
-                attachment_snapshots=attachment_snapshots,
-            ))
+            # ── Durable summarisation ─────────────────────────────────────────
+            # Row is already summary_status='PENDING'; optimistic attempt now,
+            # worker is the restart-safe fallback.
+            _task = asyncio.create_task(self.try_summarise_now(appointment.id))
             _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             logger.info(
@@ -1412,6 +1393,152 @@ class AppointmentService:
         except Exception as exc:
             logger.info(f"[MANUAL GEMINI WARN] appointment_id={appointment_id}: "
                   f"Summarisation failed (appointment unaffected): {exc}")
+            raise  # let the durable wrapper mark the row for retry / FAILED
+
+    # ── Durable summarisation queue (worker-owned, restart-safe) ─────────────
+    # A submitted petition lands as summary_status='PENDING'. Both an optimistic
+    # web task (try_summarise_now) and the standalone worker (drain_pending_
+    # summaries) claim work atomically via PENDING->PROCESSING with FOR UPDATE
+    # SKIP LOCKED, so exactly one runs each row and a restart/crash is recovered.
+
+    MAX_SUMMARY_ATTEMPTS = 3
+    SUMMARY_STALE_MINUTES = 10
+
+    async def _run_summary_for(self, appointment_id: int) -> None:
+        """Reconstruct inputs from the DB and dispatch to the right summariser.
+
+        Raises on failure (caller manages retry/FAILED state).
+        """
+        from src.core.database import AsyncSessionLocal
+        from sqlalchemy.orm import selectinload
+
+        async with AsyncSessionLocal() as db:
+            appt = (await db.execute(
+                select(Appointment)
+                .options(selectinload(Appointment.citizen), selectinload(Appointment.attachments))
+                .where(Appointment.id == appointment_id)
+            )).scalar_one_or_none()
+            if appt is None:
+                return  # row vanished — nothing to do
+
+            citizen = appt.citizen
+            citizen_name = self._decrypt_field(appt.encrypted_name) if appt.encrypted_name \
+                else (self._decrypt_field(citizen.encrypted_name) if citizen else "")
+            constituency = (citizen.ward_or_region if citizen else "") or ""
+            description = self._decrypt_field(appt.encrypted_grievance) if appt.encrypted_grievance else ""
+            source = appt.source
+            attachments = [
+                {"attachment_type": a.attachment_type, "storage_url": a.storage_url, "mime_type": a.mime_type}
+                for a in appt.attachments
+            ]
+            audio_url = appt.audio_recording_url
+
+        if source == "manual_staff":
+            manual_snaps = [
+                {"storage_url": a["storage_url"], "mime_type": a["mime_type"],
+                 "filename": Path(a["storage_url"]).name}
+                for a in attachments
+            ]
+            await self._trigger_manual_summarisation(
+                appointment_id=appointment_id,
+                citizen_name=citizen_name,
+                constituency=constituency,
+                attachment_snapshots=manual_snaps,
+            )
+        else:  # qr_citizen (ai_scan rows are created DONE and never reach here)
+            await self._trigger_summarisation(
+                appointment_id=appointment_id,
+                citizen_name=citizen_name,
+                constituency=constituency,
+                description=description,
+                attachments_created=attachments,
+                audio_recording_url=audio_url,
+            )
+
+    async def _finish_summary(self, appointment_id: int, ok: bool) -> None:
+        """Mark a claimed row DONE, or PENDING (retry) / FAILED (give up)."""
+        from src.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            if ok:
+                await db.execute(text(
+                    "UPDATE appointments SET summary_status='DONE', summary_claimed_at=NULL "
+                    "WHERE id=:id"), {"id": appointment_id})
+            else:
+                await db.execute(text(
+                    "UPDATE appointments SET "
+                    "summary_status = CASE WHEN summary_attempts >= :max THEN 'FAILED' ELSE 'PENDING' END, "
+                    "summary_claimed_at = NULL "
+                    "WHERE id=:id"), {"id": appointment_id, "max": self.MAX_SUMMARY_ATTEMPTS})
+            await db.commit()
+
+    async def _process_claimed_summary(self, appointment_id: int) -> None:
+        """Run summarisation for an already-claimed (PROCESSING) row and finalise."""
+        try:
+            await self._run_summary_for(appointment_id)
+            await self._finish_summary(appointment_id, ok=True)
+        except Exception:
+            await self._finish_summary(appointment_id, ok=False)
+
+    async def try_summarise_now(self, appointment_id: int) -> None:
+        """Optimistic web-side attempt: claim THIS row if still PENDING, then run.
+
+        If the worker already grabbed it, the claim returns nothing and we skip —
+        no double processing. If we crash, the row stays PROCESSING and is
+        recovered by the worker.
+        """
+        from src.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            claimed = (await db.execute(text(
+                "UPDATE appointments SET summary_status='PROCESSING', "
+                "summary_attempts = summary_attempts + 1, summary_claimed_at = now() "
+                "WHERE id = :id AND summary_status = 'PENDING' "
+                "RETURNING id"), {"id": appointment_id})).scalar()
+            await db.commit()
+        if claimed is None:
+            return
+        await self._process_claimed_summary(appointment_id)
+
+    async def _claim_next_pending_summary(self) -> Optional[int]:
+        """Worker: atomically claim the oldest PENDING row (PENDING->PROCESSING)."""
+        from src.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            row_id = (await db.execute(text(
+                "SELECT id FROM appointments WHERE summary_status='PENDING' "
+                "ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1"))).scalar()
+            if row_id is None:
+                return None
+            await db.execute(text(
+                "UPDATE appointments SET summary_status='PROCESSING', "
+                "summary_attempts = summary_attempts + 1, summary_claimed_at = now() "
+                "WHERE id = :id"), {"id": row_id})
+            await db.commit()
+            return row_id
+
+    async def recover_stale_summaries(self) -> int:
+        """Reset rows stuck in PROCESSING (crashed mid-run) back to PENDING, or
+        FAILED once attempts are exhausted. Returns how many were recovered."""
+        from src.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(text(
+                "UPDATE appointments SET "
+                "summary_status = CASE WHEN summary_attempts >= :max THEN 'FAILED' ELSE 'PENDING' END, "
+                "summary_claimed_at = NULL "
+                "WHERE summary_status='PROCESSING' "
+                "AND (summary_claimed_at IS NULL OR summary_claimed_at < now() - (:mins || ' minutes')::interval)"),
+                {"max": self.MAX_SUMMARY_ATTEMPTS, "mins": self.SUMMARY_STALE_MINUTES})
+            await db.commit()
+            return res.rowcount
+
+    async def drain_pending_summaries(self) -> int:
+        """Worker entry point: process all currently-pending summaries. Returns count."""
+        done = 0
+        while True:
+            appointment_id = await self._claim_next_pending_summary()
+            if appointment_id is None:
+                break
+            await self._process_claimed_summary(appointment_id)
+            done += 1
+        return done
 
 
 # Singleton instance

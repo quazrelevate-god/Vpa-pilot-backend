@@ -391,6 +391,7 @@ class AiUploadService:
             schedule_meeting=False,
             priority_score=0,
             source="ai_scan",
+            summary_status="DONE",  # ai_scan summarises inline below; keep the worker off it
             created_at=now,
         )
         db.add(appt)
