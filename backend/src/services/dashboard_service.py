@@ -426,7 +426,33 @@ async def get_appointments(
         else:
             stmt = stmt.where(Appointment.id.in_(gsr_sub))
 
-    # Count before pagination
+    # ── Search path ───────────────────────────────────────────────────────────
+    # Name and mobile are encrypted, so they can't be matched in SQL. Decrypt-and-
+    # match across the FULL filtered set, then paginate in Python — otherwise a
+    # match on page 3 would never be found (the old code filtered only the current
+    # 25-row window, and `total` ignored the filter entirely).
+    if search and search.strip():
+        q = search.strip().lower()
+        all_rows = (await db.execute(stmt)).scalars().all()
+        matched = []
+        for appt in all_rows:
+            citizen = appt.citizen
+            name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "")
+            mobile = _decode(citizen.encrypted_mobile) if citizen else ""
+            if (
+                q in name.lower()
+                or q in (mobile or "")
+                or q in str(appt.token_assigned)
+                or q in f"tkn{appt.token_assigned}"
+            ):
+                matched.append(appt)
+        total = len(matched)
+        start = (page - 1) * page_size
+        page_rows = matched[start:start + page_size]
+        items = [build_appointment_row(appt) for appt in page_rows]
+        return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+    # ── No-search path: efficient DB-side count + pagination ────────────────────
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = await db.scalar(count_stmt) or 0
 
@@ -434,17 +460,7 @@ async def get_appointments(
     result = await db.execute(stmt)
     appointments = result.scalars().all()
 
-    items = []
-    for appt in appointments:
-        if search:
-            citizen = appt.citizen
-            name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "—")
-            mobile = _decode(citizen.encrypted_mobile) if citizen else "—"
-            q = search.lower()
-            if q not in name.lower() and q not in mobile and q not in str(appt.token_assigned):
-                continue
-        items.append(build_appointment_row(appt))
-
+    items = [build_appointment_row(appt) for appt in appointments]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
