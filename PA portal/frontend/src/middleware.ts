@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 // back to us by Next.js rewrites, so it sits on the same origin as the app.
 const PROTECTED_PREFIXES = [
   "/overview", "/appointments", "/tickets",
-  "/referrals", "/scheduling", "/operations",
+  "/referrals", "/scheduling",
 ];
 
 export function middleware(req: NextRequest) {
@@ -39,7 +39,7 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/overview/:path*", "/appointments/:path*", "/tickets/:path*",
-    "/referrals/:path*", "/scheduling/:path*", "/operations/:path*",
+    "/referrals/:path*", "/scheduling/:path*",
     "/login", "/dashboard", "/dashboard/:path*",
   ],
 };
