@@ -156,7 +156,7 @@ class Citizen(Base):
     encrypted_name = Column(
         Text,
         nullable=False,
-        comment="AES-256 encrypted full name of citizen"
+        comment="Fernet-encrypted full name of citizen (see src.core.crypto)"
     )
     
     encrypted_mobile = Column(
@@ -244,13 +244,13 @@ class Appointment(Base):
     encrypted_grievance = Column(
         Text,
         nullable=True,
-        comment="AES-256 encrypted grievance/query description (optional if audio provided)"
+        comment="Fernet-encrypted grievance/query description (optional if audio provided)"
     )
 
     encrypted_name = Column(
         Text,
         nullable=True,
-        comment="Base64-encoded name submitted with this specific appointment"
+        comment="Fernet-encrypted name submitted with this specific appointment"
     )
     
     audio_recording_url = Column(
@@ -385,6 +385,7 @@ class Appointment(Base):
     
     __table_args__ = (
         Index('ix_appointments_citizen_id', 'citizen_id'),
+        Index('ix_appointments_token_assigned', 'token_assigned', unique=True),
         Index('ix_appointments_slot_id', 'slot_id'),
         Index('ix_appointments_status', 'status'),
         Index('ix_appointments_created_at', 'created_at'),
