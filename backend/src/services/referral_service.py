@@ -253,11 +253,17 @@ class ReferralService:
         # bookings so two referrals can never share a token number.
         date_key = int(slot_date.strftime("%Y%m%d"))
         await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": date_key})
-        day_count = await db.scalar(
-            select(func.count(ReferralBooking.id))
-            .where(ReferralBooking.scheduled_date == slot_date)
-        ) or 0
-        token_number = date_key * 100000 + day_count + 1
+        # MAX(token)+1 over the day's numeric range — delete-safe, unlike COUNT
+        # (a deleted booking would otherwise make the next token reuse a number).
+        day_floor = date_key * 100000
+        last_token = await db.scalar(
+            select(func.max(ReferralBooking.token_number))
+            .where(
+                ReferralBooking.token_number >= day_floor,
+                ReferralBooking.token_number < day_floor + 100000,
+            )
+        )
+        token_number = (last_token + 1) if last_token else (day_floor + 1)
 
         # Reserve seats
         slot.booked_count += num_persons

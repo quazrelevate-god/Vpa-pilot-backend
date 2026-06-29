@@ -119,4 +119,5 @@ class ReferralBooking(Base):
     __table_args__ = (
         Index("ix_referral_bookings_slot_id", "slot_id"),
         Index("ix_referral_bookings_date",    "scheduled_date"),
+        Index("ix_referral_bookings_token",   "token_number", unique=True),
     )
