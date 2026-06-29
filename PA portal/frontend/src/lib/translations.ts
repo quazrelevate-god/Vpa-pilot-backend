@@ -3,7 +3,6 @@ export const translations = {
     // ── Sidebar ─────────────────────────────────────────────────────
     "nav.menu":         "Menu",
     "nav.performance":  "Performance",
-    "nav.operations":   "Operations",
     "nav.tickets":      "Tickets",
     "nav.appointments": "Appointments",
     "nav.scheduling":   "Scheduling",
@@ -257,7 +256,6 @@ export const translations = {
     // ── Sidebar ─────────────────────────────────────────────────────
     "nav.menu":         "மெனு",
     "nav.performance":  "செயல்திறன்",
-    "nav.operations":   "செயல்பாடுகள்",
     "nav.tickets":      "புகார்கள்",
     "nav.appointments": "சந்திப்புகள்",
     "nav.scheduling":   "அட்டவணை",

@@ -120,6 +120,14 @@ export default function AiReviewPage() {
       if (fresh) setReview(fresh);
     }
   }, [uploads]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Esc closes the upload review modal (keyboard a11y; the Radix drawers below
+  // already handle this themselves).
+  useEffect(() => {
+    if (!review) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) setReview(null); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [review, busy]);
 
   // Merge both origins into one inbox, newest first.
   const rows = useMemo<InboxRow[]>(() => {
