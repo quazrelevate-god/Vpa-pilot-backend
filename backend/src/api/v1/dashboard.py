@@ -84,6 +84,39 @@ async def api_analytics_export(
     )
 
 
+@router.get("/api/appointments/counts")
+async def api_appointment_counts(
+    request: Request,
+    search: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    appt_date_from: str = "",
+    appt_date_to: str = "",
+    urgency: str = "",
+    department: str = "",
+    category: str = "",
+    kind: str = "",
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Single-call per-tab counts honouring secondary filters.
+    Must be declared BEFORE the int-typed /{appointment_id} detail route, or
+    FastAPI matches "counts" against that route and 422s on the int parse."""
+    data = await dashboard_service.get_appointment_counts(
+        db,
+        search=search or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        appt_date_from=appt_date_from or None,
+        appt_date_to=appt_date_to or None,
+        urgency=urgency or None,
+        department=department or None,
+        category=category or None,
+        kind=kind or None,
+    )
+    return JSONResponse(data)
+
+
 @router.get("/api/appointments/{appointment_id}")
 async def api_appointment_detail(
     appointment_id: int, db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
@@ -329,6 +362,39 @@ async def api_tickets_list(
         date_from=date_from or None,
         date_to=date_to or None,
         page=page,
+    )
+    return JSONResponse(data)
+
+
+@router.get("/api/tickets/counts")
+async def api_ticket_counts(
+    request: Request,
+    priority: str = "",
+    urgency: str = "",
+    department: str = "",
+    category: str = "",
+    assigned_to: str = "",
+    forwarded_to_dept: str = "",
+    search: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Single-call per-segment counts (All/Open/In progress/Forwarded/Resolved/Closed).
+    Replaces the 6× parallel list-call pattern. Must be declared BEFORE the
+    int-typed /{ticket_id} detail route or FastAPI fails to parse "counts" as int."""
+    data = await ticket_service.get_ticket_counts(
+        db,
+        priority=priority or None,
+        urgency=urgency or None,
+        department=department or None,
+        category=category or None,
+        assigned_to=assigned_to or None,
+        forwarded_to_dept=forwarded_to_dept or None,
+        search=search or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
     )
     return JSONResponse(data)
 

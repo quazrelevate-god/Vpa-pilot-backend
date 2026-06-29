@@ -443,6 +443,16 @@ async def get_appointments(
                 GrievanceSummaryRecord.is_latest == True,  # noqa: E712
             ),
         ).order_by(urgency_rank.asc(), Appointment.created_at.desc())
+    elif sort == "appt_date_asc":
+        stmt = stmt.order_by(
+            Appointment.scheduled_date.asc().nullslast(),
+            Appointment.scheduled_start_time.asc().nullslast(),
+        )
+    elif sort == "appt_date_desc":
+        stmt = stmt.order_by(
+            Appointment.scheduled_date.desc().nullslast(),
+            Appointment.scheduled_start_time.desc().nullslast(),
+        )
     elif is_scheduled_tab:
         # Closest meeting slot first.
         stmt = stmt.order_by(Appointment.scheduled_date.asc(), Appointment.scheduled_start_time.asc())
@@ -485,6 +495,142 @@ async def get_appointments(
 
     items = [build_appointment_row(appt) for appt in appointments]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+async def get_appointment_counts(
+    db: AsyncSession,
+    search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    appt_date_from: Optional[str] = None,
+    appt_date_to: Optional[str] = None,
+    urgency: Optional[str] = None,
+    department: Optional[str] = None,
+    category: Optional[str] = None,
+    kind: Optional[str] = None,
+) -> Dict[str, int]:
+    """
+    Per-tab counts (Scheduled / Waiting / Rescheduled / All) honouring the same
+    secondary filters as `get_appointments`. Replaces 4 parallel list calls with
+    a single aggregate query — search falls back to a decrypt-bucket pass.
+    """
+    from datetime import datetime as dt
+
+    base = select(Appointment.id, Appointment.status, Appointment.schedule_meeting)
+
+    if kind == "meeting":
+        base = base.where(Appointment.schedule_meeting == True)   # noqa: E712
+    elif kind == "petition":
+        base = base.where(Appointment.schedule_meeting == False)  # noqa: E712
+
+    if date_from:
+        base = base.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
+    if date_to:
+        base = base.where(Appointment.created_at <= dt.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
+    if appt_date_from:
+        base = base.where(Appointment.scheduled_date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+    if appt_date_to:
+        base = base.where(Appointment.scheduled_date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+
+    if urgency or department or category:
+        gsr_sub = (
+            select(GrievanceSummaryRecord.appointment_id)
+            .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
+        )
+        if urgency:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+        if department:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+        if category:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
+        if category:
+            appt_cat_sub = select(Appointment.id).where(Appointment.grievance_category == category)
+            base = base.where(or_(Appointment.id.in_(gsr_sub), Appointment.id.in_(appt_cat_sub)))
+        else:
+            base = base.where(Appointment.id.in_(gsr_sub))
+
+    # ── Search path: decrypt-and-bucket (matches list endpoint's semantics) ──
+    if search and search.strip():
+        q = search.strip().lower()
+        # Load citizen alongside for decrypt lookup
+        stmt = (
+            select(Appointment)
+            .options(selectinload(Appointment.citizen))
+        )
+        # Re-apply the same WHERE conditions on the ORM-level statement
+        if kind == "meeting":
+            stmt = stmt.where(Appointment.schedule_meeting == True)   # noqa: E712
+        elif kind == "petition":
+            stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
+        if date_from:
+            stmt = stmt.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
+        if date_to:
+            stmt = stmt.where(Appointment.created_at <= dt.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
+        if appt_date_from:
+            stmt = stmt.where(Appointment.scheduled_date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+        if appt_date_to:
+            stmt = stmt.where(Appointment.scheduled_date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+        if urgency or department or category:
+            gsr_sub = (
+                select(GrievanceSummaryRecord.appointment_id)
+                .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
+            )
+            if urgency:
+                gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+            if department:
+                gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+            if category:
+                gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
+            if category:
+                appt_cat_sub = select(Appointment.id).where(Appointment.grievance_category == category)
+                stmt = stmt.where(or_(Appointment.id.in_(gsr_sub), Appointment.id.in_(appt_cat_sub)))
+            else:
+                stmt = stmt.where(Appointment.id.in_(gsr_sub))
+
+        rows = (await db.execute(stmt)).scalars().all()
+        scheduled = waiting = rescheduled = all_count = 0
+        for appt in rows:
+            citizen = appt.citizen
+            name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "")
+            mobile = _decode(citizen.encrypted_mobile) if citizen else ""
+            if not (
+                q in name.lower()
+                or q in (mobile or "")
+                or q in str(appt.token_assigned)
+                or q in f"tkn{appt.token_assigned}"
+            ):
+                continue
+            all_count += 1
+            if appt.status == "SCHEDULED" and appt.schedule_meeting:
+                scheduled += 1
+            elif appt.status in ("WAITING", "IN_PROGRESS"):
+                waiting += 1
+            elif appt.status == "RESCHEDULED":
+                rescheduled += 1
+        return {
+            "Scheduled": scheduled,
+            "Waiting": waiting,
+            "Rescheduled": rescheduled,
+            "All": all_count,
+        }
+
+    # ── No-search: single aggregate query with FILTER clauses ──
+    sub = base.subquery()
+    agg = select(
+        func.count().label("all_count"),
+        func.count().filter(
+            and_(sub.c.status == "SCHEDULED", sub.c.schedule_meeting == True)  # noqa: E712
+        ).label("scheduled"),
+        func.count().filter(sub.c.status.in_(["WAITING", "IN_PROGRESS"])).label("waiting"),
+        func.count().filter(sub.c.status == "RESCHEDULED").label("rescheduled"),
+    ).select_from(sub)
+    row = (await db.execute(agg)).one()
+    return {
+        "Scheduled": row.scheduled or 0,
+        "Waiting": row.waiting or 0,
+        "Rescheduled": row.rescheduled or 0,
+        "All": row.all_count or 0,
+    }
 
 
 def build_appointment_row(appt) -> Dict[str, Any]:

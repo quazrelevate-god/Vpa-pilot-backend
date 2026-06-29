@@ -27,6 +27,9 @@ jobs:
             echo "==> Installing backend dependencies..."
             source backend/env/bin/activate
             pip install -r backend/requirements.txt
+            cd backend
+            alembic upgrade head
+            cd ..
 
             echo "==> Building frontend..."
             cd "PA portal/frontend"
@@ -37,6 +40,7 @@ jobs:
             echo "==> Restarting services..."
             systemctl restart vpa-backend
             systemctl restart vpa-frontend
+            systemctl restart vpa-worker
 
             echo "==> Waiting for services to start..."
             sleep 3
@@ -44,5 +48,6 @@ jobs:
             echo "==> Checking service status..."
             systemctl is-active vpa-backend || (journalctl -u vpa-backend -n 20 && exit 1)
             systemctl is-active vpa-frontend || (journalctl -u vpa-frontend -n 20 && exit 1)
+            systemctl is-active vpa-worker || (journalctl -u vpa-worker -n 20 && exit 1)
 
             echo "==> Deploy complete."

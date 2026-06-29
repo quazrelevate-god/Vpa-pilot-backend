@@ -222,6 +222,104 @@ async def list_tickets(
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
+async def get_ticket_counts(
+    db: AsyncSession,
+    priority: Optional[str] = None,
+    urgency: Optional[str] = None,
+    department: Optional[str] = None,
+    category: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+    forwarded_to_dept: Optional[str] = None,
+    search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Dict[str, int]:
+    """Per-segment ticket counts honouring the same secondary filters as
+    `list_tickets`. Replaces the old 6× parallel call pattern."""
+    base = select(Ticket.id, Ticket.status)
+
+    clauses = []
+    if priority:
+        clauses.append(Ticket.priority == priority)
+    if assigned_to:
+        clauses.append(Ticket.assigned_to_pa == assigned_to)
+    if forwarded_to_dept:
+        clauses.append(Ticket.forwarded_to_dept == forwarded_to_dept)
+    if date_from:
+        clauses.append(Ticket.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+    if date_to:
+        clauses.append(
+            Ticket.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S")
+        )
+
+    if urgency or department or category:
+        gsr_sub = (
+            select(GrievanceSummaryRecord.appointment_id)
+            .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
+        )
+        if urgency:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+        if department:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+        if category:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
+        clauses.append(Ticket.appointment_id.in_(gsr_sub))
+
+    if clauses:
+        base = base.where(and_(*clauses))
+
+    # ── Search: decrypt-and-bucket (mirrors list semantics) ──
+    if search and search.strip():
+        q = search.strip().lower()
+        stmt = (
+            select(Ticket)
+            .options(
+                selectinload(Ticket.appointment).selectinload(Appointment.citizen),
+                selectinload(Ticket.appointment).selectinload(Appointment.grievance_summary),
+            )
+        )
+        if clauses:
+            stmt = stmt.where(and_(*clauses))
+        tickets = (await db.execute(stmt)).scalars().all()
+        out: Dict[str, int] = {
+            "": 0, "open": 0, "in_progress": 0,
+            "forwarded_to_dept": 0, "resolved": 0, "closed": 0,
+        }
+        for t in tickets:
+            row = _serialize_ticket_row(t)
+            haystack = " ".join(filter(None, [
+                row.get("ticket_number"), row.get("token"),
+                row.get("citizen_name"), row.get("citizen_mobile"),
+                row.get("headline"), row.get("category_label"),
+                row.get("department_label"),
+            ])).lower()
+            if q not in haystack:
+                continue
+            out[""] += 1
+            if t.status in out:
+                out[t.status] += 1
+        return out
+
+    sub = base.subquery()
+    agg = select(
+        func.count().label("all_count"),
+        func.count().filter(sub.c.status == "open").label("open"),
+        func.count().filter(sub.c.status == "in_progress").label("in_progress"),
+        func.count().filter(sub.c.status == "forwarded_to_dept").label("forwarded_to_dept"),
+        func.count().filter(sub.c.status == "resolved").label("resolved"),
+        func.count().filter(sub.c.status == "closed").label("closed"),
+    ).select_from(sub)
+    row = (await db.execute(agg)).one()
+    return {
+        "": row.all_count or 0,
+        "open": row.open or 0,
+        "in_progress": row.in_progress or 0,
+        "forwarded_to_dept": row.forwarded_to_dept or 0,
+        "resolved": row.resolved or 0,
+        "closed": row.closed or 0,
+    }
+
+
 async def get_ticket(db: AsyncSession, ticket_id: int) -> Optional[Dict[str, Any]]:
     """Full ticket detail + events timeline + summary + attachments."""
     result = await db.execute(

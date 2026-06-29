@@ -13,7 +13,7 @@ import {
   DEPT_DISPLAY, CATEGORY_DISPLAY, CLOSURE_REASON_DISPLAY,
   ticketManualStatusOptions, priorityOptions, deptOptions, closureReasonOptions,
 } from "@/lib/enums";
-import { AttachmentGallery } from "@/components/ui/attachment-gallery";
+import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -109,25 +109,25 @@ export default function TicketDetailDrawer({
       <SheetContent
         side="right"
         hideClose
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-[60vw]"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[95vw]"
       >
         {/* Header */}
         <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-semibold text-brand">{t?.ticket_number ?? "…"}</span>
+            <SheetTitle className="text-xl font-bold leading-snug tracking-tight">
+              {(t && (pick(t.headline, t.headline_ta) ?? t.headline)) ?? (loading ? "Loading…" : "Ticket")}
+            </SheetTitle>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-base font-semibold text-brand">{t?.ticket_number ?? "…"}</span>
               {t?.priority && (
-                <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold", PRIORITY_COLOR[t.priority])}>{t.priority}</span>
+                <span className={cn("rounded px-2 py-0.5 text-xs font-bold", PRIORITY_COLOR[t.priority])}>{t.priority}</span>
               )}
               {t && (
-                <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", TICKET_STATUS_COLOR[t.status])}>
+                <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", TICKET_STATUS_COLOR[t.status])}>
                   {TICKET_STATUS_DISPLAY[t.status] ?? t.status}
                 </span>
               )}
             </div>
-            <SheetTitle className="mt-1 text-base font-bold leading-snug">
-              {(t && (pick(t.headline, t.headline_ta) ?? t.headline)) ?? (loading ? "Loading…" : "Ticket")}
-            </SheetTitle>
           </div>
           {/* Language toggle */}
           {t && (t.summary_ta || t.headline_ta || t.citizen_ask_ta) && (
@@ -139,7 +139,18 @@ export default function TicketDetailDrawer({
         </div>
 
         {t ? (
-          <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            {/* Preview pane — uploads at-a-glance */}
+            <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[52%] lg:border-b-0 lg:border-r">
+              <div className="mb-3 flex flex-shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <Paperclip className="h-3.5 w-3.5" /> Uploads
+              </div>
+              <div className="min-h-0 flex-1">
+                <InlineAttachmentPreview attachments={t.attachments ?? []} audioTranscript={t.audio_transcript} />
+              </div>
+            </aside>
+
+            <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 min-h-0 flex-1 flex-col">
             {/* Tab bar */}
             <div className="border-b border-border bg-card px-6 pt-3">
               <TabsList className="bg-muted">
@@ -158,19 +169,6 @@ export default function TicketDetailDrawer({
             {/* ── Details ─────────────────────────────────────────────── */}
             <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
               <div className="space-y-4 p-6">
-                {/* Citizen strip */}
-                <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
-                  <InitialsAvatar name={t.citizen_name} className="h-10 w-10 text-sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-foreground">{t.citizen_name ?? "—"}</div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{t.citizen_mobile ?? "—"}</span>
-                      <span className="inline-flex items-center gap-1"><Hash className="h-3 w-3" />{t.token ?? "—"}</span>
-                      <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDate(t.created_at)}</span>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Summary — the briefing */}
                 {(t.summary || t.description) && (
                   <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
@@ -259,6 +257,22 @@ export default function TicketDetailDrawer({
                   </section>
                 )}
 
+                {/* Citizen — structured form */}
+                <Panel icon={User} title="Citizen">
+                  <div className="flex items-center gap-4 border-b border-border pb-5">
+                    <InitialsAvatar name={t.citizen_name} className="h-12 w-12 text-base" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-base font-semibold text-foreground">{t.citizen_name ?? "—"}</div>
+                      <div className="mt-0.5 text-xs uppercase tracking-wider text-muted-foreground">Citizen</div>
+                    </div>
+                  </div>
+                  <dl className="grid grid-cols-1 gap-x-8 gap-y-5 pt-5 sm:grid-cols-2">
+                    <Field icon={Phone} label="Mobile" value={t.citizen_mobile} mono />
+                    <Field icon={Hash} label="Token" value={t.token} mono accent="brand" />
+                    <Field icon={CalendarDays} label="Created" value={formatDate(t.created_at)} />
+                  </dl>
+                </Panel>
+
                 {/* Properties */}
                 <Panel icon={User} title="Properties">
                   <div className="grid grid-cols-2 gap-4">
@@ -319,15 +333,6 @@ export default function TicketDetailDrawer({
                   </div>
                 )}
 
-                {/* Attachments + voice */}
-                {((t.attachments && t.attachments.length > 0) || t.audio_transcript) && (
-                  <Panel icon={Paperclip} title="Attachments & recordings">
-                    <AttachmentGallery
-                      attachments={t.attachments ?? []}
-                      audioTranscript={t.audio_transcript}
-                    />
-                  </Panel>
-                )}
               </div>
             </TabsContent>
 
@@ -463,11 +468,38 @@ export default function TicketDetailDrawer({
               </Button>
             </div>
           </Tabs>
+          </div>
         ) : (
           <div className="flex flex-1 items-center justify-center text-muted-foreground">Loading…</div>
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function Field({
+  icon: Icon, label, value, mono, accent,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+  accent?: "brand" | "emerald" | "violet";
+}) {
+  const accentText =
+    accent === "brand"   ? "text-brand"   :
+    accent === "emerald" ? "text-emerald-600" :
+    accent === "violet"  ? "text-violet-600"  : "text-foreground";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <dt className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </dt>
+      <dd className={cn("pl-[22px] text-sm font-medium leading-relaxed", mono && "font-mono", accentText)}>
+        {value ?? <span className="text-muted-foreground">—</span>}
+      </dd>
+    </div>
   );
 }
 

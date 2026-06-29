@@ -46,25 +46,41 @@ AsyncSessionLocal = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency injection function for FastAPI routes.
-    
-    Yields an async database session and ensures proper cleanup.
-    Transaction is automatically committed on success or rolled back on exception.
-    
-    Usage in FastAPI route:
-        @router.get("/endpoint")
-        async def endpoint(db: AsyncSession = Depends(get_db)):
-            # Use db session here
-            pass
-    
-    Yields:
-        AsyncSession: Database session context
+
+    Yields an async database session and ensures proper cleanup, commit on
+    success and rollback on exception.
+
+    Why no `async with AsyncSessionLocal()`: when a client aborts mid-query
+    (very common now that the PA portal sets AbortController on every
+    appointments/tickets fetch), the session is left mid-`_connection_for_bind()`.
+    The context manager's `__aexit__` then calls `close()`, which raises
+    `IllegalStateChangeError` because the session can't legally transition
+    from "acquiring connection" to "closed". We manage the lifecycle
+    explicitly and swallow that close error — the connection pool's
+    `pool_pre_ping` will invalidate the bad connection on next checkout.
     """
-    async with AsyncSessionLocal() as session:
+    import asyncio
+    from sqlalchemy.exc import IllegalStateChangeError
+
+    session = AsyncSessionLocal()
+    try:
+        yield session
+        await session.commit()
+    except asyncio.CancelledError:
+        # Don't try to rollback — the session is mid-operation and any await
+        # on it will raise the same illegal-state error.
+        raise
+    except Exception:
         try:
-            yield session
-            await session.commit()
-        except Exception:
             await session.rollback()
-            raise
-        finally:
+        except (IllegalStateChangeError, asyncio.CancelledError):
+            # Same reasoning: session is in a state that can't be touched.
+            pass
+        raise
+    finally:
+        try:
             await session.close()
+        except (IllegalStateChangeError, asyncio.CancelledError):
+            # Cancellation race — pool_pre_ping will catch the bad conn
+            # on the next checkout.
+            pass

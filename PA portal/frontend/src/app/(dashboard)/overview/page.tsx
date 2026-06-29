@@ -128,7 +128,7 @@ export default function OverviewPage() {
     <>
       <TopBar />
       <main className="flex-1 overflow-y-auto bg-background">
-        <div className="mx-auto max-w-[1280px] space-y-4 p-5 animate-in-up">
+        <div className="space-y-3 px-3 py-4 animate-in-up">
           {/* Header */}
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -181,7 +181,7 @@ export default function OverviewPage() {
           )}
 
           {/* Charts */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             {/* Voice of the People — categories (hero) */}
             <Card className="p-4 lg:col-span-2">
               <ChartHead icon={Megaphone} title="Voice of the People" sub="Top categories — click a bar to filter" />
@@ -201,7 +201,7 @@ export default function OverviewPage() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             {/* Urgency */}
             <Card className="p-4">
               <ChartHead icon={Flame} title="Urgency mix" sub="Click a level to filter" />

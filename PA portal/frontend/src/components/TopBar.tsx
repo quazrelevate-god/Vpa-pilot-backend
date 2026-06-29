@@ -4,23 +4,36 @@ import { ShieldCheck } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 
-export default function TopBar({ rightSlot }: { rightSlot?: React.ReactNode }) {
+interface TopBarProps {
+  rightSlot?: React.ReactNode;
+  /** Page-specific title shown in the header. Falls back to "topbar.title". */
+  title?: string;
+  /** Page-specific subtitle shown above the title. Falls back to "topbar.subtitle". */
+  subtitle?: string;
+  /** Page-specific icon. Defaults to the brand shield. */
+  icon?: React.ReactNode;
+}
+
+export default function TopBar({ rightSlot, title, subtitle, icon }: TopBarProps) {
   const { lang, setLang, t } = useLang();
+  const headerTitle = title ?? t("topbar.title");
+  const headerSubtitle = subtitle ?? t("topbar.subtitle");
+  const headerIcon = icon ?? <ShieldCheck className="h-4 w-4" />;
 
   return (
     <header className="sticky top-0 z-30 h-16 flex-shrink-0 border-b border-border bg-card/80 backdrop-blur-md">
       <div className="flex h-full items-center justify-between px-6">
-        {/* Left — brand */}
+        {/* Left — page identity */}
         <div className="flex items-center gap-3">
-          <div className="grid h-8 w-8 place-items-center rounded-md bg-primary/5 text-primary ring-1 ring-primary/10">
-            <ShieldCheck className="h-4 w-4" />
+          <div className="grid h-9 w-9 place-items-center rounded-md bg-primary/5 text-primary ring-1 ring-primary/10">
+            {headerIcon}
           </div>
           <div className="leading-tight">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              {t("topbar.subtitle")}
+            <div className="text-lg font-bold tracking-tight text-sidebar">
+              {headerTitle}
             </div>
-            <div className="text-sm font-bold tracking-tight text-foreground">
-              {t("topbar.title")}
+            <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {headerSubtitle}
             </div>
           </div>
         </div>

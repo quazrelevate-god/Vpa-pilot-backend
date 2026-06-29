@@ -25,7 +25,7 @@ export async function fetchStats(dateFrom?: string, dateTo?: string): Promise<St
   return resp.json();
 }
 
-export async function fetchAppointments(opts: {
+export interface AppointmentListOpts {
   status?: string;
   search?: string;
   dateFrom?: string;
@@ -39,11 +39,11 @@ export async function fetchAppointments(opts: {
   sort?: string;
   page?: number;
   pageSize?: number;
-}): Promise<AppointmentsResponse> {
-  const params = new URLSearchParams({
-    status: opts.status ?? "All",
-    page: String(opts.page ?? 1),
-  });
+}
+
+function _appointmentParams(opts: AppointmentListOpts, includeStatus: boolean): URLSearchParams {
+  const params = new URLSearchParams();
+  if (includeStatus) params.set("status", opts.status ?? "All");
   if (opts.search) params.set("search", opts.search);
   if (opts.dateFrom) params.set("date_from", opts.dateFrom);
   if (opts.dateTo) params.set("date_to", opts.dateTo);
@@ -53,13 +53,37 @@ export async function fetchAppointments(opts: {
   if (opts.department) params.set("department", opts.department);
   if (opts.category) params.set("category", opts.category);
   if (opts.kind) params.set("kind", opts.kind);
+  return params;
+}
+
+export async function fetchAppointments(
+  opts: AppointmentListOpts,
+  signal?: AbortSignal,
+): Promise<AppointmentsResponse> {
+  const params = _appointmentParams(opts, true);
+  params.set("page", String(opts.page ?? 1));
   if (opts.sort) params.set("sort", opts.sort);
   if (opts.pageSize) params.set("page_size", String(opts.pageSize));
   const resp = await fetch(`/api/appointments?${params.toString()}`, {
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   if (!resp.ok) throw new Error(`appointments ${resp.status}: ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function fetchAppointmentCounts(
+  opts: Omit<AppointmentListOpts, "status" | "page" | "pageSize" | "sort">,
+  signal?: AbortSignal,
+): Promise<Record<string, number>> {
+  const params = _appointmentParams(opts, false);
+  const resp = await fetch(`/api/appointments/counts?${params.toString()}`, {
+    credentials: "include",
+    cache: "no-store",
+    signal,
+  });
+  if (!resp.ok) throw new Error(`appointment counts ${resp.status}: ${await resp.text()}`);
   return resp.json();
 }
 
@@ -79,9 +103,9 @@ export interface TicketListFilters {
   page?: number;
 }
 
-export async function fetchTickets(f: TicketListFilters = {}): Promise<TicketsResponse> {
-  const p = new URLSearchParams({ page: String(f.page ?? 1) });
-  if (f.status) p.set("status", f.status);
+function _ticketParams(f: TicketListFilters, includeStatus: boolean): URLSearchParams {
+  const p = new URLSearchParams();
+  if (includeStatus && f.status) p.set("status", f.status);
   if (f.priority) p.set("priority", f.priority);
   if (f.urgency) p.set("urgency", f.urgency);
   if (f.department) p.set("department", f.department);
@@ -91,8 +115,24 @@ export async function fetchTickets(f: TicketListFilters = {}): Promise<TicketsRe
   if (f.search) p.set("search", f.search);
   if (f.dateFrom) p.set("date_from", f.dateFrom);
   if (f.dateTo) p.set("date_to", f.dateTo);
-  const r = await fetch(`/api/tickets?${p.toString()}`, { credentials: "include", cache: "no-store" });
+  return p;
+}
+
+export async function fetchTickets(f: TicketListFilters = {}, signal?: AbortSignal): Promise<TicketsResponse> {
+  const p = _ticketParams(f, true);
+  p.set("page", String(f.page ?? 1));
+  const r = await fetch(`/api/tickets?${p.toString()}`, { credentials: "include", cache: "no-store", signal });
   if (!r.ok) throw new Error(`tickets ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+export async function fetchTicketsCounts(
+  f: Omit<TicketListFilters, "status" | "page">,
+  signal?: AbortSignal,
+): Promise<Record<string, number>> {
+  const p = _ticketParams(f, false);
+  const r = await fetch(`/api/tickets/counts?${p.toString()}`, { credentials: "include", cache: "no-store", signal });
+  if (!r.ok) throw new Error(`ticket counts ${r.status}: ${await r.text()}`);
   return r.json();
 }
 

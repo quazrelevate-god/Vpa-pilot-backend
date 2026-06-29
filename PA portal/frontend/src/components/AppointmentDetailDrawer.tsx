@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { InitialsAvatar } from "@/components/ui/avatar";
-import { AttachmentGallery } from "@/components/ui/attachment-gallery";
+import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { urgencyOptions, deptOptions, categoryOptions, DEPT_DISPLAY, CATEGORY_DISPLAY } from "@/lib/enums";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 
@@ -113,7 +113,7 @@ export default function AppointmentDetailDrawer({
       <SheetContent
         side="right"
         hideClose
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-[60vw]"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[95vw]"
       >
         {!a ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground">Loading…</div>
@@ -122,20 +122,22 @@ export default function AppointmentDetailDrawer({
             {/* Header */}
             <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-brand">{String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}</span>
-                  <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", STATUS_COLOR[a.status])}>
+                <SheetTitle className="text-xl font-bold leading-snug tracking-tight">
+                  {pick(a.headline, a.headline_ta) ?? "Appointment details"}
+                </SheetTitle>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-base font-semibold text-brand">
+                    {String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}
+                  </span>
+                  <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", STATUS_COLOR[a.status])}>
                     {a.status}
                   </span>
                   {a.urgency && (
-                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
+                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-orange-700">
                       {a.urgency}
                     </span>
                   )}
                 </div>
-                <SheetTitle className="mt-1 text-base font-bold leading-snug">
-                  {pick(a.headline, a.headline_ta) ?? "Appointment details"}
-                </SheetTitle>
               </div>
 
               {/* Language toggle */}
@@ -146,7 +148,18 @@ export default function AppointmentDetailDrawer({
               </SheetClose>
             </div>
 
-            <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+              {/* Preview pane — uploads at-a-glance */}
+              <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[52%] lg:border-b-0 lg:border-r">
+                <div className="mb-3 flex flex-shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <Mic className="h-3.5 w-3.5" /> Uploads
+                </div>
+                <div className="min-h-0 flex-1">
+                  <InlineAttachmentPreview attachments={a.attachments ?? []} />
+                </div>
+              </aside>
+
+              <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 min-h-0 flex-1 flex-col">
               {/* Tab bar */}
               <div className="border-b border-border bg-card px-6 pt-3">
                 <TabsList className="bg-muted">
@@ -165,34 +178,6 @@ export default function AppointmentDetailDrawer({
               {/* ── Details tab ─────────────────────────────────────────── */}
               <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
                 <div className="space-y-4 p-6">
-                {/* Citizen strip — urgency chip pinned top-right */}
-                <div className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
-                  <InitialsAvatar name={a.name} className="h-10 w-10 text-sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-foreground">{a.name ?? "—"}</div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{a.mobile ?? "—"}</span>
-                      <span className="inline-flex items-center gap-1"><Hash className="h-3 w-3" />{String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}</span>
-                      <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDate(a.created_at)}</span>
-                      {a.appointment_time && (
-                        <span className="inline-flex items-center gap-1 text-emerald-600">
-                          <CalendarDays className="h-3 w-3" />{formatDateTime(a.appointment_time)}
-                        </span>
-                      )}
-                      {a.appointment_time && a.num_persons && a.num_persons > 0 && (
-                        <span className="inline-flex items-center gap-1 text-violet-600">
-                          <Users className="h-3 w-3" />{a.num_persons} {a.num_persons === 1 ? "person" : "persons"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {currentUrgency && (
-                    <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-orange-700">
-                      <ShieldAlert className="h-3 w-3" />{currentUrgency} urgency
-                    </span>
-                  )}
-                </div>
-
                 {/* Summary — the briefing */}
                 {(a.summary || a.summary_ta || a.description) && (
                   <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
@@ -259,6 +244,49 @@ export default function AppointmentDetailDrawer({
                   </section>
                 )}
 
+                {/* Citizen — structured form */}
+                <Panel icon={User} title="Citizen">
+                  <div className="flex items-center gap-4 border-b border-border pb-5">
+                    <InitialsAvatar name={a.name} className="h-12 w-12 text-base" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-base font-semibold text-foreground">{a.name ?? "—"}</div>
+                      <div className="mt-0.5 text-xs uppercase tracking-wider text-muted-foreground">Citizen</div>
+                    </div>
+                    {currentUrgency && (
+                      <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-orange-700">
+                        <ShieldAlert className="h-3.5 w-3.5" />{currentUrgency} urgency
+                      </span>
+                    )}
+                  </div>
+                  <dl className="grid grid-cols-1 gap-x-8 gap-y-5 pt-5 sm:grid-cols-2">
+                    <Field icon={Phone} label="Mobile" value={a.mobile} mono />
+                    <Field
+                      icon={Hash}
+                      label="Token"
+                      value={String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}
+                      mono
+                      accent="brand"
+                    />
+                    <Field icon={CalendarDays} label="Submitted" value={formatDate(a.created_at)} />
+                    {a.appointment_time && (
+                      <Field
+                        icon={CalendarDays}
+                        label="Appointment"
+                        value={formatDateTime(a.appointment_time)}
+                        accent="emerald"
+                      />
+                    )}
+                    {a.appointment_time && a.num_persons && a.num_persons > 0 && (
+                      <Field
+                        icon={Users}
+                        label="Visitors"
+                        value={`${a.num_persons} ${a.num_persons === 1 ? "person" : "persons"}`}
+                        accent="violet"
+                      />
+                    )}
+                  </dl>
+                </Panel>
+
                 {/* Citizen's description / Audio transcript */}
                 {(a.description || a.audio_transcript) && (
                   <Panel icon={FileText} title="Citizen's description">
@@ -267,13 +295,6 @@ export default function AppointmentDetailDrawer({
                     </p>
                   </Panel>
                 )}
-
-                {/* Attachments + audio */}
-                <Panel icon={Mic} title="Attachments & recordings">
-                  <AttachmentGallery
-                    attachments={a.attachments ?? []}
-                  />
-                </Panel>
 
                 {/* Properties — admin overrides for AI-derived fields */}
                 <Panel icon={User} title="Properties">
@@ -427,10 +448,37 @@ export default function AppointmentDetailDrawer({
                 </div>
               </TabsContent>
             </Tabs>
+            </div>
           </>
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function Field({
+  icon: Icon, label, value, mono, accent,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+  accent?: "brand" | "emerald" | "violet";
+}) {
+  const accentText =
+    accent === "brand"   ? "text-brand"   :
+    accent === "emerald" ? "text-emerald-600" :
+    accent === "violet"  ? "text-violet-600"  : "text-foreground";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <dt className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </dt>
+      <dd className={cn("pl-[22px] text-sm font-medium leading-relaxed", mono && "font-mono", accentText)}>
+        {value ?? <span className="text-muted-foreground">—</span>}
+      </dd>
+    </div>
   );
 }
 
