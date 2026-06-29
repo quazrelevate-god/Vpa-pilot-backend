@@ -170,6 +170,8 @@ async def api_appointments(
     urgency: str = "",
     department: str = "",
     category: str = "",
+    kind: str = "",
+    sort: str = "",
     page: int = 1,
     page_size: int = 25,
     db: AsyncSession = Depends(get_db),
@@ -186,6 +188,8 @@ async def api_appointments(
         urgency=urgency or None,
         department=department or None,
         category=category or None,
+        kind=kind or None,
+        sort=sort or None,
         page=page,
         page_size=min(page_size, 5000),  # cap at 5000 for export safety
     )

@@ -35,6 +35,8 @@ export async function fetchAppointments(opts: {
   urgency?: string;
   department?: string;
   category?: string;
+  kind?: string;
+  sort?: string;
   page?: number;
   pageSize?: number;
 }): Promise<AppointmentsResponse> {
@@ -50,6 +52,8 @@ export async function fetchAppointments(opts: {
   if (opts.urgency) params.set("urgency", opts.urgency);
   if (opts.department) params.set("department", opts.department);
   if (opts.category) params.set("category", opts.category);
+  if (opts.kind) params.set("kind", opts.kind);
+  if (opts.sort) params.set("sort", opts.sort);
   if (opts.pageSize) params.set("page_size", String(opts.pageSize));
   const resp = await fetch(`/api/appointments?${params.toString()}`, {
     credentials: "include",

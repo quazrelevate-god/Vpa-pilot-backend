@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func, select, or_
+from sqlalchemy import func, select, or_, and_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -335,37 +335,36 @@ async def get_appointments(
     urgency: Optional[str] = None,
     department: Optional[str] = None,
     category: Optional[str] = None,
+    kind: Optional[str] = None,
+    sort: Optional[str] = None,
     page: int = 1,
     page_size: int = 25,
 ) -> Dict[str, Any]:
     """
     Paginated appointment list with citizen name, summary, and attachments.
     Returns dict with `items` list and `total` count.
+
+    `kind`: "meeting" → only meeting requests (schedule_meeting=True);
+            "petition" → only direct petitions (schedule_meeting=False);
+            None/other → both (legacy behaviour).
+    `sort`: "urgency" → Critical→High→Medium→Low (then newest); else newest first.
     """
     from datetime import datetime as dt
-    # Scheduled tab: sort by appointment date+time ascending so closest slot is first.
-    # All other tabs: newest submission first.
     is_scheduled_tab = status_filter == "Scheduled"
-    if is_scheduled_tab:
-        stmt = (
-            select(Appointment)
-            .options(
-                selectinload(Appointment.citizen),
-                selectinload(Appointment.attachments),
-                selectinload(Appointment.grievance_summary),
-            )
-            .order_by(Appointment.scheduled_date.asc(), Appointment.scheduled_start_time.asc())
+    stmt = (
+        select(Appointment)
+        .options(
+            selectinload(Appointment.citizen),
+            selectinload(Appointment.attachments),
+            selectinload(Appointment.grievance_summary),
         )
-    else:
-        stmt = (
-            select(Appointment)
-            .options(
-                selectinload(Appointment.citizen),
-                selectinload(Appointment.attachments),
-                selectinload(Appointment.grievance_summary),
-            )
-            .order_by(Appointment.created_at.desc())
-        )
+    )
+
+    # Kind: meeting requests vs direct petitions (ordering is applied later).
+    if kind == "meeting":
+        stmt = stmt.where(Appointment.schedule_meeting == True)   # noqa: E712
+    elif kind == "petition":
+        stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
 
     # Submission date filter (when citizen submitted the form)
     if date_from:
@@ -425,6 +424,30 @@ async def get_appointments(
             )
         else:
             stmt = stmt.where(Appointment.id.in_(gsr_sub))
+
+    # ── Ordering ────────────────────────────────────────────────────────────────
+    if sort == "urgency":
+        # Critical → High → Medium → Low (then newest). Urgency lives on the latest
+        # AI summary, so join it just for the sort key.
+        urgency_rank = case(
+            (GrievanceSummaryRecord.urgency == "critical", 0),
+            (GrievanceSummaryRecord.urgency == "high", 1),
+            (GrievanceSummaryRecord.urgency == "medium", 2),
+            (GrievanceSummaryRecord.urgency == "low", 3),
+            else_=4,
+        )
+        stmt = stmt.outerjoin(
+            GrievanceSummaryRecord,
+            and_(
+                GrievanceSummaryRecord.appointment_id == Appointment.id,
+                GrievanceSummaryRecord.is_latest == True,  # noqa: E712
+            ),
+        ).order_by(urgency_rank.asc(), Appointment.created_at.desc())
+    elif is_scheduled_tab:
+        # Closest meeting slot first.
+        stmt = stmt.order_by(Appointment.scheduled_date.asc(), Appointment.scheduled_start_time.asc())
+    else:
+        stmt = stmt.order_by(Appointment.created_at.desc())
 
     # ── Search path ───────────────────────────────────────────────────────────
     # Name and mobile are encrypted, so they can't be matched in SQL. Decrypt-and-
@@ -489,6 +512,7 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
         "status_db": appt.status,
         "status": _resolve_display_status(appt),
+        "source": appt.source,
         "created_at": utc_iso(appt.created_at),
         "scheduled_date": (appt.scheduled_date.isoformat() if appt.scheduled_date else None),
         "appointment_time": (

@@ -58,6 +58,7 @@ export interface AppointmentRow {
   department?: string | null;     // primary dept — snake_case Department enum key
   secondary_departments?: string[]; // 0–2 additional depts to loop in
   status: AppointmentStatus;
+  source?: string | null;    // intake channel: qr_citizen | ai_scan | manual_staff
   created_at: string;        // pre-formatted timestamp
   scheduled_date?: string | null;  // ISO date of the meeting slot (YYYY-MM-DD)
   appointment_time?: string;        // personal sub-slot ISO datetime

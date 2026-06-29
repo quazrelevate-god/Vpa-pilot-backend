@@ -4,13 +4,17 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, Languages, ShieldAlert,
+  QrCode, ScanLine, UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
 import { cn } from "@/lib/utils";
+import { fetchAppointments } from "@/lib/api";
+import type { AppointmentRow } from "@/lib/types";
 
 interface Upload {
   id: number; filename: string; mime_type: string; file_url: string | null;
@@ -24,9 +28,27 @@ interface Upload {
   error: string | null; ticket_number: string | null; appointment_id: number | null; created_at: string | null;
 }
 
+type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED";
+
+// One normalized row for the inbox, regardless of origin.
+interface InboxRow {
+  kind: "upload" | "petition";
+  id: number;
+  name: string | null;
+  mobile: string | null;
+  category: string | null;
+  urgency: string | null;
+  statusKey: StatusKey;
+  source: string;            // qr_citizen | ai_scan | manual_staff
+  created_at: string | null;
+  ticket_number: string | null;
+  upload?: Upload;           // kind === "upload"
+  petition?: AppointmentRow; // kind === "petition"
+}
+
 const CATEGORIES = ["action_required","proposals","transfer_requests","pension_requests","school_admission","job_requests","rti","associations_unions","school_upgradation","invitation","greetings","general","other"];
 const URGENCIES = ["low", "medium", "high", "critical"];
-const STATUS_FILTERS = ["AWAITING_REVIEW", "REVIEWED", "FAILED", "PROCESSING", "QUEUED"];
+const STATUS_FILTERS: StatusKey[] = ["AWAITING_REVIEW", "REVIEWED", "FAILED", "PROCESSING", "QUEUED"];
 
 const STATUS_META: Record<string, { label: string; cls: string; icon: typeof Clock }> = {
   QUEUED:          { label: "Queued",          cls: "bg-slate-100 text-slate-600",     icon: Clock },
@@ -39,12 +61,27 @@ const URGENCY_CLS: Record<string, string> = {
   critical: "bg-red-100 text-red-700", high: "bg-orange-100 text-orange-700",
   medium: "bg-amber-100 text-amber-700", low: "bg-slate-100 text-slate-600",
 };
+
+// Where the petition came from — shown so PAs can tell a citizen QR submission
+// apart from a staff-scanned document at a glance.
+const SOURCE_META: Record<string, { label: string; cls: string; icon: typeof QrCode }> = {
+  qr_citizen:  { label: "Citizen QR",       cls: "bg-sky-100 text-sky-700",       icon: QrCode },
+  ai_scan:     { label: "Scanned petition", cls: "bg-violet-100 text-violet-700", icon: ScanLine },
+  manual_staff:{ label: "Staff entry",      cls: "bg-slate-100 text-slate-600",   icon: UserCog },
+};
+
 const pretty = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 const api = (p: string) => `/api/ai-uploads${p}`;
 
+function petitionStatusKey(status: string): StatusKey {
+  return status === "Reviewed" ? "REVIEWED" : "AWAITING_REVIEW";
+}
+
 export default function AiReviewPage() {
   const [uploads, setUploads] = useState<Upload[]>([]);
-  const [review, setReview] = useState<Upload | null>(null);
+  const [petitions, setPetitions] = useState<AppointmentRow[]>([]);
+  const [review, setReview] = useState<Upload | null>(null);            // upload review modal
+  const [reviewPetition, setReviewPetition] = useState<AppointmentRow | null>(null); // QR petition drawer
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Upload>>({});
   const [lang, setLang] = useState<"en" | "ta">("en");
@@ -52,14 +89,22 @@ export default function AiReviewPage() {
   // filters
   const [fStatus, setFStatus] = useState("");
   const [fUrgency, setFUrgency] = useState("");
+  const [fSource, setFSource] = useState("");
   const [q, setQ] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(api(""), { credentials: "include" });
-      const d = await r.json();
-      if (Array.isArray(d)) setUploads(d);
-    } catch { /* keep */ }
+      const [uploadsRes, petitionsRes] = await Promise.allSettled([
+        fetch(api(""), { credentials: "include" }).then(r => r.json()),
+        // Direct petitions live in the appointments table; ai_scan ones are already
+        // represented by the upload rows, so exclude them to avoid double-listing.
+        fetchAppointments({ kind: "petition", status: "All", pageSize: 2000 }),
+      ]);
+      if (uploadsRes.status === "fulfilled" && Array.isArray(uploadsRes.value)) setUploads(uploadsRes.value);
+      if (petitionsRes.status === "fulfilled") {
+        setPetitions((petitionsRes.value.items || []).filter((p: AppointmentRow) => p.source !== "ai_scan"));
+      }
+    } catch { /* keep last good */ }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -76,19 +121,43 @@ export default function AiReviewPage() {
     }
   }, [uploads]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Merge both origins into one inbox, newest first.
+  const rows = useMemo<InboxRow[]>(() => {
+    const up: InboxRow[] = uploads.map(u => ({
+      kind: "upload", id: u.id, name: u.name, mobile: u.mobile, category: u.category,
+      urgency: u.urgency, statusKey: u.status, source: "ai_scan",
+      created_at: u.created_at, ticket_number: u.ticket_number, upload: u,
+    }));
+    const pet: InboxRow[] = petitions.map(p => ({
+      kind: "petition", id: p.id, name: p.name, mobile: p.mobile,
+      category: p.category_label ?? p.category, urgency: p.urgency ?? null,
+      statusKey: petitionStatusKey(p.status), source: p.source || "qr_citizen",
+      created_at: p.created_at, ticket_number: null, petition: p,
+    }));
+    return [...up, ...pet].sort((a, b) =>
+      (b.created_at || "").localeCompare(a.created_at || ""));
+  }, [uploads, petitions]);
+
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
-    return uploads.filter(u =>
-      (!fStatus || u.status === fStatus) &&
-      (!fUrgency || u.urgency === fUrgency) &&
-      (!query || (u.name || "").toLowerCase().includes(query) || (u.mobile || "").includes(query) || (u.filename || "").toLowerCase().includes(query))
+    return rows.filter(r =>
+      (!fStatus || r.statusKey === fStatus) &&
+      (!fUrgency || r.urgency === fUrgency) &&
+      (!fSource || r.source === fSource) &&
+      (!query || (r.name || "").toLowerCase().includes(query) || (r.mobile || "").includes(query))
     );
-  }, [uploads, fStatus, fUrgency, q]);
+  }, [rows, fStatus, fUrgency, fSource, q]);
 
   const failedCount = uploads.filter(u => u.status === "FAILED").length;
+  const awaitingCount = rows.filter(r => r.statusKey === "AWAITING_REVIEW").length;
 
-  function openRow(u: Upload) {
-    if (u.status === "QUEUED" || u.status === "PROCESSING") return;
+  function openRow(r: InboxRow) {
+    if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
+    if (r.kind === "petition" && r.petition) {
+      setReviewPetition(r.petition);
+      return;
+    }
+    const u = r.upload!;
     setReview(u); setEditing(false); setLang("en");
     setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, urgency: u.urgency, summary: u.summary });
   }
@@ -139,18 +208,29 @@ export default function AiReviewPage() {
         <div className="mx-auto max-w-[1200px] space-y-5 p-6 animate-in-up">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
-              <ClipboardCheck className="h-6 w-6 text-violet-600" /> AI Review
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-violet-100 text-violet-600">
+                <ClipboardCheck className="h-5 w-5" />
+              </span>
+              Petition Review
             </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">Click a row to review the petition, verify the details, and approve into a ticket.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Every petition to verify and approve into a ticket — citizen QR submissions and scanned uploads in one place.
+              {awaitingCount > 0 && <span className="ml-1 font-medium text-amber-700">{awaitingCount} awaiting review.</span>}
+            </p>
           </div>
 
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / phone / file"
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / phone"
                 className="w-56 rounded-lg border border-input bg-card py-2 pl-8 pr-3 text-sm focus:border-violet-500 focus:outline-none" />
             </div>
+            <select value={fSource} onChange={e => setFSource(e.target.value)}
+              className="rounded-lg border border-input bg-card px-3 py-2 text-sm focus:border-violet-500 focus:outline-none">
+              <option value="">All sources</option>
+              {Object.entries(SOURCE_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+            </select>
             <select value={fStatus} onChange={e => setFStatus(e.target.value)}
               className="rounded-lg border border-input bg-card px-3 py-2 text-sm focus:border-violet-500 focus:outline-none">
               <option value="">All statuses</option>
@@ -161,8 +241,8 @@ export default function AiReviewPage() {
               <option value="">All urgency</option>
               {URGENCIES.map(u => <option key={u} value={u}>{pretty(u)}</option>)}
             </select>
-            {(fStatus || fUrgency || q) && (
-              <button onClick={() => { setFStatus(""); setFUrgency(""); setQ(""); }} className="text-xs font-medium text-muted-foreground hover:text-foreground">Clear</button>
+            {(fStatus || fUrgency || fSource || q) && (
+              <button onClick={() => { setFStatus(""); setFUrgency(""); setFSource(""); setQ(""); }} className="text-xs font-medium text-muted-foreground hover:text-foreground">Clear</button>
             )}
             <div className="ml-auto flex items-center gap-2">
               {failedCount > 0 && (
@@ -177,11 +257,12 @@ export default function AiReviewPage() {
           {/* Table */}
           <Card className="overflow-hidden p-0">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2.5">Name</th>
                     <th className="px-4 py-2.5">Phone</th>
+                    <th className="px-4 py-2.5">Source</th>
                     <th className="px-4 py-2.5">Category</th>
                     <th className="px-4 py-2.5">Urgency</th>
                     <th className="px-4 py-2.5">Status</th>
@@ -190,30 +271,37 @@ export default function AiReviewPage() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                      {uploads.length === 0 ? "Nothing to review yet — upload petitions in AI Uploads." : "No rows match the filters."}
+                    <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                      {rows.length === 0 ? "Nothing to review yet." : "No rows match the filters."}
                     </td></tr>
-                  ) : filtered.map(u => {
-                    const m = STATUS_META[u.status]; const Icon = m.icon;
-                    const clickable = u.status === "AWAITING_REVIEW" || u.status === "REVIEWED" || u.status === "FAILED";
+                  ) : filtered.map(r => {
+                    const m = STATUS_META[r.statusKey]; const Icon = m.icon;
+                    const sm = SOURCE_META[r.source] ?? { label: r.source, cls: "bg-muted text-muted-foreground", icon: FileText };
+                    const SIcon = sm.icon;
+                    const clickable = r.statusKey === "AWAITING_REVIEW" || r.statusKey === "REVIEWED" || r.statusKey === "FAILED";
                     return (
-                      <tr key={u.id} onClick={() => openRow(u)}
+                      <tr key={`${r.kind}-${r.id}`} onClick={() => openRow(r)}
                         className={cn("border-t border-border/70", clickable ? "cursor-pointer hover:bg-muted/40" : "opacity-80")}>
-                        <td className="px-4 py-2.5 font-medium text-foreground">{u.name || <span className="text-muted-foreground">—</span>}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground">{u.mobile || "—"}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground">{u.category ? pretty(u.category) : "—"}</td>
-                        <td className="px-4 py-2.5">{u.urgency ? <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", URGENCY_CLS[u.urgency])}>{u.urgency}</span> : "—"}</td>
+                        <td className="px-4 py-2.5 font-medium text-foreground">{r.name || <span className="text-muted-foreground">—</span>}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{r.mobile || "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold", sm.cls)}>
+                            <SIcon className="h-3 w-3" /> {sm.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{r.category ? pretty(r.category) : "—"}</td>
+                        <td className="px-4 py-2.5">{r.urgency ? <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", URGENCY_CLS[r.urgency])}>{r.urgency}</span> : "—"}</td>
                         <td className="px-4 py-2.5">
                           <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold", m.cls)}>
-                            <Icon className={cn("h-3 w-3", u.status === "PROCESSING" && "animate-spin")} /> {m.label}
+                            <Icon className={cn("h-3 w-3", r.statusKey === "PROCESSING" && "animate-spin")} /> {m.label}
                           </span>
-                          {u.ticket_number && <span className="ml-1 font-mono text-[11px] text-emerald-600">{u.ticket_number}</span>}
+                          {r.ticket_number && <span className="ml-1 font-mono text-[11px] text-emerald-600">{r.ticket_number}</span>}
                         </td>
                         <td className="px-4 py-2.5 text-right" onClick={e => e.stopPropagation()}>
-                          {u.status === "AWAITING_REVIEW" && <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => openRow(u)}>Review</Button>}
-                          {u.status === "REVIEWED" && <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><TicketIcon className="h-3.5 w-3.5" /> Done</span>}
-                          {u.status === "FAILED" && <Button size="sm" variant="outline" onClick={() => retry([u.id])}><RefreshCw className="mr-1 h-3.5 w-3.5" /> Retry</Button>}
-                          {(u.status === "QUEUED" || u.status === "PROCESSING") && <span className="text-xs text-muted-foreground">…</span>}
+                          {r.statusKey === "AWAITING_REVIEW" && <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => openRow(r)}>Review</Button>}
+                          {r.statusKey === "REVIEWED" && <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><TicketIcon className="h-3.5 w-3.5" /> Done</span>}
+                          {r.statusKey === "FAILED" && <Button size="sm" variant="outline" onClick={() => retry([r.id])}><RefreshCw className="mr-1 h-3.5 w-3.5" /> Retry</Button>}
+                          {(r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") && <span className="text-xs text-muted-foreground">…</span>}
                         </td>
                       </tr>
                     );
@@ -225,7 +313,7 @@ export default function AiReviewPage() {
         </div>
       </main>
 
-      {/* Detail — document left, fields right */}
+      {/* Upload review — document left, fields right */}
       {review && (
         <div className="fixed inset-0 z-50 flex bg-slate-900/50" onClick={() => !busy && setReview(null)}>
           <div className="m-auto flex h-[90vh] w-[95vw] max-w-[1180px] overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -326,6 +414,13 @@ export default function AiReviewPage() {
           </div>
         </div>
       )}
+
+      {/* QR / staff petition review — reuses the appointment detail drawer */}
+      <AppointmentDetailDrawer
+        row={reviewPetition}
+        onClose={() => setReviewPetition(null)}
+        onStatusChange={() => { load(); }}
+      />
     </>
   );
 }

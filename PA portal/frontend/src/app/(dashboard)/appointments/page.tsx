@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Download, Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron,
-  CalendarClock, CalendarDays, CalendarRange, X, Users,
+  CalendarClock, CalendarDays, CalendarRange, X, Users, ArrowUpDown, ArrowDownNarrowWide,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,21 +28,22 @@ import type { AppointmentRow, AppointmentStatus } from "@/lib/types";
 import { urgencyOptions, deptOptions, categoryOptions } from "@/lib/enums";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const TABS = ["All", "Awaiting Review", "Scheduled", "Waiting", "Rescheduled", "Reviewed"] as const;
+// Appointments is meeting-centric. Direct petitions (Awaiting Review / Reviewed)
+// live in Petition Review, so the tabs here are meeting states only.
+const TABS = ["Scheduled", "Waiting", "Rescheduled", "All"] as const;
 type Tab = (typeof TABS)[number];
+const DEFAULT_TAB: Tab = "Scheduled";
 const PAGE_SIZE = 25;
 
 const TAB_KEYS: Record<Tab, string> = {
-  "All": "appts.tabAll",
-  "Awaiting Review": "appts.tabAwaiting",
   "Scheduled": "appts.tabScheduled",
   "Waiting": "appts.tabWaiting",
   "Rescheduled": "appts.tabRescheduled",
-  "Reviewed": "appts.tabReviewed",
+  "All": "appts.tabAll",
 };
 
 const STATUS_OPTIONS: AppointmentStatus[] = [
-  "Waiting", "Scheduled", "Awaiting Review", "Reviewed", "Rescheduled",
+  "Scheduled", "Waiting", "Rescheduled",
 ];
 
 function statusClass(s: string) {
@@ -97,9 +98,10 @@ function AppointmentsPageInner() {
   const { t } = useLang();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get("tab") as Tab) || "All";
-  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : "All");
+  const initialTab = (searchParams.get("tab") as Tab) || DEFAULT_TAB;
+  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : DEFAULT_TAB);
   const [search, setSearch] = useState("");
+  const [sortByUrgency, setSortByUrgency] = useState(false);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<AppointmentRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -121,11 +123,13 @@ function AppointmentsPageInner() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const secondary = useMemo(() => ({
+    kind: "meeting" as const,
     search: search || undefined,
     urgency: urgency || undefined, department: department || undefined, category: category || undefined,
     dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
     apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
-  }), [search, urgency, department, category, dateFrom, dateTo, apptDateFrom, apptDateTo]);
+    sort: sortByUrgency ? "urgency" : undefined,
+  }), [search, urgency, department, category, dateFrom, dateTo, apptDateFrom, apptDateTo, sortByUrgency]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -311,7 +315,21 @@ function AppointmentsPageInner() {
                   <tr className="border-b border-border">
                     <th className={th}>{t("appts.colName")}</th>
                     <th className={cn(th, "w-40")}>{t("appts.colCategory")}</th>
-                    <th className={cn(th, "w-24")}>{t("appts.colUrgency")}</th>
+                    <th className={cn(th, "w-24")}>
+                      <button
+                        onClick={() => { setPage(1); setSortByUrgency((s) => !s); }}
+                        className={cn(
+                          "inline-flex items-center gap-1 font-semibold uppercase tracking-wider transition-colors hover:text-foreground",
+                          sortByUrgency ? "text-brand" : "text-muted-foreground"
+                        )}
+                        title={sortByUrgency ? "Sorted by urgency (Critical first) — click to reset" : "Sort by urgency"}
+                      >
+                        {t("appts.colUrgency")}
+                        {sortByUrgency
+                          ? <ArrowDownNarrowWide className="h-3.5 w-3.5" />
+                          : <ArrowUpDown className="h-3 w-3 opacity-60" />}
+                      </button>
+                    </th>
                     <th className={cn(th, "w-32")}>{t("label.date")}</th>
                     <th className={cn(th, "w-44")}>{t("appts.colAppointment")}</th>
                     <th className={cn(th, "w-20 text-center")}><Users className="mx-auto h-3.5 w-3.5" /></th>
