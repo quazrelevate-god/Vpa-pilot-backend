@@ -168,9 +168,10 @@ class Citizen(Base):
     mobile_index = Column(
         String(64),
         nullable=True,
+        unique=True,
         index=True,
         comment="Deterministic HMAC of the mobile — for return-citizen lookup/dedup "
-                "(Fernet ciphertext can't be compared directly)"
+                "(Fernet ciphertext can't be compared directly). UNIQUE: one citizen per mobile."
     )
 
     ward_or_region = Column(
