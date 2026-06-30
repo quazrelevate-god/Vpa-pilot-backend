@@ -229,3 +229,6 @@ uploads/
 
 env/
 __init__.py
+
+# Local test petition images (folder-upload testing)
+Testdata/
