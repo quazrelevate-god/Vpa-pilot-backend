@@ -8,7 +8,8 @@ Usage:
     python find_test_data.py                    # show all appointments
     python find_test_data.py --name "kumar"     # filter by name (case-insensitive)
     python find_test_data.py --topic "health"   # filter by grievance category
-    python find_test_data.py --name "test" --topic "infra"  # combine filters
+    python find_test_data.py --date-from 2026-07-01 --date-to 2026-07-01  # single day
+    python find_test_data.py --name "test" --date-from 2026-06-25         # combine filters
 """
 import asyncio
 import sys
@@ -39,7 +40,12 @@ def decode_field(encoded: str | None) -> str:
     return decrypt(encoded) or ""
 
 
-async def find_test_data(name_filter: str = "", topic_filter: str = ""):
+async def find_test_data(
+    name_filter: str = "",
+    topic_filter: str = "",
+    date_from: str = "",
+    date_to: str = "",
+):
     async with AsyncSessionLocal() as db:
         stmt = (
             select(Appointment)
@@ -56,6 +62,23 @@ async def find_test_data(name_filter: str = "", topic_filter: str = ""):
             stmt = stmt.where(
                 func.lower(Appointment.grievance_category).contains(topic_filter.lower())
             )
+
+        # Date range on created_at — matches the /dashboard/api/appointments contract
+        # (inclusive on both ends; date_to expands to end-of-day).
+        if date_from:
+            try:
+                stmt = stmt.where(Appointment.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+            except ValueError:
+                print(f"Invalid --date-from '{date_from}', expected YYYY-MM-DD")
+                return
+        if date_to:
+            try:
+                stmt = stmt.where(
+                    Appointment.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S")
+                )
+            except ValueError:
+                print(f"Invalid --date-to '{date_to}', expected YYYY-MM-DD")
+                return
 
         result = await db.execute(stmt)
         appointments = result.scalars().all()
@@ -108,6 +131,8 @@ async def find_test_data(name_filter: str = "", topic_filter: str = ""):
             print(f"  Name filter: '{name_filter}'")
         if topic_filter:
             print(f"  Topic filter: '{topic_filter}'")
+        if date_from or date_to:
+            print(f"  Date range (created_at): {date_from or '...'} → {date_to or '...'}")
         return
 
     print(f"\n{'='*100}")
@@ -116,6 +141,8 @@ async def find_test_data(name_filter: str = "", topic_filter: str = ""):
         print(f"  Name filter: '{name_filter}'")
     if topic_filter:
         print(f"  Topic/category filter: '{topic_filter}'")
+    if date_from or date_to:
+        print(f"  Date range (created_at): {date_from or '...'} → {date_to or '...'}")
     print(f"{'='*100}\n")
 
     for i, row in enumerate(rows, 1):
@@ -142,9 +169,16 @@ def main():
     parser = argparse.ArgumentParser(description="Find and print test data from the database")
     parser.add_argument("--name", "-n", default="", help="Filter by citizen name (case-insensitive substring match)")
     parser.add_argument("--topic", "-t", default="", help="Filter by grievance category/topic (case-insensitive)")
+    parser.add_argument("--date-from", default="", help="Only rows created on/after this date (YYYY-MM-DD)")
+    parser.add_argument("--date-to", default="", help="Only rows created on/before this date (YYYY-MM-DD, inclusive)")
     args = parser.parse_args()
 
-    asyncio.run(find_test_data(name_filter=args.name, topic_filter=args.topic))
+    asyncio.run(find_test_data(
+        name_filter=args.name,
+        topic_filter=args.topic,
+        date_from=args.date_from,
+        date_to=args.date_to,
+    ))
 
 
 if __name__ == "__main__":
