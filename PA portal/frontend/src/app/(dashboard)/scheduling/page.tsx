@@ -267,7 +267,7 @@ export default function SchedulingPage() {
       ],
     };
     if (booked_count > 0) return {
-      icon:    <Lock className="h-5 w-5 text-amber-600" />,
+      icon:    <AlertCircle className="h-5 w-5 text-amber-600" />,
       title:   "Partially Booked Slot",
       desc:    `${label} has ${counts}. Close it to stop new bookings without moving existing citizens, or block it to relocate them.`,
       actions: [
@@ -588,14 +588,14 @@ export default function SchedulingPage() {
         const cfg = confirmSlot ? getSlotDialog(confirmSlot) : null;
         return (
           <Dialog open={confirmSlot !== null} onOpenChange={(o) => { if (!o) setConfirmSlot(null); }}>
-            <DialogContent className="max-w-sm">
-              <DialogHeader>
+            <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg">
+              <DialogHeader className="space-y-3">
                 <DialogTitle className="flex items-center gap-2">
                   {cfg?.icon} {cfg?.title}
                 </DialogTitle>
-                <DialogDescription>{cfg?.desc}</DialogDescription>
+                <DialogDescription className="leading-relaxed">{cfg?.desc}</DialogDescription>
               </DialogHeader>
-              <DialogFooter className="flex flex-col gap-2 sm:flex-row">
+              <DialogFooter className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 <DialogClose asChild>
                   <Button variant="outline" size="sm" className="w-full sm:w-auto">{t("sched.cancel")}</Button>
                 </DialogClose>

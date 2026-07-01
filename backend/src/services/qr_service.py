@@ -69,7 +69,7 @@ class QRService:
         signature_hash = hashlib.sha512(signature_string.encode('utf-8')).hexdigest()
         
         # Step 3: Calculate expiration timestamp
-        expires_at = created_at + timedelta(seconds=settings.QR_EXPIRY_SECONDS)
+        expires_at = created_at + timedelta(seconds=settings.QR_EXPIRY_SECONDS+10)
         
         # Step 4: Persist QR log record
         qr_log = QRLog(
@@ -140,7 +140,7 @@ class QRService:
         try:
             unsigned_payload = self.signer.unsign(
                 signature_string.encode('utf-8'),
-                max_age=settings.QR_EXPIRY_SECONDS
+                max_age=settings.QR_EXPIRY_SECONDS + 10
             )
             # Payload format is "venue_id:nonce:timestamp" or just "venue_id" (old format)
             # Extract only the venue_id part (first component)

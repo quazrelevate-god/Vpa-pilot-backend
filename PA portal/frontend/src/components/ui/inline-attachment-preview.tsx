@@ -174,18 +174,17 @@ function PreviewBody({ attachment, audioTranscript }: { attachment: GalleryAttac
     );
   }
 
-  // DOCUMENT — try inline iframe (Chrome PDF viewer respects #toolbar=0).
+  // DOCUMENT — inline PDF via <object>, fall back to <iframe>.
+  // Chrome/Edge's built-in PDF viewer refuses to run inside a `sandbox`
+  // iframe (it's treated as a plugin and gets silently blocked → "🚫" glyph),
+  // so we drop the sandbox and rely on `#toolbar=0` to hide the download UI.
   const isPdf = /\.pdf(\?|$)/i.test(attachment.url) || /\.pdf$/i.test(attachment.name);
   if (isPdf) {
+    const src = `${attachment.url}#toolbar=0&navpanes=0&view=FitH`;
     return (
-      <iframe
-        src={`${attachment.url}#toolbar=0&navpanes=0`}
-        title={attachment.name}
-        className="h-full w-full"
-        // sandbox excludes 'allow-downloads' so the embedded viewer can't
-        // trigger a save dialog through its built-in controls.
-        sandbox="allow-same-origin allow-scripts"
-      />
+      <object data={src} type="application/pdf" className="h-full w-full">
+        <iframe src={src} title={attachment.name} className="h-full w-full" />
+      </object>
     );
   }
 

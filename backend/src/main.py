@@ -69,7 +69,10 @@ app.add_middleware(
 async def _security_headers(request, call_next):
     resp = await call_next(request)
     resp.headers["X-Content-Type-Options"] = "nosniff"
-    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # Authenticated attachment endpoint is embedded as <iframe> in the PA portal,
+    # which runs on a different origin. Skip the frame-block header there.
+    # if not request.url.path.startswith("/dashboard/api/files/"):
+    #     resp.headers["X-Frame-Options"] = "SAMEORIGIN"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     if settings.COOKIE_SECURE:  # only meaningful over HTTPS
         resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

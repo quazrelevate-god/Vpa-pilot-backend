@@ -453,10 +453,10 @@ async def get_appointments(
             Appointment.scheduled_date.desc().nullslast(),
             Appointment.scheduled_start_time.desc().nullslast(),
         )
-    elif is_scheduled_tab:
-        # Closest meeting slot first.
-        stmt = stmt.order_by(Appointment.scheduled_date.asc(), Appointment.scheduled_start_time.asc())
     else:
+        # Default across all tabs (including Scheduled): newest submissions first,
+        # so recent petitions surface immediately. PAs can opt into appt-date
+        # ordering via the appt_date_asc / appt_date_desc sort options.
         stmt = stmt.order_by(Appointment.created_at.desc())
 
     # ── Search path ───────────────────────────────────────────────────────────
