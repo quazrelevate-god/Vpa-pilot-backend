@@ -4,7 +4,7 @@ import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, Languages, ShieldAlert,
-  QrCode, ScanLine, UserCog, SlidersHorizontal,
+  QrCode, ScanLine, UserCog, SlidersHorizontal, CalendarRange,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -212,6 +212,8 @@ export default function AiReviewPage() {
   const [fStatus, setFStatus] = useState<"" | StatusKey>("");
   const [fUrgency, setFUrgency] = useState("");
   const [fSource, setFSource] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [q, setQ] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -295,17 +297,32 @@ export default function AiReviewPage() {
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
-    return rows.filter(r =>
-      (!fStatus || r.statusKey === fStatus) &&
-      (!fUrgency || r.urgency === fUrgency) &&
-      (!fSource || r.source === fSource) &&
-      (!query || (r.name || "").toLowerCase().includes(query) || (r.mobile || "").includes(query))
-    );
-  }, [rows, fStatus, fUrgency, fSource, q]);
+    // Compare on the ISO date prefix (YYYY-MM-DD) so the range is inclusive
+    // regardless of the exact time-of-day the petition was submitted.
+    const fromKey = dateFrom || "";
+    const toKey   = dateTo   || "";
+    return rows.filter(r => {
+      if (fStatus && r.statusKey !== fStatus) return false;
+      if (fUrgency && r.urgency !== fUrgency) return false;
+      if (fSource && r.source !== fSource) return false;
+      if (fromKey || toKey) {
+        const day = (r.created_at || "").slice(0, 10);
+        if (!day) return false;
+        if (fromKey && day < fromKey) return false;
+        if (toKey   && day > toKey)   return false;
+      }
+      if (query) {
+        const inName   = (r.name || "").toLowerCase().includes(query);
+        const inMobile = (r.mobile || "").includes(query);
+        if (!inName && !inMobile) return false;
+      }
+      return true;
+    });
+  }, [rows, fStatus, fUrgency, fSource, dateFrom, dateTo, q]);
 
   const failedCount = uploads.filter(u => u.status === "FAILED").length;
-  const advancedFilterCount = (fUrgency ? 1 : 0) + (fSource ? 1 : 0);
-  const anyFilterActive = Boolean(q || fStatus || fUrgency || fSource);
+  const advancedFilterCount = (fUrgency ? 1 : 0) + (fSource ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
+  const anyFilterActive = Boolean(q || fStatus || fUrgency || fSource || dateFrom || dateTo);
 
   function openRow(r: InboxRow) {
     if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
@@ -356,7 +373,7 @@ export default function AiReviewPage() {
   }, [load]);
 
   function clearAllFilters() {
-    setFStatus(""); setFUrgency(""); setFSource(""); setQ("");
+    setFStatus(""); setFUrgency(""); setFSource(""); setDateFrom(""); setDateTo(""); setQ("");
   }
 
   const pick = <T,>(en: T, ta: T): T => (modalLang === "ta" ? (ta || en) : en);
@@ -452,7 +469,7 @@ export default function AiReviewPage() {
 
           {/* Advanced filters — collapsible */}
           {showFilters && (
-            <Card className="grid gap-3 p-3 sm:grid-cols-2">
+            <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
               <div className="flex flex-col gap-1">
                 <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{t("petition.colSource")}</label>
                 <select value={fSource} onChange={(e) => setFSource(e.target.value)}
@@ -468,6 +485,26 @@ export default function AiReviewPage() {
                   <option value="">{`All ${t("petition.colUrgency").toLowerCase()}`}</option>
                   {URGENCIES.map(u => <option key={u} value={u}>{pretty(u)}</option>)}
                 </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{t("appts.dateSubmitted")}</label>
+                <div className="flex h-9 items-center gap-1.5 rounded-lg border border-input bg-card px-2.5">
+                  <CalendarRange className="h-3.5 w-3.5 text-muted-foreground" />
+                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+                    className="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm outline-none focus:ring-0"
+                    aria-label={`${t("appts.dateSubmitted")} from`} />
+                  <span className="text-sm text-muted-foreground">→</span>
+                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+                    className="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm outline-none focus:ring-0"
+                    aria-label={`${t("appts.dateSubmitted")} to`} />
+                  {(dateFrom || dateTo) && (
+                    <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+                      className="grid h-5 w-5 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label={`Clear ${t("appts.dateSubmitted")}`}>
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </Card>
           )}
