@@ -146,6 +146,13 @@ async def referral_submit(
         referral_service.verify_daily_token(d)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=403)
+    # Mirror the citizen form's 5-word minimum so anyone hitting the API
+    # directly can't submit a one-word "reason". Word count == whitespace-split.
+    if len([w for w in (reason or "").split() if w]) < 5:
+        return JSONResponse(
+            {"error": "Please describe the reason in at least 5 words."},
+            status_code=400,
+        )
     try:
         result = await referral_service.book_slot(
             db, slot_id=slot_id, name=name, referred_by=referred_by,

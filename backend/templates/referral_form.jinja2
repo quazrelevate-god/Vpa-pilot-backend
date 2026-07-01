@@ -245,9 +245,13 @@
                 <div class="fld" style="margin-bottom:0;">
                     <label class="lbl"><span class="en">Reason for Meeting</span><span class="ta">சந்திப்பின் காரணம்</span> <span class="req">*</span></label>
                     <textarea id="fReason" class="inp" rows="3"
-                        placeholder="Briefly describe the purpose of your visit / உங்கள் வருகையின் நோக்கத்தை சுருக்கமாக விவரிக்கவும்"
+                        placeholder="Please describe the purpose of your visit clearly / உங்கள் வருகையின் நோக்கத்தை தெளிவாக விவரிக்கவும்"
                         style="resize:vertical; min-height:72px;"
                         oninput="validate()"></textarea>
+                    <div id="reasonHint" style="font-size:0.78rem;color:#94a3b8;margin-top:0.25rem;">
+                        <span class="en">Please write at least 5 words describing the reason.</span>
+                        <span class="ta">குறைந்தது 5 வார்த்தைகளில் காரணத்தை விவரிக்கவும்.</span>
+                    </div>
                 </div>
             </div>
 
@@ -499,10 +503,26 @@
 
     function onPersonsChange() { loadSlots(); validate(); }
 
+    var REASON_MIN_WORDS = 5;
+    function _wordCount(s) {
+        return (s || '').trim().split(/\s+/).filter(Boolean).length;
+    }
     function validate() {
+        var reason = document.getElementById('fReason').value;
+        var reasonWords = _wordCount(reason);
+        var reasonOk = reasonWords >= REASON_MIN_WORDS;
+        // Turn the hint red once the citizen has started typing but is still short.
+        var hint = document.getElementById('reasonHint');
+        if (hint) {
+            if (reason.trim() && !reasonOk) {
+                hint.style.color = '#dc2626';  // red
+            } else {
+                hint.style.color = '#94a3b8';  // muted grey
+            }
+        }
         var ok = document.getElementById('fName').value.trim()
               && document.getElementById('fRefBy').value.trim()
-              && document.getElementById('fReason').value.trim()
+              && reasonOk
               && document.getElementById('selSlotId').value;
         document.getElementById('subBtn').disabled = !ok;
     }
@@ -515,6 +535,7 @@
         var reason = document.getElementById('fReason').value.trim();
         var slotId = document.getElementById('selSlotId').value;
         if (!name || !refBy || !reason || !slotId) return;
+        if (_wordCount(reason) < REASON_MIN_WORDS) return;
 
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + (ta ? 'பதிவு செய்கிறது…' : 'Booking…');
