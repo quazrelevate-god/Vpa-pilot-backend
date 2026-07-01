@@ -12,7 +12,6 @@ Usage:
 """
 import asyncio
 import sys
-import base64
 from datetime import datetime
 
 from sqlalchemy import select, func
@@ -23,6 +22,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from src.core.database import AsyncSessionLocal
+from src.core.crypto import decrypt
 # Import all models so SQLAlchemy mapper relationships resolve correctly
 from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment
 from src.models.grievance_summary_record import GrievanceSummaryRecord
@@ -32,13 +32,11 @@ from src.models.scheduling_models import AppointmentSlot  # noqa: F401 — neede
 
 
 def decode_field(encoded: str | None) -> str:
-    """Decode a base64-encoded field back to plaintext."""
+    """Decrypt a Fernet-encrypted PII field back to plaintext.
+    Falls back to legacy base64 automatically for un-migrated rows."""
     if not encoded:
         return ""
-    try:
-        return base64.b64decode(encoded.encode("utf-8")).decode("utf-8")
-    except Exception:
-        return encoded  # return as-is if not valid base64
+    return decrypt(encoded) or ""
 
 
 async def find_test_data(name_filter: str = "", topic_filter: str = ""):
