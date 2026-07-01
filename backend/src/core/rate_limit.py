@@ -15,6 +15,8 @@ X-Forwarded-For (the first hop) so each citizen gets their own bucket.
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from src.core.config import settings
+
 
 def client_ip(request) -> str:
     """Real client IP, honouring the reverse proxy's X-Forwarded-For header."""
@@ -27,4 +29,7 @@ def client_ip(request) -> str:
     return get_remote_address(request)
 
 
-limiter = Limiter(key_func=client_ip)
+# `enabled` is a global off switch: when False, every @limiter.limit decorator
+# is a no-op (nothing is throttled). Currently OFF to unblock citizens after the
+# proxy-IP incident; flip RATE_LIMIT_ENABLED=true in .env to turn it back on.
+limiter = Limiter(key_func=client_ip, enabled=settings.RATE_LIMIT_ENABLED)
