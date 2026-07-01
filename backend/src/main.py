@@ -41,10 +41,21 @@ app = FastAPI(
 
 
 # ── Rate limiting (shared limiter, registered so @limiter.limit actually fires) ──
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from src.core.rate_limit import limiter
+
+
+async def _rate_limit_exceeded_handler(request, exc):
+    # Return JSON (not slowapi's default plain text) with a `detail` the citizen
+    # form can parse — otherwise the form fails to read the body and shows a
+    # misleading "network error" instead of a clear "too many attempts".
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many attempts. Please wait a minute and try again."},
+    )
+
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
