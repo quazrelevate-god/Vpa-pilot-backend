@@ -2,55 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
-
 /* ──────────────────────────────────────────────────────────────────────────
-   Modern Gov SaaS — design tokens
-   Deep navy brand, refined royal-blue accent, cool-neutral surfaces,
-   soft elevation. shadcn/ui reads these HSL variables.
+   Institutional Modern — design tokens (see /DESIGN.md)
+   Pine Ink primary, turmeric accent (used sparingly), warm neutrals,
+   functional urgency scale. shadcn/ui reads these HSL variables.
+   Fonts injected via next/font in layout.tsx (--font-catamaran, etc).
    ────────────────────────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    /* Surfaces */
-    --background: 210 40% 98%;          /* app canvas — cool off-white */
-    --foreground: 222 47% 11%;          /* primary text — near-slate-900 */
+    /* Font stacks */
+    --font-sans:  var(--font-catamaran), system-ui, sans-serif;
+    --font-serif: var(--font-fraunces), var(--font-noto-tamil), Georgia, serif;
+    --font-mono:  var(--font-plex-mono), ui-monospace, monospace;
+
+    /* Surfaces — cool paper */
+    --background: 216 26% 96%;          /* #F3F5F8 */
+    --foreground: 222 25% 10%;          /* #131720 ink */
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 222 25% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 222 25% 10%;
 
-    /* Brand — deep navy */
-    --primary: 213 71% 20%;             /* #0c2e59 */
-    --primary-foreground: 210 40% 98%;
+    /* Brand — Slate Indigo (default/system actions) */
+    --primary: 215 47% 24%;             /* #21395B */
+    --primary-foreground: 0 0% 100%;
 
-    /* Accent — refined royal blue (interactive) */
-    --accent-blue: 220 99% 53%;         /* #0f62fe */
+    /* Interactive accent — Signal Blue (the one primary action + focus) */
+    --accent-blue: 220 84% 56%;         /* #2F6FED */
     --accent-blue-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 214 95% 96%;              /* light blue tint for hovers */
-    --accent-foreground: 213 71% 20%;
+    --secondary: 213 27% 94%;           /* #EAEEF3 */
+    --secondary-foreground: 222 25% 10%;
+    --muted: 213 27% 94%;
+    --muted-foreground: 215 12% 40%;    /* #5A6472 */
+    --accent: 216 45% 94%;              /* light blue tint for hovers */
+    --accent-foreground: 215 47% 24%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 5 60% 44%;           /* #B2372D critical/error */
     --destructive-foreground: 0 0% 100%;
-    --success: 152 60% 36%;
-    --warning: 32 95% 44%;
+    --success: 154 46% 34%;             /* #2E7D5B */
+    --warning: 46 68% 47%;              /* #C9A227 */
+    --info: 189 47% 33%;                /* #2C6E7A */
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 220 99% 53%;
+    /* Urgency scale — semantic, drives triage */
+    --urgency-critical: 5 60% 44%;      /* #B2372D */
+    --urgency-high: 26 74% 46%;         /* #CC6A1F */
+    --urgency-medium: 46 68% 47%;       /* #C9A227 */
+    --urgency-low: 132 27% 43%;         /* #4F8A5B */
 
-    /* Sidebar (kept explicit so the navy chrome stays crisp) */
-    --sidebar: 213 71% 14%;             /* deeper navy than brand */
-    --sidebar-foreground: 210 40% 96%;
-    --sidebar-active: 220 70% 30%;
-    --sidebar-hover: 213 60% 22%;
-    --sidebar-border: 213 40% 26%;
+    --border: 216 20% 90%;              /* #E1E5EB */
+    --input: 216 20% 90%;
+    --ring: 220 84% 56%;                /* Signal Blue focus ring */
 
-    --radius: 0.75rem;
+    /* Sidebar — deep slate chrome */
+    --sidebar: 214 47% 19%;             /* #1A2E49 */
+    --sidebar-foreground: 217 37% 93%;  /* #E7ECF4 */
+    --sidebar-active: 220 84% 56%;      /* #2F6FED signal */
+    --sidebar-hover: 214 46% 25%;       /* #223B5C */
+    --sidebar-border: 215 41% 34%;      /* #33507A */
+
+    --radius: 0.5rem;
   }
 }
 
@@ -59,11 +70,21 @@
   html, body { height: 100%; }
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    font-feature-settings: "cv11", "ss01";
   }
+  /* Serif for headlines and long-form reading (Fraunces + Noto Serif Tamil) */
+  h1, h2, .font-display { font-family: var(--font-serif); }
+
+  /* Numbers: tabular figures render in IBM Plex Mono. Numeric UI already
+     carries `tabular-nums`; map it to the mono family so counts, tokens,
+     dates and amounts read crisp and column-aligned. `.num` is an explicit
+     helper for values not already tagged. An explicit font-* utility still
+     wins over these. (see /DESIGN.md) */
+  .tabular-nums,
+  .num { font-family: var(--font-mono); }
+  .num { font-variant-numeric: tabular-nums; }
 }
 
 /* ── Elevation utilities — soft, layered government-product shadows ───────── */
