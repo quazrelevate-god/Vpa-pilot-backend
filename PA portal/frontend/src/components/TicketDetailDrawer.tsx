@@ -35,8 +35,24 @@ const EVENT_ICON: Record<string, React.ElementType> = {
   due_date_set: CalendarDays,
   comment_added: MessageSquare, comment: MessageSquare,
   forwarded_to_dept: ArrowRight, forwarded: ArrowRight,
+  routed_to_department: Building2, department_accepted: UserCheck,
+  department_forwarded: ArrowRight, progress_update: MessageSquare,
   resolved: CheckCircle2, closed: Lock, reopened: RotateCcw,
 };
+
+// The 10 School Education departments a ticket can be routed to.
+const SCHOOL_DEPARTMENTS: { key: string; label: string }[] = [
+  { key: "director_school_education", label: "Director of School Education" },
+  { key: "private_schools", label: "Directorate of Private Schools" },
+  { key: "elementary_education", label: "Elementary Education" },
+  { key: "govt_examination", label: "Government Examinations" },
+  { key: "non_formal_adult_education", label: "Non-Formal & Adult Education" },
+  { key: "public_libraries", label: "Public Libraries" },
+  { key: "scert", label: "SCERT" },
+  { key: "teacher_recruitment_board", label: "Teacher Recruitment Board (TRB)" },
+  { key: "tn_education_service_corp", label: "TN Education Service Corporation" },
+  { key: "samagra_shiksha", label: "Samagra Shiksha" },
+];
 
 type Lang = "en" | "ta";
 
@@ -61,6 +77,7 @@ export default function TicketDetailDrawer({
   const [closureReason, setClosureReason] = useState("");
   const [closeNotes, setCloseNotes] = useState("");
   const [reopenReason, setReopenReason] = useState("");
+  const [routeDept, setRouteDept] = useState("");
 
   const open = ticketId != null;
 
@@ -80,6 +97,22 @@ export default function TicketDetailDrawer({
     setBusy(true);
     try { setData(await patchTicket(ticketId, p)); onMutated?.(); }
     catch (e) { alert((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  async function routeToDepartment() {
+    if (ticketId == null || !routeDept) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/tickets/${ticketId}/route`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ department: routeDept }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Routing failed");
+      setData(await fetchTicket(ticketId));
+      onMutated?.();
+      setRouteDept("");
+    } catch (e) { alert((e as Error).message); }
     finally { setBusy(false); }
   }
 
@@ -305,6 +338,25 @@ export default function TicketDetailDrawer({
                       <Input type="datetime-local" defaultValue={toLocalDateTimeInput(t.due_date)} disabled={busy} className="h-9"
                         onBlur={(e) => { const v = e.target.value; patch({ due_date: fromLocalDateTimeInput(v) }); }} />
                     </div>
+                  </div>
+                </Panel>
+
+                {/* Route to a School Education department (assign = select dept) */}
+                <Panel icon={Building2} title="Route to Department">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Assign this ticket to a School Education department. They accept, work,
+                    and resolve it; the activity below tracks every step.
+                  </p>
+                  <div className="flex gap-2">
+                    <Select value={routeDept || undefined} onValueChange={setRouteDept}>
+                      <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="Pick a department" /></SelectTrigger>
+                      <SelectContent>
+                        {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Button onClick={routeToDepartment} disabled={busy || !routeDept} className="h-9">
+                      <Building2 className="mr-1.5 h-4 w-4" /> Route
+                    </Button>
                   </div>
                 </Panel>
 
