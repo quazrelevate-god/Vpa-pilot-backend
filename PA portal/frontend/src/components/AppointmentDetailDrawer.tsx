@@ -155,7 +155,10 @@ export default function AppointmentDetailDrawer({
                   <Mic className="h-3.5 w-3.5" /> Uploads
                 </div>
                 <div className="min-h-0 flex-1">
-                  <InlineAttachmentPreview attachments={a.attachments ?? []} />
+                  <InlineAttachmentPreview
+                    attachments={a.attachments ?? []}
+                    audioTranscript={a.audio_transcript || a.description || null}
+                  />
                 </div>
               </aside>
 
@@ -287,14 +290,8 @@ export default function AppointmentDetailDrawer({
                   </dl>
                 </Panel>
 
-                {/* Citizen's description / Audio transcript */}
-                {(a.description || a.audio_transcript) && (
-                  <Panel icon={FileText} title="Citizen's description">
-                    <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground/85">
-                      {a.audio_transcript || a.description}
-                    </p>
-                  </Panel>
-                )}
+                {/* Citizen's description / audio transcript now rendered under
+                    the audio player in the left preview pane. */}
 
                 {/* Properties — admin overrides for AI-derived fields */}
                 <Panel icon={User} title="Properties">
