@@ -281,6 +281,15 @@ class Ticket(Base):
         comment="Number of times this ticket has been reopened",
     )
 
+    # ── Progress % (department-reported) ────────────────────────────────────────
+    progress_pct = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="0-100 progress the department reports while working",
+    )
+
     # ── Timestamps ─────────────────────────────────────────────────────────────
     created_at = Column(
         DateTime,
@@ -306,6 +315,13 @@ class Ticket(Base):
         back_populates="ticket",
         cascade="all, delete-orphan",
         order_by="TicketEvent.created_at.desc()",
+    )
+
+    attachments = relationship(
+        "TicketAttachment",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketAttachment.created_at.desc()",
     )
 
     # ── Indexes (filter/sort surfaces in the PA portal) ────────────────────────
@@ -372,6 +388,47 @@ class TicketEvent(Base):
     __table_args__ = (
         Index("ix_ticket_events_ticket_created", "ticket_id", "created_at"),
     )
+
+
+class TicketAttachment(Base):
+    """
+    A file attached to a ticket — primarily the resolution proof a department
+    MUST upload before a ticket can be marked resolved.
+    """
+
+    __tablename__ = "ticket_attachments"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    ticket_id = Column(
+        BigInteger,
+        ForeignKey("tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    kind = Column(
+        VARCHAR(20),
+        nullable=False,
+        default="resolution",
+        server_default="resolution",
+        comment="resolution | progress | other",
+    )
+
+    storage_url = Column(Text, nullable=False, comment="MinIO/local path")
+    mime_type = Column(VARCHAR(100), nullable=False)
+    file_size_bytes = Column(Integer, nullable=False, default=0, server_default="0")
+    original_filename = Column(VARCHAR(255), nullable=True)
+
+    uploaded_by = Column(
+        VARCHAR(100),
+        nullable=True,
+        comment="Department account (or PA) that uploaded it",
+    )
+
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    ticket = relationship("Ticket", back_populates="attachments")
 
 
 # ── Ticket number generator helper ────────────────────────────────────────────

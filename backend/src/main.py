@@ -24,6 +24,8 @@ import src.models.grievance_summary_record  # noqa: F401
 import src.models.scheduling_models  # noqa: F401
 import src.models.referral_models  # noqa: F401
 import src.models.ai_upload_models  # noqa: F401
+import src.models.ticket_models  # noqa: F401
+import src.models.department_account  # noqa: F401
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':
@@ -108,6 +110,10 @@ app.include_router(scan_petition.router)
 app.include_router(referral.router)
 app.include_router(referral.page_router)
 app.include_router(ai_uploads.router)
+
+from src.api.v1 import ticketing  # noqa: E402
+app.include_router(ticketing.dept_router)
+app.include_router(ticketing.pa_router)
 
 
 @app.on_event("startup")
