@@ -417,16 +417,20 @@ class AppointmentService:
                 )
             
             # Step 1b: Duplicate-submission guard — one petition per phone per day.
+            # Gated by settings.ONE_PETITION_PER_DAY so dev/QA can turn it off in .env.
             from src.core import crypto
+            from src.core.config import settings as _settings
             mobile_idx_check = crypto.blind_index(mobile_number)
             today_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
-            existing_today = await db.scalar(
-                select(func.count(Appointment.id))
-                .join(Citizen, Citizen.id == Appointment.citizen_id)
-                .where(Citizen.mobile_index == mobile_idx_check)
-                .where(Appointment.created_at >= today_start)
-                .where(Appointment.status.notin_(["CANCELLED"]))
-            ) or 0
+            existing_today = 0
+            if _settings.ONE_PETITION_PER_DAY:
+                existing_today = await db.scalar(
+                    select(func.count(Appointment.id))
+                    .join(Citizen, Citizen.id == Appointment.citizen_id)
+                    .where(Citizen.mobile_index == mobile_idx_check)
+                    .where(Appointment.created_at >= today_start)
+                    .where(Appointment.status.notin_(["CANCELLED"]))
+                ) or 0
             if existing_today > 0:
                 raise HTTPException(
                     status_code=409,

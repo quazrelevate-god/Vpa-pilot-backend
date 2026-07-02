@@ -209,7 +209,9 @@ export default function AiReviewPage() {
   const [modalLang, setModalLang] = useState<"en" | "ta">("en");
   const [busy, setBusy] = useState(false);
 
-  const [fStatus, setFStatus] = useState<"" | StatusKey>("");
+  // Default to Awaiting Review — that's the actionable queue PAs care about on
+  // open. They can widen to All via the segments if they want history.
+  const [fStatus, setFStatus] = useState<"" | StatusKey>("AWAITING_REVIEW");
   const [fUrgency, setFUrgency] = useState("");
   const [fSource, setFSource] = useState("");
   const [dateFrom, setDateFrom] = useState("");
