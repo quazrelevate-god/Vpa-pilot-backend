@@ -62,15 +62,16 @@ class TicketStatus(str, Enum):
     REOPENED is set when the citizen comes back about the same case after
     CLOSED — the ticket goes back into the queue with reopen_count incremented.
     """
-    OPEN               = "open"                  # just created, awaiting PA review
-    TRIAGED            = "triaged"               # PA has reviewed; dept identified
-    ASSIGNED           = "assigned"              # owner PA is set
-    IN_PROGRESS        = "in_progress"           # PA actively working
-    FORWARDED_TO_DEPT  = "forwarded_to_dept"     # sent to govt dept, awaiting reply
-    PENDING_CITIZEN    = "pending_citizen"       # waiting on more info from petitioner
-    RESOLVED           = "resolved"              # action taken, case complete
-    CLOSED             = "closed"                # no further action needed
-    REOPENED           = "reopened"              # citizen escalated post-close
+    OPEN                = "open"                  # just created, awaiting PA routing
+    TRIAGED             = "triaged"               # PA has reviewed; dept identified
+    ASSIGNED            = "assigned"              # owner PA is set
+    AWAITING_DEPARTMENT = "awaiting_department"   # routed to a school department, awaiting its accept
+    IN_PROGRESS         = "in_progress"           # department accepted; actively working
+    FORWARDED_TO_DEPT   = "forwarded_to_dept"     # forwarded out (dept→dept, or non-school external — terminal)
+    PENDING_CITIZEN     = "pending_citizen"       # waiting on more info from petitioner
+    RESOLVED            = "resolved"              # department resolved (with proof); awaiting PA close
+    CLOSED              = "closed"                # PA closed — no further action
+    REOPENED            = "reopened"              # reopened post-close
 
 
 class TicketPriority(str, Enum):
@@ -111,6 +112,11 @@ class TicketEventType(str, Enum):
     DUE_DATE_SET       = "due_date_set"
     COMMENT_ADDED      = "comment_added"
     FORWARDED_TO_DEPT  = "forwarded_to_dept"
+    # ── Department workflow (new ticketing) ──────────────────────────────────
+    ROUTED_TO_DEPARTMENT = "routed_to_department"   # PA routed the ticket to a school department
+    DEPARTMENT_ACCEPTED  = "department_accepted"    # department accepted it
+    DEPARTMENT_FORWARDED = "department_forwarded"   # department forwarded to another department (+reason)
+    PROGRESS_UPDATE      = "progress_update"        # department posted a progress note
     RESOLVED           = "resolved"
     CLOSED             = "closed"
     REOPENED           = "reopened"
@@ -181,6 +187,27 @@ class Ticket(Base):
         VARCHAR(100),
         nullable=True,
         comment="PA username currently owning this ticket. NULL = unassigned.",
+    )
+
+    # ── Department routing (new ticketing workflow) ─────────────────────────────
+    department = Column(
+        VARCHAR(60),
+        nullable=True,
+        index=True,
+        comment="SchoolDepartment the ticket is currently routed to (assign = select dept). "
+                "NULL = not yet routed, or non-school (forwarded out).",
+    )
+
+    accepted_at = Column(
+        DateTime,
+        nullable=True,
+        comment="When the current department accepted the ticket",
+    )
+
+    accepted_by = Column(
+        VARCHAR(100),
+        nullable=True,
+        comment="Department account that accepted (shared per-department login)",
     )
 
     due_date = Column(
