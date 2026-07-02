@@ -34,6 +34,13 @@ from pathlib import Path
 _BACKEND = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_BACKEND))
 
+# Windows consoles default to cp1252 and choke on ✓/✗ — force UTF-8 output.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 EVAL_DIR = _BACKEND / "eval"
 CASES_DIR = EVAL_DIR / "cases"
 

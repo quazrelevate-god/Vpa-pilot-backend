@@ -171,7 +171,7 @@ class GrievanceSummary(BaseModel):
             "One crisp sentence (≤ 15 words) in ENGLISH stating what the grievance is "
             "about. Written as a neutral case title, not a question or directive."
         ),
-        max_length=150,
+        max_length=250,
     )
 
     summary: str = Field(
@@ -180,7 +180,7 @@ class GrievanceSummary(BaseModel):
             "problem they face, how long it has been ongoing, and any impact on their "
             "life or safety. Preserve the citizen's voice — do not reframe or minimise."
         ),
-        max_length=600,
+        max_length=1500,
     )
 
     # ── What happened — Tamil ──────────────────────────────────────────────────
@@ -190,7 +190,7 @@ class GrievanceSummary(BaseModel):
             "Natural Tamil — not a word-for-word back-translation. "
             "Example: 'மதுரை தெற்கு தொகுதியில் 4 மாதமாக முதியோர் ஓய்வூதியம் நின்றது.'"
         ),
-        max_length=200,
+        max_length=400,
     )
 
     summary_ta: str = Field(
@@ -198,7 +198,7 @@ class GrievanceSummary(BaseModel):
             "Same as `summary` but written in TAMIL (தமிழ்). "
             "Use clear, simple Tamil that a field PA officer can read aloud to the citizen."
         ),
-        max_length=800,
+        max_length=2000,
     )
 
     # ── Classification ─────────────────────────────────────────────────────────
@@ -248,7 +248,7 @@ class GrievanceSummary(BaseModel):
             "Required when urgency is HIGH or CRITICAL. "
             "One sentence in ENGLISH explaining the specific signal that raised urgency."
         ),
-        max_length=200,
+        max_length=500,
     )
 
     urgency_reason_ta: Optional[str] = Field(
@@ -257,7 +257,7 @@ class GrievanceSummary(BaseModel):
             "Tamil translation of `urgency_reason`. Required when urgency is HIGH or "
             "CRITICAL. One sentence in TAMIL explaining why urgency was raised."
         ),
-        max_length=300,
+        max_length=600,
     )
 
     # ── What the citizen wants — English ──────────────────────────────────────
@@ -267,7 +267,7 @@ class GrievanceSummary(BaseModel):
             "Specific and concrete — not 'help' but 'repair the street light on "
             "4th Cross within the week'. Multiple asks separated by '; '."
         ),
-        max_length=300,
+        max_length=1200,
     )
 
     # ── What the citizen wants — Tamil ────────────────────────────────────────
@@ -276,7 +276,7 @@ class GrievanceSummary(BaseModel):
             "Same as `citizen_ask` but written in TAMIL (தமிழ்). "
             "What the citizen is asking for, in clear Tamil."
         ),
-        max_length=400,
+        max_length=1500,
     )
 
     # ── Supporting detail — English ────────────────────────────────────────────
