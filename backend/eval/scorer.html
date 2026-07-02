@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Petition Eval Scorer</title>
+<style>
+  :root {
+    --bg:#f8fafc; --card:#fff; --border:#e2e8f0; --muted:#64748b; --fg:#0f172a;
+    --brand:#4f46e5; --ok:#059669; --bad:#dc2626; --amber:#d97706;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 system-ui, sans-serif; }
+  header {
+    position:sticky; top:0; z-index:10; background:var(--card);
+    border-bottom:1px solid var(--border); padding:14px 20px;
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  h1 { font-size:16px; margin:0; font-weight:700; }
+  .drop {
+    border:2px dashed var(--border); padding:8px 14px; border-radius:8px;
+    color:var(--muted); font-size:12px; cursor:pointer;
+  }
+  .drop.hot { border-color:var(--brand); color:var(--brand); background:#eef2ff; }
+  .stats { display:flex; gap:20px; margin-left:auto; font-size:12px; }
+  .stat b { font-size:18px; }
+  .stat .ok  { color:var(--ok); }
+  .stat .bad { color:var(--bad); }
+  button.primary {
+    background:var(--brand); color:#fff; border:0; padding:8px 14px;
+    border-radius:6px; font-weight:600; cursor:pointer;
+  }
+  button.primary:disabled { opacity:0.5; cursor:not-allowed; }
+  main { padding:16px 20px 80px; }
+  .row {
+    background:var(--card); border:1px solid var(--border); border-radius:10px;
+    margin-bottom:14px; padding:16px; display:grid; gap:12px;
+  }
+  .row .hdr { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .row .id { background:#eef2ff; color:var(--brand); padding:2px 8px; border-radius:4px; font-weight:700; font-size:12px; }
+  .row .tag { background:#f1f5f9; color:var(--muted); padding:2px 8px; border-radius:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.03em; }
+  .row .files { color:var(--muted); font-size:12px; font-family:ui-monospace, monospace; }
+  .row .cols { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  .col h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin:0 0 6px; }
+  .kv { font-size:13px; }
+  .kv .k { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; }
+  .kv .v { font-weight:500; }
+  .kv .v.ok  { color:var(--ok); }
+  .kv .v.bad { color:var(--bad); }
+  .kv .v.tie { color:var(--amber); }
+  .summary { background:#fafafa; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:13px; line-height:1.55; white-space:pre-wrap; }
+  .summary + .summary { margin-top:6px; }
+  .grade { display:flex; gap:8px; align-items:center; margin-top:6px; }
+  .grade label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; min-width:70px; }
+  .btn {
+    border:1px solid var(--border); background:#fff; padding:4px 12px;
+    border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;
+    color:var(--muted);
+  }
+  .btn.right.on { background:var(--ok); border-color:var(--ok); color:#fff; }
+  .btn.wrong.on { background:var(--bad); border-color:var(--bad); color:#fff; }
+  input.notes {
+    flex:1; border:1px solid var(--border); background:#fff; padding:4px 8px;
+    border-radius:6px; font-size:12px; color:var(--fg);
+  }
+  .empty { padding:60px 20px; text-align:center; color:var(--muted); }
+  .empty p { max-width:520px; margin:8px auto; }
+  code { background:#f1f5f9; padding:2px 5px; border-radius:3px; font-size:12px; }
+  .error { color:var(--bad); font-size:12px; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Eval Scorer</h1>
+  <label class="drop" id="dropZone" for="fileInput">Drop a results_*.csv here (or click)</label>
+  <input type="file" id="fileInput" accept=".csv" hidden>
+  <div class="stats" id="stats"></div>
+  <button class="primary" id="dlBtn" disabled>Download updated CSV</button>
+</header>
+
+<main id="main">
+  <div class="empty" id="emptyState">
+    <p><b>No file loaded yet.</b></p>
+    <p>Drop the <code>results_&lt;model&gt;_&lt;ts&gt;.csv</code> file from
+       <code>backend/eval/</code> anywhere on this page, or click the drop zone above.</p>
+    <p>Your changes auto-save in the browser so a refresh won't lose them.
+       When you're done, click <b>Download updated CSV</b> and replace the file on disk.</p>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+let rows = [];
+let header = [];
+let fileName = "";
+const LS_KEY = "eval_scorer_state";
+
+function parseCSV(text) {
+  // Minimal RFC-4180 parser: handles "quoted, fields" with escaped "" and commas.
+  const out = []; let field = ""; let record = []; let i = 0; let inQ = false;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i+1] === '"') { field += '"'; i += 2; continue; }
+      if (c === '"') { inQ = false; i++; continue; }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQ = true; i++; continue; }
+    if (c === ",") { record.push(field); field = ""; i++; continue; }
+    if (c === "\r") { i++; continue; }
+    if (c === "\n") { record.push(field); out.push(record); field = ""; record = []; i++; continue; }
+    field += c; i++;
+  }
+  if (field || record.length) { record.push(field); out.push(record); }
+  return out;
+}
+
+function toCSV(header, rows) {
+  const q = (v) => {
+    const s = String(v == null ? "" : v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return [header.map(q).join(",")]
+    .concat(rows.map(r => header.map(h => q(r[h])).join(",")))
+    .join("\n");
+}
+
+function load(text, name) {
+  fileName = name;
+  const grid = parseCSV(text).filter(r => r.some(v => v && v.trim() !== ""));
+  if (!grid.length) return;
+  header = grid[0];
+  rows = grid.slice(1).map(r => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ""])));
+  // Merge cached edits (urgency_right, summary_right, summary_notes) by id + file name.
+  const cache = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+  const key = "file:" + name;
+  if (cache[key]) {
+    for (const r of rows) {
+      const k = r.id;
+      if (cache[key][k]) Object.assign(r, cache[key][k]);
+    }
+  }
+  document.getElementById("emptyState")?.remove();
+  document.getElementById("dlBtn").disabled = false;
+  render();
+}
+
+function save() {
+  const cache = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+  const key = "file:" + fileName;
+  cache[key] = {};
+  for (const r of rows) {
+    cache[key][r.id] = {
+      urgency_right: r.urgency_right,
+      summary_right: r.summary_right,
+      summary_notes: r.summary_notes,
+    };
+  }
+  localStorage.setItem(LS_KEY, JSON.stringify(cache));
+}
+
+function tally(field) {
+  let ok = 0, bad = 0, todo = 0;
+  for (const r of rows) {
+    const v = String(r[field] ?? "").trim();
+    if (v === "1") ok++;
+    else if (v === "0") bad++;
+    else todo++;
+  }
+  return { ok, bad, todo };
+}
+
+function renderStats() {
+  const c = tally("category_match");
+  const d = tally("department_match");
+  const u = tally("urgency_right");
+  const s = tally("summary_right");
+  const pct = (t) => (t.ok + t.bad === 0 ? "—" : Math.round(100 * t.ok / (t.ok + t.bad)) + "%");
+  document.getElementById("stats").innerHTML = `
+    <div class="stat">Dept<br><b class="ok">${pct(d)}</b> <span style="color:var(--muted)">(${d.ok}/${d.ok+d.bad})</span></div>
+    <div class="stat">Cat<br><b class="ok">${pct(c)}</b> <span style="color:var(--muted)">(${c.ok}/${c.ok+c.bad})</span></div>
+    <div class="stat">Urg<br><b class="ok">${pct(u)}</b> <span style="color:var(--muted)">(${u.ok}/${u.ok+u.bad}, ${u.todo} left)</span></div>
+    <div class="stat">Sum<br><b class="ok">${pct(s)}</b> <span style="color:var(--muted)">(${s.ok}/${s.ok+s.bad}, ${s.todo} left)</span></div>
+  `;
+}
+
+function cell(k, gold, pred, match) {
+  const cls = match === "1" ? "ok" : match === "0" ? "bad" : "";
+  return `<div class="kv">
+    <div class="k">${k}</div>
+    <div class="v ${cls}">${pred || "—"}${gold ? ` <span style="color:var(--muted); font-weight:400;">(gold: ${gold})</span>` : ""}</div>
+  </div>`;
+}
+
+function gradeRow(id, field, val) {
+  const idx = rows.findIndex(r => r.id === id);
+  if (idx < 0) return;
+  rows[idx][field] = (rows[idx][field] === String(val)) ? "" : String(val);  // toggle
+  save();
+  render();
+}
+
+function noteChange(id, val) {
+  const idx = rows.findIndex(r => r.id === id);
+  if (idx < 0) return;
+  rows[idx].summary_notes = val;
+  save();
+  renderStats();
+}
+
+function render() {
+  renderStats();
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  for (const r of rows) {
+    const div = document.createElement("div");
+    div.className = "row";
+    div.innerHTML = `
+      <div class="hdr">
+        <span class="id">#${r.id}</span>
+        ${r.language ? `<span class="tag">${r.language}</span>` : ""}
+        ${r.handwritten === "yes" ? `<span class="tag" style="color:var(--amber)">handwritten</span>` : ""}
+        <span class="files">${r.files || ""}</span>
+        ${r.headline ? `<span style="font-weight:600; flex-basis:100%;">${r.headline}</span>` : ""}
+        ${r.error ? `<span class="error">ERROR: ${r.error}</span>` : ""}
+      </div>
+      <div class="cols">
+        ${cell("Department", r.gold_department, r.pred_department, r.department_match)}
+        ${cell("Category",   r.gold_category,   r.pred_category,   r.category_match)}
+      </div>
+      <div class="cols">
+        <div>
+          <h3>Predicted urgency</h3>
+          <div class="kv"><div class="v">${r.pred_urgency || "—"}</div></div>
+          <div class="grade">
+            <label>Urgency</label>
+            <button class="btn right ${r.urgency_right === "1" ? "on" : ""}" data-id="${r.id}" data-f="urgency_right" data-v="1">✓ Right</button>
+            <button class="btn wrong ${r.urgency_right === "0" ? "on" : ""}" data-id="${r.id}" data-f="urgency_right" data-v="0">✗ Wrong</button>
+          </div>
+        </div>
+        <div>
+          <h3>Latency</h3>
+          <div class="kv"><div class="v">${r.latency_ms || "—"} ms</div></div>
+        </div>
+      </div>
+      <div>
+        <h3>Summary (EN)</h3>
+        <div class="summary">${(r.summary_en || "—")}</div>
+        <h3 style="margin-top:10px;">Summary (Tamil)</h3>
+        <div class="summary">${(r.summary_ta || "—")}</div>
+        <div class="grade">
+          <label>Summary</label>
+          <button class="btn right ${r.summary_right === "1" ? "on" : ""}" data-id="${r.id}" data-f="summary_right" data-v="1">✓ Right</button>
+          <button class="btn wrong ${r.summary_right === "0" ? "on" : ""}" data-id="${r.id}" data-f="summary_right" data-v="0">✗ Wrong</button>
+          <input class="notes" placeholder="Notes (optional)" value="${(r.summary_notes || '').replace(/"/g, '&quot;')}" data-id="${r.id}">
+        </div>
+      </div>
+    `;
+    main.appendChild(div);
+  }
+  main.querySelectorAll("button.btn").forEach(b => {
+    b.addEventListener("click", () => gradeRow(b.dataset.id, b.dataset.f, b.dataset.v));
+  });
+  main.querySelectorAll("input.notes").forEach(inp => {
+    inp.addEventListener("input", () => noteChange(inp.dataset.id, inp.value));
+  });
+}
+
+// File loading
+const fileInput = document.getElementById("fileInput");
+fileInput.addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => load(rd.result, f.name);
+  rd.readAsText(f);
+});
+const dz = document.getElementById("dropZone");
+["dragover"].forEach(ev => document.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("hot"); }));
+["dragleave", "drop"].forEach(ev => document.addEventListener(ev, () => dz.classList.remove("hot")));
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => load(rd.result, f.name);
+  rd.readAsText(f);
+});
+
+// Download
+document.getElementById("dlBtn").addEventListener("click", () => {
+  const csv = toCSV(header, rows);
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName || "results_scored.csv";
+  a.click();
+});
+</script>
+</body>
+</html>

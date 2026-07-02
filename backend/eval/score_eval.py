@@ -1,12 +1,12 @@
 """
-Scorecard for one or more results_*.csv produced by run_eval.py.
+Scorecard for results_*.csv from run_eval.py.
 
-    python eval/score_eval.py                       # score every results_*.csv
-    python eval/score_eval.py eval/results_a.csv eval/results_b.csv
+    python eval/score_eval.py                # every results_*.csv in eval/
+    python eval/score_eval.py results_a.csv results_b.csv
 
-Prints, per file (i.e. per model): category / department / urgency accuracy,
-average human summary score, error count, latency — plus a breakdown by
-language and handwritten so you can see WHERE a model wins (e.g. Tamil).
+Per file (i.e. per model): category / department accuracy (auto),
+urgency / summary accuracy (from human scoring), median latency, errors.
+Also sliced by language + handwritten so you can see WHERE each model wins.
 """
 import csv
 import statistics
@@ -16,9 +16,13 @@ from pathlib import Path
 EVAL_DIR = Path(__file__).resolve().parent
 
 
-def _pct(vals):
-    xs = [int(v) for v in vals if str(v) in ("0", "1")]
-    return round(100 * sum(xs) / len(xs), 1) if xs else None
+def _pct(values, valid=("0", "1")):
+    xs = [int(v) for v in values if str(v).strip() in valid]
+    return f"{round(100 * sum(xs) / len(xs), 1)}%" if xs else "—"
+
+
+def _n_scored(values):
+    return sum(1 for v in values if str(v).strip() in ("0", "1"))
 
 
 def _load(path):
@@ -36,16 +40,21 @@ def _slice(rows, key):
 def report(path):
     rows = _load(path)
     n = len(rows)
-    scored = [float(r["summary_score"]) for r in rows if (r.get("summary_score") or "").strip()]
     lat = [int(r["latency_ms"]) for r in rows if (r.get("latency_ms") or "").isdigit()]
     errs = sum(1 for r in rows if (r.get("error") or "").strip())
 
+    dept_acc = _pct(r.get("department_match") for r in rows)
+    cat_acc  = _pct(r.get("category_match")   for r in rows)
+    urg_acc  = _pct(r.get("urgency_right")    for r in rows)
+    sum_acc  = _pct(r.get("summary_right")    for r in rows)
+    urg_n    = _n_scored(r.get("urgency_right") for r in rows)
+    sum_n    = _n_scored(r.get("summary_right") for r in rows)
+
     print(f"\n== {Path(path).name}  (n={n}) ==")
-    print(f"  Department accuracy : {_pct(r['department_match'] for r in rows)}%")
-    print(f"  Category accuracy   : {_pct(r['category_match'] for r in rows)}%")
-    print(f"  Urgency accuracy    : {_pct(r['urgency_match'] for r in rows)}%")
-    print(f"  Summary score (human): {round(statistics.mean(scored), 2) if scored else '— not scored yet —'} / 5"
-          f"  ({len(scored)}/{n} scored)")
+    print(f"  Department (auto)   : {dept_acc}")
+    print(f"  Category   (auto)   : {cat_acc}")
+    print(f"  Urgency  (human)    : {urg_acc}   [{urg_n}/{n} scored]")
+    print(f"  Summary  (human)    : {sum_acc}   [{sum_n}/{n} scored]")
     print(f"  Errors: {errs}   |   median latency: {int(statistics.median(lat)) if lat else '—'} ms")
 
     for key in ("language", "handwritten"):
@@ -54,9 +63,10 @@ def report(path):
             continue
         print(f"  by {key}:")
         for g, rs in sorted(groups.items()):
-            print(f"    {g:<10} dept {_pct(x['department_match'] for x in rs)}%  "
-                  f"cat {_pct(x['category_match'] for x in rs)}%  "
-                  f"urg {_pct(x['urgency_match'] for x in rs)}%  (n={len(rs)})")
+            print(f"    {g:<10} dept {_pct(x.get('department_match') for x in rs)}  "
+                  f"cat {_pct(x.get('category_match') for x in rs)}  "
+                  f"urg {_pct(x.get('urgency_right') for x in rs)}  "
+                  f"sum {_pct(x.get('summary_right') for x in rs)}  (n={len(rs)})")
 
 
 def main(paths):
