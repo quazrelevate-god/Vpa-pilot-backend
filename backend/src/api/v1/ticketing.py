@@ -39,7 +39,7 @@ async def list_departments():
 
 
 # ── Department auth ────────────────────────────────────────────────────────────
-@dept_router.post("/login")
+@dept_router.post("/api/login")
 @limiter.limit("5/minute")
 async def dept_login(request: Request, username: str = Form(...), password: str = Form(...),
                      db: AsyncSession = Depends(get_db)):
@@ -53,7 +53,7 @@ async def dept_login(request: Request, username: str = Form(...), password: str 
     return resp
 
 
-@dept_router.post("/logout")
+@dept_router.post("/api/logout")
 async def dept_logout():
     resp = JSONResponse({"ok": True})
     clear_dept_session_cookie(resp)
