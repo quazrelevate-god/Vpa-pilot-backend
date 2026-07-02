@@ -225,9 +225,9 @@ export default function OverviewPage() {
               </div>
             </Card>
 
-            {/* Departments */}
+            {/* Ministries */}
             <Card className="p-4">
-              <ChartHead icon={Megaphone} title="Departments" sub="Where the load falls" />
+              <ChartHead icon={Megaphone} title="Ministries" sub="Where the load falls" />
               <div className="space-y-1.5">
                 {(data?.departments ?? []).slice(0, 6).map(c => (
                   <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxDept * 100)}

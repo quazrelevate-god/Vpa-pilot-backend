@@ -363,10 +363,10 @@ export default function AppointmentDetailDrawer({
                       )}
                     </div>
 
-                    {/* Department — read-only with Edit toggle */}
+                    {/* Ministry — read-only with Edit toggle */}
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <Label>Department</Label>
+                        <Label>Ministry</Label>
                         {!editDepartment && (
                           <button
                             onClick={() => setEditDepartment(true)}

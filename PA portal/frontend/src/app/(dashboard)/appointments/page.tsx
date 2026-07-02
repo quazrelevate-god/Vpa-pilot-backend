@@ -619,7 +619,7 @@ function AppointmentsPageInner() {
             <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
               <FilterSelect label={t("label.priority")}    value={priority}
                             onChange={(v) => { setPage(1); setPriority(v); }}    options={priorityOptions} />
-              <FilterSelect label={t("label.department")} value={department}
+              <FilterSelect label={t("label.ministry")} value={department}
                             onChange={(v) => { setPage(1); setDepartment(v); }} options={deptOptions} />
               <FilterSelect label={t("label.category")}   value={category}
                             onChange={(v) => { setPage(1); setCategory(v); }}   options={categoryOptions} />

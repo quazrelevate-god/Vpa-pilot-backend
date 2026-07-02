@@ -306,6 +306,10 @@ class AiUploadService:
                 val = str(fields[key]).strip()
                 setattr(row, col, val or None)
                 sj[json_key] = val
+        # Ministry (AI `department`) lives only in summary_json, not a column.
+        # Editing it here also decides the approve button (Accept vs Forward).
+        if "department" in fields and fields["department"] is not None:
+            sj["department"] = str(fields["department"]).strip() or None
         # Free-text narrative edits (summary, headline, citizen_ask + _ta)
         for k in ("summary", "summary_ta", "headline", "headline_ta", "citizen_ask", "citizen_ask_ta"):
             if k in fields and fields[k] is not None:
@@ -433,12 +437,28 @@ class AiUploadService:
         row.reviewed_by = reviewed_by
         await db.commit()
 
+        # Non-school ministry → auto-forward the ticket out of the school
+        # department workflow (the PA's "Forward" action). School stays OPEN
+        # so it can be routed to one of the 10 school departments ("Accept").
+        SCHOOL_MINISTRY = "school_education_tamil_dev_info_publicity"
+        dept_val = extraction.department.value if extraction.department else None
+        forwarded = False
+        if ticket and dept_val and dept_val != SCHOOL_MINISTRY:
+            from src.services import department_service
+            await department_service.forward_external(
+                db, ticket.id, ministry=dept_val,
+                reason="Non-school ministry — forwarded from petition review.",
+                actor=reviewed_by,
+            )
+            forwarded = True
+
         return {
             "id": upload_id,
             "status": STATUS_REVIEWED,
             "appointment_id": appt.id,
             "token": f"TKN{token_assigned}",
             "ticket_number": row.ticket_number,
+            "forwarded": forwarded,
         }
 
     # ── Retry failed (single or bulk) ───────────────────────────────────────────

@@ -4,7 +4,7 @@ import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, Languages, ShieldAlert,
-  QrCode, ScanLine, UserCog, SlidersHorizontal, CalendarRange,
+  QrCode, ScanLine, UserCog, SlidersHorizontal, CalendarRange, Forward,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,7 +16,13 @@ import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchAppointments } from "@/lib/api";
+import { DEPT_DISPLAY } from "@/lib/enums";
 import type { AppointmentRow } from "@/lib/types";
+
+// The default School Education ministry — approve keeps it in the school
+// department workflow ("Accept"); any other ministry is "Forward"ed out.
+const SCHOOL_MINISTRY = "school_education_tamil_dev_info_publicity";
+const MINISTRIES = Object.keys(DEPT_DISPLAY);
 
 interface Upload {
   id: number; filename: string; mime_type: string; file_url: string | null;
@@ -334,7 +340,7 @@ export default function AiReviewPage() {
     }
     const u = r.upload!;
     setReview(u); setEditing(false); setModalLang("en");
-    setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, priority: u.priority, summary: u.summary });
+    setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, priority: u.priority, department: u.department, summary: u.summary });
   }
 
   async function saveEdits() {
@@ -357,8 +363,12 @@ export default function AiReviewPage() {
     try {
       const r = await fetch(api(`/${review.id}/approve`), { method: "POST", credentials: "include" });
       const d = await r.json();
-      if (r.ok) { toast.success(`Ticket ${d.ticket_number} created`); setReview(null); load(); }
-      else toast.error(d.error || "Approve failed");
+      if (r.ok) {
+        toast.success(d.forwarded
+          ? `Forwarded to ministry — ticket ${d.ticket_number}`
+          : `Ticket ${d.ticket_number} created`);
+        setReview(null); load();
+      } else toast.error(d.error || "Action failed");
     } catch { toast.error("Network error"); } finally { setBusy(false); }
   }
 
@@ -646,8 +656,8 @@ export default function AiReviewPage() {
                   {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}
                   <SelectField label={t("petition.colCategory")} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
                   <SelectField label={t("petition.colUrgency")} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} onChange={v => setForm(f => ({ ...f, priority: v }))} />
+                  <SelectField label={t("petition.fMinistry")} editing={editing} value={form.department} fallback={review.department} options={MINISTRIES} labels={DEPT_DISPLAY} onChange={v => setForm(f => ({ ...f, department: v }))} />
                 </div>
-                {review.department && <div className="text-sm text-muted-foreground">{t("petition.fDept")}: {pretty(review.department)}</div>}
 
                 <Panel title="Summary">
                   {editing
@@ -682,11 +692,22 @@ export default function AiReviewPage() {
               </div>
 
               <div className="border-t border-border px-7 py-5">
-                {review.status === "AWAITING_REVIEW" && (
-                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={approve} disabled={busy || editing}>
-                    {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {t("petition.approveCta")}
-                  </Button>
-                )}
+                {review.status === "AWAITING_REVIEW" && (() => {
+                  // Ministry drives the action: School → Accept (school department
+                  // workflow); any other ministry → Forward (out to that ministry).
+                  const isSchool = (review.department ?? SCHOOL_MINISTRY) === SCHOOL_MINISTRY;
+                  return (
+                    <Button
+                      className={cn("w-full text-white", isSchool ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}
+                      onClick={approve}
+                      disabled={busy || editing}
+                    >
+                      {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        : isSchool ? <Check className="mr-2 h-4 w-4" /> : <Forward className="mr-2 h-4 w-4" />}
+                      {isSchool ? t("petition.acceptCta") : t("petition.forwardCta")}
+                    </Button>
+                  );
+                })()}
                 {review.status === "REVIEWED" && (
                   <div className="flex items-center justify-center gap-2 text-base font-semibold text-emerald-600"><TicketIcon className="h-4 w-4" /> {t("petition.approvedAs")} {review.ticket_number}</div>
                 )}
@@ -733,16 +754,17 @@ function Field({ label, value, fallback, editing, onChange, icon: Icon }:
   );
 }
 
-function SelectField({ label, value, fallback, editing, options, onChange }:
-  { label: string; value?: string | null; fallback: string | null; editing: boolean; options: string[]; onChange: (v: string) => void }) {
+function SelectField({ label, value, fallback, editing, options, onChange, labels }:
+  { label: string; value?: string | null; fallback: string | null; editing: boolean; options: string[]; onChange: (v: string) => void; labels?: Record<string, string> }) {
+  const disp = (o: string) => labels?.[o] ?? o.replace(/_/g, " ");
   return (
     <div className="flex flex-col gap-2">
       <div className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
       {editing
         ? <select className="w-full rounded-lg border border-input bg-white px-2 py-2 text-base" value={value ?? ""} onChange={e => onChange(e.target.value)}>
-            {options.map(o => <option key={o} value={o}>{o.replace(/_/g, " ")}</option>)}
+            {options.map(o => <option key={o} value={o}>{disp(o)}</option>)}
           </select>
-        : <div className="text-base font-medium leading-relaxed text-foreground">{fallback ? fallback.replace(/_/g, " ") : "—"}</div>}
+        : <div className="text-base font-medium leading-relaxed text-foreground">{fallback ? disp(fallback) : "—"}</div>}
     </div>
   );
 }
