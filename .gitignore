@@ -232,3 +232,7 @@ __init__.py
 
 # Local test petition images (folder-upload testing)
 Testdata/
+
+# Eval test data (citizen images = PII) + generated results
+backend/eval/cases/
+backend/eval/results_*.csv

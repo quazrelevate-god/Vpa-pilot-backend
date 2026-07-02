@@ -113,7 +113,20 @@ CORE RULES — follow every one without exception:
 
 9. CATEGORY — CLASSIFY THE TYPE OF PETITION (not the subject):
    These categories reflect how the Minister's PA office organises incoming petitions.
-   Pick the SINGLE best-fit category based on what the citizen is actually asking for.
+
+   ★ DEPARTMENT-FIRST PRIORITY RULE (decide this BEFORE picking a category):
+     First settle the primary `department` (rule 10). THEN:
+       • If department == school_education_tamil_dev_info_publicity (School
+         Education / Tamil Development) → classify `category` normally using the
+         list below (e.g. school_admission, school_upgradation, or another fit).
+       • If department is ANY OTHER department → set `category` = "other".
+         Do NOT try to find a finer category — for non-school petitions the
+         department routing is what matters, so category is always "other".
+     Exceptions: `greetings` and `invitation` still take priority regardless of
+     department (a thank-you / invite needs no action from any department).
+
+   For school-education petitions, pick the SINGLE best-fit category based on what
+   the citizen is actually asking for:
 
      - action_required       → Any petition requiring URGENT or TIME-SENSITIVE action:
                                 evictions, demolitions, medical emergencies, imminent
