@@ -22,7 +22,7 @@ interface Upload {
   id: number; filename: string; mime_type: string; file_url: string | null;
   status: "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED";
   name: string | null; name_ta: string | null; mobile: string | null;
-  category: string | null; urgency: string | null; department: string | null;
+  category: string | null; priority: string | null; department: string | null;
   headline: string | null; headline_ta: string | null;
   summary: string | null; summary_ta: string | null;
   citizen_ask: string | null; citizen_ask_ta: string | null;
@@ -38,7 +38,7 @@ interface InboxRow {
   name: string | null;
   mobile: string | null;
   category: string | null;
-  urgency: string | null;
+  priority: string | null;
   statusKey: StatusKey;
   source: string;
   created_at: string | null;
@@ -48,7 +48,7 @@ interface InboxRow {
 }
 
 const CATEGORIES = ["action_required","proposals","transfer_requests","pension_requests","school_admission","job_requests","rti","associations_unions","school_upgradation","invitation","greetings","general","other"];
-const URGENCIES = ["low", "medium", "high", "critical"];
+const PRIORITIES = ["low", "medium", "high", "critical"];
 
 const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
   { key: "",                tKey: "petition.segAll" },
@@ -58,7 +58,7 @@ const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
   { key: "PROCESSING",      tKey: "petition.segProcessing" },
 ];
 
-const URGENCY_CLS: Record<string, string> = {
+const PRIORITY_CLS: Record<string, string> = {
   critical: "bg-red-100 text-red-700", high: "bg-orange-100 text-orange-700",
   medium: "bg-amber-100 text-amber-700", low: "bg-slate-100 text-slate-600",
 };
@@ -126,8 +126,8 @@ const InboxTableRow = memo(function InboxTableRow({
       </td>
       <td className="px-4 py-3 text-base text-muted-foreground">{row.category ? pretty(row.category) : "—"}</td>
       <td className="px-4 py-3">
-        {row.urgency
-          ? <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold uppercase", URGENCY_CLS[row.urgency])}>{row.urgency}</span>
+        {row.priority
+          ? <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold uppercase", PRIORITY_CLS[row.priority])}>{row.priority}</span>
           : "—"}
       </td>
       <td className="whitespace-nowrap px-4 py-3">
@@ -178,8 +178,8 @@ const InboxCard = memo(function InboxCard({
         <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-semibold", sm.cls)}>
           <SIcon className="h-3.5 w-3.5" /> {t(sm.tKey)}
         </span>
-        {row.urgency && (
-          <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold", URGENCY_CLS[row.urgency])}>{row.urgency}</span>
+        {row.priority && (
+          <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold", PRIORITY_CLS[row.priority])}>{row.priority}</span>
         )}
         {row.category && (
           <span className="text-sm text-muted-foreground">{pretty(row.category)}</span>
@@ -212,7 +212,7 @@ export default function AiReviewPage() {
   // Default to Awaiting Review — that's the actionable queue PAs care about on
   // open. They can widen to All via the segments if they want history.
   const [fStatus, setFStatus] = useState<"" | StatusKey>("AWAITING_REVIEW");
-  const [fUrgency, setFUrgency] = useState("");
+  const [fPriority, setFPriority] = useState("");
   const [fSource, setFSource] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -278,12 +278,12 @@ export default function AiReviewPage() {
   const rows = useMemo<InboxRow[]>(() => {
     const up: InboxRow[] = uploads.map(u => ({
       kind: "upload", id: u.id, name: u.name, mobile: u.mobile, category: u.category,
-      urgency: u.urgency, statusKey: u.status, source: "ai_scan",
+      priority: u.priority, statusKey: u.status, source: "ai_scan",
       created_at: u.created_at, ticket_number: u.ticket_number, upload: u,
     }));
     const pet: InboxRow[] = petitions.map(p => ({
       kind: "petition", id: p.id, name: p.name, mobile: p.mobile,
-      category: p.category_label ?? p.category, urgency: p.urgency ?? null,
+      category: p.category_label ?? p.category, priority: p.priority ?? null,
       statusKey: petitionStatusKey(p.status), source: p.source || "qr_citizen",
       created_at: p.created_at, ticket_number: null, petition: p,
     }));
@@ -305,7 +305,7 @@ export default function AiReviewPage() {
     const toKey   = dateTo   || "";
     return rows.filter(r => {
       if (fStatus && r.statusKey !== fStatus) return false;
-      if (fUrgency && r.urgency !== fUrgency) return false;
+      if (fPriority && r.priority !== fPriority) return false;
       if (fSource && r.source !== fSource) return false;
       if (fromKey || toKey) {
         const day = (r.created_at || "").slice(0, 10);
@@ -320,11 +320,11 @@ export default function AiReviewPage() {
       }
       return true;
     });
-  }, [rows, fStatus, fUrgency, fSource, dateFrom, dateTo, q]);
+  }, [rows, fStatus, fPriority, fSource, dateFrom, dateTo, q]);
 
   const failedCount = uploads.filter(u => u.status === "FAILED").length;
-  const advancedFilterCount = (fUrgency ? 1 : 0) + (fSource ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
-  const anyFilterActive = Boolean(q || fStatus || fUrgency || fSource || dateFrom || dateTo);
+  const advancedFilterCount = (fPriority ? 1 : 0) + (fSource ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
+  const anyFilterActive = Boolean(q || fStatus || fPriority || fSource || dateFrom || dateTo);
 
   function openRow(r: InboxRow) {
     if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
@@ -334,7 +334,7 @@ export default function AiReviewPage() {
     }
     const u = r.upload!;
     setReview(u); setEditing(false); setModalLang("en");
-    setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, urgency: u.urgency, summary: u.summary });
+    setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, priority: u.priority, summary: u.summary });
   }
 
   async function saveEdits() {
@@ -375,7 +375,7 @@ export default function AiReviewPage() {
   }, [load]);
 
   function clearAllFilters() {
-    setFStatus(""); setFUrgency(""); setFSource(""); setDateFrom(""); setDateTo(""); setQ("");
+    setFStatus(""); setFPriority(""); setFSource(""); setDateFrom(""); setDateTo(""); setQ("");
   }
 
   const pick = <T,>(en: T, ta: T): T => (modalLang === "ta" ? (ta || en) : en);
@@ -482,10 +482,10 @@ export default function AiReviewPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{t("petition.colUrgency")}</label>
-                <select value={fUrgency} onChange={(e) => setFUrgency(e.target.value)}
+                <select value={fPriority} onChange={(e) => setFPriority(e.target.value)}
                   className="h-9 rounded-lg border border-input bg-card px-3 text-base focus:border-violet-500 focus:outline-none">
                   <option value="">{`All ${t("petition.colUrgency").toLowerCase()}`}</option>
-                  {URGENCIES.map(u => <option key={u} value={u}>{pretty(u)}</option>)}
+                  {PRIORITIES.map(u => <option key={u} value={u}>{pretty(u)}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
@@ -625,7 +625,7 @@ export default function AiReviewPage() {
                   <div className="text-xl font-bold leading-snug">{pick(review.headline, review.headline_ta) || review.name || "Petition"}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold", STATUS_CLS[review.status])}>{t(STATUS_TKEY[review.status])}</span>
-                    {review.urgency && <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase", URGENCY_CLS[review.urgency])}>{review.urgency}</span>}
+                    {review.priority && <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase", PRIORITY_CLS[review.priority])}>{review.priority}</span>}
                     {review.category && <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{pretty(review.category)}</span>}
                     {review.ticket_number && <span className="font-mono text-sm text-emerald-600">{review.ticket_number}</span>}
                   </div>
@@ -645,7 +645,7 @@ export default function AiReviewPage() {
                   <Field label={t("petition.colPhone")} editing={editing} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} icon={Phone} />
                   {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}
                   <SelectField label={t("petition.colCategory")} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
-                  <SelectField label={t("petition.colUrgency")} editing={editing} value={form.urgency} fallback={review.urgency} options={URGENCIES} onChange={v => setForm(f => ({ ...f, urgency: v }))} />
+                  <SelectField label={t("petition.colUrgency")} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} onChange={v => setForm(f => ({ ...f, priority: v }))} />
                 </div>
                 {review.department && <div className="text-sm text-muted-foreground">{t("petition.fDept")}: {pretty(review.department)}</div>}
 

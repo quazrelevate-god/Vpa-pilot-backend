@@ -100,11 +100,12 @@ export const TICKET_STATUS_COLOR: Record<string, string> = {
   reopened:           "bg-red-100 text-red-700 border-red-200",
 };
 
+// Priority is driven by the AI review (low | medium | high | critical).
 export const PRIORITY_COLOR: Record<string, string> = {
-  P0: "bg-red-600 text-white",
-  P1: "bg-orange-500 text-white",
-  P2: "bg-yellow-400 text-yellow-900",
-  P3: "bg-slate-300 text-slate-700",
+  critical: "bg-red-600 text-white",
+  high:     "bg-orange-500 text-white",
+  medium:   "bg-yellow-400 text-yellow-900",
+  low:      "bg-slate-300 text-slate-700",
 };
 
 export const CLOSURE_REASON_DISPLAY: Record<string, string> = {
@@ -116,7 +117,7 @@ export const CLOSURE_REASON_DISPLAY: Record<string, string> = {
   out_of_scope:             "Out of Scope",
 };
 
-export const URGENCY_DISPLAY: Record<string, string> = {
+export const PRIORITY_DISPLAY: Record<string, string> = {
   low: "Low", medium: "Medium", high: "High", critical: "Critical",
 };
 
@@ -129,6 +130,5 @@ export const ticketStatusOptions = Object.entries(TICKET_STATUS_DISPLAY).map(([v
 export const ticketManualStatusOptions = ticketStatusOptions.filter(
   (o) => !["triaged", "resolved", "closed", "reopened"].includes(o.value)
 );
-export const priorityOptions = Object.keys(PRIORITY_COLOR).map(v => ({ value: v, label: v }));
-export const urgencyOptions = Object.entries(URGENCY_DISPLAY).map(([value, label]) => ({ value, label }));
+export const priorityOptions = Object.entries(PRIORITY_DISPLAY).map(([value, label]) => ({ value, label }));
 export const closureReasonOptions = Object.entries(CLOSURE_REASON_DISPLAY).map(([value, label]) => ({ value, label }));

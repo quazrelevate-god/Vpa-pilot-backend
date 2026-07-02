@@ -33,50 +33,50 @@ async def display_qr_info(request: Request, user: str = Depends(require_auth)):
 
 
 # ── Analytics dashboard ─────────────────────────────────────────────────────────
-def _analytics_filters(date_from, date_to, category, urgency, department, channel, status):
+def _analytics_filters(date_from, date_to, category, priority, department, channel, status):
     from src.services.analytics_service import Filters
     return Filters(date_from=date_from, date_to=date_to, category=category,
-                   urgency=urgency, department=department, channel=channel, status=status)
+                   priority=priority, department=department, channel=channel, status=status)
 
 
 @router.get("/api/analytics")
 async def api_analytics(
-    date_from: str = None, date_to: str = None, category: str = None, urgency: str = None,
+    date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
     department: str = None, channel: str = None, status: str = None,
     db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
 ):
     from src.services.analytics_service import analytics_service
-    f = _analytics_filters(date_from, date_to, category, urgency, department, channel, status)
+    f = _analytics_filters(date_from, date_to, category, priority, department, channel, status)
     return JSONResponse(await analytics_service.get_analytics(db, f))
 
 
 @router.get("/api/analytics/petitions")
 async def api_analytics_petitions(
-    date_from: str = None, date_to: str = None, category: str = None, urgency: str = None,
+    date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
     department: str = None, channel: str = None, status: str = None,
     page: int = 1, page_size: int = 50, sort: str = "created_at", direction: str = "desc",
     db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
 ):
     from src.services.analytics_service import analytics_service
-    f = _analytics_filters(date_from, date_to, category, urgency, department, channel, status)
+    f = _analytics_filters(date_from, date_to, category, priority, department, channel, status)
     return JSONResponse(await analytics_service.get_petitions(db, f, page, page_size, sort, direction))
 
 
 @router.get("/api/analytics/export")
 async def api_analytics_export(
-    date_from: str = None, date_to: str = None, category: str = None, urgency: str = None,
+    date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
     department: str = None, channel: str = None, status: str = None,
     db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
 ):
     import csv, io
     from src.services.analytics_service import analytics_service
-    f = _analytics_filters(date_from, date_to, category, urgency, department, channel, status)
+    f = _analytics_filters(date_from, date_to, category, priority, department, channel, status)
     data = await analytics_service.get_petitions(db, f, page=1, page_size=5000)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Token", "Name", "Mobile", "Category", "Urgency", "Status", "Channel", "Meeting", "Created"])
+    w.writerow(["Token", "Name", "Mobile", "Category", "Priority", "Status", "Channel", "Meeting", "Created"])
     for r in data["items"]:
-        w.writerow([r["token"], r["name"], r["mobile"], r["category_label"], r["urgency"] or "",
+        w.writerow([r["token"], r["name"], r["mobile"], r["category_label"], r["priority"] or "",
                     r["status"], r["source_label"], "Yes" if r["schedule_meeting"] else "No", r["created_at"] or ""])
     return Response(
         content=buf.getvalue(), media_type="text/csv",
@@ -92,7 +92,7 @@ async def api_appointment_counts(
     date_to: str = "",
     appt_date_from: str = "",
     appt_date_to: str = "",
-    urgency: str = "",
+    priority: str = "",
     department: str = "",
     category: str = "",
     kind: str = "",
@@ -109,7 +109,7 @@ async def api_appointment_counts(
         date_to=date_to or None,
         appt_date_from=appt_date_from or None,
         appt_date_to=appt_date_to or None,
-        urgency=urgency or None,
+        priority=priority or None,
         department=department or None,
         category=category or None,
         kind=kind or None,
@@ -200,7 +200,7 @@ async def api_appointments(
     date_to: str = "",
     appt_date_from: str = "",
     appt_date_to: str = "",
-    urgency: str = "",
+    priority: str = "",
     department: str = "",
     category: str = "",
     kind: str = "",
@@ -218,7 +218,7 @@ async def api_appointments(
         date_to=date_to or None,
         appt_date_from=appt_date_from or None,
         appt_date_to=appt_date_to or None,
-        urgency=urgency or None,
+        priority=priority or None,
         department=department or None,
         category=category or None,
         kind=kind or None,
@@ -237,9 +237,9 @@ async def api_update_appointment_details(
     user: str = Depends(require_auth),
 ):
     """
-    PA-admin override for AI-derived urgency / category / department.
+    PA-admin override for AI-derived priority / category / department.
 
-    Body: { "urgency": "low|medium|high|critical" | null,
+    Body: { "priority": "low|medium|high|critical" | null,
             "category": "<key>" | null,
             "department": "<key>" | null }
 
@@ -249,7 +249,7 @@ async def api_update_appointment_details(
     result = await dashboard_service.update_appointment_derived_fields(
         db,
         appointment_id,
-        urgency=body.get("urgency") if "urgency" in body else None,
+        priority=body.get("priority") if "priority" in body else None,
         category=body.get("category") if "category" in body else None,
         department=body.get("department") if "department" in body else None,
     )
@@ -337,7 +337,6 @@ async def api_tickets_list(
     request: Request,
     status: str = "",
     priority: str = "",
-    urgency: str = "",
     department: str = "",
     category: str = "",
     assigned_to: str = "",
@@ -353,7 +352,6 @@ async def api_tickets_list(
         db,
         status=status or None,
         priority=priority or None,
-        urgency=urgency or None,
         department=department or None,
         category=category or None,
         assigned_to=assigned_to or None,
@@ -370,7 +368,6 @@ async def api_tickets_list(
 async def api_ticket_counts(
     request: Request,
     priority: str = "",
-    urgency: str = "",
     department: str = "",
     category: str = "",
     assigned_to: str = "",
@@ -387,7 +384,6 @@ async def api_ticket_counts(
     data = await ticket_service.get_ticket_counts(
         db,
         priority=priority or None,
-        urgency=urgency or None,
         department=department or None,
         category=category or None,
         assigned_to=assigned_to or None,

@@ -20,15 +20,15 @@ interface Bar { key: string; label: string; count: number }
 interface Analytics {
   kpis: { received: number; citizens: number; urgent: number; meetings: number; meeting_persons: number; awaiting_review: number; growth_pct: number | null };
   categories: Bar[]; departments: Bar[]; channels: Bar[];
-  urgency: { critical: number; high: number; medium: number; low: number };
+  priority: { critical: number; high: number; medium: number; low: number };
   trend: { date: string; count: number }[];
 }
 interface Petition {
   id: number; token: string; name: string; mobile: string; category: string | null;
-  category_label: string; urgency: string | null; status: string; source: string;
+  category_label: string; priority: string | null; status: string; source: string;
   source_label: string; schedule_meeting: boolean; created_at: string | null;
 }
-type Filters = { category?: string; urgency?: string; department?: string; channel?: string };
+type Filters = { category?: string; priority?: string; department?: string; channel?: string };
 
 // ── Date presets ────────────────────────────────────────────────────────────────
 type Preset = "today" | "7d" | "30d" | "90d" | "month" | "lastmonth" | "quarter" | "year" | "all";
@@ -51,7 +51,7 @@ function presetDates(p: Preset): { from?: string; to?: string } {
   return { from: iso(f), to: iso(now) };
 }
 
-const URGENCY_TONE: Record<string, string> = { critical: "bg-rose-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-emerald-500" };
+const PRIORITY_TONE: Record<string, string> = { critical: "bg-rose-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-emerald-500" };
 const fmt = (v: number | undefined | null) => (v == null ? "—" : v.toLocaleString());
 
 export default function OverviewPage() {
@@ -119,7 +119,7 @@ export default function OverviewPage() {
   };
 
   const k = data?.kpis;
-  const urgencyTotal = data ? Object.values(data.urgency).reduce((a, b) => a + b, 0) : 0;
+  const priorityTotal = data ? Object.values(data.priority).reduce((a, b) => a + b, 0) : 0;
   const maxCat = Math.max(1, ...(data?.categories ?? []).map(c => c.count));
   const maxDept = Math.max(1, ...(data?.departments ?? []).map(c => c.count));
   const maxChan = Math.max(1, ...(data?.channels ?? []).map(c => c.count));
@@ -202,23 +202,23 @@ export default function OverviewPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            {/* Urgency */}
+            {/* Priority */}
             <Card className="p-4">
-              <ChartHead icon={Flame} title="Urgency mix" sub="Click a level to filter" />
+              <ChartHead icon={Flame} title="Priority mix" sub="Click a level to filter" />
               <div className="mb-2 flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
                 {(["critical", "high", "medium", "low"] as const).map(lv => {
-                  const v = data?.urgency[lv] ?? 0; const pct = urgencyTotal ? v / urgencyTotal * 100 : 0;
-                  return <div key={lv} className={URGENCY_TONE[lv]} style={{ width: `${pct}%` }} title={`${lv}: ${v}`} />;
+                  const v = data?.priority[lv] ?? 0; const pct = priorityTotal ? v / priorityTotal * 100 : 0;
+                  return <div key={lv} className={PRIORITY_TONE[lv]} style={{ width: `${pct}%` }} title={`${lv}: ${v}`} />;
                 })}
               </div>
               <div className="space-y-1">
                 {(["critical", "high", "medium", "low"] as const).map(lv => {
-                  const v = data?.urgency[lv] ?? 0;
+                  const v = data?.priority[lv] ?? 0;
                   return (
-                    <button key={lv} onClick={() => toggle("urgency", lv)}
-                      className={cn("flex w-full items-center justify-between rounded-md px-1.5 py-1 text-[12px] transition-colors hover:bg-muted", filters.urgency === lv && "bg-brand/10 ring-1 ring-brand/20")}>
-                      <span className="inline-flex items-center gap-2 capitalize"><span className={cn("h-2 w-2 rounded-full", URGENCY_TONE[lv])} />{lv}</span>
-                      <span className="font-semibold tabular-nums">{v}<span className="ml-1 text-[10px] text-muted-foreground">{urgencyTotal ? Math.round(v / urgencyTotal * 100) : 0}%</span></span>
+                    <button key={lv} onClick={() => toggle("priority", lv)}
+                      className={cn("flex w-full items-center justify-between rounded-md px-1.5 py-1 text-[12px] transition-colors hover:bg-muted", filters.priority === lv && "bg-brand/10 ring-1 ring-brand/20")}>
+                      <span className="inline-flex items-center gap-2 capitalize"><span className={cn("h-2 w-2 rounded-full", PRIORITY_TONE[lv])} />{lv}</span>
+                      <span className="font-semibold tabular-nums">{v}<span className="ml-1 text-[10px] text-muted-foreground">{priorityTotal ? Math.round(v / priorityTotal * 100) : 0}%</span></span>
                     </button>
                   );
                 })}
@@ -265,7 +265,7 @@ export default function OverviewPage() {
                     <th className="px-4 py-2.5">Name</th>
                     <th className="px-4 py-2.5">Mobile</th>
                     <Th label="Category" col="category" sort={sort} onSort={setSort} />
-                    <th className="px-4 py-2.5">Urgency</th>
+                    <th className="px-4 py-2.5">Priority</th>
                     <Th label="Status" col="status" sort={sort} onSort={setSort} />
                     <th className="px-4 py-2.5">Channel</th>
                     <Th label="Submitted" col="created_at" sort={sort} onSort={setSort} />
@@ -281,7 +281,7 @@ export default function OverviewPage() {
                       <td className="px-4 py-2.5 font-medium">{p.name}</td>
                       <td className="px-4 py-2.5 text-muted-foreground">{p.mobile}</td>
                       <td className="px-4 py-2.5 text-muted-foreground">{p.category_label}</td>
-                      <td className="px-4 py-2.5">{p.urgency ? <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold capitalize text-white", URGENCY_TONE[p.urgency])}>{p.urgency}</span> : "—"}</td>
+                      <td className="px-4 py-2.5">{p.priority ? <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold capitalize text-white", PRIORITY_TONE[p.priority])}>{p.priority}</span> : "—"}</td>
                       <td className="px-4 py-2.5 text-[12px]">{p.status.replace(/_/g, " ").toLowerCase()}</td>
                       <td className="px-4 py-2.5 text-[12px] text-muted-foreground">{p.source_label}</td>
                       <td className="px-4 py-2.5 text-[12px] text-muted-foreground">{p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}</td>

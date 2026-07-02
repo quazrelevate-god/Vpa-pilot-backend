@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
-import { urgencyOptions, deptOptions, categoryOptions, DEPT_DISPLAY, CATEGORY_DISPLAY } from "@/lib/enums";
+import { priorityOptions, deptOptions, categoryOptions, DEPT_DISPLAY, CATEGORY_DISPLAY } from "@/lib/enums";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 
 type Lang = "en" | "ta";
@@ -43,7 +43,7 @@ export default function AppointmentDetailDrawer({
   const [tab, setTab] = useState("details");
   const [activity, setActivity] = useState<AppointmentActivityEvent[]>([]);
   // Local overlay so the UI reflects PA admin edits without a refetch.
-  const [overrides, setOverrides] = useState<{ urgency?: string | null; category?: string | null; department?: string | null }>({});
+  const [overrides, setOverrides] = useState<{ priority?: string | null; category?: string | null; department?: string | null }>({});
   const [editCategory, setEditCategory] = useState(false);
   const [editDepartment, setEditDepartment] = useState(false);
 
@@ -64,7 +64,7 @@ export default function AppointmentDetailDrawer({
     fetchAppointmentActivity(row.id).then((r) => setActivity(r.items)).catch(() => setActivity([]));
   }, [row?.id]);
 
-  const currentUrgency = overrides.urgency !== undefined ? overrides.urgency : a?.urgency ?? null;
+  const currentPriority = overrides.priority !== undefined ? overrides.priority : a?.priority ?? null;
   const currentCategoryKey = overrides.category !== undefined ? overrides.category : null; // null means use AI label
   const currentDeptKey = overrides.department !== undefined ? overrides.department : null;
   const categoryLabel = currentCategoryKey
@@ -93,7 +93,7 @@ export default function AppointmentDetailDrawer({
     }
   }
 
-  async function patchDetails(patch: { urgency?: string | null; category?: string | null; department?: string | null }) {
+  async function patchDetails(patch: { priority?: string | null; category?: string | null; department?: string | null }) {
     if (!a) return;
     setBusy(true);
     try {
@@ -132,9 +132,9 @@ export default function AppointmentDetailDrawer({
                   <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", STATUS_COLOR[a.status])}>
                     {a.status}
                   </span>
-                  {a.urgency && (
+                  {a.priority && (
                     <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-orange-700">
-                      {a.urgency}
+                      {a.priority}
                     </span>
                   )}
                 </div>
@@ -255,9 +255,9 @@ export default function AppointmentDetailDrawer({
                       <div className="truncate text-base font-semibold text-foreground">{a.name ?? "—"}</div>
                       <div className="mt-0.5 text-xs uppercase tracking-wider text-muted-foreground">Citizen</div>
                     </div>
-                    {currentUrgency && (
+                    {currentPriority && (
                       <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-orange-700">
-                        <ShieldAlert className="h-3.5 w-3.5" />{currentUrgency} urgency
+                        <ShieldAlert className="h-3.5 w-3.5" />{currentPriority} priority
                       </span>
                     )}
                   </div>
@@ -307,17 +307,17 @@ export default function AppointmentDetailDrawer({
                       </Select>
                     </div>
 
-                    {/* Urgency — always editable */}
+                    {/* Priority — always editable */}
                     <div className="space-y-1.5">
-                      <Label>Urgency</Label>
+                      <Label>Priority</Label>
                       <Select
-                        value={currentUrgency ?? undefined}
-                        onValueChange={(v) => patchDetails({ urgency: v })}
+                        value={currentPriority ?? undefined}
+                        onValueChange={(v) => patchDetails({ priority: v })}
                         disabled={busy}
                       >
-                        <SelectTrigger className="h-9"><SelectValue placeholder="— Set urgency —" /></SelectTrigger>
+                        <SelectTrigger className="h-9"><SelectValue placeholder="— Set priority —" /></SelectTrigger>
                         <SelectContent>
-                          {urgencyOptions.map((o) => (
+                          {priorityOptions.map((o) => (
                             <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                           ))}
                         </SelectContent>
@@ -515,7 +515,8 @@ function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => voi
 const APPT_EVENT_ICON: Record<string, React.ElementType> = {
   created: ActivityIcon,
   status_changed: GitBranch,
-  urgency_changed: ShieldAlert,
+  priority_changed: ShieldAlert,
+  urgency_changed: ShieldAlert,   // legacy events logged before the rename
   category_changed: Flag,
   department_changed: ArrowRight,
   rescheduled: CalendarDays,
@@ -528,7 +529,8 @@ const APPT_EVENT_ICON: Record<string, React.ElementType> = {
 const APPT_PRETTY_EVENT: Record<string, string> = {
   created: "Appointment created",
   status_changed: "Status changed",
-  urgency_changed: "Urgency changed",
+  priority_changed: "Priority changed",
+  urgency_changed: "Priority changed",   // legacy events logged before the rename
   category_changed: "Category changed",
   department_changed: "Department changed",
   rescheduled: "Rescheduled",
@@ -559,7 +561,8 @@ function ApptChangeArrow({ from, to }: { from: unknown; to: unknown }) {
 function renderApptEventBody(e: { event_type: string; note?: string | null; payload?: Record<string, unknown> | null }) {
   const p = e.payload ?? {};
 
-  if (e.event_type === "status_changed" || e.event_type === "urgency_changed" ||
+  if (e.event_type === "status_changed" || e.event_type === "priority_changed" ||
+      e.event_type === "urgency_changed" ||
       e.event_type === "category_changed" || e.event_type === "department_changed") {
     return <ApptChangeArrow from={p.from} to={p.to} />;
   }

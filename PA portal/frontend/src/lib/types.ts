@@ -1,7 +1,7 @@
 // Shapes that come back from FastAPI's /dashboard/api/* endpoints.
 // Keep this in sync with backend/src/services/dashboard_service.py.
 
-export type Urgency = "low" | "medium" | "high" | "critical";
+export type Priority = "low" | "medium" | "high" | "critical";
 
 export type AppointmentStatus =
   | "Scheduled"
@@ -11,7 +11,7 @@ export type AppointmentStatus =
   | "Reviewed";
 
 export interface SlaBucket {
-  priority: "P0" | "P1" | "P2" | "P3";
+  priority: Priority;
   on_track: number;
   breached: number;
   target_days: number;
@@ -31,7 +31,7 @@ export interface StatsResponse {
   trend_resolved?: number[];
   categories: { label: string; count: number }[];
   departments: { label: string; count: number }[];
-  urgency: Partial<Record<Urgency, number>>;
+  priority: Partial<Record<Priority, number>>;
   // New political/operational KPIs
   unique_citizens?: number;
   meetings_held?: number;
@@ -64,7 +64,7 @@ export interface AppointmentRow {
   appointment_time?: string;        // personal sub-slot ISO datetime
   slot_window?: string | null;      // "08:00 – 08:30" range label
   appointment_slot_end?: string | null;
-  urgency?: Urgency | null;
+  priority?: Priority | null;
   description?: string;
   headline?: string;
   headline_ta?: string | null;
@@ -79,7 +79,6 @@ export interface AppointmentRow {
   attachments?: AppointmentAttachment[];
   category_label?: string | null;
   department_label?: string | null;
-  priority?: TicketPriority | null;
   num_persons?: number | null;
 }
 
@@ -115,8 +114,6 @@ export type TicketStatus =
   | "closed"
   | "reopened";
 
-export type TicketPriority = "P0" | "P1" | "P2" | "P3";
-
 export type ClosureReason =
   | "action_taken"
   | "not_actionable"
@@ -126,7 +123,7 @@ export type ClosureReason =
   | "out_of_scope";
 
 export interface TicketEvent {
-  id: number;
+  id: number | string;   // real events are numeric; synthetic anchors are string ids
   event_type: string;
   actor: string;
   note?: string | null;
@@ -142,7 +139,7 @@ export interface TicketRow {
   citizen_name?: string | null;
   citizen_mobile?: string | null;
   status: TicketStatus;
-  priority?: TicketPriority | null;
+  priority?: Priority | null;   // from the AI review (low|medium|high|critical)
   assigned_to_pa?: string | null;
   due_date?: string | null;
   forwarded_to_dept?: string | null;
@@ -150,7 +147,6 @@ export interface TicketRow {
   reopen_count: number;
   created_at: string;
   updated_at: string;
-  urgency?: Urgency | null;
   category?: string | null;
   category_label?: string | null;
   department?: string | null;
@@ -178,7 +174,17 @@ export interface TicketDetail extends TicketRow {
   forwarded_by?: string | null;
   forwarded_notes?: string | null;
   attachments?: AppointmentAttachment[];
+  resolution_attachments?: ResolutionAttachment[];
   events: TicketEvent[];
+}
+
+export interface ResolutionAttachment {
+  url: string;
+  mime: string;
+  name: string;
+  kind: string;          // "resolution"
+  by: string;            // department key that uploaded it
+  at: string;
 }
 
 export interface TicketsResponse {

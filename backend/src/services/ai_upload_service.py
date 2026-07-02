@@ -215,7 +215,7 @@ class AiUploadService:
                 row.extracted_name_ta = result.citizen_name_ta
                 row.extracted_mobile  = result.mobile
                 row.grievance_category = final_category
-                row.urgency            = result.urgency.value
+                row.priority           = result.urgency.value   # LLM field `urgency` -> `priority` column
                 row.summary_json       = payload
                 row.error_message      = None
                 row.status             = STATUS_AWAITING_REVIEW
@@ -257,7 +257,7 @@ class AiUploadService:
             "mobile": row.extracted_mobile,
             "category": row.grievance_category,
             "forced_category": row.forced_category,
-            "urgency": row.urgency,
+            "priority": row.priority,
             "headline": sj.get("headline"),
             "headline_ta": sj.get("headline_ta"),
             "summary": sj.get("summary"),
@@ -299,7 +299,7 @@ class AiUploadService:
             "name_ta":     ("extracted_name_ta", "citizen_name_ta"),
             "mobile":      ("extracted_mobile",  "mobile"),
             "category":    ("grievance_category", "category"),
-            "urgency":     ("urgency",            "urgency"),
+            "priority":    ("priority",           "priority"),
         }
         for key, (col, json_key) in mapping.items():
             if key in fields and fields[key] is not None:

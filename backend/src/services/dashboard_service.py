@@ -140,12 +140,12 @@ async def get_stats(
         GrievanceSummaryRecord.appointment_id.in_(appt_ids_in_range),
     ]
 
-    urgency_rows = await db.execute(
-        select(GrievanceSummaryRecord.urgency, func.count(GrievanceSummaryRecord.id))
+    priority_rows = await db.execute(
+        select(GrievanceSummaryRecord.priority, func.count(GrievanceSummaryRecord.id))
         .where(*gsr_filter)
-        .group_by(GrievanceSummaryRecord.urgency)
+        .group_by(GrievanceSummaryRecord.priority)
     )
-    urgency = {r[0]: r[1] for r in urgency_rows}
+    priority = {r[0]: r[1] for r in priority_rows}
 
     # Primary department breakdown — drives the routing KPI for the Minister.
     dept_rows = await db.execute(
@@ -278,24 +278,26 @@ async def get_stats(
     ]
     total_forwarded = sum(d["count"] for d in forwarded_departments)
 
-    # SLA bucket health by priority — actionable tickets only
-    sla_targets_days = {"P0": 3, "P1": 7, "P2": 14, "P3": 28}
+    # SLA bucket health by priority (from the AI review) — actionable tickets only.
+    sla_targets_days = {"critical": 3, "high": 7, "medium": 14, "low": 28}
+    gsr_prio = (
+        select(GrievanceSummaryRecord.appointment_id, GrievanceSummaryRecord.priority)
+        .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
+        .subquery()
+    )
     sla_buckets = []
-    for prio, target in sla_targets_days.items():
+    for level, target in sla_targets_days.items():
         threshold = now - timedelta(days=target)
-        on_track = await db.scalar(
+        base = (
             select(func.count(Ticket.id))
-            .where(Ticket.priority == prio,
-                   Ticket.status.in_(actionable_statuses),
-                   Ticket.created_at > threshold)
-        ) or 0
-        breached = await db.scalar(
-            select(func.count(Ticket.id))
-            .where(Ticket.priority == prio,
-                   Ticket.status.in_(actionable_statuses),
-                   Ticket.created_at <= threshold)
-        ) or 0
-        sla_buckets.append({"priority": prio, "on_track": on_track, "breached": breached, "target_days": target})
+            .select_from(Ticket)
+            .join(gsr_prio, gsr_prio.c.appointment_id == Ticket.appointment_id)
+            .where(gsr_prio.c.priority == level,
+                   Ticket.status.in_(actionable_statuses))
+        )
+        on_track = await db.scalar(base.where(Ticket.created_at > threshold)) or 0
+        breached = await db.scalar(base.where(Ticket.created_at <= threshold)) or 0
+        sla_buckets.append({"priority": level, "on_track": on_track, "breached": breached, "target_days": target})
 
     return {
         "total":             total,
@@ -308,7 +310,7 @@ async def get_stats(
         "ai_coverage":       ai_coverage,
         "categories":        categories,
         "departments":       departments,
-        "urgency":           urgency,
+        "priority":           priority,
         "trend_labels":      day_labels,
         "trend_counts":      day_counts,
         # New political/operational KPIs
@@ -332,7 +334,7 @@ async def get_appointments(
     date_to: Optional[str] = None,
     appt_date_from: Optional[str] = None,
     appt_date_to: Optional[str] = None,
-    urgency: Optional[str] = None,
+    priority: Optional[str] = None,
     department: Optional[str] = None,
     category: Optional[str] = None,
     kind: Optional[str] = None,
@@ -347,7 +349,7 @@ async def get_appointments(
     `kind`: "meeting" → only meeting requests (schedule_meeting=True);
             "petition" → only direct petitions (schedule_meeting=False);
             None/other → both (legacy behaviour).
-    `sort`: "urgency" → Critical→High→Medium→Low (then newest); else newest first.
+    `sort`: "priority" → Critical→High→Medium→Low (then newest); else newest first.
     """
     from datetime import datetime as dt
     is_scheduled_tab = status_filter == "Scheduled"
@@ -394,16 +396,16 @@ async def get_appointments(
         elif status_filter == "Waiting":
             stmt = stmt.where(Appointment.status.in_(["WAITING", "IN_PROGRESS"]))
 
-    # AI-derived filters: urgency + department live only on GrievanceSummaryRecord.
+    # AI-derived filters: priority + department live only on GrievanceSummaryRecord.
     # Category also falls back to Appointment.grievance_category for petitions
     # that haven't been AI-summarised yet (AWAITING_REVIEW with form-selected category).
-    if urgency or department or category:
+    if priority or department or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         )
-        if urgency:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+        if priority:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
         if department:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
         if category:
@@ -426,14 +428,14 @@ async def get_appointments(
             stmt = stmt.where(Appointment.id.in_(gsr_sub))
 
     # ── Ordering ────────────────────────────────────────────────────────────────
-    if sort == "urgency":
-        # Critical → High → Medium → Low (then newest). Urgency lives on the latest
+    if sort == "priority":
+        # Critical → High → Medium → Low (then newest). Priority lives on the latest
         # AI summary, so join it just for the sort key.
-        urgency_rank = case(
-            (GrievanceSummaryRecord.urgency == "critical", 0),
-            (GrievanceSummaryRecord.urgency == "high", 1),
-            (GrievanceSummaryRecord.urgency == "medium", 2),
-            (GrievanceSummaryRecord.urgency == "low", 3),
+        priority_rank = case(
+            (GrievanceSummaryRecord.priority == "critical", 0),
+            (GrievanceSummaryRecord.priority == "high", 1),
+            (GrievanceSummaryRecord.priority == "medium", 2),
+            (GrievanceSummaryRecord.priority == "low", 3),
             else_=4,
         )
         stmt = stmt.outerjoin(
@@ -442,7 +444,7 @@ async def get_appointments(
                 GrievanceSummaryRecord.appointment_id == Appointment.id,
                 GrievanceSummaryRecord.is_latest == True,  # noqa: E712
             ),
-        ).order_by(urgency_rank.asc(), Appointment.created_at.desc())
+        ).order_by(priority_rank.asc(), Appointment.created_at.desc())
     elif sort == "appt_date_asc":
         stmt = stmt.order_by(
             Appointment.scheduled_date.asc().nullslast(),
@@ -504,7 +506,7 @@ async def get_appointment_counts(
     date_to: Optional[str] = None,
     appt_date_from: Optional[str] = None,
     appt_date_to: Optional[str] = None,
-    urgency: Optional[str] = None,
+    priority: Optional[str] = None,
     department: Optional[str] = None,
     category: Optional[str] = None,
     kind: Optional[str] = None,
@@ -532,13 +534,13 @@ async def get_appointment_counts(
     if appt_date_to:
         base = base.where(Appointment.scheduled_date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
 
-    if urgency or department or category:
+    if priority or department or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         )
-        if urgency:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+        if priority:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
         if department:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
         if category:
@@ -570,13 +572,13 @@ async def get_appointment_counts(
             stmt = stmt.where(Appointment.scheduled_date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
         if appt_date_to:
             stmt = stmt.where(Appointment.scheduled_date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
-        if urgency or department or category:
+        if priority or department or category:
             gsr_sub = (
                 select(GrievanceSummaryRecord.appointment_id)
                 .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
             )
-            if urgency:
-                gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+            if priority:
+                gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
             if department:
                 gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
             if category:
@@ -679,7 +681,7 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "summary_ta": summary_rec.summary_ta if summary_rec else None,
         "citizen_ask": summary_rec.citizen_ask if summary_rec else None,
         "citizen_ask_ta": summary_rec.citizen_ask_ta if summary_rec else None,
-        "urgency": summary_rec.urgency if summary_rec else None,
+        "priority": summary_rec.priority if summary_rec else None,
         "key_details": summary_rec.key_details if summary_rec else [],
         "key_details_ta": summary_rec.key_details_ta if summary_rec else [],
         "audio_transcript": summary_rec.audio_transcript if summary_rec else None,
@@ -707,19 +709,19 @@ async def get_appointment_detail(db: AsyncSession, appointment_id: int) -> Optio
 async def update_appointment_derived_fields(
     db: AsyncSession,
     appointment_id: int,
-    urgency: Optional[str] = None,
+    priority: Optional[str] = None,
     category: Optional[str] = None,
     department: Optional[str] = None,
 ) -> dict:
     """
-    Override AI-derived urgency / category / department on the linked
+    Override AI-derived priority / category / department on the linked
     GrievanceSummaryRecord. Used when the PA disagrees with the AI's
     classification.
 
     Returns:
         {"success": True} on success, {"success": False} if no record found.
     """
-    # urgency lives on GrievanceSummaryRecord; category lives on Appointment.
+    # priority lives on GrievanceSummaryRecord; category lives on Appointment.
     appt = await db.scalar(select(Appointment).where(Appointment.id == appointment_id))
     if not appt:
         return {"success": False}
@@ -738,12 +740,12 @@ async def update_appointment_derived_fields(
         .limit(1)
     )
     if summary:
-        if urgency is not None:
-            old_urgency = summary.urgency
-            summary.urgency = urgency or None
-            if old_urgency != summary.urgency:
-                _log_appt_event(db, appointment_id, "urgency_changed",
-                                payload={"from": old_urgency, "to": summary.urgency})
+        if priority is not None:
+            old_priority = summary.priority
+            summary.priority = priority or None
+            if old_priority != summary.priority:
+                _log_appt_event(db, appointment_id, "priority_changed",
+                                payload={"from": old_priority, "to": summary.priority})
         if department is not None:
             old_dept = summary.department
             summary.department = department or None

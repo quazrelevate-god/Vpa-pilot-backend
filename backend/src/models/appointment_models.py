@@ -500,7 +500,7 @@ class AppointmentAttachment(Base):
 APPOINTMENT_EVENT_TYPES = (
     "created",
     "status_changed",
-    "urgency_changed",
+    "priority_changed",
     "category_changed",
     "department_changed",
     "rescheduled",
@@ -513,7 +513,7 @@ APPOINTMENT_EVENT_TYPES = (
 
 class AppointmentEvent(Base):
     """
-    Audit log for appointment-level changes (status, urgency, category, etc.).
+    Audit log for appointment-level changes (status, priority, category, etc.).
     Mirrors the TicketEvent pattern so the PA portal can show a timeline.
     """
     __tablename__ = "appointment_events"

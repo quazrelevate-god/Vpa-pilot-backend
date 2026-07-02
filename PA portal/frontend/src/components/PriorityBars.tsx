@@ -1,19 +1,19 @@
-import type { Urgency } from "@/lib/types";
+import type { Priority } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const ORDER: { key: Urgency; label: string; bar: string; chip: string }[] = [
+const ORDER: { key: Priority; label: string; bar: string; chip: string }[] = [
   { key: "critical", label: "Critical", bar: "bg-gradient-to-r from-red-500 to-red-600",       chip: "bg-red-100 text-red-700" },
   { key: "high",     label: "High",     bar: "bg-gradient-to-r from-orange-400 to-orange-500",  chip: "bg-orange-100 text-orange-700" },
   { key: "medium",   label: "Medium",   bar: "bg-gradient-to-r from-amber-300 to-amber-400",    chip: "bg-amber-100 text-amber-700" },
   { key: "low",      label: "Low",      bar: "bg-gradient-to-r from-emerald-400 to-emerald-500", chip: "bg-emerald-100 text-emerald-700" },
 ];
 
-export default function UrgencyBars({ urgency }: { urgency: Partial<Record<Urgency, number>> }) {
-  const total = Object.values(urgency).reduce((a, b) => (a as number) + (b as number), 0) || 1;
+export default function PriorityBars({ priority }: { priority: Partial<Record<Priority, number>> }) {
+  const total = Object.values(priority).reduce((a, b) => (a as number) + (b as number), 0) || 1;
   return (
     <div className="space-y-3.5">
       {ORDER.map((u) => {
-        const count = urgency[u.key] ?? 0;
+        const count = priority[u.key] ?? 0;
         const pct = Math.round((count / (total as number)) * 100);
         return (
           <div key={u.key}>

@@ -54,7 +54,8 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         "citizen_name":    name,
         "citizen_mobile":  mobile,
         "status":          t.status,
-        "priority":        t.priority,
+        # Priority is driven by the AI review (no manual P0-P3 override).
+        "priority":        summary_rec.priority if summary_rec else None,
         "assigned_to_pa":  t.assigned_to_pa,
         "due_date":        utc_iso(t.due_date),
         "forwarded_to_dept": t.forwarded_to_dept,
@@ -65,7 +66,6 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         "created_at":      utc_iso(t.created_at),
         "updated_at":      utc_iso(t.updated_at),
         # AI-derived fields for the list view
-        "urgency":         summary_rec.urgency if summary_rec else None,
         "category":        summary_rec.category if summary_rec else None,
         "category_label":  CATEGORY_DISPLAY.get(summary_rec.category) if summary_rec else None,
         "department":      summary_rec.department if summary_rec else None,
@@ -95,10 +95,11 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
         (s for s in (appt.grievance_summary if appt else []) if s.is_latest), None
     )
 
+    from src.services.storage_service import get_file_url
+
     attachments = []
     audio_url = None
     if appt:
-        from src.services.storage_service import get_file_url
         for a in appt.attachments:
             attachments.append({
                 "url":  get_file_url(a.storage_url),
@@ -108,6 +109,45 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
             })
         if appt.audio_recording_url:
             audio_url = get_file_url(appt.audio_recording_url)
+
+    # Resolution proofs uploaded by the department when they close out the ticket
+    # (separate from the citizen's own petition uploads above).
+    resolution_attachments = [
+        {
+            "url":  get_file_url(a.storage_url),
+            "mime": a.mime_type,
+            "name": a.original_filename or (Path(a.storage_url).name if a.storage_url else ""),
+            "kind": a.kind,
+            "by":   a.uploaded_by,
+            "at":   utc_iso(a.created_at),
+        }
+        for a in t.attachments
+    ]
+
+    # Timeline: real DB events + two synthetic anchors so every ticket shows the
+    # full lifecycle — when the citizen submitted, and when the ticket was opened.
+    # Rendered newest-first (matches the events relationship, created_at desc);
+    # the two synthetic anchors sink to the bottom as the oldest entries.
+    events = [_serialize_event(e) for e in t.events]
+    if appt and appt.created_at:
+        events.append({
+            "id":         f"submitted-{t.id}",
+            "event_type": "petition_submitted",
+            "actor":      row.get("citizen_name") or "Citizen",
+            "note":       None,
+            "payload":    {"token": row.get("token")},
+            "created_at": utc_iso(appt.created_at),
+        })
+    if not any(e["event_type"] == "created" for e in events):
+        events.append({
+            "id":         f"created-{t.id}",
+            "event_type": "created",
+            "actor":      "pa_admin",
+            "note":       None,
+            "payload":    None,
+            "created_at": utc_iso(t.created_at),
+        })
+    events.sort(key=lambda e: e["created_at"] or "", reverse=True)
 
     row.update({
         "description": _decode(appt.encrypted_grievance) if (appt and appt.encrypted_grievance) else None,
@@ -129,8 +169,9 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
         "forwarded_by":       t.forwarded_by,
         "forwarded_notes":    t.forwarded_notes,
         "attachments":        attachments,
+        "resolution_attachments": resolution_attachments,
         "audio_url":          audio_url,
-        "events":             [_serialize_event(e) for e in t.events],
+        "events":             events,
     })
     return row
 
@@ -140,8 +181,7 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
 async def list_tickets(
     db: AsyncSession,
     status: Optional[str] = None,
-    priority: Optional[str] = None,
-    urgency: Optional[str] = None,
+    priority: Optional[str] = None,   # AI-review priority (low|medium|high|critical)
     department: Optional[str] = None,
     category: Optional[str] = None,
     assigned_to: Optional[str] = None,
@@ -166,8 +206,6 @@ async def list_tickets(
     clauses = []
     if status:
         clauses.append(Ticket.status == status)
-    if priority:
-        clauses.append(Ticket.priority == priority)
     if assigned_to:
         clauses.append(Ticket.assigned_to_pa == assigned_to)
     if forwarded_to_dept:
@@ -180,13 +218,13 @@ async def list_tickets(
         )
 
     # AI-derived filters live on GrievanceSummaryRecord — join when needed
-    if urgency or department or category:
+    if priority or department or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         )
-        if urgency:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+        if priority:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
         if department:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
         if category:
@@ -224,8 +262,7 @@ async def list_tickets(
 
 async def get_ticket_counts(
     db: AsyncSession,
-    priority: Optional[str] = None,
-    urgency: Optional[str] = None,
+    priority: Optional[str] = None,   # AI-review priority (low|medium|high|critical)
     department: Optional[str] = None,
     category: Optional[str] = None,
     assigned_to: Optional[str] = None,
@@ -239,8 +276,6 @@ async def get_ticket_counts(
     base = select(Ticket.id, Ticket.status)
 
     clauses = []
-    if priority:
-        clauses.append(Ticket.priority == priority)
     if assigned_to:
         clauses.append(Ticket.assigned_to_pa == assigned_to)
     if forwarded_to_dept:
@@ -252,13 +287,13 @@ async def get_ticket_counts(
             Ticket.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S")
         )
 
-    if urgency or department or category:
+    if priority or department or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         )
-        if urgency:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.urgency == urgency)
+        if priority:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
         if department:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
         if category:
@@ -329,6 +364,7 @@ async def get_ticket(db: AsyncSession, ticket_id: int) -> Optional[Dict[str, Any
             selectinload(Ticket.appointment).selectinload(Appointment.attachments),
             selectinload(Ticket.appointment).selectinload(Appointment.grievance_summary),
             selectinload(Ticket.events),
+            selectinload(Ticket.attachments),
         )
         .where(Ticket.id == ticket_id)
     )

@@ -10,7 +10,7 @@ Design decisions
 ----------------
 - JSONB for `key_details` / `key_details_ta`: lists are opaque to SQL queries,
   JSONB is the lightest storage with optional GIN indexing if search is needed later.
-- All narrative text (summary, urgency_reason, etc.) is plain TEXT — no length
+- All narrative text (summary, priority_reason, etc.) is plain TEXT — no length
   cap at DB level since Pydantic already enforces max_length upstream.
 - Enum values stored as VARCHAR(20) — easy to filter/group without a custom PG type.
 - `gemini_model_used` and `gemini_latency_ms` support future cost/performance
@@ -83,10 +83,10 @@ class GrievanceSummaryRecord(Base):
     )
 
     # ── Classification (enum values — always English) ─────────────────────────
-    urgency = Column(
+    priority = Column(
         VARCHAR(20),
         nullable=False,
-        comment="UrgencyLevel enum: low | medium | high | critical",
+        comment="Priority level (from AI review): low | medium | high | critical",
     )
 
     category = Column(
@@ -129,10 +129,10 @@ class GrievanceSummaryRecord(Base):
         comment="Specific action requested by the citizen (English)",
     )
 
-    urgency_reason = Column(
+    priority_reason = Column(
         Text,
         nullable=True,
-        comment="Why urgency is HIGH/CRITICAL (English). NULL for low/medium.",
+        comment="Why priority is HIGH/CRITICAL (English). NULL for low/medium.",
     )
 
     key_details = Column(
@@ -166,10 +166,10 @@ class GrievanceSummaryRecord(Base):
         comment="Tamil translation of citizen_ask (தமிழ்)",
     )
 
-    urgency_reason_ta = Column(
+    priority_reason_ta = Column(
         Text,
         nullable=True,
-        comment="Tamil translation of urgency_reason. NULL for low/medium urgency.",
+        comment="Tamil translation of priority_reason. NULL for low/medium priority.",
     )
 
     key_details_ta = Column(
@@ -250,7 +250,7 @@ class GrievanceSummaryRecord(Base):
             appointment_id=appointment_id,
             is_latest=True,
             # classification
-            urgency=summary.urgency.value,
+            priority=summary.urgency.value,   # LLM field stays `urgency`; column is `priority`
             category=summary.category.value,
             department=summary.department.value,
             secondary_departments=[d.value for d in summary.secondary_departments],
@@ -258,14 +258,14 @@ class GrievanceSummaryRecord(Base):
             headline=summary.headline,
             summary=summary.summary,
             citizen_ask=summary.citizen_ask,
-            urgency_reason=summary.urgency_reason,
+            priority_reason=summary.urgency_reason,
             key_details=summary.key_details,
             attachment_notes=summary.attachment_notes,
             # Tamil fields
             headline_ta=summary.headline_ta,
             summary_ta=summary.summary_ta,
             citizen_ask_ta=summary.citizen_ask_ta,
-            urgency_reason_ta=summary.urgency_reason_ta,
+            priority_reason_ta=summary.urgency_reason_ta,
             key_details_ta=summary.key_details_ta,
             attachment_notes_ta=summary.attachment_notes_ta,
             # STT
@@ -290,8 +290,8 @@ class GrievanceSummaryRecord(Base):
             "appointment_id",
             "is_latest",
         ),
-        # Dashboard queries: filter/sort by urgency or category
-        Index("ix_gsr_urgency", "urgency"),
+        # Dashboard queries: filter/sort by priority or category
+        Index("ix_gsr_priority", "priority"),
         Index("ix_gsr_category", "category"),
         Index("ix_gsr_department", "department"),
         Index("ix_gsr_created_at", "created_at"),

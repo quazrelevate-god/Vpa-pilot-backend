@@ -8,10 +8,10 @@ import {
 } from "lucide-react";
 
 type Ticket = {
-  id: number; ticket_number: string; status: string; priority: string | null;
+  id: number; ticket_number: string; status: string;
   department: string | null; department_label: string | null; progress_pct: number;
   citizen_name: string; citizen_mobile: string; token: string | null;
-  headline: string | null; urgency: string | null;
+  headline: string | null; priority: string | null;
   created_at: string; accepted_at: string | null; resolved_at: string | null;
 };
 type Detail = Ticket & {
@@ -31,7 +31,7 @@ const STATUS_LABEL: Record<string, string> = {
   awaiting_department: "To Accept", in_progress: "In Progress", resolved: "Resolved",
   closed: "Closed", reopened: "Reopened", forwarded_to_dept: "Forwarded",
 };
-const URGENCY_CLS: Record<string, string> = {
+const PRIORITY_CLS: Record<string, string> = {
   critical: "bg-red-100 text-red-700", high: "bg-orange-100 text-orange-700",
   medium: "bg-amber-100 text-amber-700", low: "bg-slate-100 text-slate-600",
 };
@@ -124,7 +124,7 @@ export default function DepartmentDashboard() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs font-semibold text-indigo-600">{t.ticket_number}</span>
-                  {t.urgency && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${URGENCY_CLS[t.urgency] || ""}`}>{t.urgency}</span>}
+                  {t.priority && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${PRIORITY_CLS[t.priority] || ""}`}>{t.priority}</span>}
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{STATUS_LABEL[t.status] || t.status}</span>
                 </div>
                 <div className="mt-1 truncate text-sm font-medium text-slate-900">{t.headline || "Petition"}</div>

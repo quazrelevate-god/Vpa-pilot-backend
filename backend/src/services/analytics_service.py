@@ -6,7 +6,7 @@ grievance_summary_records). Every widget and KPI respects the active filters;
 for cross-filtering, each chart excludes its OWN dimension (click a category bar
 and the category chart still shows all categories, while everything else rescopes).
 
-Sources: appointments (channel via `source`), grievance_summary_records (urgency,
+Sources: appointments (channel via `source`), grievance_summary_records (priority,
 department), citizens (decrypted name/mobile for the table).
 """
 from __future__ import annotations
@@ -31,12 +31,12 @@ CHANNEL_LABELS = {
 
 # ── Filter model ────────────────────────────────────────────────────────────────
 class Filters:
-    def __init__(self, date_from=None, date_to=None, category=None, urgency=None,
+    def __init__(self, date_from=None, date_to=None, category=None, priority=None,
                  department=None, channel=None, status=None):
         self.date_from = _parse_dt(date_from, end=False)
         self.date_to   = _parse_dt(date_to, end=True)
         self.category = category or None
-        self.urgency = urgency or None
+        self.priority = priority or None
         self.department = department or None
         self.channel = channel or None
         self.status = status or None
@@ -61,7 +61,7 @@ def _conditions(f: Filters, exclude: Optional[str] = None) -> Tuple[list, list]:
     if exclude != "category" and f.category:   appt.append(Appointment.grievance_category == f.category)
     if exclude != "channel"  and f.channel:    appt.append(Appointment.source == f.channel)
     if exclude != "status"   and f.status:     appt.append(Appointment.status == f.status)
-    if exclude != "urgency"    and f.urgency:    gsr.append(GSR.urgency == f.urgency)
+    if exclude != "priority"    and f.priority:    gsr.append(GSR.priority == f.priority)
     if exclude != "department" and f.department: gsr.append(GSR.department == f.department)
     return appt, gsr
 
@@ -84,7 +84,7 @@ class AnalyticsService:
         citizens = await db.scalar(_scoped(select(func.count(distinct(Appointment.citizen_id))), f)) or 0
         urgent = await db.scalar(
             _scoped(select(func.count(distinct(Appointment.id))), f, force_gsr=True)
-            .where(GSR.urgency.in_(["critical", "high"]))
+            .where(GSR.priority.in_(["critical", "high"]))
         ) or 0
         meetings = await db.scalar(
             _scoped(select(func.count(Appointment.id)), f).where(Appointment.schedule_meeting == True)  # noqa: E712
@@ -104,7 +104,7 @@ class AnalyticsService:
         categories = await self._group(db, f, Appointment.grievance_category, exclude="category", labels=CATEGORY_DISPLAY_EN)
         departments = await self._group(db, f, GSR.department, exclude="department", labels=DEPARTMENT_DISPLAY, force_gsr=True, limit=8)
         channels = await self._group(db, f, Appointment.source, exclude="channel", labels=CHANNEL_LABELS)
-        urgency = await self._urgency(db, f)
+        priority = await self._priority(db, f)
         trend = await self._trend(db, f)
 
         return {
@@ -116,7 +116,7 @@ class AnalyticsService:
             "categories": categories,
             "departments": departments,
             "channels": channels,
-            "urgency": urgency,
+            "priority": priority,
             "trend": trend,
         }
 
@@ -144,8 +144,8 @@ class AnalyticsService:
             out.append({"key": key, "label": (labels or {}).get(key, str(key).replace("_", " ").title()), "count": n})
         return out
 
-    async def _urgency(self, db, f: Filters):
-        stmt = _scoped(select(GSR.urgency, func.count(Appointment.id)), f, exclude="urgency", force_gsr=True).group_by(GSR.urgency)
+    async def _priority(self, db, f: Filters):
+        stmt = _scoped(select(GSR.priority, func.count(Appointment.id)), f, exclude="priority", force_gsr=True).group_by(GSR.priority)
         rows = {k: n for k, n in (await db.execute(stmt)).all() if k}
         return {lvl: rows.get(lvl, 0) for lvl in ("critical", "high", "medium", "low")}
 
@@ -175,7 +175,7 @@ class AnalyticsService:
                 Appointment.grievance_category, Appointment.status, Appointment.source,
                 Appointment.schedule_meeting, Appointment.created_at,
                 Citizen.encrypted_name.label("c_name"), Citizen.encrypted_mobile.label("c_mobile"),
-                GSR.urgency, GSR.headline,
+                GSR.priority, GSR.headline,
             ),
             f, force_gsr=True,
         ).join(Citizen, Citizen.id == Appointment.citizen_id, isouter=True)
@@ -193,7 +193,7 @@ class AnalyticsService:
                 "mobile": mobile,
                 "category": r.grievance_category,
                 "category_label": CATEGORY_DISPLAY_EN.get(r.grievance_category, (r.grievance_category or "—").replace("_", " ").title()),
-                "urgency": r.urgency,
+                "priority": r.priority,
                 "status": r.status,
                 "source": r.source,
                 "source_label": CHANNEL_LABELS.get(r.source, r.source),
