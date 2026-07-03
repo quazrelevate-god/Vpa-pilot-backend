@@ -67,41 +67,20 @@ def save_file(data: bytes, relative_path: str, content_type: str = None) -> str:
 
 def get_file_url(storage_path: str) -> str:
     """
-    Return a URL to serve the file.
-    MinIO: returns a presigned URL routed through nginx (HTTPS-safe).
-    Local: returns /api/files/... path (goes through authenticated endpoint).
+    Return a same-origin, session-authenticated URL to serve the file.
+
+    Both storage modes now route through the /api/files/... endpoint on the
+    backend, which streams bytes from local disk or MinIO server-side. This
+    keeps attachments same-origin HTTPS (no mixed content), lets the existing
+    dashboard session cookie authorize them, and avoids the SigV4 fragility
+    of front-proxying presigned MinIO URLs through nginx.
     """
-    endpoint = getattr(settings, "FILE_STORAGE_ENDPOINT", None)
-    if endpoint:
-        key = storage_path.replace("\\", "/")
-        if key.startswith("uploads/"):
-            key = key[len("uploads/"):]
-        client = _get_client()
-        if client:
-            try:
-                url = client.generate_presigned_url(
-                    "get_object",
-                    Params={"Bucket": _bucket(), "Key": key},
-                    ExpiresIn=86400,
-                )
-                public_url = getattr(settings, "FILE_STORAGE_PUBLIC_URL", None)
-                if public_url:
-                    from urllib.parse import urlparse, urlunparse
-                    parsed = urlparse(url)
-                    pub = urlparse(public_url)
-                    old_path = f"/{_bucket()}/"
-                    new_path = pub.path.rstrip("/") + "/"
-                    path = parsed.path.replace(old_path, new_path, 1)
-                    url = urlunparse((pub.scheme, pub.netloc, path, parsed.params, parsed.query, parsed.fragment))
-                return url
-            except Exception:
-                pass
-        return f"{endpoint}/{_bucket()}/{key}"
-    else:
-        p = storage_path.replace("\\", "/")
-        idx = p.find("uploads/")
-        rel = p[idx + len("uploads/"):] if idx != -1 else p
-        return "/api/files/" + rel
+    p = storage_path.replace("\\", "/")
+    # Strip a leading "uploads/" from either mode so the URL path is the same
+    # bucket-relative / disk-relative key.
+    idx = p.find("uploads/")
+    rel = p[idx + len("uploads/"):] if idx != -1 else p
+    return "/api/files/" + rel
 
 
 def get_file_bytes(storage_path: str) -> Optional[bytes]:
