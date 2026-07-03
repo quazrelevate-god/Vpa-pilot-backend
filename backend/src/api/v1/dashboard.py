@@ -29,7 +29,7 @@ async def display_qr_info(request: Request, user: str = Depends(require_auth)):
         base = settings.SERVER_BASE_URL.rstrip("/")
     else:
         base = str(request.base_url).rstrip("/")
-    return JSONResponse({"board_url": f"{base}/display", "login_url": f"{base}/display/login"})
+    return JSONResponse({"board_url": f"{base}/crowd", "login_url": f"{base}/crowd/login"})
 
 
 # ── Analytics dashboard ─────────────────────────────────────────────────────────

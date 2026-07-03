@@ -30,6 +30,25 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone(); url.pathname = "/department/login"; return NextResponse.redirect(url);
   }
 
+  // ── Crowd Management PWA: its own cookie (display_session) + login page ────────
+  if (pathname.startsWith("/crowd")) {
+    // API calls proxy straight to the backend, which enforces its own auth (401).
+    // Never page-redirect them, or fetch() gets login HTML instead of JSON.
+    if (pathname.startsWith("/crowd/api")) return NextResponse.next();
+    // PWA static assets (manifest.json, sw.js, icon-*.png) — anything with a
+    // file extension under /crowd — must load without a session.
+    if (/\.[a-z0-9]+$/i.test(pathname)) return NextResponse.next();
+    const crowdSession = req.cookies.get("display_session");
+    if (pathname === "/crowd/login") {
+      if (crowdSession) {
+        const url = req.nextUrl.clone(); url.pathname = "/crowd"; return NextResponse.redirect(url);
+      }
+      return NextResponse.next();
+    }
+    if (crowdSession) return NextResponse.next();
+    const url = req.nextUrl.clone(); url.pathname = "/crowd/login"; return NextResponse.redirect(url);
+  }
+
   // Already logged in → skip login page, go straight to appointments
   if (pathname === "/login" && session) {
     const url = req.nextUrl.clone();
@@ -57,6 +76,7 @@ export const config = {
     "/overview/:path*", "/appointments/:path*", "/tickets/:path*",
     "/referrals/:path*", "/scheduling/:path*",
     "/department", "/department/:path*",
+    "/crowd", "/crowd/:path*",
     "/login", "/dashboard", "/dashboard/:path*",
   ],
 };

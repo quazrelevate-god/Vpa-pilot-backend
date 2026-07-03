@@ -9,7 +9,7 @@ export const translations = {
     "nav.referrals":    "Referrals",
     "nav.aiUploads":    "AI Uploads",
     "nav.aiReview":     "Petition Review",
-    "nav.crowdQr":      "Crowd Board QR",
+    "nav.crowdQr":      "Crowd Management QR",
     "nav.waitingQueue": "Waiting Queue",
     "nav.paOffice":     "PA Office",
     "brand.title":      "Petition Management",

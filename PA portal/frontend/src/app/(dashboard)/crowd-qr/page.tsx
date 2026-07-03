@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { QrCode, Copy, Check, ExternalLink, Download, Smartphone, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,17 +14,13 @@ export default function CrowdQrPage() {
   const [copied, setCopied] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await fetch("/api/display-qr", { credentials: "include" });
-      const d = await r.json();
-      setUrl(d.board_url || "");
-    } catch { toast.error("Could not load the board URL"); }
-    finally { setLoading(false); }
+  // The crowd PWA is served by this same portal at /crowd, so the board URL is
+  // always this origin — no backend round-trip, and it can never point at the
+  // wrong host.
+  useEffect(() => {
+    setUrl(window.location.origin + "/crowd");
+    setLoading(false);
   }, []);
-
-  useEffect(() => { load(); }, [load]);
 
   // Render the QR client-side (qrcodejs via CDN), same as the referral QR.
   useEffect(() => {
@@ -58,7 +54,7 @@ export default function CrowdQrPage() {
     const src = canvas ? canvas.toDataURL("image/png") : img?.src;
     if (!src) { toast.error("QR not ready"); return; }
     const a = document.createElement("a");
-    a.href = src; a.download = "crowd-board-qr.png"; a.click();
+    a.href = src; a.download = "crowd-management-qr.png"; a.click();
   }
 
   return (
@@ -68,7 +64,7 @@ export default function CrowdQrPage() {
         <div className="mx-auto max-w-[900px] space-y-6 p-6 animate-in-up">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
-              <QrCode className="h-6 w-6 text-indigo-600" /> Crowd Board QR
+              <QrCode className="h-6 w-6 text-indigo-600" /> Crowd Management QR
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
               The crowd-management team scans this to open the live board and install it on their phone. Print it, or re-share the link any time.

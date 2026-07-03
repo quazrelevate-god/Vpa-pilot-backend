@@ -1,23 +1,27 @@
 """
-Display board routes — separate login, shows today's scheduled & rescheduled appointments.
+Crowd Management API — floor-operator data + JSON auth.
+
+The UI is a Next.js PWA served by the PA portal (route group /crowd). This
+module only exposes /crowd/api/* : session auth (JSON, never a redirect),
+today's appointments + referrals, attendance write-backs, and unified walk-in
+intake. Everything is scoped to the display_session cookie.
 """
-from datetime import date, datetime
-from pathlib import Path
+from datetime import date
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, func, or_
+from fastapi import APIRouter, Depends, File, Form, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from fastapi import Body
-from fastapi.responses import Response
+from fastapi import Body, UploadFile
 
 from src.core.database import get_db
 from src.core.config import settings
-from src.core.display_auth import create_display_cookie, require_display_auth
+from src.core.display_auth import (
+    create_display_cookie, clear_display_cookie, get_display_user, require_display_api,
+)
 from src.core.rate_limit import limiter
 from src.models.appointment_models import Appointment
 from src.services.dashboard_service import (
@@ -25,56 +29,48 @@ from src.services.dashboard_service import (
 )
 from src.services.referral_service import referral_service
 from src.services.scheduling_service import _decrypt
-from src.core.utils import utc_iso
 
-router = APIRouter(prefix="/display", tags=["Display Board"])
+router = APIRouter(prefix="/crowd", tags=["Crowd Management"])
 
-_TMPL_DIR = Path(__file__).resolve().parents[3] / "templates" / "display"
-templates = Jinja2Templates(directory=str(_TMPL_DIR))
+_FLOOR_LABEL = "Floor Operator"
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Auth (JSON — consumed by the Next.js /crowd app) ────────────────────────────
 
-@router.get("/login", include_in_schema=False)
-async def display_login_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("display_login.jinja2", {"request": request, "error": None})
-
-
-@router.post("/login", include_in_schema=False)
+@router.post("/api/login")
 @limiter.limit("5/minute")
-async def display_login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+async def crowd_login(request: Request, username: str = Form(...), password: str = Form(...)):
+    """Validate floor credentials, set the display_session cookie. 200 or 401."""
     if username == settings.DISPLAY_USERNAME and password == settings.DISPLAY_PASSWORD:
-        response = RedirectResponse(url="/display", status_code=302)
+        response = JSONResponse({"ok": True, "label": _FLOOR_LABEL})
         create_display_cookie(response, username)
         return response
-    return templates.TemplateResponse(
-        "display_login.jinja2",
-        {"request": request, "error": "Invalid username or password."},
-        status_code=401,
-    )
+    return JSONResponse({"error": "Invalid username or password."}, status_code=401)
 
 
-@router.get("/logout", include_in_schema=False)
-async def display_logout():
-    response = RedirectResponse(url="/display/login", status_code=302)
-    response.delete_cookie("display_session")
+@router.post("/api/logout")
+async def crowd_logout():
+    response = JSONResponse({"ok": True})
+    clear_display_cookie(response)
     return response
 
 
-# ── Page ──────────────────────────────────────────────────────────────────────
+@router.get("/api/session")
+async def crowd_session(request: Request):
+    """Return {label} for an authenticated floor session, else 401 (JSON)."""
+    user = get_display_user(request)
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    return JSONResponse({"user": user, "label": _FLOOR_LABEL})
 
-@router.get("/", include_in_schema=False)
-async def display_page(request: Request, user: str = Depends(require_display_auth)) -> HTMLResponse:
-    return templates.TemplateResponse("display.jinja2", {"request": request, "user": user})
 
-
-# ── API ───────────────────────────────────────────────────────────────────────
+# ── Today's feeds ───────────────────────────────────────────────────────────────
 
 @router.get("/api/today")
 async def display_today_api(
     search: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_display_auth),
+    user: str = Depends(require_display_api),
 ):
     """Return today's scheduled + rescheduled appointments, optionally filtered by search."""
     today = date.today()
@@ -122,6 +118,8 @@ async def display_today_api(
                 display_hour = 12
             time_str = f"{display_hour:02d}:{minute:02d} {ampm}"
 
+        summary_rec = next((s for s in (appt.grievance_summary or []) if s.is_latest), None)
+        headline = (summary_rec.headline if summary_rec else None)
         items.append({
             "id": appt.id,
             "token": f"TKN{appt.token_assigned}",
@@ -129,6 +127,7 @@ async def display_today_api(
             "mobile": mobile,
             "num_persons": appt.num_persons or 1,
             "category": _category_label(appt.grievance_category),
+            "reason": headline or _category_label(appt.grievance_category),
             "status": _resolve_display_status(appt),
             "status_db": appt.status,
             "time": time_str,
@@ -148,7 +147,7 @@ async def display_today_api(
 async def display_referral_today_api(
     search: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_display_auth),
+    user: str = Depends(require_display_api),
 ):
     """Today's referral bookings for the floor board (name, count, reason, status)."""
     today = date.today()
@@ -180,7 +179,7 @@ async def display_set_appointment_status(
     appointment_id: int,
     payload: dict = Body(...),
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_display_auth),
+    user: str = Depends(require_display_api),
 ):
     """Floor board: mark a meeting visitor Came / Not Came, or Reset (undo)."""
     action = str(payload.get("status", "")).strip().lower().replace(" ", "_")
@@ -197,7 +196,7 @@ async def display_set_referral_status(
     booking_id: int,
     payload: dict = Body(...),
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_display_auth),
+    user: str = Depends(require_display_api),
 ):
     """Floor board: mark a referral visitor CAME or NOT_CAME."""
     raw = str(payload.get("status", "")).strip().upper().replace(" ", "_")
@@ -224,7 +223,7 @@ async def display_add_intake(
     schedule_meeting: bool = Form(default=False),
     files: List[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_display_auth),
+    user: str = Depends(require_display_api),
 ):
     """Unified walk-in intake from the crowd PWA (for phone-less / illiterate
     citizens): write the grievance + optional photo + optionally book a live
@@ -245,28 +244,3 @@ async def display_add_intake(
         submitted_by=f"floor:{user}",
     )
     return JSONResponse(result, status_code=201)
-
-
-# ── PWA assets (served from /display/ so the service worker scope covers the app) ─
-
-@router.get("/manifest.webmanifest", include_in_schema=False)
-async def display_manifest():
-    path = _TMPL_DIR / "manifest.webmanifest"
-    return Response(
-        content=path.read_text(encoding="utf-8"),
-        media_type="application/manifest+json",
-        headers={"Cache-Control": "no-cache"},
-    )
-
-
-@router.get("/service-worker.js", include_in_schema=False)
-async def display_service_worker():
-    path = _TMPL_DIR / "service-worker.js"
-    return Response(
-        content=path.read_text(encoding="utf-8"),
-        media_type="application/javascript",
-        headers={
-            "Cache-Control": "no-cache",
-            "Service-Worker-Allowed": "/display/",
-        },
-    )
