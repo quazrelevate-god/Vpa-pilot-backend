@@ -12,7 +12,7 @@ import { fetchTicket, patchTicket, ticketAction } from "@/lib/api";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR,
   DEPT_DISPLAY, CATEGORY_DISPLAY, CLOSURE_REASON_DISPLAY,
-  ticketManualStatusOptions, deptOptions, closureReasonOptions,
+  ticketManualStatusOptions, closureReasonOptions,
 } from "@/lib/enums";
 import PriorityBadge from "@/components/PriorityBadge";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { cn, formatDate, formatDateTime, toLocalDateTimeInput, fromLocalDateTimeInput } from "@/lib/utils";
 
-type Action = "forward" | "resolve" | "close" | "reopen";
+type Action = "close" | "reopen";
 
 const EVENT_ICON: Record<string, React.ElementType> = {
   petition_submitted: Inbox,
@@ -86,9 +86,6 @@ export default function TicketDetailDrawer({
   const [lang, setLang] = useState<Lang>("en");
 
   const [commentText, setCommentText] = useState("");
-  const [forwardDept, setForwardDept] = useState("");
-  const [forwardNotes, setForwardNotes] = useState("");
-  const [resolutionNotes, setResolutionNotes] = useState("");
   const [closureReason, setClosureReason] = useState("");
   const [closeNotes, setCloseNotes] = useState("");
   const [reopenReason, setReopenReason] = useState("");
@@ -136,8 +133,7 @@ export default function TicketDetailDrawer({
       setData(await ticketAction(ticketId, action, body));
       onMutated?.();
       setActiveAction(null);
-      setCommentText(""); setForwardDept(""); setForwardNotes("");
-      setResolutionNotes(""); setClosureReason(""); setCloseNotes(""); setReopenReason("");
+      setCommentText(""); setClosureReason(""); setCloseNotes(""); setReopenReason("");
     } catch (e) { alert((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -349,15 +345,26 @@ export default function TicketDetailDrawer({
                         </SelectContent>
                       </Select>
                     </div>
-                    {/* Department — assigning here routes the ticket (logs "routed"). */}
+                    {/* Assign — routes to a school department (logs "routed").
+                        Once a department accepts, ownership is locked here. */}
                     <div className="space-y-1.5">
-                      <Label>Department</Label>
-                      <Select value={t.department || undefined} onValueChange={routeToDepartment} disabled={busy}>
-                        <SelectTrigger className="h-9"><SelectValue placeholder="Assign a department" /></SelectTrigger>
-                        <SelectContent>
-                          {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Label>Assign</Label>
+                      {t.accepted_at ? (
+                        <div className="flex h-9 items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                            <Building2 className="h-3.5 w-3.5" />
+                            {t.assigned_department_label ?? t.assigned_department}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">accepted · locked</span>
+                        </div>
+                      ) : (
+                        <Select value={t.assigned_department || undefined} onValueChange={routeToDepartment} disabled={busy}>
+                          <SelectTrigger className="h-9"><SelectValue placeholder="Assign a department" /></SelectTrigger>
+                          <SelectContent>
+                            {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label>Priority (from review)</Label>
@@ -460,34 +467,13 @@ export default function TicketDetailDrawer({
               <div className="border-t border-border bg-muted/40 p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                    {activeAction === "forward" ? "Forward to department"
-                      : activeAction === "resolve" ? "Resolve ticket"
-                      : activeAction === "close" ? "Close ticket"
-                      : "Reopen ticket"}
+                    {activeAction === "close" ? "Close ticket" : "Reopen ticket"}
                   </span>
                   <button onClick={() => setActiveAction(null)} className="text-muted-foreground hover:text-foreground">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
 
-                {activeAction === "forward" && (
-                  <div className="space-y-2">
-                    <Select value={forwardDept || undefined} onValueChange={setForwardDept}>
-                      <SelectTrigger className="h-9"><SelectValue placeholder="Pick department" /></SelectTrigger>
-                      <SelectContent>
-                        {deptOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Textarea value={forwardNotes} onChange={(e) => setForwardNotes(e.target.value)} placeholder="Forwarding notes (contact, ref no.)…" rows={2} />
-                    <ActionSubmit busy={busy} label="Forward" disabled={!forwardDept} onClick={() => runAction("forward", { department: forwardDept, notes: forwardNotes })} />
-                  </div>
-                )}
-                {activeAction === "resolve" && (
-                  <div className="space-y-2">
-                    <Textarea value={resolutionNotes} onChange={(e) => setResolutionNotes(e.target.value)} placeholder="What action was taken? (required)" rows={3} />
-                    <ActionSubmit busy={busy} label="Resolve" disabled={!resolutionNotes.trim()} onClick={() => runAction("resolve", { resolution_notes: resolutionNotes })} />
-                  </div>
-                )}
                 {activeAction === "close" && (
                   <div className="space-y-2">
                     <Select value={closureReason || undefined} onValueChange={setClosureReason}>
@@ -510,17 +496,9 @@ export default function TicketDetailDrawer({
             )}
 
             {/* ── Footer actions ──────────────────────────────────────── */}
+            {/* Resolve + Forward belong to the department workspace, not the PA
+                monitor — the PA only assigns, closes, reopens, and comments. */}
             <div className="flex flex-wrap items-center gap-2 border-t border-border bg-card px-6 py-3">
-              {!isClosed && (
-                <Button size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "resolve" ? null : "resolve")}>
-                  <CheckCircle2 className="h-4 w-4" /> Resolve
-                </Button>
-              )}
-              {!isClosed && (
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "forward" ? null : "forward")}>
-                  <ArrowRight className="h-4 w-4" /> Forward
-                </Button>
-              )}
               {!isClosed && (
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "close" ? null : "close")}>
                   <Lock className="h-4 w-4" /> Close

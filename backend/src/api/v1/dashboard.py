@@ -252,6 +252,9 @@ async def api_update_appointment_details(
         priority=body.get("priority") if "priority" in body else None,
         category=body.get("category") if "category" in body else None,
         department=body.get("department") if "department" in body else None,
+        name=body.get("name") if "name" in body else None,
+        name_ta=body.get("name_ta") if "name_ta" in body else None,
+        summary_text=body.get("summary") if "summary" in body else None,
     )
     if not result.get("success"):
         return JSONResponse({"error": "Appointment not found"}, status_code=404)
@@ -285,6 +288,18 @@ async def api_update_status(
     #     ))
 
     return JSONResponse({"ok": True})
+
+
+@router.post("/api/appointments/{appointment_id}/approve")
+async def api_approve_petition(
+    appointment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Approve a QR/staff petition from the unified review drawer — creates the
+    ticket (School → open) or forwards it out (non-school ministry)."""
+    result = await dashboard_service.approve_petition(db, appointment_id, actor=user)
+    return JSONResponse(result)
 
 
 @router.get("/api/appointments/{appointment_id}/activity")

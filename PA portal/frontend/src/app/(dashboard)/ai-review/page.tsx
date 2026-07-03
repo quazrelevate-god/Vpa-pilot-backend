@@ -12,12 +12,12 @@ import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
+import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchAppointments } from "@/lib/api";
 import { DEPT_DISPLAY } from "@/lib/enums";
-import type { AppointmentRow } from "@/lib/types";
+import type { AppointmentRow, AppointmentAttachment } from "@/lib/types";
 
 // The default School Education ministry — approve keeps it in the school
 // department workflow ("Accept"); any other ministry is "Forward"ed out.
@@ -34,6 +34,12 @@ interface Upload {
   citizen_ask: string | null; citizen_ask_ta: string | null;
   key_details: string[]; key_details_ta: string[];
   error: string | null; ticket_number: string | null; appointment_id: number | null; created_at: string | null;
+  // Unified review drawer: petitions reuse this shape with a source tag +
+  // their own attachments/audio (uploads keep the single-file preview).
+  _kind?: "upload" | "petition";
+  attachments?: AppointmentAttachment[];
+  audio_url?: string | null;
+  audio_transcript?: string | null;
 }
 
 type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED";
@@ -104,6 +110,24 @@ const api = (p: string) => `/api/ai-uploads${p}`;
 
 function petitionStatusKey(status: string): StatusKey {
   return status === "Reviewed" ? "REVIEWED" : "AWAITING_REVIEW";
+}
+
+// Map a QR/staff petition (AppointmentRow) into the unified review-drawer shape
+// so every source renders in the scanned-petition drawer.
+function mapPetitionToReview(p: AppointmentRow): Upload {
+  return {
+    _kind: "petition",
+    id: p.id, filename: "Petition", mime_type: "", file_url: null,
+    status: petitionStatusKey(p.status),
+    name: p.name ?? null, name_ta: p.name_ta ?? null, mobile: p.mobile ?? null,
+    category: p.category ?? null, priority: p.priority ?? null, department: p.department ?? null,
+    headline: p.headline ?? null, headline_ta: p.headline_ta ?? null,
+    summary: p.summary ?? null, summary_ta: p.summary_ta ?? null,
+    citizen_ask: p.citizen_ask ?? null, citizen_ask_ta: p.citizen_ask_ta ?? null,
+    key_details: p.key_details ?? [], key_details_ta: p.key_details_ta ?? [],
+    error: null, ticket_number: null, appointment_id: p.id, created_at: p.created_at,
+    attachments: p.attachments ?? [], audio_url: p.audio_url ?? null, audio_transcript: p.audio_transcript ?? null,
+  };
 }
 
 const InboxTableRow = memo(function InboxTableRow({
@@ -209,7 +233,6 @@ export default function AiReviewPage() {
   const [petitions, setPetitions] = useState<AppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [review, setReview] = useState<Upload | null>(null);
-  const [reviewPetition, setReviewPetition] = useState<AppointmentRow | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Upload>>({});
   const [modalLang, setModalLang] = useState<"en" | "ta">("en");
@@ -334,12 +357,16 @@ export default function AiReviewPage() {
 
   function openRow(r: InboxRow) {
     if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
+    setEditing(false); setModalLang("en");
     if (r.kind === "petition" && r.petition) {
-      setReviewPetition(r.petition);
+      const rv = mapPetitionToReview(r.petition);
+      setReview(rv);
+      // Phone is OTP-verified (kept read-only); everything else is editable.
+      setForm({ name: rv.name, name_ta: rv.name_ta, summary: rv.summary, category: rv.category, priority: rv.priority, department: rv.department });
       return;
     }
     const u = r.upload!;
-    setReview(u); setEditing(false); setModalLang("en");
+    setReview({ ...u, _kind: "upload" });
     setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, priority: u.priority, department: u.department, summary: u.summary });
   }
 
@@ -347,26 +374,47 @@ export default function AiReviewPage() {
     if (!review) return;
     setBusy(true);
     try {
-      const r = await fetch(api(`/${review.id}`), {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify(form),
-      });
-      const d = await r.json();
-      if (r.ok) { toast.success("Saved"); setEditing(false); setReview(d); load(); }
-      else toast.error(d.error || "Save failed");
-    } catch { toast.error("Network error"); } finally { setBusy(false); }
+      if (review._kind === "petition") {
+        const r = await fetch(`/api/appointments/${review.id}/details`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({
+            name: form.name, name_ta: form.name_ta, summary: form.summary,
+            category: form.category, priority: form.priority, department: form.department,
+          }),
+        });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Save failed"); }
+        toast.success("Saved"); setEditing(false);
+        setReview({
+          ...review,
+          name: form.name ?? review.name, name_ta: form.name_ta ?? review.name_ta, summary: form.summary ?? review.summary,
+          category: form.category ?? review.category, priority: form.priority ?? review.priority, department: form.department ?? review.department,
+        });
+        load();
+      } else {
+        const r = await fetch(api(`/${review.id}`), {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify(form),
+        });
+        const d = await r.json();
+        if (r.ok) { toast.success("Saved"); setEditing(false); setReview({ ...d, _kind: "upload" }); load(); }
+        else toast.error(d.error || "Save failed");
+      }
+    } catch (e) { toast.error((e as Error).message || "Network error"); } finally { setBusy(false); }
   }
 
   async function approve() {
     if (!review) return;
     setBusy(true);
     try {
-      const r = await fetch(api(`/${review.id}/approve`), { method: "POST", credentials: "include" });
-      const d = await r.json();
+      const url = review._kind === "petition"
+        ? `/api/appointments/${review.id}/approve`
+        : api(`/${review.id}/approve`);
+      const r = await fetch(url, { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
       if (r.ok) {
         toast.success(d.forwarded
-          ? `Forwarded to ministry — ticket ${d.ticket_number}`
-          : `Ticket ${d.ticket_number} created`);
+          ? `Forwarded to ministry${d.ticket_number ? ` — ticket ${d.ticket_number}` : ""}`
+          : (d.ticket_number ? `Ticket ${d.ticket_number} created` : "Approved"));
         setReview(null); load();
       } else toast.error(d.error || "Action failed");
     } catch { toast.error("Network error"); } finally { setBusy(false); }
@@ -606,10 +654,16 @@ export default function AiReviewPage() {
             {/* Left — document (inline preview, download disabled) */}
             <div className="hidden w-[48%] flex-col border-r border-border bg-slate-100 md:flex">
               <div className="flex items-center gap-1.5 border-b border-border bg-white px-4 py-2.5 text-base font-semibold">
-                <FileText className="h-4 w-4 text-muted-foreground" /> <span className="truncate">{review.filename}</span>
+                <FileText className="h-4 w-4 text-muted-foreground" /> <span className="truncate">{review._kind === "petition" ? "Citizen uploads" : review.filename}</span>
               </div>
               <div className="flex-1 overflow-auto p-3" onContextMenu={(e) => e.preventDefault()}>
-                {review.file_url ? (
+                {review._kind === "petition" ? (() => {
+                  const att = [...(review.attachments ?? [])];
+                  if (review.audio_url && !att.some(a => a.type === "AUDIO")) att.push({ name: "Voice recording", url: review.audio_url, type: "AUDIO" });
+                  return att.length || review.audio_transcript
+                    ? <InlineAttachmentPreview attachments={att} audioTranscript={review.audio_transcript} />
+                    : <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
+                })() : review.file_url ? (
                   review.mime_type === "application/pdf"
                     ? <iframe
                         src={`${review.file_url}#toolbar=0&navpanes=0`}
@@ -652,7 +706,8 @@ export default function AiReviewPage() {
               <div className="flex-1 space-y-6 overflow-auto p-7">
                 <div className="grid grid-cols-2 gap-x-8 gap-y-5">
                   <Field label={t("petition.colName")} editing={editing} value={form.name} fallback={review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
-                  <Field label={t("petition.colPhone")} editing={editing} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} icon={Phone} />
+                  {/* Phone stays read-only for petitions — it's the OTP-verified, uniquely-indexed citizen mobile. */}
+                  <Field label={t("petition.colPhone")} editing={editing && review._kind !== "petition"} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} icon={Phone} />
                   {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}
                   <SelectField label={t("petition.colCategory")} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
                   <SelectField label={t("petition.colUrgency")} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} onChange={v => setForm(f => ({ ...f, priority: v }))} />
@@ -722,13 +777,6 @@ export default function AiReviewPage() {
           </div>
         </div>
       )}
-
-      {/* QR / staff petition review — reuses the appointment detail drawer */}
-      <AppointmentDetailDrawer
-        row={reviewPetition}
-        onClose={() => setReviewPetition(null)}
-        onStatusChange={() => { load(); }}
-      />
     </>
   );
 }

@@ -53,6 +53,7 @@ export interface AppointmentRow {
   id: number;
   token: string | number;
   name: string;
+  name_ta?: string | null;
   mobile: string;
   category: string;
   department?: string | null;     // primary dept — snake_case Department enum key
@@ -165,6 +166,11 @@ export interface TicketDetail extends TicketRow {
   key_details_ta?: string[];
   audio_transcript?: string | null;
   secondary_departments?: string[];
+  // Routed school department (Assign) + acceptance state.
+  assigned_department?: string | null;
+  assigned_department_label?: string | null;
+  accepted_at?: string | null;
+  accepted_by?: string | null;
   resolution_notes?: string | null;
   closure_reason?: ClosureReason | null;
   resolved_at?: string | null;

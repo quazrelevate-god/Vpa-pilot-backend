@@ -437,20 +437,15 @@ class AiUploadService:
         row.reviewed_by = reviewed_by
         await db.commit()
 
-        # Non-school ministry → auto-forward the ticket out of the school
-        # department workflow (the PA's "Forward" action). School stays OPEN
-        # so it can be routed to one of the 10 school departments ("Accept").
-        SCHOOL_MINISTRY = "school_education_tamil_dev_info_publicity"
+        # Non-school ministry → auto-forward out of the school department
+        # workflow. School stays OPEN so it can be routed to one of the 10
+        # school departments ("Accept"). Shared with the QR/staff petition path.
+        from src.services import department_service
         dept_val = extraction.department.value if extraction.department else None
-        forwarded = False
-        if ticket and dept_val and dept_val != SCHOOL_MINISTRY:
-            from src.services import department_service
-            await department_service.forward_external(
-                db, ticket.id, ministry=dept_val,
-                reason="Non-school ministry — forwarded from petition review.",
-                actor=reviewed_by,
-            )
-            forwarded = True
+        forwarded = (
+            await department_service.forward_if_non_school(db, ticket.id, dept_val, reviewed_by)
+            if ticket else False
+        )
 
         return {
             "id": upload_id,

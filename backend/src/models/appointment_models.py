@@ -252,7 +252,13 @@ class Appointment(Base):
         nullable=True,
         comment="Fernet-encrypted name submitted with this specific appointment"
     )
-    
+
+    encrypted_name_ta = Column(
+        Text,
+        nullable=True,
+        comment="Fernet-encrypted Tamil name (PA-entered in the review drawer)"
+    )
+
     audio_recording_url = Column(
         Text,
         nullable=True,

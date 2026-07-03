@@ -20,6 +20,7 @@ from src.core.utils import utc_iso
 from src.models.appointment_models import Appointment, Citizen
 from src.models.grievance_summary_record import GrievanceSummaryRecord
 from src.models.grievance_summary import CATEGORY_DISPLAY, DEPARTMENT_DISPLAY
+from src.models.school_department import department_label as school_department_label
 from src.models.ticket_models import (
     Ticket,
     TicketEvent,
@@ -160,6 +161,13 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
         "key_details_ta":     summary_rec.key_details_ta if summary_rec else [],
         "audio_transcript":   summary_rec.audio_transcript if summary_rec else None,
         "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
+        # Routed school department (Ticket.department) — distinct from the AI
+        # ministry above. Drives the drawer's "Assign" control. Once a department
+        # accepts (accepted_at set), re-assignment is locked.
+        "assigned_department":       t.department,
+        "assigned_department_label": school_department_label(t.department) if t.department else None,
+        "accepted_at":        utc_iso(t.accepted_at),
+        "accepted_by":        t.accepted_by,
         "resolution_notes":   t.resolution_notes,
         "closure_reason":     t.closure_reason,
         "resolved_at":        utc_iso(t.resolved_at),

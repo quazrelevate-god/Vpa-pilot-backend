@@ -85,6 +85,26 @@ async def forward_external(db: AsyncSession, ticket_id: int, ministry: str,
     return {"status": t.status}
 
 
+# The default School Education ministry. Petitions/uploads classified under any
+# other ministry are auto-forwarded out of the school department workflow.
+SCHOOL_MINISTRY = "school_education_tamil_dev_info_publicity"
+
+
+async def forward_if_non_school(db: AsyncSession, ticket_id: int,
+                                ministry: Optional[str], actor: str) -> bool:
+    """If the AI ministry is not School Education, forward the freshly-created
+    ticket out to that ministry. Returns True when a forward happened. Shared by
+    the scanned-upload and QR/staff petition approve paths."""
+    if ministry and ministry != SCHOOL_MINISTRY:
+        await forward_external(
+            db, ticket_id, ministry=ministry,
+            reason="Non-school ministry — forwarded from petition review.",
+            actor=actor,
+        )
+        return True
+    return False
+
+
 async def close_ticket(db: AsyncSession, ticket_id: int, actor: str,
                       closure_reason: Optional[str] = None, note: Optional[str] = None) -> dict:
     """PA closes a resolved ticket."""

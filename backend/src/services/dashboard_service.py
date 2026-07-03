@@ -654,6 +654,7 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "id": appt.id,
         "token": f"TKN{appt.token_assigned}",
         "name": name,
+        "name_ta": _decode(appt.encrypted_name_ta) if appt.encrypted_name_ta else None,
         "mobile": mobile,
         "category": _category_label(appt.grievance_category),
         "department": (summary_rec.department if summary_rec else None),
@@ -712,19 +713,29 @@ async def update_appointment_derived_fields(
     priority: Optional[str] = None,
     category: Optional[str] = None,
     department: Optional[str] = None,
+    name: Optional[str] = None,
+    name_ta: Optional[str] = None,
+    summary_text: Optional[str] = None,
 ) -> dict:
     """
-    Override AI-derived priority / category / department on the linked
-    GrievanceSummaryRecord. Used when the PA disagrees with the AI's
-    classification.
+    PA override for a petition/appointment from the unified review drawer:
+    name + Tamil name (on the Appointment, Fernet-encrypted), the AI summary
+    (on GrievanceSummaryRecord), and the classification (category/priority/
+    department). Any field left as None is unchanged.
 
     Returns:
         {"success": True} on success, {"success": False} if no record found.
     """
+    from src.core import crypto
     # priority lives on GrievanceSummaryRecord; category lives on Appointment.
     appt = await db.scalar(select(Appointment).where(Appointment.id == appointment_id))
     if not appt:
         return {"success": False}
+
+    if name is not None:
+        appt.encrypted_name = crypto.encrypt(name.strip()) if name.strip() else None
+    if name_ta is not None:
+        appt.encrypted_name_ta = crypto.encrypt(name_ta.strip()) if name_ta.strip() else None
 
     if category is not None:
         old_category = appt.grievance_category
@@ -733,25 +744,27 @@ async def update_appointment_derived_fields(
             _log_appt_event(db, appointment_id, "category_changed",
                             payload={"from": old_category, "to": appt.grievance_category})
 
-    summary = await db.scalar(
+    summary_rec = await db.scalar(
         select(GrievanceSummaryRecord)
         .where(GrievanceSummaryRecord.appointment_id == appointment_id)
         .order_by(GrievanceSummaryRecord.created_at.desc())
         .limit(1)
     )
-    if summary:
+    if summary_rec:
         if priority is not None:
-            old_priority = summary.priority
-            summary.priority = priority or None
-            if old_priority != summary.priority:
+            old_priority = summary_rec.priority
+            summary_rec.priority = priority or None
+            if old_priority != summary_rec.priority:
                 _log_appt_event(db, appointment_id, "priority_changed",
-                                payload={"from": old_priority, "to": summary.priority})
+                                payload={"from": old_priority, "to": summary_rec.priority})
         if department is not None:
-            old_dept = summary.department
-            summary.department = department or None
-            if old_dept != summary.department:
+            old_dept = summary_rec.department
+            summary_rec.department = department or None
+            if old_dept != summary_rec.department:
                 _log_appt_event(db, appointment_id, "department_changed",
-                                payload={"from": old_dept, "to": summary.department})
+                                payload={"from": old_dept, "to": summary_rec.department})
+        if summary_text is not None:
+            summary_rec.summary = summary_text
 
     await db.commit()
     return {"success": True}
@@ -890,6 +903,32 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         "token": appt.token_assigned,
         "name": name,
         "status": new_status,
+    }
+
+
+async def approve_petition(db: AsyncSession, appointment_id: int, actor: str = "pa_admin") -> dict:
+    """Approve a QR/staff petition (appointment in AWAITING_REVIEW): flip to
+    Reviewed — which creates the ticket — then forward out if the AI ministry is
+    non-school. Mirrors the scanned-upload approve so every source behaves the
+    same (School → Accept/open, other ministry → Forward)."""
+    from src.models.ticket_models import Ticket
+    result = await update_appointment_status(db, appointment_id, "Reviewed")
+    ticket = await db.scalar(select(Ticket).where(Ticket.appointment_id == appointment_id))
+    summary = await db.scalar(
+        select(GrievanceSummaryRecord).where(
+            GrievanceSummaryRecord.appointment_id == appointment_id,
+            GrievanceSummaryRecord.is_latest == True,  # noqa: E712
+        )
+    )
+    forwarded = False
+    if ticket:
+        from src.services import department_service
+        forwarded = await department_service.forward_if_non_school(
+            db, ticket.id, summary.department if summary else None, actor)
+    return {
+        "status": result.get("status"),
+        "ticket_number": ticket.ticket_number if ticket else None,
+        "forwarded": forwarded,
     }
 
 
