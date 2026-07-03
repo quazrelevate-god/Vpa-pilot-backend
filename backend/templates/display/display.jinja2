@@ -114,6 +114,14 @@
                 <div class="h-date" id="dateLabel"></div>
             </div>
             <div class="h-actions">
+                <!-- Live meeting-slot availability. Loads today's real slots; -->
+                <!-- shows a clear "no slots" state so floor staff see it at a glance. -->
+                <span id="slotChip"
+                      title="Meeting slot availability"
+                      style="display:inline-flex;align-items:center;gap:.35rem;font-weight:800;font-size:.72rem;padding:.4rem .6rem;border-radius:9px;border:none;background:rgba(255,255,255,.12);color:#fff;">
+                    <span id="slotChipDot" style="width:.5rem;height:.5rem;border-radius:999px;background:#94a3b8;display:inline-block;"></span>
+                    <span id="slotChipText">…</span>
+                </span>
                 <span class="clock" id="clock"></span>
                 <button class="chip" id="installBtn" style="display:none;">⬇ <span class="en">Install</span><span class="ta">நிறுவு</span></button>
                 <button class="chip" id="langToggle">தமிழ்</button>
@@ -153,6 +161,111 @@
     </main>
 
     <div class="toast" id="toast"></div>
+
+    <!-- Floating: register a walk-in visitor (petition or appointment) -->
+    <button id="addPetBtn" aria-label="Add visitor"
+      style="position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:55;display:flex;align-items:center;gap:.35rem;background:var(--navy);color:#fff;border:none;border-radius:999px;padding:.85rem 1.2rem;font-weight:800;font-size:.98rem;box-shadow:0 8px 22px rgba(15,23,42,.35);cursor:pointer;">
+      <span style="font-size:1.35rem;line-height:.7;font-weight:700;">+</span>
+      <span class="en">Add</span><span class="ta">சேர்</span>
+    </button>
+
+    <!-- Unified walk-in intake bottom sheet -->
+    <div id="petSheet" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:70;align-items:flex-end;">
+      <div style="background:#fff;width:100%;max-width:560px;margin:0 auto;border-radius:18px 18px 0 0;padding:1.1rem 1.15rem calc(1.2rem + env(safe-area-inset-bottom));max-height:94vh;overflow:auto;">
+        <div style="width:40px;height:4px;background:#cbd5e1;border-radius:4px;margin:0 auto .85rem;"></div>
+
+        <!-- ── View 1: intake form ── -->
+        <div id="intakeView">
+        <div style="font-weight:800;font-size:1.1rem;margin-bottom:.9rem;">
+          <span class="en">New walk-in visitor</span><span class="ta">புதிய நேரடி வருகையாளர்</span>
+        </div>
+        <form id="petForm" style="display:flex;flex-direction:column;gap:.8rem;">
+          <label style="font-weight:700;font-size:.78rem;color:#475569;text-transform:uppercase;letter-spacing:.04em;">
+            <span class="en">Name</span><span class="ta">பெயர்</span>
+            <input id="petName" name="name" required autocomplete="off"
+              style="display:block;width:100%;box-sizing:border-box;margin-top:.35rem;padding:.7rem .85rem;border:1.5px solid #cbd5e1;border-radius:12px;font-size:1rem;font-weight:500;text-transform:none;letter-spacing:normal;color:#0f172a;" />
+          </label>
+          <label style="font-weight:700;font-size:.78rem;color:#475569;text-transform:uppercase;letter-spacing:.04em;">
+            <span class="en">Mobile (optional)</span><span class="ta">கைபேசி (விருப்பம்)</span>
+            <input id="petMobile" name="mobile" inputmode="numeric" autocomplete="off"
+              style="display:block;width:100%;box-sizing:border-box;margin-top:.35rem;padding:.7rem .85rem;border:1.5px solid #cbd5e1;border-radius:12px;font-size:1rem;font-weight:500;text-transform:none;letter-spacing:normal;color:#0f172a;" />
+          </label>
+          <label style="font-weight:700;font-size:.78rem;color:#475569;text-transform:uppercase;letter-spacing:.04em;">
+            <span class="en">Category</span><span class="ta">வகை</span>
+            <select id="petCategory" required
+              style="display:block;width:100%;box-sizing:border-box;margin-top:.35rem;padding:.7rem .85rem;border:1.5px solid #cbd5e1;border-radius:12px;font-size:1rem;font-weight:500;text-transform:none;letter-spacing:normal;color:#0f172a;background:#fff;">
+              <option value="" disabled selected>— Select —</option>
+              <option value="action_required">Action Required</option>
+              <option value="proposals">Proposals</option>
+              <option value="transfer_requests">Transfer Request</option>
+              <option value="pension_requests">Pension Request</option>
+              <option value="school_admission">School Admission</option>
+              <option value="job_requests">Job Request</option>
+              <option value="rti">RTI</option>
+              <option value="associations_unions">Associations / Unions</option>
+              <option value="school_upgradation">School Upgradation</option>
+              <option value="invitation">Invitation</option>
+              <option value="greetings">Greetings</option>
+              <option value="general">General</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label style="font-weight:700;font-size:.78rem;color:#475569;text-transform:uppercase;letter-spacing:.04em;">
+            <span class="en">Grievance (write the issue)</span><span class="ta">குறை (எழுதவும்)</span>
+            <textarea id="petDesc" name="description" rows="2"
+              style="display:block;width:100%;box-sizing:border-box;margin-top:.35rem;padding:.7rem .85rem;border:1.5px solid #cbd5e1;border-radius:12px;font-size:1rem;font-weight:500;text-transform:none;letter-spacing:normal;color:#0f172a;resize:vertical;"></textarea>
+          </label>
+          <label style="font-weight:700;font-size:.78rem;color:#475569;text-transform:uppercase;letter-spacing:.04em;">
+            <span class="en">Photo(s) (optional)</span><span class="ta">புகைப்படம் (விருப்பம்)</span>
+            <input id="petFiles" name="files" type="file" accept="image/*,application/pdf" capture="environment" multiple
+              style="display:block;width:100%;box-sizing:border-box;margin-top:.35rem;padding:.55rem;border:1.5px dashed #94a3b8;border-radius:12px;font-size:.9rem;font-weight:500;text-transform:none;letter-spacing:normal;background:#f8fafc;" />
+          </label>
+          <div id="petFileInfo" style="font-size:.85rem;color:#64748b;font-weight:600;"></div>
+
+          <!-- Meeting slots — always shown (live availability) -->
+          <div style="border-top:1px solid #e2e8f0;padding-top:.7rem;margin-top:.2rem;">
+            <div style="font-weight:800;font-size:.9rem;color:#0f172a;margin-bottom:.15rem;">
+              <span class="en">Book a meeting (optional)</span><span class="ta">சந்திப்பு பதிவு (விருப்பம்)</span>
+            </div>
+            <div style="font-size:.76rem;color:#64748b;margin-bottom:.5rem;">
+              <span class="en">Pick a date &amp; time. Leave empty to submit as a petition only.</span>
+              <span class="ta">தேதி &amp; நேரம் தேர்ந்தெடுக்கவும். இல்லையெனில் மனுவாக மட்டும் சமர்ப்பிக்கவும்.</span>
+            </div>
+            <div id="petDates" style="display:flex;gap:.45rem;overflow-x:auto;padding-bottom:.4rem;"></div>
+            <div id="petSlotMsg" style="font-size:.84rem;font-weight:600;margin:.35rem 0;"></div>
+            <div id="petSlots" style="display:grid;grid-template-columns:1fr 1fr;gap:.45rem;"></div>
+            <div id="petPersonsWrap" style="display:none;align-items:center;gap:.6rem;margin-top:.6rem;">
+              <span style="font-size:.78rem;font-weight:700;color:#475569;text-transform:uppercase;"><span class="en">Persons</span><span class="ta">நபர்கள்</span></span>
+              <button type="button" id="petPMinus" class="btn" style="padding:.3rem .8rem;">−</button>
+              <b id="petPersons" style="font-size:1.05rem;min-width:1.2rem;text-align:center;">1</b>
+              <button type="button" id="petPPlus" class="btn" style="padding:.3rem .8rem;">+</button>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:.6rem;margin-top:.4rem;">
+            <button type="button" id="petCancel" class="btn" style="flex:1;">
+              <span class="en">Cancel</span><span class="ta">ரத்து</span>
+            </button>
+            <button type="submit" id="petSubmit" class="btn" style="flex:2;background:var(--navy);color:#fff;border-color:var(--navy);">
+              <span id="petSubmitLabelPet"><span class="en">Submit petition</span><span class="ta">மனு சமர்ப்பி</span></span>
+              <span id="petSubmitLabelAppt" style="display:none;"><span class="en">Book appointment</span><span class="ta">சந்திப்பு பதிவு</span></span>
+            </button>
+          </div>
+        </form>
+        </div>
+
+        <!-- ── View 2: ticket / success ── -->
+        <div id="ticketView" style="display:none;text-align:center;padding:.5rem 0 .3rem;">
+          <div style="width:64px;height:64px;border-radius:999px;background:#dcfce7;color:#16a34a;display:flex;align-items:center;justify-content:center;margin:.4rem auto 1rem;font-size:2rem;">✓</div>
+          <div style="font-size:.8rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;"><span class="en">Token</span><span class="ta">டோக்கன்</span></div>
+          <div id="ticketToken" style="font-size:2rem;font-weight:900;color:#0f172a;margin:.15rem 0 .6rem;letter-spacing:.02em;">—</div>
+          <div id="ticketStatus" style="display:inline-block;font-size:.95rem;font-weight:700;padding:.5rem 1rem;border-radius:12px;margin-bottom:1.2rem;"></div>
+          <button type="button" id="ticketDone" class="btn" style="width:100%;background:var(--navy);color:#fff;border-color:var(--navy);">
+            <span class="en">Done</span><span class="ta">முடிந்தது</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- iOS install instructions -->
     <div id="iosSheet" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:60;align-items:flex-end;">
@@ -445,6 +558,201 @@
     window.addEventListener('appinstalled', () => {
         installBtn.style.display = 'none';
         toast(lang==='ta' ? 'நிறுவப்பட்டது' : 'Installed');
+    });
+
+    // ── Header: live meeting-slot availability chip ──
+    // Polls today's real slots so the floor team can see availability at a glance
+    // without opening the intake sheet. If today isn't open OR no slots are open,
+    // shows a clear "No slots today" amber state.
+    async function refreshSlotChip(){
+        const chip = document.getElementById('slotChip');
+        const dot  = document.getElementById('slotChipDot');
+        const txt  = document.getElementById('slotChipText');
+        function paint(bg, color, dotBg, text){
+            chip.style.backgroundColor = bg;
+            chip.style.color = color;
+            dot.style.backgroundColor = dotBg;
+            txt.textContent = text;
+        }
+        try {
+            const today = new Date();
+            const y = today.getFullYear(), m = String(today.getMonth()+1).padStart(2,'0'), d = String(today.getDate()).padStart(2,'0');
+            const r = await fetch('/api/v1/scheduling/slots/available?target_date=' + `${y}-${m}-${d}`);
+            const data = await r.json();
+            const slots = data.slots || [];
+            const open = slots.filter(s => s.available && s.remaining > 0);
+            const totalRemaining = open.reduce((a,s) => a + s.remaining, 0);
+            if (!open.length){
+                paint('#fef3c7','#78350f','#f59e0b',
+                    (lang==='ta' ? 'இன்று இடம் இல்லை' : 'No slots today'));
+            } else {
+                paint('#dcfce7','#14532d','#16a34a',
+                    (lang==='ta' ? `${totalRemaining} இடம் மீதம்` : `${totalRemaining} seats · ${open.length} slots`));
+            }
+        } catch(e){
+            paint('#f1f5f9','#64748b','#94a3b8', (lang==='ta' ? 'இணைப்பு இல்லை' : 'Offline'));
+        }
+    }
+    refreshSlotChip();
+    setInterval(refreshSlotChip, 30000);          // live refresh
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSlotChip(); });
+    // Keep the chip in sync with the language toggle
+    document.getElementById('langToggle').addEventListener('click', () => setTimeout(refreshSlotChip, 30));
+
+    // ── Unified walk-in intake (petition + appointment booking) ──
+    const petSheet = document.getElementById('petSheet');
+    const petForm  = document.getElementById('petForm');
+    let petSelectedSlot = null, petSelectedDate = null, petPersonsN = 1, petSlotTimer = null;
+
+    function updatePetSubmitLabel(){
+        const appt = !!petSelectedSlot;
+        document.getElementById('petSubmitLabelPet').style.display  = appt ? 'none' : 'inline';
+        document.getElementById('petSubmitLabelAppt').style.display = appt ? 'inline' : 'none';
+    }
+
+    async function loadPetDates(){
+        const wrap = document.getElementById('petDates'), msg = document.getElementById('petSlotMsg');
+        try {
+            const r = await fetch('/api/v1/scheduling/open-dates', { headers:{'Accept':'application/json'} });
+            const dates = await r.json();
+            if (!Array.isArray(dates) || !dates.length){
+                wrap.innerHTML=''; document.getElementById('petSlots').innerHTML='';
+                msg.innerHTML = '<span style="color:#b45309;">'+(lang==='ta'?'திறந்த தேதிகள் இல்லை':'No open dates for meetings')+'</span>';
+                return;
+            }
+            wrap.innerHTML = dates.map(d =>
+                `<button type="button" class="petDateChip" data-date="${d.date}" style="flex:0 0 auto;padding:.5rem .8rem;border:1.5px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f172a;font-weight:700;font-size:.82rem;white-space:nowrap;cursor:pointer;">${esc(d.date_label)}</button>`
+            ).join('');
+            wrap.querySelectorAll('.petDateChip').forEach(b => b.addEventListener('click', () => selectPetDate(b.dataset.date)));
+            selectPetDate(dates[0].date);
+        } catch(e){ msg.textContent = lang==='ta'?'இணைப்பு இல்லை':'Offline'; }
+    }
+
+    function selectPetDate(date){
+        petSelectedDate = date; petSelectedSlot = null;
+        document.getElementById('petPersonsWrap').style.display = 'none';
+        updatePetSubmitLabel();
+        document.querySelectorAll('.petDateChip').forEach(b => {
+            const on = b.dataset.date === date;
+            b.style.background = on ? 'var(--navy)' : '#fff';
+            b.style.color = on ? '#fff' : '#0f172a';
+            b.style.borderColor = on ? 'var(--navy)' : '#cbd5e1';
+        });
+        loadPetSlots();
+    }
+
+    async function loadPetSlots(){
+        if (!petSelectedDate) return;
+        const grid = document.getElementById('petSlots'), msg = document.getElementById('petSlotMsg');
+        try {
+            const r = await fetch('/api/v1/scheduling/slots/available?target_date=' + petSelectedDate, { headers:{'Accept':'application/json'} });
+            const data = await r.json();
+            const slots = data.slots || [];
+            const openCount = slots.filter(s => s.available && s.remaining > 0).length;
+            msg.innerHTML = openCount
+                ? '<span style="color:#16a34a;">'+openCount+' '+(lang==='ta'?'நேரங்கள் கிடைக்கும்':'time slots open')+'</span>'
+                : '<span style="color:#b45309;font-weight:700;">⚠ '+(lang==='ta'?'இந்த நாளில் இடம் இல்லை':'No slots available for this day')+'</span>';
+            grid.innerHTML = slots.map(s => {
+                const open = s.available && s.remaining > 0, sel = petSelectedSlot === s.id;
+                const bg = sel?'#ecfdf5':open?'#f0fdf4':'#f8fafc';
+                const bd = sel?'#059669':open?'#86efac':'#e5e9f0';
+                const sub = open ? (s.remaining+'/'+s.max_capacity+' '+(lang==='ta'?'இடம்':'left'))
+                    : (s.status==='BLOCKED' ? (lang==='ta'?'மூடப்பட்டது':'Blocked') : (lang==='ta'?'நிரம்பியது':'Full'));
+                return `<button type="button" class="petSlotCard" data-id="${s.id}" ${open?'':'disabled'} style="text-align:left;padding:.5rem .6rem;border:1.5px solid ${bd};border-radius:12px;background:${bg};cursor:${open?'pointer':'not-allowed'};opacity:${open?1:.65};">
+                    <div style="font-size:.8rem;font-weight:800;color:${open?'#0f172a':'#94a3b8'};">${esc(s.label)}</div>
+                    <div style="font-size:.7rem;font-weight:700;color:${open?'#16a34a':'#94a3b8'};">${sub}</div>
+                </button>`;
+            }).join('');
+            grid.querySelectorAll('.petSlotCard').forEach(b => { if (!b.disabled) b.addEventListener('click', () => selectPetSlot(Number(b.dataset.id))); });
+        } catch(e){ msg.textContent = lang==='ta'?'இணைப்பு இல்லை':'Offline'; }
+    }
+
+    function selectPetSlot(id){
+        petSelectedSlot = (petSelectedSlot === id) ? null : id;
+        document.getElementById('petPersonsWrap').style.display = petSelectedSlot ? 'flex' : 'none';
+        updatePetSubmitLabel();
+        loadPetSlots();
+    }
+
+    document.getElementById('petPMinus').addEventListener('click', () => { petPersonsN = Math.max(1, petPersonsN-1); document.getElementById('petPersons').textContent = petPersonsN; });
+    document.getElementById('petPPlus').addEventListener('click',  () => { petPersonsN = Math.min(4, petPersonsN+1); document.getElementById('petPersons').textContent = petPersonsN; });
+
+    function openPetSheet(){
+        petForm.reset();
+        document.getElementById('petFileInfo').textContent = '';
+        petSelectedSlot = null; petSelectedDate = null; petPersonsN = 1;
+        document.getElementById('petPersons').textContent = '1';
+        document.getElementById('petPersonsWrap').style.display = 'none';
+        document.getElementById('intakeView').style.display = 'block';
+        document.getElementById('ticketView').style.display = 'none';
+        updatePetSubmitLabel();
+        petSheet.style.display = 'flex';
+        loadPetDates();
+        clearInterval(petSlotTimer);
+        petSlotTimer = setInterval(() => { if (petSelectedDate) loadPetSlots(); }, 5000);
+        setTimeout(() => document.getElementById('petName').focus(), 50);
+    }
+    function closePetSheet(){ petSheet.style.display = 'none'; clearInterval(petSlotTimer); }
+
+    document.getElementById('addPetBtn').addEventListener('click', openPetSheet);
+    document.getElementById('petCancel').addEventListener('click', closePetSheet);
+    document.getElementById('ticketDone').addEventListener('click', closePetSheet);
+    petSheet.addEventListener('click', (e) => { if (e.target === petSheet) closePetSheet(); });
+    document.getElementById('petFiles').addEventListener('change', (e) => {
+        const n = e.target.files.length;
+        document.getElementById('petFileInfo').textContent = n ? (lang==='ta' ? `${n} படம்` : `${n} file(s) selected`) : '';
+    });
+
+    function showTicket(d){
+        clearInterval(petSlotTimer);
+        document.getElementById('ticketToken').textContent = d.token_display || '—';
+        const st = document.getElementById('ticketStatus');
+        if (d.status === 'SCHEDULED'){
+            st.style.background='#dcfce7'; st.style.color='#15803d';
+            st.textContent = (lang==='ta'?'சந்திப்பு · ':'Scheduled · ') + (d.scheduled_date||'') + ' ' + (d.scheduled_time||'');
+        } else if (d.status === 'WAITING'){
+            st.style.background='#fef3c7'; st.style.color='#b45309';
+            st.textContent = (lang==='ta'?'காத்திருப்பு வரிசையில் சேர்க்கப்பட்டது':'Added to waiting queue');
+        } else {
+            st.style.background='#e0e7ff'; st.style.color='#4338ca';
+            st.textContent = (lang==='ta'?'மனு சமர்ப்பிக்கப்பட்டது':'Petition submitted');
+        }
+        document.getElementById('intakeView').style.display = 'none';
+        document.getElementById('ticketView').style.display = 'block';
+        load('appt');
+    }
+
+    petForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('petName').value.trim();
+        const category = document.getElementById('petCategory').value;
+        const desc = document.getElementById('petDesc').value.trim();
+        const files = document.getElementById('petFiles').files;
+        if (!name)     { toast(lang==='ta' ? 'பெயர் தேவை' : 'Name is required'); return; }
+        if (!category) { toast(lang==='ta' ? 'வகை தேர்ந்தெடுக்கவும்' : 'Select a category'); return; }
+        if (!petSelectedSlot && !desc && !files.length){
+            toast(lang==='ta' ? 'குறை எழுதவும், படம் அல்லது நேரம் தேர்ந்தெடுக்கவும்' : 'Write the grievance, add a photo, or pick a slot'); return;
+        }
+        const btn = document.getElementById('petSubmit'); const orig = btn.innerHTML;
+        btn.disabled = true; btn.textContent = (lang==='ta' ? 'பதிவு...' : 'Saving…');
+        const fd = new FormData();
+        fd.append('name', name);
+        fd.append('mobile', document.getElementById('petMobile').value.trim());
+        fd.append('category', category);
+        fd.append('description', desc);
+        fd.append('schedule_meeting', petSelectedSlot ? 'true' : 'false');
+        if (petSelectedSlot){ fd.append('slot_id', petSelectedSlot); fd.append('num_persons', petPersonsN); }
+        for (const f of files) fd.append('files', f);
+        try {
+            const res = await fetch('/display/api/intake', { method: 'POST', body: fd });
+            const d = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(d.detail || d.error || ('http ' + res.status));
+            showTicket(d);
+        } catch(err) {
+            toast(lang==='ta' ? 'தோல்வி — மீண்டும் முயற்சிக்கவும்' : 'Failed — check connection & retry');
+        } finally {
+            btn.disabled = false; btn.innerHTML = orig;
+        }
     });
     </script>
 </body>

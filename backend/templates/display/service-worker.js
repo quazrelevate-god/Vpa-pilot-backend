@@ -7,7 +7,7 @@
        do not persist them in Cache Storage. Offline simply shows the empty shell
        and the "offline" banner.
 */
-const CACHE = "crowd-board-v2";
+const CACHE = "crowd-board-v4";
 const SHELL = [
   "/display/",
   "/static/assets/icon-192.png",

@@ -1322,6 +1322,177 @@ class AppointmentService:
             await db.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to process petition: {e}")
 
+    # ── Floor / walk-in unified intake (staff-operated, no OTP) ─────────────
+
+    async def process_floor_intake(
+        self,
+        name: str,
+        mobile: str,
+        description: str,
+        grievance_category: str,
+        db: AsyncSession,
+        slot_id: Optional[int] = None,
+        num_persons: int = 1,
+        schedule_meeting: bool = False,
+        files: Optional[List[UploadFile]] = None,
+        constituency: str = "Tamil Nadu",
+        submitted_by: str = "floor_staff",
+    ) -> Dict[str, Any]:
+        """
+        Unified walk-in intake from the crowd PWA (no OTP; auth is the display
+        session). One journey: write the grievance + optional photo + optionally
+        book a live meeting slot. Mirrors the post-OTP half of
+        `process_atomic_submission` (SCHEDULED / WAITING / AWAITING_REVIEW) but is
+        staff-operated. Summarisation only runs when there is a photo or a
+        grievance description (a pure appointment has nothing to summarise).
+        """
+        MAX_FILES = 10
+        MAX_BYTES = 10 * 1024 * 1024
+        ALLOWED_MIMES = {
+            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
+            "image/bmp", "image/heic", "image/heif", "application/pdf",
+        }
+
+        user_desc = (description or "").strip()
+
+        # ── Validate files (optional) ─────────────────────────────────────────
+        valid_files = [f for f in (files or []) if f.filename][:MAX_FILES]
+        file_contents: List[tuple] = []
+        for f in valid_files:
+            mime = f.content_type or "application/octet-stream"
+            if mime not in ALLOWED_MIMES:
+                raise HTTPException(status_code=400,
+                                    detail=f"Unsupported file type '{mime}' ({f.filename}).")
+            raw = await f.read()
+            if len(raw) > MAX_BYTES:
+                raise HTTPException(status_code=400, detail=f"'{f.filename}' exceeds 10 MB.")
+            file_contents.append((raw, mime, f.filename))
+
+        if not (name or "").strip():
+            raise HTTPException(status_code=400, detail="Name is required.")
+        if not user_desc and not file_contents and not slot_id and not schedule_meeting:
+            raise HTTPException(status_code=400,
+                                detail="Write the grievance, add a photo, or pick a meeting slot.")
+
+        # AI summarisation is only useful when there's an IMAGE to read.
+        # A text-only grievance is what the staff already wrote — no AI needed
+        # (they also pick the category up front). A pure appointment obviously
+        # has nothing to summarise either.
+        has_image = bool(file_contents)
+
+        try:
+            current_time = datetime.utcnow()
+            token_assigned, legacy_slot_ref = await self._assign_daily_token(db, current_time)
+
+            encrypted_name = self._encrypt_field(name.strip())
+            grievance_text = user_desc or (
+                f"Walk-in {'appointment' if schedule_meeting else 'petition'} "
+                f"registered by {submitted_by}."
+                + (f" {len(file_contents)} page(s) attached." if file_contents else "")
+            )
+
+            # ── Citizen (dedup by mobile_index) ───────────────────────────────
+            from src.core import crypto
+            mobile_idx = crypto.blind_index(mobile) if mobile else None
+            citizen = None
+            if mobile:
+                citizen = (await db.execute(
+                    select(Citizen).where(Citizen.mobile_index == mobile_idx)
+                )).scalar_one_or_none()
+            if not citizen:
+                citizen = Citizen(
+                    encrypted_name=encrypted_name,
+                    encrypted_mobile=self._encrypt_field(mobile or ""),
+                    mobile_index=mobile_idx,
+                    ward_or_region=constituency,
+                    created_at=current_time,
+                )
+                db.add(citizen)
+                await db.flush()
+            else:
+                citizen.encrypted_name = encrypted_name
+
+            appointment = Appointment(
+                citizen_id=citizen.id,
+                slot_id=legacy_slot_ref,
+                token_assigned=token_assigned,
+                encrypted_grievance=self._encrypt_field(grievance_text),
+                encrypted_name=encrypted_name,
+                audio_recording_url=None,
+                grievance_category=grievance_category or None,
+                status=("SCHEDULED" if schedule_meeting else "AWAITING_REVIEW"),
+                schedule_meeting=schedule_meeting,
+                num_persons=max(1, min(4, num_persons)),
+                source="manual_staff",
+                summary_status=("PENDING" if has_image else "DONE"),
+                created_at=current_time,
+            )
+            db.add(appointment)
+            await db.flush()
+
+            # ── Book a slot (SCHEDULED) or fall back to WAITING ───────────────
+            scheduled: Dict[str, Any] = {}
+            if schedule_meeting:
+                if slot_id:
+                    try:
+                        scheduled = await scheduling_service.book_slot(
+                            db, appointment, slot_id, commit=False)
+                    except ValueError:
+                        await scheduling_service.move_to_waiting_queue(
+                            db, appointment, "SLOT_UNAVAILABLE", commit=False)
+                else:
+                    await scheduling_service.move_to_waiting_queue(
+                        db, appointment, "NO_SLOT_SELECTED", commit=False)
+
+            # ── Save photos (optional) ────────────────────────────────────────
+            if file_contents:
+                upload_dir = Path("uploads/manual_petitions") / str(appointment.id)
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                for i, (raw, mime, fname) in enumerate(file_contents, 1):
+                    safe_name = f"{appointment.id}_{i}_{self._sanitize_filename(fname)}"
+                    fpath = upload_dir / safe_name
+                    with open(fpath, "wb") as fh:
+                        fh.write(raw)
+                    db.add(AppointmentAttachment(
+                        appointment_id=appointment.id,
+                        attachment_type="IMAGE" if mime.startswith("image/") else "DOCUMENT",
+                        storage_url=str(fpath),
+                        file_size_bytes=len(raw),
+                        mime_type=mime,
+                        created_at=current_time,
+                    ))
+
+            await db.commit()
+
+            # ── Summarise only when there is an IMAGE to read ─────────────────
+            if has_image:
+                _task = asyncio.create_task(self.try_summarise_now(appointment.id))
+                _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+            status = appointment.status
+            msg = (f"Appointment booked · Token TKN{token_assigned}"  if status == "SCHEDULED"
+                   else f"Added to waiting queue · Token TKN{token_assigned}" if status == "WAITING"
+                   else f"Petition submitted · Token TKN{token_assigned}")
+            logger.info(f"[FLOOR INTAKE] appointment_id={appointment.id} | token={token_assigned} "
+                        f"| status={status} | files={len(file_contents)} | by={submitted_by}")
+            return {
+                "appointment_id": appointment.id,
+                "token_assigned": token_assigned,
+                "token_display":  f"TKN{token_assigned}",
+                "status":         status,
+                "scheduled_date": scheduled.get("scheduled_date"),
+                "scheduled_time": scheduled.get("assigned_time"),
+                "slot_window":    scheduled.get("slot_window"),
+                "message":        msg,
+            }
+
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to register visitor: {e}")
+
     async def _trigger_manual_summarisation(
         self,
         appointment_id: int,

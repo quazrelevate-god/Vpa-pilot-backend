@@ -3,9 +3,9 @@ Display board routes — separate login, shows today's scheduled & rescheduled a
 """
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, or_
@@ -209,6 +209,42 @@ async def display_set_referral_status(
     except ValueError as e:
         await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=404)
+
+
+# ── Walk-in intake: petition + appointment booking (floor team) ──────────────────
+
+@router.post("/api/intake")
+async def display_add_intake(
+    name: str = Form(...),
+    mobile: str = Form(default=""),
+    description: str = Form(default=""),
+    category: str = Form(...),
+    slot_id: Optional[int] = Form(default=None),
+    num_persons: int = Form(default=1),
+    schedule_meeting: bool = Form(default=False),
+    files: List[UploadFile] = File(default=[]),
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_display_auth),
+):
+    """Unified walk-in intake from the crowd PWA (for phone-less / illiterate
+    citizens): write the grievance + optional photo + optionally book a live
+    meeting slot. No OTP — scoped to the display session. Books the slot
+    (SCHEDULED), falls back to the WAITING queue, or lands in Petition Review
+    (AWAITING_REVIEW) when no meeting is requested."""
+    from src.services.appointment_service import appointment_service
+    result = await appointment_service.process_floor_intake(
+        name=name.strip(),
+        mobile=(mobile or "").strip(),
+        description=(description or "").strip(),
+        grievance_category=category,
+        db=db,
+        slot_id=slot_id,
+        num_persons=num_persons,
+        schedule_meeting=schedule_meeting,
+        files=files,
+        submitted_by=f"floor:{user}",
+    )
+    return JSONResponse(result, status_code=201)
 
 
 # ── PWA assets (served from /display/ so the service worker scope covers the app) ─
