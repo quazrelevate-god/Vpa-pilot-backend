@@ -150,45 +150,79 @@ export default function AppointmentDetailDrawer({
               </SheetClose>
             </div>
 
-            {/* Action bar for Rescheduled rows — the PA has two paths:
-                (i) call the citizen and pick a new slot, or
-                (ii) the citizen agreed to just submit the petition. */}
-            {a.status === "Rescheduled" && (
-              <div className="flex items-center justify-between gap-3 border-b border-border bg-violet-50/50 px-6 py-3">
-                <div className="min-w-0">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-violet-700">
-                    Needs rescheduling
+            {/* Action bar — workflow actions per current status. Every
+                Appointments-tab row where the PA has real work to do gets
+                a colour-coded strip below the header:
+
+                  Rescheduled — needs to be re-booked or converted to a petition
+                  Waiting     — same options; Schedule opens the same picker
+                  Scheduled   — only convert-to-petition (the meeting is set)
+
+                All other statuses (Awaiting Review, Reviewed, Not Came,
+                Courtesy Done) have no interactive bar — they're terminal or
+                already routed through Petition Review. */}
+            {(() => {
+              const s = a.status;
+              const cfg =
+                s === "Rescheduled" ? {
+                  bg: "bg-violet-50/50", tone: "text-violet-700", sub: "text-violet-900/80",
+                  title: "Needs rescheduling",
+                  hint: "Call the citizen — book a new slot, or convert to a petition.",
+                  primary: { kind: "reschedule" as const, label: "Reschedule to new slot" },
+                }
+                : s === "Waiting" ? {
+                  bg: "bg-amber-50/60", tone: "text-amber-700", sub: "text-amber-900/80",
+                  title: "In the waiting queue",
+                  hint: "Book them into a slot when one opens, or convert to a petition.",
+                  primary: { kind: "reschedule" as const, label: "Schedule" },
+                }
+                : s === "Scheduled" ? {
+                  bg: "bg-emerald-50/60", tone: "text-emerald-700", sub: "text-emerald-900/80",
+                  title: "Scheduled meeting",
+                  hint: "Convert to a petition if the citizen no longer wants to meet.",
+                  primary: null,
+                }
+                : null;
+              if (!cfg) return null;
+              return (
+                <div className={cn("flex items-center justify-between gap-3 border-b border-border px-6 py-3", cfg.bg)}>
+                  <div className="min-w-0">
+                    <div className={cn("text-[11px] font-bold uppercase tracking-wider", cfg.tone)}>
+                      {cfg.title}
+                    </div>
+                    <div className={cn("text-[13px]", cfg.sub)}>
+                      {cfg.hint}
+                    </div>
                   </div>
-                  <div className="text-[13px] text-violet-900/80">
-                    Call the citizen — book a new slot, or convert to a petition.
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="outline"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!a) return;
+                        setBusy(true);
+                        try {
+                          await updateAppointmentStatus(a.id, "Awaiting Review");
+                          toast.success("Moved to Awaiting Review");
+                          onStatusChange?.(a, "Awaiting Review");
+                          onClose();
+                        } catch (e) {
+                          toast.error("Failed", { description: (e as Error).message });
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}>
+                      Convert to petition
+                    </Button>
+                    {cfg.primary && (
+                      <Button size="sm" onClick={() => setRescheduleOpen(true)} disabled={busy}>
+                        <CalendarDays className="h-4 w-4" />
+                        {cfg.primary.label}
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button size="sm" variant="outline"
-                    disabled={busy}
-                    onClick={async () => {
-                      if (!a) return;
-                      setBusy(true);
-                      try {
-                        await updateAppointmentStatus(a.id, "Awaiting Review");
-                        toast.success("Moved to Awaiting Review");
-                        onStatusChange?.(a, "Awaiting Review");
-                        onClose();
-                      } catch (e) {
-                        toast.error("Failed", { description: (e as Error).message });
-                      } finally {
-                        setBusy(false);
-                      }
-                    }}>
-                    Convert to petition
-                  </Button>
-                  <Button size="sm" onClick={() => setRescheduleOpen(true)} disabled={busy}>
-                    <CalendarDays className="h-4 w-4" />
-                    Reschedule to new slot
-                  </Button>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
               {/* Preview pane — uploads at-a-glance */}
@@ -363,120 +397,8 @@ export default function AppointmentDetailDrawer({
                 {/* Citizen's description / audio transcript now rendered under
                     the audio player in the left preview pane. */}
 
-                {/* Properties — admin overrides for AI-derived fields */}
-                <Panel icon={User} title="Properties">
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Status — always editable */}
-                    <div className="space-y-1.5">
-                      <Label>Status</Label>
-                      <Select value={a.status} onValueChange={(v) => changeStatus(v as AppointmentStatus)} disabled={busy}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Priority — always editable */}
-                    <div className="space-y-1.5">
-                      <Label>Priority</Label>
-                      <Select
-                        value={currentPriority ?? undefined}
-                        onValueChange={(v) => patchDetails({ priority: v })}
-                        disabled={busy}
-                      >
-                        <SelectTrigger className="h-9"><SelectValue placeholder="— Set priority —" /></SelectTrigger>
-                        <SelectContent>
-                          {priorityOptions.map((o) => (
-                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Category — read-only with Edit toggle */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <Label>Category</Label>
-                        {!editCategory && (
-                          <button
-                            onClick={() => setEditCategory(true)}
-                            className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand hover:underline"
-                            disabled={busy}
-                          >
-                            <Pencil className="h-3 w-3" /> Edit
-                          </button>
-                        )}
-                      </div>
-                      {editCategory ? (
-                        <div className="flex gap-1.5">
-                          <Select
-                            value={currentCategoryKey ?? a.category ?? undefined}
-                            onValueChange={(v) => patchDetails({ category: v }).then(() => setEditCategory(false))}
-                            disabled={busy}
-                          >
-                            <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="— Select —" /></SelectTrigger>
-                            <SelectContent className="max-h-72">
-                              {categoryOptions.map((o) => (
-                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button variant="ghost" size="sm" className="h-9 px-2" onClick={() => setEditCategory(false)} disabled={busy}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3 text-sm text-foreground">
-                          {categoryLabel ?? <span className="text-muted-foreground">—</span>}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Ministry — read-only with Edit toggle */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <Label>Ministry</Label>
-                        {!editDepartment && (
-                          <button
-                            onClick={() => setEditDepartment(true)}
-                            className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand hover:underline"
-                            disabled={busy}
-                          >
-                            <Pencil className="h-3 w-3" /> Edit
-                          </button>
-                        )}
-                      </div>
-                      {editDepartment ? (
-                        <div className="flex gap-1.5">
-                          <Select
-                            value={currentDeptKey ?? undefined}
-                            onValueChange={(v) => patchDetails({ department: v }).then(() => setEditDepartment(false))}
-                            disabled={busy}
-                          >
-                            <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="— Select —" /></SelectTrigger>
-                            <SelectContent className="max-h-72">
-                              {deptOptions.map((o) => (
-                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button variant="ghost" size="sm" className="h-9 px-2" onClick={() => setEditDepartment(false)} disabled={busy}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3 text-sm text-foreground">
-                          {departmentLabel ?? <span className="text-muted-foreground">—</span>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 inline-flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
-                    <Check className="h-3 w-3 text-emerald-500" />
-                    Edits override the model's suggestion and are saved immediately.
-                  </div>
-                </Panel>
+                {/* Properties panel removed — workflow actions now live in
+                    the top action bar (Scheduled / Waiting / Rescheduled). */}
               </div>
             </div>
             </div>

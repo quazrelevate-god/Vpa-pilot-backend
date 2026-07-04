@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Download, Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron,
   CalendarClock, CalendarDays, CalendarRange, X, ArrowUpDown, ArrowDownNarrowWide,
-  ArrowDownAZ, ArrowUpAZ, SlidersHorizontal, MoreVertical, Clock, AlarmClockOff,
+  ArrowDownAZ, ArrowUpAZ, SlidersHorizontal, MoreVertical, Clock,
   CalendarCheck, RotateCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -49,7 +49,7 @@ const TAB_KEYS: Record<Tab, string> = {
 
 const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Waiting", "Rescheduled"];
 
-type QuickChip = "today" | "tomorrow" | "this_week" | "overdue";
+type QuickChip = "today" | "tomorrow" | "this_week";
 
 function statusClass(s: string) {
   return ({
@@ -80,17 +80,12 @@ function computeChipRange(chip: QuickChip): { from: string; to: string } {
     const s = toISODate(t);
     return { from: s, to: s };
   }
-  if (chip === "this_week") {
-    // Mon–Sun
-    const day = now.getDay(); // 0=Sun
-    const monOffset = day === 0 ? -6 : 1 - day;
-    const start = new Date(now); start.setDate(start.getDate() + monOffset);
-    const end = new Date(start); end.setDate(end.getDate() + 6);
-    return { from: toISODate(start), to: toISODate(end) };
-  }
-  // overdue → appt before today
-  const yest = new Date(now); yest.setDate(yest.getDate() - 1);
-  return { from: "", to: toISODate(yest) };
+  // this_week — Mon–Sun spanning the current week.
+  const day = now.getDay(); // 0=Sun
+  const monOffset = day === 0 ? -6 : 1 - day;
+  const start = new Date(now); start.setDate(start.getDate() + monOffset);
+  const end = new Date(start); end.setDate(end.getDate() + 6);
+  return { from: toISODate(start), to: toISODate(end) };
 }
 
 /** Locale-aware date/time formatting hook. */
@@ -549,7 +544,6 @@ function AppointmentsPageInner() {
     { key: "today",     label: t("appts.chipToday"),    icon: <CalendarCheck className="h-3.5 w-3.5" /> },
     { key: "tomorrow",  label: t("appts.chipTomorrow"), icon: <CalendarDays className="h-3.5 w-3.5" /> },
     { key: "this_week", label: t("appts.chipThisWeek"), icon: <CalendarRange className="h-3.5 w-3.5" /> },
-    { key: "overdue",   label: t("appts.chipOverdue"),  icon: <AlarmClockOff className="h-3.5 w-3.5" /> },
   ];
 
   return (
