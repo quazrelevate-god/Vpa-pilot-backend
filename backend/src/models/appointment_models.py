@@ -146,6 +146,14 @@ class Appointment(Base):
         comment="v2: booked slot (was appointment_slot_id in v1). NULL for waiting/petition-only.",
     )
 
+    # Persistent citizen intent — TRUE for meeting requests even after the
+    # slot is released (waiting queue). slot_id alone isn't enough because it
+    # goes NULL when we release, so `kind=meeting` filters would drop WAITING
+    # rows without this.
+    schedule_meeting = Column(
+        Boolean, nullable=False, default=False, server_default="false",
+    )
+
     # v1 attr → v2 DB column "token_number"
     token_assigned = Column(
         "token_number", BigInteger, nullable=False,

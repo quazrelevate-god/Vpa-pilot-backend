@@ -420,7 +420,7 @@ class AppointmentService:
                     .where(Appointment.created_at >= today_start)
                     .where(Appointment.status.notin_(["CANCELLED"]))
                 ) or 0
-            if existing_today > 0:
+            if existing_today > 0 and not _settings.DEBUG:
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -796,6 +796,7 @@ class AppointmentService:
                     # v2: slot_id is a real FK to slots.id — leave NULL at insert.
                     # book_slot() sets it for meeting requests; petition-only rows stay NULL.
                     slot_id=None,
+                    schedule_meeting=take_slot_path,
                     token_assigned=token_assigned,
                     encrypted_grievance=encrypted_grievance,
                     grievance_category=grievance_category,

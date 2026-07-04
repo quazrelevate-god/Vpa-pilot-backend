@@ -291,9 +291,10 @@ class SchedulingService:
             slot.status = "FULL"
 
         avail = await db.get(MLADailyAvailability, slot.availability_id)
-        appointment.status    = "SCHEDULED"
-        appointment.status_id = v2.appointment_status_id("SCHEDULED")
-        appointment.slot_id   = slot.id
+        appointment.status           = "SCHEDULED"
+        appointment.status_id        = v2.appointment_status_id("SCHEDULED")
+        appointment.slot_id          = slot.id
+        appointment.schedule_meeting = True  # persistent intent
 
         if commit:
             await db.commit()

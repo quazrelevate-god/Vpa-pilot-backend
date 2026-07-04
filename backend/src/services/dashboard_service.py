@@ -64,8 +64,8 @@ def _resolve_display_status(appt) -> str:
     override = _STATUS_DISPLAY.get(appt.status)
     if override:
         return override
-    # SCHEDULED status — a "meeting request" is one with a booked slot.
-    return "Scheduled" if appt.slot_id else "Reviewed"
+    # SCHEDULED status — meeting requests only (persistent intent flag).
+    return "Scheduled" if appt.schedule_meeting else "Reviewed"
 
 
 def _decode(value: str) -> str:
@@ -103,7 +103,7 @@ async def get_stats(
 
     total      = await db.scalar(_count()) or 0
     scheduled  = await db.scalar(_count([
-        Appointment.slot_id.isnot(None),
+        Appointment.schedule_meeting == True,   # noqa: E712
         Appointment.status == "SCHEDULED",
     ])) or 0
     reviewed   = await db.scalar(_count([
@@ -207,7 +207,7 @@ async def get_stats(
     # Meetings held — scheduled appointments whose slot end has passed
     now = datetime.utcnow()
     meetings_held_q = _count([
-        Appointment.slot_id.isnot(None),
+        Appointment.schedule_meeting == True,   # noqa: E712
         Appointment.created_at.isnot(None),
         Appointment.created_at <= now.date(),
         Appointment.status == "SCHEDULED",
@@ -364,14 +364,19 @@ async def get_appointments(
             selectinload(Appointment.citizen),
             selectinload(Appointment.attachments),
             selectinload(Appointment.grievance_summary),
+            # v2: scheduled date/time derived from slot + availability. Eager-load
+            # both to avoid lazy IO in the sync serializer.
+            selectinload(Appointment.scheduled_slot).selectinload(AppointmentSlot.availability),
         )
     )
 
     # Kind: meeting requests vs direct petitions (ordering is applied later).
+    # v2: schedule_meeting is the persistent citizen-intent flag (survives
+    # slot release when the appointment lands in the waiting queue).
     if kind == "meeting":
-        stmt = stmt.where(Appointment.slot_id.isnot(None))   # noqa: E712
+        stmt = stmt.where(Appointment.schedule_meeting == True)   # noqa: E712
     elif kind == "petition":
-        stmt = stmt.where(Appointment.slot_id.is_(None))  # noqa: E712
+        stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
 
     # Submission date filter (when citizen submitted the form)
     if date_from:
@@ -389,7 +394,7 @@ async def get_appointments(
     if status_filter and status_filter != "All":
         if status_filter == "Scheduled":
             stmt = stmt.where(
-                Appointment.slot_id.isnot(None),
+                Appointment.schedule_meeting == True,   # noqa: E712
                 Appointment.status == "SCHEDULED"
             )
         elif status_filter == "Reviewed":
@@ -523,13 +528,14 @@ async def get_appointment_counts(
     """
     from datetime import datetime as dt
 
-    # v2: use slot_id as the "is-a-meeting-request" flag (non-null ⇒ meeting)
-    base = select(Appointment.id, Appointment.status, Appointment.slot_id)
+    # v2: schedule_meeting is the persistent citizen-intent flag (survives
+    # slot release when moved to waiting queue).
+    base = select(Appointment.id, Appointment.status, Appointment.schedule_meeting)
 
     if kind == "meeting":
-        base = base.where(Appointment.slot_id.isnot(None))   # noqa: E712
+        base = base.where(Appointment.schedule_meeting == True)   # noqa: E712
     elif kind == "petition":
-        base = base.where(Appointment.slot_id.is_(None))  # noqa: E712
+        base = base.where(Appointment.schedule_meeting == False)  # noqa: E712
 
     if date_from:
         base = base.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
@@ -567,9 +573,9 @@ async def get_appointment_counts(
         )
         # Re-apply the same WHERE conditions on the ORM-level statement
         if kind == "meeting":
-            stmt = stmt.where(Appointment.slot_id.isnot(None))   # noqa: E712
+            stmt = stmt.where(Appointment.schedule_meeting == True)   # noqa: E712
         elif kind == "petition":
-            stmt = stmt.where(Appointment.slot_id.is_(None))  # noqa: E712
+            stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
         if date_from:
             stmt = stmt.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
         if date_to:
@@ -609,7 +615,7 @@ async def get_appointment_counts(
             ):
                 continue
             all_count += 1
-            if appt.status == "SCHEDULED" and appt.slot_id is not None:
+            if appt.status == "SCHEDULED" and appt.schedule_meeting:
                 scheduled += 1
             elif appt.status in ("WAITING", "IN_PROGRESS"):
                 waiting += 1
@@ -627,7 +633,7 @@ async def get_appointment_counts(
     agg = select(
         func.count().label("all_count"),
         func.count().filter(
-            and_(sub.c.status == "SCHEDULED", sub.c.slot_id.isnot(None))
+            and_(sub.c.status == "SCHEDULED", sub.c.schedule_meeting == True)  # noqa: E712
         ).label("scheduled"),
         func.count().filter(sub.c.status.in_(["WAITING", "IN_PROGRESS"])).label("waiting"),
         func.count().filter(sub.c.status == "RESCHEDULED").label("rescheduled"),
@@ -716,6 +722,7 @@ async def get_appointment_detail(db: AsyncSession, appointment_id: int) -> Optio
             selectinload(Appointment.citizen),
             selectinload(Appointment.attachments),
             selectinload(Appointment.grievance_summary),
+            selectinload(Appointment.scheduled_slot).selectinload(AppointmentSlot.availability),
         )
         .where(Appointment.id == appointment_id)
     )
@@ -819,17 +826,19 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
     old_status = appt.status
 
     if new_status in ("Waiting", "Rescheduled"):
-        # Release the slot booking and move to waiting queue
+        # Release the slot booking and move to waiting queue.
+        # Preserve schedule_meeting intent — waiting meetings are still meetings.
         await scheduling_service.release_slot(db, appt, commit=False)
         await scheduling_service.move_to_waiting_queue(
             db, appt, "MANUAL_RESCHEDULE", commit=False
         )
-        # v2: schedule_meeting flag removed — slot_id presence conveys it.
+        appt.schedule_meeting = True
     elif new_status == "Scheduled":
         # PA manually marks as Scheduled — slot assignment handled separately
         # via the scheduling page reschedule flow.
         appt.status = "SCHEDULED"
         appt.status_id = v2.appointment_status_id("SCHEDULED")
+        appt.schedule_meeting = True
     elif new_status == "Reviewed":
         # PA marks petition as reviewed — release slot only if the meeting
         # hasn't started yet (v2: check slot start_time via AppointmentSlot).
@@ -842,6 +851,7 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
                     await scheduling_service.release_slot(db, appt, commit=False)
         appt.status = "REVIEWED"
         appt.status_id = v2.appointment_status_id("REVIEWED")
+        appt.schedule_meeting = False
 
         # Create ticket when petition is reviewed (if not already exists)
         from src.models.ticket_models import (
@@ -896,6 +906,7 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
                 slot_dt = datetime.combine(avail.date, slot_obj.start_time) if avail else None
                 if slot_dt and slot_dt > datetime.utcnow():
                     await scheduling_service.release_slot(db, appt, commit=False)
+        appt.schedule_meeting = False
         appt.status = "AWAITING_REVIEW"
         appt.status_id = v2.appointment_status_id("AWAITING_REVIEW")
     else:

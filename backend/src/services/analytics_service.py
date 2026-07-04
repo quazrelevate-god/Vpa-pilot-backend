@@ -88,11 +88,11 @@ class AnalyticsService:
             .where(GSR.priority.in_(["critical", "high"]))
         ) or 0
         meetings = await db.scalar(
-            _scoped(select(func.count(Appointment.id)), f).where(Appointment.slot_id.isnot(None))  # noqa: E712
+            _scoped(select(func.count(Appointment.id)), f).where(Appointment.schedule_meeting == True)  # noqa: E712
         ) or 0
         meeting_persons = await db.scalar(
             _scoped(select(func.coalesce(func.sum(Appointment.num_persons), 0)), f)
-            .where(Appointment.slot_id.isnot(None))  # noqa: E712
+            .where(Appointment.schedule_meeting == True)  # noqa: E712
         ) or 0
         awaiting = await db.scalar(
             _scoped(select(func.count(Appointment.id)), f).where(Appointment.status == "AWAITING_REVIEW")
@@ -177,7 +177,7 @@ class AnalyticsService:
             select(
                 Appointment.id, Appointment.token_assigned,
                 Appointment.grievance_category, Appointment.status,
-                Appointment.slot_id, Appointment.created_at,
+                Appointment.schedule_meeting, Appointment.created_at,
                 Citizen.encrypted_name.label("c_name"), Citizen.encrypted_mobile.label("c_mobile"),
                 GSR.priority, GSR.headline,
             ),
@@ -202,7 +202,7 @@ class AnalyticsService:
                 "source": None,          # v2: column removed
                 "source_label": "—",     # v2: column removed
                 "headline": r.headline,
-                "schedule_meeting": r.slot_id is not None,
+                "schedule_meeting": r.schedule_meeting,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             })
         return {

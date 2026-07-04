@@ -7,11 +7,18 @@ adds missing admin rows and any missing tables.
 
 Run from backend/:
     ./env/Scripts/python.exe scripts/init_v2_schema.py
-Optionally override the target db name:
-    ./env/Scripts/python.exe scripts/init_v2_schema.py mla_scheduler_v2
+
+Options:
+    --seed-only          Skip database + schema creation, only run seeds.
+                         Use this on a DB that's already been migrated past
+                         the v2 base (e.g. after migrate_v2_final.sql), where
+                         create_all would collide with renamed indexes.
+    --db NAME            Override the target db name (default: mla_scheduler_v2).
+                         For back-compat, a positional arg still works.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 
@@ -21,14 +28,31 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import create_engine, func, select, text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from src.models_v2.schema import Base, Admin  # noqa: E402
+from src.models_v2.schema import Base, Admin, Mla  # noqa: E402
 
 # Local Postgres (matches backend/.env DB_* for dev).
 PGUSER = os.getenv("DB_USER", "postgres")
 PGPASS = os.getenv("DB_PASSWORD", "postgres")
 PGHOST = os.getenv("DB_HOST", "localhost")
 PGPORT = os.getenv("DB_PORT", "5432")
-TARGET_DB = sys.argv[1] if len(sys.argv) > 1 else "mla_scheduler_v2"
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Build v2 schema + seed admin/mla.")
+    p.add_argument("--seed-only", action="store_true",
+                   help="Skip DB/schema creation, only run seeds.")
+    p.add_argument("--db", default=None,
+                   help="Target db name (default: mla_scheduler_v2).")
+    # Back-compat: allow a positional db name arg too.
+    p.add_argument("db_positional", nargs="?", default=None,
+                   help=argparse.SUPPRESS)
+    args = p.parse_args()
+    args.db = args.db or args.db_positional or "mla_scheduler_v2"
+    return args
+
+
+_ARGS = _parse_args()
+TARGET_DB = _ARGS.db
 
 _ADMIN_URL = f"postgresql+psycopg://{PGUSER}:{PGPASS}@{PGHOST}:{PGPORT}/postgres"
 _V2_URL = f"postgresql+psycopg://{PGUSER}:{PGPASS}@{PGHOST}:{PGPORT}/{TARGET_DB}"
@@ -88,13 +112,31 @@ def seed_admin(session: Session) -> int:
     return inserted
 
 
+def seed_mla(session: Session) -> int:
+    """Seed a default MLA row. Every scheduling flow assumes mla_id=1 exists
+    (single-office deployment). Idempotent — skips if any MLA already exists."""
+    existing = session.execute(select(func.count()).select_from(Mla)).scalar() or 0
+    if existing > 0:
+        return 0
+    session.add(Mla(name="Minister", is_active=True))
+    session.commit()
+    return 1
+
+
 def main() -> None:
-    ensure_database()
+    seed_only = _ARGS.seed_only
+
+    if seed_only:
+        print(f"[mode] --seed-only: skipping database + schema creation")
+    else:
+        ensure_database()
 
     engine = create_engine(_V2_URL)
-    Base.metadata.create_all(engine)
-    print(f"[schema] ensured {len(Base.metadata.tables)} tables: "
-          f"{', '.join(sorted(Base.metadata.tables))}")
+
+    if not seed_only:
+        Base.metadata.create_all(engine)
+        print(f"[schema] ensured {len(Base.metadata.tables)} tables: "
+              f"{', '.join(sorted(Base.metadata.tables))}")
 
     with Session(engine) as s:
         inserted = seed_admin(s)
@@ -107,6 +149,10 @@ def main() -> None:
             print(f"        {entity:12s} {n}")
         total = s.execute(select(func.count()).select_from(Admin)).scalar()
         print(f"[seed] admin total: {total}")
+
+        mla_inserted = seed_mla(s)
+        mla_total = s.execute(select(func.count()).select_from(Mla)).scalar()
+        print(f"[seed] mla rows inserted this run: {mla_inserted} (total: {mla_total})")
 
     engine.dispose()
     print("[done] v2 schema built + admin seeded on", TARGET_DB)

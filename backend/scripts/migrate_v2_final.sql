@@ -66,6 +66,9 @@ ALTER TABLE appointment ADD COLUMN IF NOT EXISTS summary_status VARCHAR(20) NOT 
 ALTER TABLE appointment ADD COLUMN IF NOT EXISTS summary_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE appointment ADD COLUMN IF NOT EXISTS summary_claimed_at TIMESTAMP;
 ALTER TABLE appointment ADD COLUMN IF NOT EXISTS encrypted_name_ta TEXT;
+-- Persistent citizen intent (a meeting request stays a meeting request even
+-- after slot_id is released into the waiting queue).
+ALTER TABLE appointment ADD COLUMN IF NOT EXISTS schedule_meeting BOOLEAN NOT NULL DEFAULT false;
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 8. ticket — rename forwarded_to, add bridge + lifecycle columns

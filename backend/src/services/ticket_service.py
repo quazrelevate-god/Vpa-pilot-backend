@@ -105,7 +105,12 @@ def _serialize_event(e: Activity) -> Dict[str, Any]:
 
 
 def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None) -> Dict[str, Any]:
-    """Full detail shape for the modal — includes events + summary + attachments."""
+    """Full detail shape for the modal — includes events + summary + attachments.
+
+    `events` is the list of Activity rows for this ticket, fetched by the
+    caller (v2: no Ticket.events relationship). Falls back to empty.
+    """
+    db_events = events or []
     row = _serialize_ticket_row(t)
     appt = t.appointment
     summary_rec: Optional[GrievanceSummaryRecord] = next(
@@ -147,9 +152,8 @@ def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None)
 
     # Timeline: real DB events + two synthetic anchors so every ticket shows the
     # full lifecycle — when the citizen submitted, and when the ticket was opened.
-    # Rendered newest-first (matches the events relationship, created_at desc);
-    # the two synthetic anchors sink to the bottom as the oldest entries.
-    events = [_serialize_event(e) for e in t.events]
+    # v2: events come from the `activity` table, loaded by the caller.
+    events = [_serialize_event(e) for e in db_events]
     if appt and appt.created_at:
         events.append({
             "id":         f"submitted-{t.id}",
@@ -199,7 +203,7 @@ def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None)
         "attachments":        attachments,
         "resolution_attachments": resolution_attachments,
         "audio_url":          audio_url,
-        "events":             [_serialize_event(e) for e in (events or [])],
+        "events":             events,
     })
     return row
 
