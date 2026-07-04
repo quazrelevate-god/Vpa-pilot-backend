@@ -62,12 +62,15 @@ interface InboxRow {
 const CATEGORIES = ["action_required","proposals","transfer_requests","pension_requests","school_admission","job_requests","rti","associations_unions","school_upgradation","invitation","greetings","general","other"];
 const PRIORITIES = ["low", "medium", "high", "critical"];
 
+// Note: QUEUED / PROCESSING rows are hidden from the UI entirely — the PA
+// has nothing to do with them until they land in AWAITING_REVIEW. The live
+// poll below re-fetches while any queued/processing rows exist, so they
+// pop into the inbox silently.
 const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
   { key: "",                tKey: "petition.segAll" },
   { key: "AWAITING_REVIEW", tKey: "petition.segAwaiting" },
   { key: "REVIEWED",        tKey: "petition.segReviewed" },
   { key: "FAILED",          tKey: "petition.segFailed" },
-  { key: "PROCESSING",      tKey: "petition.segProcessing" },
 ];
 
 const PRIORITY_CLS: Record<string, string> = {
@@ -320,11 +323,19 @@ export default function AiReviewPage() {
       (b.created_at || "").localeCompare(a.created_at || ""));
   }, [uploads, petitions]);
 
+  // Rows the PA can actually act on — QUEUED / PROCESSING are hidden from
+  // the whole surface (feed + counts + segment tabs) so nothing "processing"
+  // shows in the UI.
+  const visibleRows = useMemo(
+    () => rows.filter(r => r.statusKey !== "QUEUED" && r.statusKey !== "PROCESSING"),
+    [rows],
+  );
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { "": rows.length, AWAITING_REVIEW: 0, REVIEWED: 0, FAILED: 0, PROCESSING: 0, QUEUED: 0 };
-    for (const r of rows) c[r.statusKey] = (c[r.statusKey] ?? 0) + 1;
+    const c: Record<string, number> = { "": visibleRows.length, AWAITING_REVIEW: 0, REVIEWED: 0, FAILED: 0 };
+    for (const r of visibleRows) c[r.statusKey] = (c[r.statusKey] ?? 0) + 1;
     return c;
-  }, [rows]);
+  }, [visibleRows]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -332,7 +343,7 @@ export default function AiReviewPage() {
     // regardless of the exact time-of-day the petition was submitted.
     const fromKey = dateFrom || "";
     const toKey   = dateTo   || "";
-    return rows.filter(r => {
+    return visibleRows.filter(r => {
       if (fStatus && r.statusKey !== fStatus) return false;
       if (fPriority && r.priority !== fPriority) return false;
       if (fSource && r.source !== fSource) return false;
@@ -349,7 +360,7 @@ export default function AiReviewPage() {
       }
       return true;
     });
-  }, [rows, fStatus, fPriority, fSource, dateFrom, dateTo, q]);
+  }, [visibleRows, fStatus, fPriority, fSource, dateFrom, dateTo, q]);
 
   const failedCount = uploads.filter(u => u.status === "FAILED").length;
   const advancedFilterCount = (fPriority ? 1 : 0) + (fSource ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
