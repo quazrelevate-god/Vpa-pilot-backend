@@ -1208,7 +1208,8 @@
                 catRti: "RTI", catAssociationsUnions: "Associations / Unions",
                 catOther: "Other", catGeneral: "General", catGreetings: "Greetings", catInvitation: "Invitation",
                 alertSelectCategory: "Please select a category.",
-                audioOnlyHint: "For invitations & greetings, please leave a short voice message. File uploads are not needed.",
+                audioOnlyHint: "Kindly leave a short voice message with your invitation or greeting. No file upload is needed.",
+                audioHintCourtesy: "(Speak your reason)",
                 choiceTitle: "Choose an option below",
                 choicePetitionSub: "Submit your petition for review",
                 choiceMeetingSub: "Book a slot to meet in person",
@@ -1264,7 +1265,8 @@
                 catRti: "தகவல் அறியும் உரிமை", catAssociationsUnions: "சங்கங்கள் / தொழிற்சங்கங்கள்",
                 catOther: "பிற", catGeneral: "பொது மனுக்கள்", catGreetings: "வாழ்த்து செய்திகள்", catInvitation: "அழைப்பிதழ்",
                 alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
-                audioOnlyHint: "வாழ்த்து / அழைப்பிதழ் பிரிவுக்கு, ஒரு குறுகிய குரல் செய்தி பதிவு செய்யவும். ஆவணங்களை பதிவேற்ற வேண்டியதில்லை.",
+                audioOnlyHint: "உங்கள் வாழ்த்து அல்லது அழைப்பிதழுக்கான காரணத்தை ஒரு குறுகிய குரல் செய்தியாக பதிவு செய்யவும். ஆவணம் பதிவேற்ற வேண்டியதில்லை.",
+                audioHintCourtesy: "(உங்கள் காரணத்தை பேசுங்கள்)",
                 choiceTitle: "கீழே ஒரு விருப்பத்தைத் தேர்ந்தெடுக்கவும்",
                 choicePetitionSub: "மனுவை பரிசீலிக்க சமர்பிக்கவும்",
                 choiceMeetingSub: "சந்திப்பிற்கு நேரம் பதிவு செய்யவும்",
@@ -1351,6 +1353,15 @@
                 noteEl.style.display   = courtesy ? '' : 'none';
                 noteEl.textContent     = copy.audioOnlyHint || '';
             }
+            // Swap the voice-recording hint too — "(Speak your reason)" for
+            // courtesy submissions, the standard "(Speak your grievance)" hint
+            // otherwise.
+            const audioHintEl = document.getElementById('lbl-audio-hint');
+            if (audioHintEl) {
+                audioHintEl.textContent = courtesy
+                    ? (copy.audioHintCourtesy || copy.audioHint || '')
+                    : (copy.audioHint || '');
+            }
         }
 
         function switchLocalization(isChecked) {
@@ -1381,7 +1392,6 @@
             _setText('lbl-upload-hint', copy.uploadHint);
             _setText('lbl-category', copy.category);
             _populateCategoryDropdown();
-            applyCourtesyModeToUploadSection();
             _setText('lbl-slot-title',   copy.slotTitle);
             _setText('lbl-slot-confirm', copy.slotConfirm);
             _setText('lbl-slot-date',    copy.slotSelectDate);
@@ -1395,6 +1405,8 @@
             }
             _setText('lbl-audio',           copy.audio);
             _setText('lbl-audio-hint',      copy.audioHint);
+            // Re-apply courtesy overrides last, so the audio-hint swap sticks.
+            applyCourtesyModeToUploadSection();
             const micBtn = document.getElementById('btnStartRecording');
             if (!micBtn || !micBtn.classList.contains('recording')) {
                 _setText('lbl-record', copy.record);
