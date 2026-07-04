@@ -20,7 +20,7 @@ import { fetchTickets, fetchTicketsCounts } from "@/lib/api";
 import type { TicketRow } from "@/lib/types";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR, PRIORITY_COLOR, PRIORITY_DISPLAY,
-  priorityOptions, deptOptions, categoryOptions,
+  priorityOptions, ministryOptions, categoryOptions,
 } from "@/lib/enums";
 
 const PAGE_SIZE = 25;
@@ -120,7 +120,7 @@ const TicketTableRow = memo(function TicketTableRow({
       </td>
       <td className="max-w-md px-4 py-3">
         <div className="line-clamp-2 text-sm leading-snug text-foreground/85">
-          {row.headline ?? <span className="italic text-muted-foreground/60">No headline</span>}
+          {row.citizen_ask ?? <span className="italic text-muted-foreground/60">No subject</span>}
         </div>
       </td>
       <td className="px-4 py-3 text-sm text-muted-foreground">{row.category_label ?? "—"}</td>
@@ -195,8 +195,8 @@ const TicketCard = memo(function TicketCard({
           </div>
         </div>
       </div>
-      {row.headline && (
-        <div className="mt-2 line-clamp-2 text-sm leading-snug text-foreground/85">{row.headline}</div>
+      {row.citizen_ask && (
+        <div className="mt-2 line-clamp-2 text-sm leading-snug text-foreground/85">{row.citizen_ask}</div>
       )}
       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
         <span>{row.category_label ?? "—"}</span>
@@ -217,7 +217,7 @@ export default function TicketsPage() {
   // as the last segment tab if they want everything at once.
   const [status, setStatus] = useState("open");
   const [priority, setPriority] = useState("");
-  const [department, setDepartment] = useState("");
+  const [ministry, setMinistry] = useState("");
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -231,17 +231,17 @@ export default function TicketsPage() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const secondary = useMemo(() => ({
-    priority, department, category, search,
+    priority, ministry, category, search,
     dateFrom, dateTo, assignedTo,
-  }), [priority, department, category, search, dateFrom, dateTo, assignedTo]);
+  }), [priority, ministry, category, search, dateFrom, dateTo, assignedTo]);
 
   const advancedFilterCount =
-    (priority ? 1 : 0) + (department ? 1 : 0) + (category ? 1 : 0) +
+    (priority ? 1 : 0) + (ministry ? 1 : 0) + (category ? 1 : 0) +
     ((!activeChip && (dateFrom || dateTo)) ? 1 : 0) +
     ((activeChip !== "unassigned" && assignedTo) ? 1 : 0);
 
   const anyFilterActive = Boolean(
-    search || priority || department || category ||
+    search || priority || ministry || category ||
     dateFrom || dateTo || assignedTo || activeChip
   );
 
@@ -311,7 +311,7 @@ export default function TicketsPage() {
   }, [activeChip]);
 
   const clearAll = useCallback(() => {
-    setPriority(""); setDepartment(""); setCategory("");
+    setPriority(""); setMinistry(""); setCategory("");
     setDateFrom(""); setDateTo(""); setAssignedTo(""); setSearch("");
     setActiveChip(null); setPage(1);
   }, []);
@@ -445,7 +445,7 @@ export default function TicketsPage() {
           {showFilters && (
             <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
               <FilterSelect label={t("label.priority")}   value={priority}   onChange={(v) => { setPage(1); setPriority(v); }}   options={priorityOptions} />
-              <FilterSelect label={t("label.department")} value={department} onChange={(v) => { setPage(1); setDepartment(v); }} options={deptOptions} />
+              <FilterSelect label={t("label.ministry")} value={ministry} onChange={(v) => { setPage(1); setMinistry(v); }} options={ministryOptions} />
               <FilterSelect label={t("label.category")}   value={category}   onChange={(v) => { setPage(1); setCategory(v); }}   options={categoryOptions} />
               <DateRangePill
                 label={t("tickets.dateRange")} from={dateFrom} to={dateTo}

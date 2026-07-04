@@ -154,7 +154,7 @@ export const translations = {
     "tickets.colStatus":  "Status",
     "tickets.colPriority":"Priority",
     "tickets.colAssigned": "Assigned",
-    "tickets.searchPlaceholder": "Search ticket #, name, mobile, headline…",
+    "tickets.searchPlaceholder": "Search ticket #, name, mobile, subject…",
     "tickets.filters":    "Filters",
     "tickets.clearAll":   "Clear all",
     "tickets.clearAllFilters": "Clear all filters",

@@ -1,0 +1,5 @@
+id,files,language,handwritten,gold_category,gold_ministry,notes
+6,6.jpg,tamil,no,action_required,school_education_tamil_dev_info_publicity,
+11,11.jpg,tamil,yes,transfer_requests,school_education_tamil_dev_info_publicity,transfer=low urgency test
+15,15a.jpg;15b.jpg;15c.jpg;15d.jpg;15e.jpg,tamil,no,proposals,school_education_tamil_dev_info_publicity,5-page multi-page
+19,19a.jpg;19b.jpg,tamil,no,pension_requests,school_education_tamil_dev_info_publicity,2-page

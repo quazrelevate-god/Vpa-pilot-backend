@@ -33,7 +33,7 @@ export interface AppointmentListOpts {
   apptDateFrom?: string;
   apptDateTo?: string;
   priority?: string;
-  department?: string;
+  ministry?: string;
   category?: string;
   kind?: string;
   sort?: string;
@@ -50,7 +50,7 @@ function _appointmentParams(opts: AppointmentListOpts, includeStatus: boolean): 
   if (opts.apptDateFrom) params.set("appt_date_from", opts.apptDateFrom);
   if (opts.apptDateTo) params.set("appt_date_to", opts.apptDateTo);
   if (opts.priority) params.set("priority", opts.priority);
-  if (opts.department) params.set("department", opts.department);
+  if (opts.ministry) params.set("ministry", opts.ministry);
   if (opts.category) params.set("category", opts.category);
   if (opts.kind) params.set("kind", opts.kind);
   return params;
@@ -92,7 +92,7 @@ export async function fetchAppointmentCounts(
 export interface TicketListFilters {
   status?: string;
   priority?: string;   // AI-review priority (low|medium|high|critical)
-  department?: string;
+  ministry?: string;
   category?: string;
   assignedTo?: string;
   forwardedToDept?: string;
@@ -106,7 +106,7 @@ function _ticketParams(f: TicketListFilters, includeStatus: boolean): URLSearchP
   const p = new URLSearchParams();
   if (includeStatus && f.status) p.set("status", f.status);
   if (f.priority) p.set("priority", f.priority);
-  if (f.department) p.set("department", f.department);
+  if (f.ministry) p.set("ministry", f.ministry);
   if (f.category) p.set("category", f.category);
   if (f.assignedTo) p.set("assigned_to", f.assignedTo);
   if (f.forwardedToDept) p.set("forwarded_to_dept", f.forwardedToDept);
@@ -185,7 +185,7 @@ export async function updateAppointmentStatus(
 
 export async function updateAppointmentDetails(
   id: number,
-  patch: { priority?: string | null; category?: string | null; department?: string | null },
+  patch: { priority?: string | null; category?: string | null; ministry?: string | null },
 ): Promise<void> {
   const resp = await fetch(`/api/appointments/${id}/details`, {
     method: "PATCH",

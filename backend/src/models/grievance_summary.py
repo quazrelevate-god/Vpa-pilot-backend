@@ -4,6 +4,11 @@ Pydantic schema for the AI-generated grievance summary.
 This is the single structured output contract between the Gemini summarisation
 service and every consumer (form submission handler, PA portal API, SMS builder).
 Never change field names without updating the migration + frontend together.
+
+Note on vocabulary: "Ministry" here means the top-level government body that
+contains the Minister's office (e.g. School Education, Transport, Revenue).
+The sub-department inside a Ministry (e.g. SCERT, Elementary Education) is
+tracked separately on the ticket, and is still called "department" there.
 """
 from __future__ import annotations
 
@@ -25,7 +30,7 @@ class GrievanceCategory(str, Enum):
     JOB_REQUESTS            = "job_requests"             # வேலைவாய்ப்பு கோரிக்கைகள் — employment, job cards
     RTI                     = "rti"                      # தகவல் அறியும் உரிமை மனுக்கள் — RTI petitions
     ASSOCIATIONS_UNIONS     = "associations_unions"      # சங்கங்கள் / தொழிற்சங்கங்கள் — union / association matters
-    OTHER                           = "other"                    # பிற — other / unclassified
+    OTHER                   = "other"                    # பிற — other / unclassified
     GENERAL                 = "general"                  # பொது மனுக்கள் — general petitions
     GREETINGS               = "greetings"                # வாழ்த்து மற்றும் மரியாதைச் செய்திகள்
     SCHOOL_UPGRADATION      = "school_upgradation"       # பள்ளி தரம் உயர்த்துதல்
@@ -70,8 +75,13 @@ CATEGORY_DISPLAY_TA: dict[str, str] = {
 CATEGORY_DISPLAY = CATEGORY_DISPLAY_EN
 
 
-class Department(str, Enum):
-    """Tamil Nadu government departments — Gemini routes each grievance to one."""
+class Ministry(str, Enum):
+    """
+    Tamil Nadu Ministries — Gemini routes each grievance to exactly one.
+    A Ministry is the top-level portfolio that contains a Minister's office
+    (School Education, Transport, Revenue …). The sub-department inside a
+    Ministry (SCERT, Elementary Education, RTO …) lives on the ticket, not here.
+    """
     RURAL_DEVELOPMENT_WATER_RESOURCES        = "rural_development_water_resources"
     PUBLIC_WORKS_SPORTS_DEVELOPMENT          = "public_works_sports_development"
     HEALTH_MEDICAL_EDUCATION_FAMILY_WELFARE  = "health_medical_education_family_welfare"
@@ -110,7 +120,7 @@ class Department(str, Enum):
 
 
 # Human-readable display names — used by PA portal and any UI surface.
-DEPARTMENT_DISPLAY: dict[str, str] = {
+MINISTRY_DISPLAY: dict[str, str] = {
     "rural_development_water_resources":         "Rural Development & Water Resources",
     "public_works_sports_development":           "Public Works & Sports Development",
     "health_medical_education_family_welfare":   "Health, Medical Education & Family Welfare",
@@ -159,161 +169,127 @@ class UrgencyLevel(str, Enum):
 class GrievanceSummary(BaseModel):
     """
     Structured output produced by the Gemini summarisation call.
-    Every narrative field has an English (_en) and a Tamil (_ta) version so a
-    PA can read the summary in either language without switching tools.
-    Enum fields (category, urgency, sentiment) are always English — they are
-    used programmatically for routing and statistics.
+
+    Narrative fields (summary, citizen_ask, key_details) have both an English
+    version and a Tamil (_ta) version. Enum fields (category, ministry, urgency)
+    are English-only — they are used programmatically for routing and stats.
+    Citizen name is echoed in both scripts (name_en / name_ta): the form
+    submission fills whichever the citizen typed; the model fills the other.
     """
 
-    # ── What happened — English ────────────────────────────────────────────────
-    headline: str = Field(
+    # ── Citizen identity — bilingual ──────────────────────────────────────────
+    name_en: str = Field(
+        default="",
         description=(
-            "One crisp sentence (≤ 15 words) in ENGLISH stating what the grievance is "
-            "about. Written as a neutral case title, not a question or directive."
+            "Citizen's name in ENGLISH / Latin script. If the form submitted a "
+            "Latin-script name, keep it verbatim. If the form submitted a Tamil "
+            "name, transliterate it into English here (e.g. 'முருகன்' → 'Murugan'). "
+            "Do not translate meaning — just the script."
         ),
-        max_length=250,
+        max_length=200,
+    )
+    name_ta: str = Field(
+        default="",
+        description=(
+            "Citizen's name in TAMIL script (தமிழ்). If the form submitted a "
+            "Tamil name, keep it verbatim. If the form submitted a Latin-script "
+            "name, transliterate it into Tamil script (e.g. 'Murugan' → 'முருகன்'). "
+            "Do not translate meaning — just the script."
+        ),
+        max_length=200,
     )
 
-    summary: str = Field(
+    # ── One-liner subject ─────────────────────────────────────────────────────
+    citizen_ask: str = Field(
         description=(
-            "2-3 sentences in ENGLISH. Captures: who the citizen is, what specific "
-            "problem they face, how long it has been ongoing, and any impact on their "
-            "life or safety. Preserve the citizen's voice — do not reframe or minimise."
+            "SUBJECT / REGARDING line — ONE short sentence in ENGLISH stating "
+            "exactly what the citizen is asking for. This is what the PA reads "
+            "first to know what the petition is about. Concrete, not vague: "
+            "not 'help' but 'restart my old-age pension stopped since Aug 2025'. "
+            "Under 20 words. NO greeting, NO preamble, NO 'I request…' — just "
+            "the ask itself."
         ),
-        max_length=1500,
+        max_length=300,
     )
-
-    # ── What happened — Tamil ──────────────────────────────────────────────────
-    headline_ta: str = Field(
+    citizen_ask_ta: str = Field(
         description=(
-            "Same as `headline` but written in TAMIL (தமிழ்). "
-            "Natural Tamil — not a word-for-word back-translation. "
-            "Example: 'மதுரை தெற்கு தொகுதியில் 4 மாதமாக முதியோர் ஓய்வூதியம் நின்றது.'"
+            "Same one-line SUBJECT / REGARDING as `citizen_ask`, in natural "
+            "TAMIL (தமிழ்). Not a word-for-word back-translation — write it as "
+            "a Tamil-speaking PA officer would. Under 30 Tamil words."
         ),
         max_length=400,
     )
 
+    # ── Body summary — distinct bullets, not narrative ────────────────────────
+    summary: str = Field(
+        description=(
+            "In ENGLISH: the full picture, as a series of DISTINCT POINTS. "
+            "Petitions can be 1 line or 20 pages — do NOT retell as prose. "
+            "Extract every distinct point the citizen makes (background, "
+            "problem, prior attempts, damage, requests) and list them as short "
+            "bullets separated by newlines, each starting with '• '. 3 to 10 "
+            "bullets typical. One idea per bullet. Preserve exact figures, "
+            "dates, names, scheme names, reference numbers verbatim."
+        ),
+        max_length=3000,
+    )
     summary_ta: str = Field(
         description=(
-            "Same as `summary` but written in TAMIL (தமிழ்). "
-            "Use clear, simple Tamil that a field PA officer can read aloud to the citizen."
+            "Same bulleted points as `summary`, in natural TAMIL (தமிழ்). Use "
+            "the same '• ' prefix and newline-separated bullets. Keep Tamil "
+            "proper nouns, place names, scheme names, and figures verbatim."
         ),
-        max_length=2000,
+        max_length=4000,
     )
 
-    # ── Classification ─────────────────────────────────────────────────────────
+    # ── Classification ────────────────────────────────────────────────────────
     category: GrievanceCategory = Field(
-        description="Best-fit category for routing and statistics (always English enum)."
+        description="Best-fit petition category (always English enum)."
     )
 
-    department: Department = Field(
+    ministry: Ministry = Field(
         description=(
-            "PRIMARY department — the ONE Tamil Nadu government department that "
-            "owns the ROOT CAUSE of this grievance. Pick based on what is actually "
-            "broken or being requested, NOT on departments merely mentioned. "
-            "Example: 'school bus broke down' → transport (broken vehicle is the "
-            "root cause), even though 'school' is mentioned. Example: 'PHC doctor "
-            "demanded bribe' → health_medical_education_family_welfare (the service "
-            "failure is in Health), NOT energy_law_courts_prevention_corruption. "
-            "Use 'other' ONLY when the root cause does not plausibly fit any "
-            "listed department."
+            "The ONE Tamil Nadu Ministry that owns the ROOT CAUSE of this "
+            "grievance. Pick based on what is actually broken or being "
+            "requested, NOT on which words appear in the text. See the "
+            "ministry routing rules in the system prompt for worked examples."
         )
-    )
-
-    secondary_departments: list[Department] = Field(
-        default_factory=list,
-        description=(
-            "0–2 ADDITIONAL departments with CLEAR partial ownership that genuinely "
-            "need to be looped in. Leave empty unless a second department's "
-            "involvement is unambiguous and necessary to resolve the grievance. "
-            "Do NOT pad this list. Do NOT add a department just because it was "
-            "mentioned in passing. The PA office uses these for cross-routing — "
-            "false positives waste cycles."
-        ),
-        max_length=2,
     )
 
     urgency: UrgencyLevel = Field(
         description=(
-            "Urgency level inferred from the grievance content. "
-            "Mark HIGH if the citizen mentions pending deadlines, health risk, or "
-            "financial distress. Mark CRITICAL if there is immediate danger to life, "
-            "safety, or total loss of livelihood. Always English enum."
+            "Calibrated urgency — NOT tone-based. Ignore emotional writing "
+            "style. Only real signals raise urgency: firm deadlines (exam, "
+            "court, medical), imminent health/safety risk, active eviction/"
+            "demolition, imminent livelihood loss. Transfer requests are "
+            "ALWAYS low (they depend on other schools' vacancies). See the "
+            "urgency calibration rules in the system prompt."
         )
     )
 
-    urgency_reason: Optional[str] = Field(
-        default=None,
-        description=(
-            "Required when urgency is HIGH or CRITICAL. "
-            "One sentence in ENGLISH explaining the specific signal that raised urgency."
-        ),
-        max_length=500,
-    )
-
-    urgency_reason_ta: Optional[str] = Field(
-        default=None,
-        description=(
-            "Tamil translation of `urgency_reason`. Required when urgency is HIGH or "
-            "CRITICAL. One sentence in TAMIL explaining why urgency was raised."
-        ),
-        max_length=600,
-    )
-
-    # ── What the citizen wants — English ──────────────────────────────────────
-    citizen_ask: str = Field(
-        description=(
-            "In ENGLISH: exactly what action the citizen is requesting. "
-            "Specific and concrete — not 'help' but 'repair the street light on "
-            "4th Cross within the week'. Multiple asks separated by '; '."
-        ),
-        max_length=1200,
-    )
-
-    # ── What the citizen wants — Tamil ────────────────────────────────────────
-    citizen_ask_ta: str = Field(
-        description=(
-            "Same as `citizen_ask` but written in TAMIL (தமிழ்). "
-            "What the citizen is asking for, in clear Tamil."
-        ),
-        max_length=1500,
-    )
-
-    # ── Supporting detail — English ────────────────────────────────────────────
+    # ── Supporting evidence ───────────────────────────────────────────────────
     key_details: list[str] = Field(
         description=(
-            "3-6 factual bullet points in ENGLISH extracted from the grievance. "
-            "Include: location, duration, scheme names, amounts, dates, reference numbers."
+            "3–8 short factual bullets in ENGLISH capturing the concrete "
+            "evidence that supports the petition. INCLUDE, when present: "
+            "specific ACTS / SECTIONS / RULES cited (e.g. 'RTE Act 2009 "
+            "§12(1)(c)'), TABLES / ORDERS / GOs referenced (e.g. 'G.O. Ms. "
+            "No. 45 dated 12-Feb-2024'), CASE / REFERENCE / APPLICATION "
+            "NUMBERS, IMAGES / DOCUMENTS attached and what each one shows "
+            "(e.g. 'attached photo shows collapsed compound wall'), PRIOR "
+            "ESCALATION history (RTI filed, complaints sent, dates), "
+            "AMOUNTS / DATES / DURATIONS, and LOCATION. Do not invent — "
+            "only include what is stated or visible in the petition."
         ),
         min_length=1,
-        max_length=6,
+        max_length=8,
     )
-
-    # ── Supporting detail — Tamil ──────────────────────────────────────────────
     key_details_ta: list[str] = Field(
         description=(
-            "Same bullet points as `key_details` but written in TAMIL (தமிழ்). "
-            "Preserve Tamil proper nouns, place names, and amounts verbatim."
+            "Same bullets as `key_details`, in natural TAMIL (தமிழ்). "
+            "Keep Tamil proper nouns, place names, scheme names and amounts "
+            "verbatim. Same count as `key_details`."
         ),
         min_length=1,
-        max_length=6,
-    )
-
-    # ── Attachment notes ───────────────────────────────────────────────────────
-    attachment_notes: Optional[str] = Field(
-        default=None,
-        description=(
-            "If an image/PDF/audio was provided, briefly note in ENGLISH what it shows "
-            "and whether it corroborates or adds to the written grievance. "
-            "Omit if no attachment was processed."
-        ),
-        max_length=1000,
-    )
-
-    attachment_notes_ta: Optional[str] = Field(
-        default=None,
-        description=(
-            "Tamil translation of `attachment_notes`. Omit if no attachment was processed."
-        ),
-        max_length=1000,
+        max_length=8,
     )

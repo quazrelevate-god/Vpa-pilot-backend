@@ -258,15 +258,13 @@ class AiUploadService:
             "category": row.grievance_category,
             "forced_category": row.forced_category,
             "priority": row.priority,
-            "headline": sj.get("headline"),
-            "headline_ta": sj.get("headline_ta"),
             "summary": sj.get("summary"),
             "summary_ta": sj.get("summary_ta"),
             "citizen_ask": sj.get("citizen_ask"),
             "citizen_ask_ta": sj.get("citizen_ask_ta"),
             "key_details": sj.get("key_details") or [],
             "key_details_ta": sj.get("key_details_ta") or [],
-            "department": sj.get("department"),
+            "ministry": sj.get("ministry") or sj.get("department"),
             "error": row.error_message,
             "ticket_number": row.ticket_number,
             "appointment_id": row.appointment_id,
@@ -306,12 +304,12 @@ class AiUploadService:
                 val = str(fields[key]).strip()
                 setattr(row, col, val or None)
                 sj[json_key] = val
-        # Ministry (AI `department`) lives only in summary_json, not a column.
-        # Editing it here also decides the approve button (Accept vs Forward).
-        if "department" in fields and fields["department"] is not None:
-            sj["department"] = str(fields["department"]).strip() or None
-        # Free-text narrative edits (summary, headline, citizen_ask + _ta)
-        for k in ("summary", "summary_ta", "headline", "headline_ta", "citizen_ask", "citizen_ask_ta"):
+        # Ministry lives only in summary_json, not a column. Editing it here
+        # also decides the approve button (Accept vs Forward).
+        if "ministry" in fields and fields["ministry"] is not None:
+            sj["ministry"] = str(fields["ministry"]).strip() or None
+        # Free-text narrative edits (summary, citizen_ask + _ta)
+        for k in ("summary", "summary_ta", "citizen_ask", "citizen_ask_ta"):
             if k in fields and fields[k] is not None:
                 sj[k] = str(fields[k])
         row.summary_json = sj
@@ -388,7 +386,7 @@ class AiUploadService:
             citizen_id=citizen.id,
             slot_id=legacy_slot_ref,
             token_assigned=token_assigned,
-            encrypted_grievance=appointment_service._encrypt_field(extraction.summary or extraction.headline or ""),
+            encrypted_grievance=appointment_service._encrypt_field(extraction.citizen_ask or extraction.summary or ""),
             encrypted_name=enc_name,
             grievance_category=extraction.category.value,
             status="AWAITING_REVIEW",
@@ -441,7 +439,7 @@ class AiUploadService:
         # workflow. School stays OPEN so it can be routed to one of the 10
         # school departments ("Accept"). Shared with the QR/staff petition path.
         from src.services import department_service
-        dept_val = extraction.department.value if extraction.department else None
+        dept_val = extraction.ministry.value if extraction.ministry else None
         forwarded = (
             await department_service.forward_if_non_school(db, ticket.id, dept_val, reviewed_by)
             if ticket else False

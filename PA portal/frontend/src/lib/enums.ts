@@ -1,7 +1,10 @@
 // Mirror of the Python enums in backend/src/models/grievance_summary.py and
 // ticket_models.py. Keep in sync when those enums change.
 
-export const DEPT_DISPLAY: Record<string, string> = {
+// Ministry = the top-level portfolio that contains a Minister's office
+// (School Education, Transport, Revenue …). Distinct from the sub-department
+// on a ticket (SCERT, Elementary Education …), which stays under "Department".
+export const MINISTRY_DISPLAY: Record<string, string> = {
   rural_development_water_resources:         "Rural Development & Water Resources",
   public_works_sports_development:           "Public Works & Sports Development",
   health_medical_education_family_welfare:   "Health, Medical Education & Family Welfare",
@@ -121,7 +124,7 @@ export const PRIORITY_DISPLAY: Record<string, string> = {
   low: "Low", medium: "Medium", high: "High", critical: "Critical",
 };
 
-export const deptOptions = Object.entries(DEPT_DISPLAY).map(([value, label]) => ({ value, label }));
+export const ministryOptions = Object.entries(MINISTRY_DISPLAY).map(([value, label]) => ({ value, label }));
 export const categoryOptions = Object.entries(CATEGORY_DISPLAY).map(([value, label]) => ({ value, label }));
 export const ticketStatusOptions = Object.entries(TICKET_STATUS_DISPLAY).map(([value, label]) => ({ value, label }));
 // In-drawer manual status picker. The PA only owns the pre-assignment

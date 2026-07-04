@@ -4,7 +4,7 @@ Scorecard for results_*.csv from run_eval.py.
     python eval/score_eval.py                # every results_*.csv in eval/
     python eval/score_eval.py results_a.csv results_b.csv
 
-Per file (i.e. per model): category / department accuracy (auto),
+Per file (i.e. per model): category / ministry accuracy (auto),
 urgency / summary accuracy (from human scoring), median latency, errors.
 Also sliced by language + handwritten so you can see WHERE each model wins.
 """
@@ -43,7 +43,11 @@ def report(path):
     lat = [int(r["latency_ms"]) for r in rows if (r.get("latency_ms") or "").isdigit()]
     errs = sum(1 for r in rows if (r.get("error") or "").strip())
 
-    dept_acc = _pct(r.get("department_match") for r in rows)
+    # Backward-compat: legacy runs used `department_match`; new runs use `ministry_match`.
+    def _min_field(r):
+        return r.get("ministry_match") if r.get("ministry_match") is not None else r.get("department_match")
+
+    min_acc  = _pct(_min_field(r) for r in rows)
     cat_acc  = _pct(r.get("category_match")   for r in rows)
     urg_acc  = _pct(r.get("urgency_right")    for r in rows)
     sum_acc  = _pct(r.get("summary_right")    for r in rows)
@@ -51,8 +55,8 @@ def report(path):
     sum_n    = _n_scored(r.get("summary_right") for r in rows)
 
     print(f"\n== {Path(path).name}  (n={n}) ==")
-    print(f"  Department (auto)   : {dept_acc}")
-    print(f"  Category   (auto)   : {cat_acc}")
+    print(f"  Ministry (auto)     : {min_acc}")
+    print(f"  Category (auto)     : {cat_acc}")
     print(f"  Urgency  (human)    : {urg_acc}   [{urg_n}/{n} scored]")
     print(f"  Summary  (human)    : {sum_acc}   [{sum_n}/{n} scored]")
     print(f"  Errors: {errs}   |   median latency: {int(statistics.median(lat)) if lat else '—'} ms")
@@ -63,7 +67,7 @@ def report(path):
             continue
         print(f"  by {key}:")
         for g, rs in sorted(groups.items()):
-            print(f"    {g:<10} dept {_pct(x.get('department_match') for x in rs)}  "
+            print(f"    {g:<10} min {_pct(_min_field(x) for x in rs)}  "
                   f"cat {_pct(x.get('category_match') for x in rs)}  "
                   f"urg {_pct(x.get('urgency_right') for x in rs)}  "
                   f"sum {_pct(x.get('summary_right') for x in rs)}  (n={len(rs)})")

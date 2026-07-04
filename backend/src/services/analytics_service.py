@@ -7,7 +7,7 @@ for cross-filtering, each chart excludes its OWN dimension (click a category bar
 and the category chart still shows all categories, while everything else rescopes).
 
 Sources: appointments (channel via `source`), grievance_summary_records (priority,
-department), citizens (decrypted name/mobile for the table).
+ministry), citizens (decrypted name/mobile for the table).
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.appointment_models import Appointment, Citizen
 from src.models.grievance_summary_record import GrievanceSummaryRecord as GSR
 from src.services.dashboard_service import _decode
-from src.models.grievance_summary import CATEGORY_DISPLAY_EN, DEPARTMENT_DISPLAY
+from src.models.grievance_summary import CATEGORY_DISPLAY_EN, MINISTRY_DISPLAY
 
 CHANNEL_LABELS = {
     "qr_citizen":   "Citizen (QR)",
@@ -32,12 +32,12 @@ CHANNEL_LABELS = {
 # ── Filter model ────────────────────────────────────────────────────────────────
 class Filters:
     def __init__(self, date_from=None, date_to=None, category=None, priority=None,
-                 department=None, channel=None, status=None):
+                 ministry=None, channel=None, status=None):
         self.date_from = _parse_dt(date_from, end=False)
         self.date_to   = _parse_dt(date_to, end=True)
         self.category = category or None
         self.priority = priority or None
-        self.department = department or None
+        self.ministry = ministry or None
         self.channel = channel or None
         self.status = status or None
 
@@ -61,8 +61,8 @@ def _conditions(f: Filters, exclude: Optional[str] = None) -> Tuple[list, list]:
     if exclude != "category" and f.category:   appt.append(Appointment.grievance_category == f.category)
     if exclude != "channel"  and f.channel:    appt.append(Appointment.source == f.channel)
     if exclude != "status"   and f.status:     appt.append(Appointment.status == f.status)
-    if exclude != "priority"    and f.priority:    gsr.append(GSR.priority == f.priority)
-    if exclude != "department" and f.department: gsr.append(GSR.department == f.department)
+    if exclude != "priority" and f.priority: gsr.append(GSR.priority == f.priority)
+    if exclude != "ministry" and f.ministry: gsr.append(GSR.ministry == f.ministry)
     return appt, gsr
 
 
@@ -102,7 +102,7 @@ class AnalyticsService:
 
         # Charts — each excludes its own dimension for cross-filtering
         categories = await self._group(db, f, Appointment.grievance_category, exclude="category", labels=CATEGORY_DISPLAY_EN)
-        departments = await self._group(db, f, GSR.department, exclude="department", labels=DEPARTMENT_DISPLAY, force_gsr=True, limit=8)
+        ministries = await self._group(db, f, GSR.ministry, exclude="ministry", labels=MINISTRY_DISPLAY, force_gsr=True, limit=8)
         channels = await self._group(db, f, Appointment.source, exclude="channel", labels=CHANNEL_LABELS)
         priority = await self._priority(db, f)
         trend = await self._trend(db, f)
@@ -114,7 +114,7 @@ class AnalyticsService:
                 "awaiting_review": awaiting, "growth_pct": growth_pct,
             },
             "categories": categories,
-            "departments": departments,
+            "ministries": ministries,
             "channels": channels,
             "priority": priority,
             "trend": trend,
@@ -175,7 +175,7 @@ class AnalyticsService:
                 Appointment.grievance_category, Appointment.status, Appointment.source,
                 Appointment.schedule_meeting, Appointment.created_at,
                 Citizen.encrypted_name.label("c_name"), Citizen.encrypted_mobile.label("c_mobile"),
-                GSR.priority, GSR.headline,
+                GSR.priority, GSR.citizen_ask,
             ),
             f, force_gsr=True,
         ).join(Citizen, Citizen.id == Appointment.citizen_id, isouter=True)
@@ -197,7 +197,7 @@ class AnalyticsService:
                 "status": r.status,
                 "source": r.source,
                 "source_label": CHANNEL_LABELS.get(r.source, r.source),
-                "headline": r.headline,
+                "citizen_ask": r.citizen_ask,
                 "schedule_meeting": r.schedule_meeting,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             })
