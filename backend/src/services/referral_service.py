@@ -233,11 +233,6 @@ class ReferralService:
         remaining = slot.max_capacity - slot.booked_count
         if slot.status == "FULL" or remaining <= 0:
             raise ValueError("Slot is full. Please pick another slot.")
-        if num_persons > remaining:
-            raise ValueError(
-                f"Only {remaining} seat(s) left in this slot. "
-                f"Reduce the number of persons or pick another slot."
-            )
 
         avail = await db.get(ReferralAvailability, slot.availability_id)
         slot_date = avail.date
@@ -266,7 +261,9 @@ class ReferralService:
         token_number = (last_token + 1) if last_token else (day_floor + 1)
 
         # Reserve seats
-        slot.booked_count += num_persons
+        # One booking = one slot use, regardless of family size (num_persons is
+        # informational — how many people show up per referral).
+        slot.booked_count += 1
         if slot.booked_count >= slot.max_capacity:
             slot.status = "FULL"
 

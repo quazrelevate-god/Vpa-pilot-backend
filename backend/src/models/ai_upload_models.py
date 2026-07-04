@@ -57,7 +57,7 @@ class AiUpload(Base):
 
     # ── Denormalised classification (table sort/filter) ─────────────────────────
     grievance_category = Column(VARCHAR(50), nullable=True)
-    urgency            = Column(VARCHAR(20), nullable=True)
+    priority           = Column(VARCHAR(20), nullable=True)
 
     # PA-chosen category for the whole batch. When set (and not 'general') it
     # overrides whatever Gemini detects. NULL/'general' => use the AI value.

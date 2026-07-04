@@ -19,8 +19,8 @@ import { cn } from "@/lib/utils";
 import { fetchTickets, fetchTicketsCounts } from "@/lib/api";
 import type { TicketRow } from "@/lib/types";
 import {
-  TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR, PRIORITY_COLOR,
-  priorityOptions, urgencyOptions, deptOptions, categoryOptions,
+  TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR, PRIORITY_COLOR, PRIORITY_DISPLAY,
+  priorityOptions, deptOptions, categoryOptions,
 } from "@/lib/enums";
 
 const PAGE_SIZE = 25;
@@ -35,10 +35,11 @@ const SEGMENTS: { key: string; tKey: string }[] = [
 ];
 
 const PRIORITY_RAIL: Record<string, string> = {
-  P0: "bg-red-500", P1: "bg-orange-500", P2: "bg-amber-400", P3: "bg-slate-300",
+  critical: "bg-red-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-slate-300",
 };
 
-const SLA_DAYS: Record<string, number> = { P0: 3, P1: 7, P2: 14, P3: 28 };
+// SLA target days by AI-review priority.
+const SLA_DAYS: Record<string, number> = { critical: 3, high: 7, medium: 14, low: 28 };
 
 type QuickChip = "today" | "this_week" | "breached" | "unassigned";
 
@@ -122,7 +123,7 @@ const TicketTableRow = memo(function TicketTableRow({
       <td className="px-4 py-3 text-sm text-muted-foreground">{row.department_label ?? "—"}</td>
       <td className="px-4 py-3">
         {row.priority
-          ? <span className={cn("rounded px-2 py-0.5 text-[13px] font-bold", PRIORITY_COLOR[row.priority])}>{row.priority}</span>
+          ? <span className={cn("rounded px-2 py-0.5 text-[13px] font-bold", PRIORITY_COLOR[row.priority])}>{PRIORITY_DISPLAY[row.priority] ?? row.priority}</span>
           : <span className="text-muted-foreground/40">—</span>}
       </td>
       <td className="px-4 py-3">
@@ -170,7 +171,7 @@ const TicketCard = memo(function TicketCard({
         <span className={cn("h-7 w-1 rounded-full", PRIORITY_RAIL[row.priority ?? ""] ?? "bg-transparent")} />
         <span className="font-mono text-sm font-semibold text-brand">{row.ticket_number}</span>
         {row.priority && (
-          <span className={cn("rounded px-2 py-0.5 text-[13px] font-bold", PRIORITY_COLOR[row.priority])}>{row.priority}</span>
+          <span className={cn("rounded px-2 py-0.5 text-[13px] font-bold", PRIORITY_COLOR[row.priority])}>{PRIORITY_DISPLAY[row.priority] ?? row.priority}</span>
         )}
         <span className={cn("ml-auto rounded-full border px-2.5 py-1 text-[13px] font-semibold", TICKET_STATUS_COLOR[row.status])}>
           {TICKET_STATUS_DISPLAY[row.status] ?? row.status}
@@ -211,7 +212,6 @@ export default function TicketsPage() {
 
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
-  const [urgency, setUrgency] = useState("");
   const [department, setDepartment] = useState("");
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
@@ -226,17 +226,17 @@ export default function TicketsPage() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const secondary = useMemo(() => ({
-    priority, urgency, department, category, search,
+    priority, department, category, search,
     dateFrom, dateTo, assignedTo,
-  }), [priority, urgency, department, category, search, dateFrom, dateTo, assignedTo]);
+  }), [priority, department, category, search, dateFrom, dateTo, assignedTo]);
 
   const advancedFilterCount =
-    (priority ? 1 : 0) + (urgency ? 1 : 0) + (department ? 1 : 0) + (category ? 1 : 0) +
+    (priority ? 1 : 0) + (department ? 1 : 0) + (category ? 1 : 0) +
     ((!activeChip && (dateFrom || dateTo)) ? 1 : 0) +
     ((activeChip !== "unassigned" && assignedTo) ? 1 : 0);
 
   const anyFilterActive = Boolean(
-    search || priority || urgency || department || category ||
+    search || priority || department || category ||
     dateFrom || dateTo || assignedTo || activeChip
   );
 
@@ -306,7 +306,7 @@ export default function TicketsPage() {
   }, [activeChip]);
 
   const clearAll = useCallback(() => {
-    setPriority(""); setUrgency(""); setDepartment(""); setCategory("");
+    setPriority(""); setDepartment(""); setCategory("");
     setDateFrom(""); setDateTo(""); setAssignedTo(""); setSearch("");
     setActiveChip(null); setPage(1);
   }, []);
@@ -440,7 +440,6 @@ export default function TicketsPage() {
           {showFilters && (
             <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
               <FilterSelect label={t("label.priority")}   value={priority}   onChange={(v) => { setPage(1); setPriority(v); }}   options={priorityOptions} />
-              <FilterSelect label={t("label.urgency")}    value={urgency}    onChange={(v) => { setPage(1); setUrgency(v); }}    options={urgencyOptions} />
               <FilterSelect label={t("label.department")} value={department} onChange={(v) => { setPage(1); setDepartment(v); }} options={deptOptions} />
               <FilterSelect label={t("label.category")}   value={category}   onChange={(v) => { setPage(1); setCategory(v); }}   options={categoryOptions} />
               <DateRangePill

@@ -65,6 +65,7 @@ ALTER TABLE appointment ADD COLUMN IF NOT EXISTS waiting_since TIMESTAMP;
 ALTER TABLE appointment ADD COLUMN IF NOT EXISTS summary_status VARCHAR(20) NOT NULL DEFAULT 'PENDING';
 ALTER TABLE appointment ADD COLUMN IF NOT EXISTS summary_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE appointment ADD COLUMN IF NOT EXISTS summary_claimed_at TIMESTAMP;
+ALTER TABLE appointment ADD COLUMN IF NOT EXISTS encrypted_name_ta TEXT;
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 8. ticket — rename forwarded_to, add bridge + lifecycle columns
@@ -84,6 +85,26 @@ ALTER TABLE ticket ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;
 ALTER TABLE ticket ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP;
 ALTER TABLE ticket ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMP;
 ALTER TABLE ticket ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT now();
+-- Department routing (from main's ticketing Phase 1-5)
+ALTER TABLE ticket ADD COLUMN IF NOT EXISTS department VARCHAR(60);
+ALTER TABLE ticket ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP;
+ALTER TABLE ticket ADD COLUMN IF NOT EXISTS accepted_by VARCHAR(100);
+ALTER TABLE ticket ADD COLUMN IF NOT EXISTS progress_pct INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS ix_ticket_department ON ticket(department);
+
+-- Ticket resolution/progress attachments
+CREATE TABLE IF NOT EXISTS ticket_attachments (
+    id                BIGSERIAL PRIMARY KEY,
+    ticket_id         BIGINT NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
+    kind              VARCHAR(20) NOT NULL DEFAULT 'resolution',
+    storage_url       TEXT NOT NULL,
+    mime_type         VARCHAR(100) NOT NULL,
+    file_size_bytes   INTEGER NOT NULL DEFAULT 0,
+    original_filename VARCHAR(255),
+    uploaded_by       VARCHAR(100),
+    created_at        TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_ticket_attachments_ticket_id ON ticket_attachments(ticket_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 9. attachments — rename columns to v1 names, add mime_type + created_at
@@ -111,20 +132,20 @@ CREATE TABLE IF NOT EXISTS grievance_summary_records (
     id                    BIGSERIAL PRIMARY KEY,
     appointment_id        BIGINT NOT NULL REFERENCES appointment(id) ON DELETE CASCADE,
     is_latest             BOOLEAN NOT NULL DEFAULT true,
-    urgency               VARCHAR(20) NOT NULL,
+    priority              VARCHAR(20) NOT NULL,
     category              VARCHAR(50) NOT NULL,
     department            VARCHAR(60) NOT NULL DEFAULT 'other',
     secondary_departments JSONB NOT NULL DEFAULT '[]',
     headline              VARCHAR(150) NOT NULL,
     summary               TEXT NOT NULL,
     citizen_ask           TEXT NOT NULL,
-    urgency_reason        TEXT,
+    priority_reason       TEXT,
     key_details           JSONB NOT NULL,
     attachment_notes      TEXT,
     headline_ta           VARCHAR(200) NOT NULL,
     summary_ta            TEXT NOT NULL,
     citizen_ask_ta        TEXT NOT NULL,
-    urgency_reason_ta     TEXT,
+    priority_reason_ta    TEXT,
     key_details_ta        JSONB NOT NULL,
     attachment_notes_ta   TEXT,
     audio_transcript      TEXT,
@@ -134,7 +155,7 @@ CREATE TABLE IF NOT EXISTS grievance_summary_records (
     created_at            TIMESTAMP NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_gsr_appointment_latest ON grievance_summary_records(appointment_id, is_latest);
-CREATE INDEX IF NOT EXISTS ix_gsr_urgency ON grievance_summary_records(urgency);
+CREATE INDEX IF NOT EXISTS ix_gsr_priority ON grievance_summary_records(priority);
 CREATE INDEX IF NOT EXISTS ix_gsr_category ON grievance_summary_records(category);
 CREATE INDEX IF NOT EXISTS ix_gsr_department ON grievance_summary_records(department);
 CREATE INDEX IF NOT EXISTS ix_gsr_created_at ON grievance_summary_records(created_at);
@@ -153,7 +174,7 @@ CREATE TABLE IF NOT EXISTS ai_uploads (
     extracted_name_ta  VARCHAR(200),
     extracted_mobile   VARCHAR(20),
     grievance_category VARCHAR(50),
-    urgency            VARCHAR(20),
+    priority           VARCHAR(20),
     forced_category    VARCHAR(50),
     summary_json       JSONB,
     error_message      TEXT,

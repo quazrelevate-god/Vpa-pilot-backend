@@ -30,6 +30,14 @@ from src.services.v2_helpers import v2
 logger = logging.getLogger(__name__)
 
 
+# Courtesy categories skip the AI petition pipeline entirely. An invitation card
+# or a Pongal greeting has no grievance to summarise, no department to route to,
+# and no ticket to open — the audio (or optional text) is the whole message.
+# These land straight in Appointments (SCHEDULED / WAITING), never in Petition
+# Review, and summary_status is written as DONE so no worker ever tries.
+COURTESY_CATEGORIES = frozenset({"invitation", "greetings"})
+
+
 class AppointmentService:
     """
     Service layer for OTP generation, verification, and atomic appointment creation.
@@ -398,17 +406,21 @@ class AppointmentService:
                 )
             
             # Step 1b: Duplicate-submission guard — one petition per phone per day.
+            # Gated by settings.ONE_PETITION_PER_DAY so dev/QA can turn it off in .env.
             from src.core import crypto
+            from src.core.config import settings as _settings
             mobile_idx_check = crypto.blind_index(mobile_number)
             today_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
-            existing_today = await db.scalar(
-                select(func.count(Appointment.id))
-                .join(Citizen, Citizen.id == Appointment.citizen_id)
-                .where(Citizen.mobile_index == mobile_idx_check)
-                .where(Appointment.created_at >= today_start)
-                .where(Appointment.status.notin_(["CANCELLED"]))
-            ) or 0
-            if existing_today > 0 and not settings.DEBUG:
+            existing_today = 0
+            if _settings.ONE_PETITION_PER_DAY:
+                existing_today = await db.scalar(
+                    select(func.count(Appointment.id))
+                    .join(Citizen, Citizen.id == Appointment.citizen_id)
+                    .where(Citizen.mobile_index == mobile_idx_check)
+                    .where(Appointment.created_at >= today_start)
+                    .where(Appointment.status.notin_(["CANCELLED"]))
+                ) or 0
+            if existing_today > 0:
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -763,7 +775,15 @@ class AppointmentService:
                 # Direct-submit petitions land in AWAITING_REVIEW so the PA can
                 # check before moving them to REVIEWED.
                 # Meeting requests stay on the SCHEDULED path.
-                initial_status = 'SCHEDULED' if schedule_meeting else 'AWAITING_REVIEW'
+                # Courtesy categories (invitation, greetings) bypass Petition
+                # Review entirely — they always take the appointment path so the
+                # PA sees them in the meeting list, never in the AI inbox.
+                is_courtesy = grievance_category in COURTESY_CATEGORIES
+                take_slot_path = schedule_meeting or is_courtesy
+                initial_status = 'SCHEDULED' if take_slot_path else 'AWAITING_REVIEW'
+                # Courtesy items have nothing to summarise, so mark them DONE up
+                # front and no worker will ever pick them up.
+                initial_summary_status = 'DONE' if is_courtesy else 'PENDING'
 
                 # Resolve status/category/priority to admin FK ids (v2)
                 appt_ids = v2.new_appointment_ids(
@@ -783,6 +803,7 @@ class AppointmentService:
                     status_id=appt_ids["status_id"],
                     priority_id=appt_ids["priority_id"],
                     category_id=appt_ids.get("category_id"),
+                    summary_status=initial_summary_status,
                     num_persons=max(1, min(4, num_persons)),
                     created_at=current_time
                 )
@@ -792,7 +813,7 @@ class AppointmentService:
                 # Step 10b: Meeting requests — book the citizen-selected slot.
                 # Falls back to waiting queue if no slot was selected or the slot
                 # filled up between the form load and submission.
-                if schedule_meeting:
+                if take_slot_path:
                     if slot_id:
                         try:
                             await scheduling_service.book_slot(
@@ -881,14 +902,25 @@ class AppointmentService:
             # latency. If this process dies before it finishes, the standalone
             # worker picks the row up — the summary can no longer be silently
             # lost the way the old fire-and-forget task could.
-            logger.info(
-                f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
-                f"schedule_meeting={schedule_meeting} | "
-                f"attachments={len(attachments_created)} | "
-                f"audio_url={'yes' if audio_url else 'no'} | "
-                f"desc_chars={len(description or '')}"
-            )
-            asyncio.create_task(self.try_summarise_now(appointment.id))
+            #
+            # Courtesy items (invitation, greetings) were written as
+            # summary_status='DONE'. There is no grievance to route, no ticket
+            # to open — the audio/text is the whole message — so we skip the
+            # Gemini dispatch entirely. The PA sees them in Appointments.
+            if is_courtesy:
+                logger.info(
+                    f"[GEMINI SKIP] appointment_id={appointment.id} | "
+                    f"category={grievance_category} | reason=courtesy"
+                )
+            else:
+                logger.info(
+                    f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
+                    f"schedule_meeting={take_slot_path} | "
+                    f"attachments={len(attachments_created)} | "
+                    f"audio_url={'yes' if audio_url else 'no'} | "
+                    f"desc_chars={len(description or '')}"
+                )
+                asyncio.create_task(self.try_summarise_now(appointment.id))
 
             if final_status == 'WAITING':
                 message = f"No slots available right now. Your token number is {token_assigned} and you have been added to the waiting queue."
@@ -1314,6 +1346,190 @@ class AppointmentService:
         except Exception as e:
             await db.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to process petition: {e}")
+
+    # ── Floor / walk-in unified intake (staff-operated, no OTP) ─────────────
+
+    async def process_floor_intake(
+        self,
+        name: str,
+        mobile: str,
+        description: str,
+        grievance_category: str,
+        db: AsyncSession,
+        slot_id: Optional[int] = None,
+        num_persons: int = 1,
+        schedule_meeting: bool = False,
+        files: Optional[List[UploadFile]] = None,
+        constituency: str = "Tamil Nadu",
+        submitted_by: str = "floor_staff",
+    ) -> Dict[str, Any]:
+        """
+        Unified walk-in intake from the crowd PWA (no OTP; auth is the display
+        session). One journey: write the grievance + optional photo + optionally
+        book a live meeting slot. Mirrors the post-OTP half of
+        `process_atomic_submission` (SCHEDULED / WAITING / AWAITING_REVIEW) but is
+        staff-operated. Summarisation only runs when there is a photo or a
+        grievance description (a pure appointment has nothing to summarise).
+        """
+        MAX_FILES = 10
+        MAX_BYTES = 10 * 1024 * 1024
+        ALLOWED_MIMES = {
+            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
+            "image/bmp", "image/heic", "image/heif", "application/pdf",
+        }
+
+        user_desc = (description or "").strip()
+
+        # ── Validate files (optional) ─────────────────────────────────────────
+        valid_files = [f for f in (files or []) if f.filename][:MAX_FILES]
+        file_contents: List[tuple] = []
+        for f in valid_files:
+            mime = f.content_type or "application/octet-stream"
+            if mime not in ALLOWED_MIMES:
+                raise HTTPException(status_code=400,
+                                    detail=f"Unsupported file type '{mime}' ({f.filename}).")
+            raw = await f.read()
+            if len(raw) > MAX_BYTES:
+                raise HTTPException(status_code=400, detail=f"'{f.filename}' exceeds 10 MB.")
+            file_contents.append((raw, mime, f.filename))
+
+        if not (name or "").strip():
+            raise HTTPException(status_code=400, detail="Name is required.")
+        # Courtesy categories (invitation, greetings) are self-describing —
+        # allow them with just the category, no grievance/photo/slot needed.
+        is_courtesy_intake = (grievance_category or "").lower() in COURTESY_CATEGORIES
+        if (not user_desc and not file_contents and not slot_id
+                and not schedule_meeting and not is_courtesy_intake):
+            raise HTTPException(status_code=400,
+                                detail="Write the grievance, add a photo, or pick a meeting slot.")
+
+        # AI summarisation is only useful when there's an IMAGE to read.
+        # A text-only grievance is what the staff already wrote — no AI needed
+        # (they also pick the category up front). A pure appointment obviously
+        # has nothing to summarise either.
+        has_image = bool(file_contents)
+
+        # Courtesy categories (invitation, greetings) bypass Petition Review
+        # and the AI pipeline — they always land as an appointment, and any
+        # attached image is treated as reference material, not a grievance.
+        is_courtesy = (grievance_category or "").lower() in COURTESY_CATEGORIES
+        take_slot_path = schedule_meeting or is_courtesy
+
+        try:
+            current_time = datetime.utcnow()
+            token_assigned, legacy_slot_ref = await self._assign_daily_token(db, current_time)
+
+            encrypted_name = self._encrypt_field(name.strip())
+            grievance_text = user_desc or (
+                f"Walk-in {'appointment' if schedule_meeting else 'petition'} "
+                f"registered by {submitted_by}."
+                + (f" {len(file_contents)} page(s) attached." if file_contents else "")
+            )
+
+            # ── Citizen (dedup by mobile_index) ───────────────────────────────
+            from src.core import crypto
+            mobile_idx = crypto.blind_index(mobile) if mobile else None
+            citizen = None
+            if mobile:
+                citizen = (await db.execute(
+                    select(Citizen).where(Citizen.mobile_index == mobile_idx)
+                )).scalar_one_or_none()
+            if not citizen:
+                citizen = Citizen(
+                    encrypted_name=encrypted_name,
+                    encrypted_mobile=self._encrypt_field(mobile or ""),
+                    mobile_index=mobile_idx,
+                    ward_or_region=constituency,
+                    created_at=current_time,
+                )
+                db.add(citizen)
+                await db.flush()
+            else:
+                citizen.encrypted_name = encrypted_name
+
+            appointment = Appointment(
+                citizen_id=citizen.id,
+                slot_id=legacy_slot_ref,
+                token_assigned=token_assigned,
+                encrypted_grievance=self._encrypt_field(grievance_text),
+                encrypted_name=encrypted_name,
+                audio_recording_url=None,
+                grievance_category=grievance_category or None,
+                status=("SCHEDULED" if take_slot_path else "AWAITING_REVIEW"),
+                schedule_meeting=take_slot_path,
+                num_persons=max(1, min(4, num_persons)),
+                source="manual_staff",
+                # Courtesy items skip AI regardless of image; other floor
+                # petitions still summarise when an image is attached.
+                summary_status=("DONE" if is_courtesy else ("PENDING" if has_image else "DONE")),
+                created_at=current_time,
+            )
+            db.add(appointment)
+            await db.flush()
+
+            # ── Book a slot (SCHEDULED) or fall back to WAITING ───────────────
+            scheduled: Dict[str, Any] = {}
+            if take_slot_path:
+                if slot_id:
+                    try:
+                        scheduled = await scheduling_service.book_slot(
+                            db, appointment, slot_id, commit=False)
+                    except ValueError:
+                        await scheduling_service.move_to_waiting_queue(
+                            db, appointment, "SLOT_UNAVAILABLE", commit=False)
+                else:
+                    await scheduling_service.move_to_waiting_queue(
+                        db, appointment, "NO_SLOT_SELECTED", commit=False)
+
+            # ── Save photos (optional) ────────────────────────────────────────
+            if file_contents:
+                upload_dir = Path("uploads/manual_petitions") / str(appointment.id)
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                for i, (raw, mime, fname) in enumerate(file_contents, 1):
+                    safe_name = f"{appointment.id}_{i}_{self._sanitize_filename(fname)}"
+                    fpath = upload_dir / safe_name
+                    with open(fpath, "wb") as fh:
+                        fh.write(raw)
+                    db.add(AppointmentAttachment(
+                        appointment_id=appointment.id,
+                        attachment_type="IMAGE" if mime.startswith("image/") else "DOCUMENT",
+                        storage_url=str(fpath),
+                        file_size_bytes=len(raw),
+                        mime_type=mime,
+                        created_at=current_time,
+                    ))
+
+            await db.commit()
+
+            # ── Summarise only when there is an IMAGE to read ─────────────────
+            # Courtesy items skip AI regardless.
+            if has_image and not is_courtesy:
+                _task = asyncio.create_task(self.try_summarise_now(appointment.id))
+                _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+            status = appointment.status
+            msg = (f"Appointment booked · Token TKN{token_assigned}"  if status == "SCHEDULED"
+                   else f"Added to waiting queue · Token TKN{token_assigned}" if status == "WAITING"
+                   else f"Petition submitted · Token TKN{token_assigned}")
+            logger.info(f"[FLOOR INTAKE] appointment_id={appointment.id} | token={token_assigned} "
+                        f"| status={status} | files={len(file_contents)} | by={submitted_by}")
+            return {
+                "appointment_id": appointment.id,
+                "token_assigned": token_assigned,
+                "token_display":  f"TKN{token_assigned}",
+                "status":         status,
+                "scheduled_date": scheduled.get("scheduled_date"),
+                "scheduled_time": scheduled.get("assigned_time"),
+                "slot_window":    scheduled.get("slot_window"),
+                "message":        msg,
+            }
+
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to register visitor: {e}")
 
     async def _trigger_manual_summarisation(
         self,

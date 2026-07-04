@@ -79,7 +79,7 @@ class ReferralSlot(Base):
                              comment="AVAILABLE | FULL | BLOCKED")
     max_capacity    = Column(Integer,    nullable=False, default=MAX_CAPACITY)
     booked_count    = Column(Integer,    nullable=False, default=0,
-                             comment="Total PERSONS booked (sum of num_persons), not booking rows")
+                             comment="Number of BOOKINGS in this slot (num_persons is informational, not counted)")
     created_at      = Column(DateTime,   nullable=False, default=datetime.utcnow)
 
     availability = relationship("ReferralAvailability", back_populates="slots")

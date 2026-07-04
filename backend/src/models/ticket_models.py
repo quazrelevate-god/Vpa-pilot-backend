@@ -61,15 +61,16 @@ class TicketStatus(str, Enum):
     REOPENED is set when the citizen comes back about the same case after
     CLOSED — the ticket goes back into the queue with reopen_count incremented.
     """
-    OPEN               = "open"                  # just created, awaiting PA review
-    TRIAGED            = "triaged"               # PA has reviewed; dept identified
-    ASSIGNED           = "assigned"              # owner PA is set
-    IN_PROGRESS        = "in_progress"           # PA actively working
-    FORWARDED_TO_DEPT  = "forwarded_to_dept"     # sent to govt dept, awaiting reply
-    PENDING_CITIZEN    = "pending_citizen"       # waiting on more info from petitioner
-    RESOLVED           = "resolved"              # action taken, case complete
-    CLOSED             = "closed"                # no further action needed
-    REOPENED           = "reopened"              # citizen escalated post-close
+    OPEN                = "open"                  # just created, awaiting PA routing
+    TRIAGED             = "triaged"               # PA has reviewed; dept identified
+    ASSIGNED            = "assigned"              # owner PA is set
+    AWAITING_DEPARTMENT = "awaiting_department"   # routed to a school department, awaiting its accept
+    IN_PROGRESS         = "in_progress"           # department accepted; actively working
+    FORWARDED_TO_DEPT   = "forwarded_to_dept"     # forwarded out (dept→dept, or non-school external — terminal)
+    PENDING_CITIZEN     = "pending_citizen"       # waiting on more info from petitioner
+    RESOLVED            = "resolved"              # department resolved (with proof); awaiting PA close
+    CLOSED              = "closed"                # PA closed — no further action
+    REOPENED            = "reopened"              # reopened post-close
 
 
 class TicketPriority(str, Enum):
@@ -97,6 +98,14 @@ class ClosureReason(str, Enum):
     RESOLVED_BY_DEPT          = "resolved_by_dept"
     NO_RESPONSE_FROM_CITIZEN  = "no_response_from_citizen"
     OUT_OF_SCOPE              = "out_of_scope"
+
+
+# v2: TicketEventType Enum removed — action_type strings written to Activity.
+# See _EventType in ticket_service.py for the string constants (created,
+# ai_summarised, status_changed, priority_changed, assigned, unassigned,
+# due_date_set, comment_added, forwarded_to_dept, routed_to_department,
+# department_accepted, department_forwarded, progress_update, resolved,
+# closed, reopened).
 
 
 # Suggested initial priority based on AI-assigned urgency.
@@ -185,6 +194,27 @@ class Ticket(Base):
         nullable=True,
     )
 
+    # ── Department routing (new ticketing workflow) ─────────────────────────────
+    department = Column(
+        VARCHAR(60),
+        nullable=True,
+        index=True,
+        comment="SchoolDepartment the ticket is currently routed to (assign = select dept). "
+                "NULL = not yet routed, or non-school (forwarded out).",
+    )
+
+    accepted_at = Column(
+        DateTime,
+        nullable=True,
+        comment="When the current department accepted the ticket",
+    )
+
+    accepted_by = Column(
+        VARCHAR(100),
+        nullable=True,
+        comment="Department account that accepted (shared per-department login)",
+    )
+
     due_date = Column(
         DateTime,
         nullable=True,
@@ -261,6 +291,15 @@ class Ticket(Base):
         comment="Number of times this ticket has been reopened",
     )
 
+    # ── Progress % (department-reported) ────────────────────────────────────────
+    progress_pct = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="0-100 progress the department reports while working",
+    )
+
     # ── Timestamps ─────────────────────────────────────────────────────────────
     created_at = Column(
         DateTime,
@@ -281,6 +320,17 @@ class Ticket(Base):
         back_populates="ticket",
     )
 
+    # v2: no `events` relationship — audit rows live in the shared Activity
+    # table (models/activity_models.py) queried by ticket_id.
+
+    attachments = relationship(
+        "TicketAttachment",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketAttachment.created_at.desc()",
+    )
+
+
     # ── Indexes (filter/sort surfaces in the PA portal) ────────────────────────
     __table_args__ = (
         Index("ix_tickets_status", "status"),
@@ -290,6 +340,49 @@ class Ticket(Base):
         Index("ix_tickets_forwarded_to_dept", "forwarded_to_dept"),
         Index("ix_tickets_due_date", "due_date"),
     )
+
+
+class TicketAttachment(Base):
+    """
+    A file attached to a ticket — primarily the resolution proof a department
+    MUST upload before a ticket can be marked resolved.
+    """
+
+    __tablename__ = "ticket_attachments"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    # v2: FK targets `ticket` (singular; renamed from v1 `tickets`).
+    ticket_id = Column(
+        BigInteger,
+        ForeignKey("ticket.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    kind = Column(
+        VARCHAR(20),
+        nullable=False,
+        default="resolution",
+        server_default="resolution",
+        comment="resolution | progress | other",
+    )
+
+    storage_url = Column(Text, nullable=False, comment="MinIO/local path")
+    mime_type = Column(VARCHAR(100), nullable=False)
+    file_size_bytes = Column(Integer, nullable=False, default=0, server_default="0")
+    original_filename = Column(VARCHAR(255), nullable=True)
+
+    uploaded_by = Column(
+        VARCHAR(100),
+        nullable=True,
+        comment="Department account (or PA) that uploaded it",
+    )
+
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    ticket = relationship("Ticket", back_populates="attachments")
+
 
 
 # ── Ticket number generator helper ────────────────────────────────────────────

@@ -4,7 +4,7 @@ import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, Languages, ShieldAlert,
-  QrCode, ScanLine, UserCog, SlidersHorizontal, CalendarRange,
+  QrCode, ScanLine, UserCog, SlidersHorizontal, CalendarRange, Forward,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -12,22 +12,34 @@ import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
+import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchAppointments } from "@/lib/api";
-import type { AppointmentRow } from "@/lib/types";
+import { DEPT_DISPLAY } from "@/lib/enums";
+import type { AppointmentRow, AppointmentAttachment } from "@/lib/types";
+
+// The default School Education ministry — approve keeps it in the school
+// department workflow ("Accept"); any other ministry is "Forward"ed out.
+const SCHOOL_MINISTRY = "school_education_tamil_dev_info_publicity";
+const MINISTRIES = Object.keys(DEPT_DISPLAY);
 
 interface Upload {
   id: number; filename: string; mime_type: string; file_url: string | null;
   status: "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED";
   name: string | null; name_ta: string | null; mobile: string | null;
-  category: string | null; urgency: string | null; department: string | null;
+  category: string | null; priority: string | null; department: string | null;
   headline: string | null; headline_ta: string | null;
   summary: string | null; summary_ta: string | null;
   citizen_ask: string | null; citizen_ask_ta: string | null;
   key_details: string[]; key_details_ta: string[];
   error: string | null; ticket_number: string | null; appointment_id: number | null; created_at: string | null;
+  // Unified review drawer: petitions reuse this shape with a source tag +
+  // their own attachments/audio (uploads keep the single-file preview).
+  _kind?: "upload" | "petition";
+  attachments?: AppointmentAttachment[];
+  audio_url?: string | null;
+  audio_transcript?: string | null;
 }
 
 type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED";
@@ -38,7 +50,7 @@ interface InboxRow {
   name: string | null;
   mobile: string | null;
   category: string | null;
-  urgency: string | null;
+  priority: string | null;
   statusKey: StatusKey;
   source: string;
   created_at: string | null;
@@ -48,7 +60,7 @@ interface InboxRow {
 }
 
 const CATEGORIES = ["action_required","proposals","transfer_requests","pension_requests","school_admission","job_requests","rti","associations_unions","school_upgradation","invitation","greetings","general","other"];
-const URGENCIES = ["low", "medium", "high", "critical"];
+const PRIORITIES = ["low", "medium", "high", "critical"];
 
 const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
   { key: "",                tKey: "petition.segAll" },
@@ -58,7 +70,7 @@ const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
   { key: "PROCESSING",      tKey: "petition.segProcessing" },
 ];
 
-const URGENCY_CLS: Record<string, string> = {
+const PRIORITY_CLS: Record<string, string> = {
   critical: "bg-red-100 text-red-700", high: "bg-orange-100 text-orange-700",
   medium: "bg-amber-100 text-amber-700", low: "bg-slate-100 text-slate-600",
 };
@@ -100,6 +112,24 @@ function petitionStatusKey(status: string): StatusKey {
   return status === "Reviewed" ? "REVIEWED" : "AWAITING_REVIEW";
 }
 
+// Map a QR/staff petition (AppointmentRow) into the unified review-drawer shape
+// so every source renders in the scanned-petition drawer.
+function mapPetitionToReview(p: AppointmentRow): Upload {
+  return {
+    _kind: "petition",
+    id: p.id, filename: "Petition", mime_type: "", file_url: null,
+    status: petitionStatusKey(p.status),
+    name: p.name ?? null, name_ta: p.name_ta ?? null, mobile: p.mobile ?? null,
+    category: p.category ?? null, priority: p.priority ?? null, department: p.department ?? null,
+    headline: p.headline ?? null, headline_ta: p.headline_ta ?? null,
+    summary: p.summary ?? null, summary_ta: p.summary_ta ?? null,
+    citizen_ask: p.citizen_ask ?? null, citizen_ask_ta: p.citizen_ask_ta ?? null,
+    key_details: p.key_details ?? [], key_details_ta: p.key_details_ta ?? [],
+    error: null, ticket_number: null, appointment_id: p.id, created_at: p.created_at,
+    attachments: p.attachments ?? [], audio_url: p.audio_url ?? null, audio_transcript: p.audio_transcript ?? null,
+  };
+}
+
 const InboxTableRow = memo(function InboxTableRow({
   row, t, onOpen, onRetry,
 }: {
@@ -126,8 +156,8 @@ const InboxTableRow = memo(function InboxTableRow({
       </td>
       <td className="px-4 py-3 text-base text-muted-foreground">{row.category ? pretty(row.category) : "—"}</td>
       <td className="px-4 py-3">
-        {row.urgency
-          ? <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold uppercase", URGENCY_CLS[row.urgency])}>{row.urgency}</span>
+        {row.priority
+          ? <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold uppercase", PRIORITY_CLS[row.priority])}>{row.priority}</span>
           : "—"}
       </td>
       <td className="whitespace-nowrap px-4 py-3">
@@ -178,8 +208,8 @@ const InboxCard = memo(function InboxCard({
         <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-semibold", sm.cls)}>
           <SIcon className="h-3.5 w-3.5" /> {t(sm.tKey)}
         </span>
-        {row.urgency && (
-          <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold", URGENCY_CLS[row.urgency])}>{row.urgency}</span>
+        {row.priority && (
+          <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold", PRIORITY_CLS[row.priority])}>{row.priority}</span>
         )}
         {row.category && (
           <span className="text-sm text-muted-foreground">{pretty(row.category)}</span>
@@ -203,14 +233,15 @@ export default function AiReviewPage() {
   const [petitions, setPetitions] = useState<AppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [review, setReview] = useState<Upload | null>(null);
-  const [reviewPetition, setReviewPetition] = useState<AppointmentRow | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Upload>>({});
   const [modalLang, setModalLang] = useState<"en" | "ta">("en");
   const [busy, setBusy] = useState(false);
 
-  const [fStatus, setFStatus] = useState<"" | StatusKey>("");
-  const [fUrgency, setFUrgency] = useState("");
+  // Default to Awaiting Review — that's the actionable queue PAs care about on
+  // open. They can widen to All via the segments if they want history.
+  const [fStatus, setFStatus] = useState<"" | StatusKey>("AWAITING_REVIEW");
+  const [fPriority, setFPriority] = useState("");
   const [fSource, setFSource] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -276,12 +307,12 @@ export default function AiReviewPage() {
   const rows = useMemo<InboxRow[]>(() => {
     const up: InboxRow[] = uploads.map(u => ({
       kind: "upload", id: u.id, name: u.name, mobile: u.mobile, category: u.category,
-      urgency: u.urgency, statusKey: u.status, source: "ai_scan",
+      priority: u.priority, statusKey: u.status, source: "ai_scan",
       created_at: u.created_at, ticket_number: u.ticket_number, upload: u,
     }));
     const pet: InboxRow[] = petitions.map(p => ({
       kind: "petition", id: p.id, name: p.name, mobile: p.mobile,
-      category: p.category_label ?? p.category, urgency: p.urgency ?? null,
+      category: p.category_label ?? p.category, priority: p.priority ?? null,
       statusKey: petitionStatusKey(p.status), source: p.source || "qr_citizen",
       created_at: p.created_at, ticket_number: null, petition: p,
     }));
@@ -303,7 +334,7 @@ export default function AiReviewPage() {
     const toKey   = dateTo   || "";
     return rows.filter(r => {
       if (fStatus && r.statusKey !== fStatus) return false;
-      if (fUrgency && r.urgency !== fUrgency) return false;
+      if (fPriority && r.priority !== fPriority) return false;
       if (fSource && r.source !== fSource) return false;
       if (fromKey || toKey) {
         const day = (r.created_at || "").slice(0, 10);
@@ -318,45 +349,74 @@ export default function AiReviewPage() {
       }
       return true;
     });
-  }, [rows, fStatus, fUrgency, fSource, dateFrom, dateTo, q]);
+  }, [rows, fStatus, fPriority, fSource, dateFrom, dateTo, q]);
 
   const failedCount = uploads.filter(u => u.status === "FAILED").length;
-  const advancedFilterCount = (fUrgency ? 1 : 0) + (fSource ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
-  const anyFilterActive = Boolean(q || fStatus || fUrgency || fSource || dateFrom || dateTo);
+  const advancedFilterCount = (fPriority ? 1 : 0) + (fSource ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
+  const anyFilterActive = Boolean(q || fStatus || fPriority || fSource || dateFrom || dateTo);
 
   function openRow(r: InboxRow) {
     if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
+    setEditing(false); setModalLang("en");
     if (r.kind === "petition" && r.petition) {
-      setReviewPetition(r.petition);
+      const rv = mapPetitionToReview(r.petition);
+      setReview(rv);
+      // Phone is OTP-verified (kept read-only); everything else is editable.
+      setForm({ name: rv.name, name_ta: rv.name_ta, summary: rv.summary, category: rv.category, priority: rv.priority, department: rv.department });
       return;
     }
     const u = r.upload!;
-    setReview(u); setEditing(false); setModalLang("en");
-    setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, urgency: u.urgency, summary: u.summary });
+    setReview({ ...u, _kind: "upload" });
+    setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, priority: u.priority, department: u.department, summary: u.summary });
   }
 
   async function saveEdits() {
     if (!review) return;
     setBusy(true);
     try {
-      const r = await fetch(api(`/${review.id}`), {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify(form),
-      });
-      const d = await r.json();
-      if (r.ok) { toast.success("Saved"); setEditing(false); setReview(d); load(); }
-      else toast.error(d.error || "Save failed");
-    } catch { toast.error("Network error"); } finally { setBusy(false); }
+      if (review._kind === "petition") {
+        const r = await fetch(`/api/appointments/${review.id}/details`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({
+            name: form.name, name_ta: form.name_ta, summary: form.summary,
+            category: form.category, priority: form.priority, department: form.department,
+          }),
+        });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Save failed"); }
+        toast.success("Saved"); setEditing(false);
+        setReview({
+          ...review,
+          name: form.name ?? review.name, name_ta: form.name_ta ?? review.name_ta, summary: form.summary ?? review.summary,
+          category: form.category ?? review.category, priority: form.priority ?? review.priority, department: form.department ?? review.department,
+        });
+        load();
+      } else {
+        const r = await fetch(api(`/${review.id}`), {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify(form),
+        });
+        const d = await r.json();
+        if (r.ok) { toast.success("Saved"); setEditing(false); setReview({ ...d, _kind: "upload" }); load(); }
+        else toast.error(d.error || "Save failed");
+      }
+    } catch (e) { toast.error((e as Error).message || "Network error"); } finally { setBusy(false); }
   }
 
   async function approve() {
     if (!review) return;
     setBusy(true);
     try {
-      const r = await fetch(api(`/${review.id}/approve`), { method: "POST", credentials: "include" });
-      const d = await r.json();
-      if (r.ok) { toast.success(`Ticket ${d.ticket_number} created`); setReview(null); load(); }
-      else toast.error(d.error || "Approve failed");
+      const url = review._kind === "petition"
+        ? `/api/appointments/${review.id}/approve`
+        : api(`/${review.id}/approve`);
+      const r = await fetch(url, { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        toast.success(d.forwarded
+          ? `Forwarded to ministry${d.ticket_number ? ` — ticket ${d.ticket_number}` : ""}`
+          : (d.ticket_number ? `Ticket ${d.ticket_number} created` : "Approved"));
+        setReview(null); load();
+      } else toast.error(d.error || "Action failed");
     } catch { toast.error("Network error"); } finally { setBusy(false); }
   }
 
@@ -373,7 +433,7 @@ export default function AiReviewPage() {
   }, [load]);
 
   function clearAllFilters() {
-    setFStatus(""); setFUrgency(""); setFSource(""); setDateFrom(""); setDateTo(""); setQ("");
+    setFStatus(""); setFPriority(""); setFSource(""); setDateFrom(""); setDateTo(""); setQ("");
   }
 
   const pick = <T,>(en: T, ta: T): T => (modalLang === "ta" ? (ta || en) : en);
@@ -480,10 +540,10 @@ export default function AiReviewPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{t("petition.colUrgency")}</label>
-                <select value={fUrgency} onChange={(e) => setFUrgency(e.target.value)}
+                <select value={fPriority} onChange={(e) => setFPriority(e.target.value)}
                   className="h-9 rounded-lg border border-input bg-card px-3 text-base focus:border-violet-500 focus:outline-none">
                   <option value="">{`All ${t("petition.colUrgency").toLowerCase()}`}</option>
-                  {URGENCIES.map(u => <option key={u} value={u}>{pretty(u)}</option>)}
+                  {PRIORITIES.map(u => <option key={u} value={u}>{pretty(u)}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
@@ -594,10 +654,16 @@ export default function AiReviewPage() {
             {/* Left — document (inline preview, download disabled) */}
             <div className="hidden w-[48%] flex-col border-r border-border bg-slate-100 md:flex">
               <div className="flex items-center gap-1.5 border-b border-border bg-white px-4 py-2.5 text-base font-semibold">
-                <FileText className="h-4 w-4 text-muted-foreground" /> <span className="truncate">{review.filename}</span>
+                <FileText className="h-4 w-4 text-muted-foreground" /> <span className="truncate">{review._kind === "petition" ? "Citizen uploads" : review.filename}</span>
               </div>
               <div className="flex-1 overflow-auto p-3" onContextMenu={(e) => e.preventDefault()}>
-                {review.file_url ? (
+                {review._kind === "petition" ? (() => {
+                  const att = [...(review.attachments ?? [])];
+                  if (review.audio_url && !att.some(a => a.type === "AUDIO")) att.push({ name: "Voice recording", url: review.audio_url, type: "AUDIO" });
+                  return att.length || review.audio_transcript
+                    ? <InlineAttachmentPreview attachments={att} audioTranscript={review.audio_transcript} />
+                    : <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
+                })() : review.file_url ? (
                   review.mime_type === "application/pdf"
                     ? <iframe
                         src={`${review.file_url}#toolbar=0&navpanes=0`}
@@ -623,7 +689,7 @@ export default function AiReviewPage() {
                   <div className="text-xl font-bold leading-snug">{pick(review.headline, review.headline_ta) || review.name || "Petition"}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold", STATUS_CLS[review.status])}>{t(STATUS_TKEY[review.status])}</span>
-                    {review.urgency && <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase", URGENCY_CLS[review.urgency])}>{review.urgency}</span>}
+                    {review.priority && <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase", PRIORITY_CLS[review.priority])}>{review.priority}</span>}
                     {review.category && <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{pretty(review.category)}</span>}
                     {review.ticket_number && <span className="font-mono text-sm text-emerald-600">{review.ticket_number}</span>}
                   </div>
@@ -640,12 +706,13 @@ export default function AiReviewPage() {
               <div className="flex-1 space-y-6 overflow-auto p-7">
                 <div className="grid grid-cols-2 gap-x-8 gap-y-5">
                   <Field label={t("petition.colName")} editing={editing} value={form.name} fallback={review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
-                  <Field label={t("petition.colPhone")} editing={editing} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} icon={Phone} />
+                  {/* Phone stays read-only for petitions — it's the OTP-verified, uniquely-indexed citizen mobile. */}
+                  <Field label={t("petition.colPhone")} editing={editing && review._kind !== "petition"} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} icon={Phone} />
                   {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}
                   <SelectField label={t("petition.colCategory")} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
-                  <SelectField label={t("petition.colUrgency")} editing={editing} value={form.urgency} fallback={review.urgency} options={URGENCIES} onChange={v => setForm(f => ({ ...f, urgency: v }))} />
+                  <SelectField label={t("petition.colUrgency")} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} onChange={v => setForm(f => ({ ...f, priority: v }))} />
+                  <SelectField label={t("petition.fMinistry")} editing={editing} value={form.department} fallback={review.department} options={MINISTRIES} labels={DEPT_DISPLAY} onChange={v => setForm(f => ({ ...f, department: v }))} />
                 </div>
-                {review.department && <div className="text-sm text-muted-foreground">{t("petition.fDept")}: {pretty(review.department)}</div>}
 
                 <Panel title="Summary">
                   {editing
@@ -680,11 +747,22 @@ export default function AiReviewPage() {
               </div>
 
               <div className="border-t border-border px-7 py-5">
-                {review.status === "AWAITING_REVIEW" && (
-                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={approve} disabled={busy || editing}>
-                    {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {t("petition.approveCta")}
-                  </Button>
-                )}
+                {review.status === "AWAITING_REVIEW" && (() => {
+                  // Ministry drives the action: School → Accept (school department
+                  // workflow); any other ministry → Forward (out to that ministry).
+                  const isSchool = (review.department ?? SCHOOL_MINISTRY) === SCHOOL_MINISTRY;
+                  return (
+                    <Button
+                      className={cn("w-full text-white", isSchool ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}
+                      onClick={approve}
+                      disabled={busy || editing}
+                    >
+                      {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        : isSchool ? <Check className="mr-2 h-4 w-4" /> : <Forward className="mr-2 h-4 w-4" />}
+                      {isSchool ? t("petition.acceptCta") : t("petition.forwardCta")}
+                    </Button>
+                  );
+                })()}
                 {review.status === "REVIEWED" && (
                   <div className="flex items-center justify-center gap-2 text-base font-semibold text-emerald-600"><TicketIcon className="h-4 w-4" /> {t("petition.approvedAs")} {review.ticket_number}</div>
                 )}
@@ -699,13 +777,6 @@ export default function AiReviewPage() {
           </div>
         </div>
       )}
-
-      {/* QR / staff petition review — reuses the appointment detail drawer */}
-      <AppointmentDetailDrawer
-        row={reviewPetition}
-        onClose={() => setReviewPetition(null)}
-        onStatusChange={() => { load(); }}
-      />
     </>
   );
 }
@@ -731,16 +802,17 @@ function Field({ label, value, fallback, editing, onChange, icon: Icon }:
   );
 }
 
-function SelectField({ label, value, fallback, editing, options, onChange }:
-  { label: string; value?: string | null; fallback: string | null; editing: boolean; options: string[]; onChange: (v: string) => void }) {
+function SelectField({ label, value, fallback, editing, options, onChange, labels }:
+  { label: string; value?: string | null; fallback: string | null; editing: boolean; options: string[]; onChange: (v: string) => void; labels?: Record<string, string> }) {
+  const disp = (o: string) => labels?.[o] ?? o.replace(/_/g, " ");
   return (
     <div className="flex flex-col gap-2">
       <div className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
       {editing
         ? <select className="w-full rounded-lg border border-input bg-white px-2 py-2 text-base" value={value ?? ""} onChange={e => onChange(e.target.value)}>
-            {options.map(o => <option key={o} value={o}>{o.replace(/_/g, " ")}</option>)}
+            {options.map(o => <option key={o} value={o}>{disp(o)}</option>)}
           </select>
-        : <div className="text-base font-medium leading-relaxed text-foreground">{fallback ? fallback.replace(/_/g, " ") : "—"}</div>}
+        : <div className="text-base font-medium leading-relaxed text-foreground">{fallback ? disp(fallback) : "—"}</div>}
     </div>
   );
 }

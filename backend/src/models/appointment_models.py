@@ -154,6 +154,14 @@ class Appointment(Base):
 
     encrypted_grievance = Column(Text, nullable=True)
 
+    # PA-entered Tamil name for the review drawer. Not on Citizen because it's
+    # per-appointment (a PA may re-enter it differently on a subsequent case).
+    encrypted_name_ta = Column(
+        Text,
+        nullable=True,
+        comment="Fernet-encrypted Tamil name (PA-entered in the review drawer)"
+    )
+
     # v1 attr → v2 DB column "category"
     grievance_category = Column("category", String(50), nullable=True)
 
@@ -246,3 +254,8 @@ class AppointmentAttachment(Base):
     )
 
 
+# v2: AppointmentEvent class removed — writes go through Activity
+# (models/activity_models.py) as a unified audit log. Event-type strings
+# ("status_changed", "priority_changed", "category_changed",
+# "department_changed", "rescheduled", "slot_blocked", "moved_to_waiting",
+# "auto_allocated") are used as free-form action_type values on Activity.

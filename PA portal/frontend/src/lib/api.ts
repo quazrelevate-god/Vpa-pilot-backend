@@ -32,7 +32,7 @@ export interface AppointmentListOpts {
   dateTo?: string;
   apptDateFrom?: string;
   apptDateTo?: string;
-  urgency?: string;
+  priority?: string;
   department?: string;
   category?: string;
   kind?: string;
@@ -49,7 +49,7 @@ function _appointmentParams(opts: AppointmentListOpts, includeStatus: boolean): 
   if (opts.dateTo) params.set("date_to", opts.dateTo);
   if (opts.apptDateFrom) params.set("appt_date_from", opts.apptDateFrom);
   if (opts.apptDateTo) params.set("appt_date_to", opts.apptDateTo);
-  if (opts.urgency) params.set("urgency", opts.urgency);
+  if (opts.priority) params.set("priority", opts.priority);
   if (opts.department) params.set("department", opts.department);
   if (opts.category) params.set("category", opts.category);
   if (opts.kind) params.set("kind", opts.kind);
@@ -91,8 +91,7 @@ export async function fetchAppointmentCounts(
 
 export interface TicketListFilters {
   status?: string;
-  priority?: string;
-  urgency?: string;
+  priority?: string;   // AI-review priority (low|medium|high|critical)
   department?: string;
   category?: string;
   assignedTo?: string;
@@ -107,7 +106,6 @@ function _ticketParams(f: TicketListFilters, includeStatus: boolean): URLSearchP
   const p = new URLSearchParams();
   if (includeStatus && f.status) p.set("status", f.status);
   if (f.priority) p.set("priority", f.priority);
-  if (f.urgency) p.set("urgency", f.urgency);
   if (f.department) p.set("department", f.department);
   if (f.category) p.set("category", f.category);
   if (f.assignedTo) p.set("assigned_to", f.assignedTo);
@@ -187,7 +185,7 @@ export async function updateAppointmentStatus(
 
 export async function updateAppointmentDetails(
   id: number,
-  patch: { urgency?: string | null; category?: string | null; department?: string | null },
+  patch: { priority?: string | null; category?: string | null; department?: string | null },
 ): Promise<void> {
   const resp = await fetch(`/api/appointments/${id}/details`, {
     method: "PATCH",

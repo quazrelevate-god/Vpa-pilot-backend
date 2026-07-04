@@ -4,15 +4,17 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight, MessageSquare, CheckCircle2, Lock, RotateCcw, Send, Building2,
   Clock, User, Phone, Hash, CalendarDays, X, Languages, Sparkles,
-  GitBranch, Flag, UserCheck, Paperclip, FileSignature,
+  GitBranch, Flag, UserCheck, Paperclip, FileSignature, FileCheck2, Inbox,
 } from "lucide-react";
 import type { TicketDetail } from "@/lib/types";
+import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { fetchTicket, patchTicket, ticketAction } from "@/lib/api";
 import {
-  TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR, PRIORITY_COLOR,
+  TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR,
   DEPT_DISPLAY, CATEGORY_DISPLAY, CLOSURE_REASON_DISPLAY,
-  ticketManualStatusOptions, priorityOptions, deptOptions, closureReasonOptions,
+  ticketManualStatusOptions, closureReasonOptions,
 } from "@/lib/enums";
+import PriorityBadge from "@/components/PriorityBadge";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -24,10 +26,10 @@ import { Label } from "@/components/ui/label";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { cn, formatDate, formatDateTime, toLocalDateTimeInput, fromLocalDateTimeInput } from "@/lib/utils";
 
-type Action = "forward" | "resolve" | "close" | "reopen";
-const NONE = "__none__";
+type Action = "close" | "reopen";
 
 const EVENT_ICON: Record<string, React.ElementType> = {
+  petition_submitted: Inbox,
   created: FileSignature,
   ai_summarised: Sparkles,        // Sparkles == AI-generated event (only)
   status_changed: GitBranch, priority_changed: Flag,
@@ -35,8 +37,37 @@ const EVENT_ICON: Record<string, React.ElementType> = {
   due_date_set: CalendarDays,
   comment_added: MessageSquare, comment: MessageSquare,
   forwarded_to_dept: ArrowRight, forwarded: ArrowRight,
+  routed_to_department: Building2, department_accepted: UserCheck,
+  department_forwarded: ArrowRight, progress_update: MessageSquare,
   resolved: CheckCircle2, closed: Lock, reopened: RotateCcw,
 };
+
+// The 10 School Education departments a ticket can be routed to.
+const SCHOOL_DEPARTMENTS: { key: string; label: string }[] = [
+  { key: "director_school_education", label: "Director of School Education" },
+  { key: "private_schools", label: "Directorate of Private Schools" },
+  { key: "elementary_education", label: "Elementary Education" },
+  { key: "govt_examination", label: "Government Examinations" },
+  { key: "non_formal_adult_education", label: "Non-Formal & Adult Education" },
+  { key: "public_libraries", label: "Public Libraries" },
+  { key: "scert", label: "SCERT" },
+  { key: "teacher_recruitment_board", label: "Teacher Recruitment Board (TRB)" },
+  { key: "tn_education_service_corp", label: "TN Education Service Corporation" },
+  { key: "samagra_shiksha", label: "Samagra Shiksha" },
+];
+
+const SCHOOL_DEPT_LABEL: Record<string, string> = Object.fromEntries(
+  SCHOOL_DEPARTMENTS.map((d) => [d.key, d.label]),
+);
+// Department actions log the department key as the actor — show its full name.
+const prettyActor = (a: string) => SCHOOL_DEPT_LABEL[a] ?? a;
+
+function galleryType(mime?: string): GalleryAttachment["type"] {
+  if (mime?.startsWith("image/")) return "IMAGE";
+  if (mime?.startsWith("video/")) return "VIDEO";
+  if (mime?.startsWith("audio/")) return "AUDIO";
+  return "DOCUMENT";
+}
 
 type Lang = "en" | "ta";
 
@@ -55,9 +86,6 @@ export default function TicketDetailDrawer({
   const [lang, setLang] = useState<Lang>("en");
 
   const [commentText, setCommentText] = useState("");
-  const [forwardDept, setForwardDept] = useState("");
-  const [forwardNotes, setForwardNotes] = useState("");
-  const [resolutionNotes, setResolutionNotes] = useState("");
   const [closureReason, setClosureReason] = useState("");
   const [closeNotes, setCloseNotes] = useState("");
   const [reopenReason, setReopenReason] = useState("");
@@ -83,6 +111,21 @@ export default function TicketDetailDrawer({
     finally { setBusy(false); }
   }
 
+  async function routeToDepartment(dept: string) {
+    if (ticketId == null || !dept || dept === t?.department) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/tickets/${ticketId}/route`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ department: dept }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Routing failed");
+      setData(await fetchTicket(ticketId));
+      onMutated?.();
+    } catch (e) { alert((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
   async function runAction(action: Action | "comment", body: Record<string, unknown>) {
     if (ticketId == null) return;
     setBusy(true);
@@ -90,8 +133,7 @@ export default function TicketDetailDrawer({
       setData(await ticketAction(ticketId, action, body));
       onMutated?.();
       setActiveAction(null);
-      setCommentText(""); setForwardDept(""); setForwardNotes("");
-      setResolutionNotes(""); setClosureReason(""); setCloseNotes(""); setReopenReason("");
+      setCommentText(""); setClosureReason(""); setCloseNotes(""); setReopenReason("");
     } catch (e) { alert((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -99,6 +141,13 @@ export default function TicketDetailDrawer({
   const t = data;
   const isClosed = t?.status === "closed";
   const isResolved = t?.status === "resolved";
+
+  // Department resolution proofs → gallery shape for the preview pane.
+  const resAtt: GalleryAttachment[] = (t?.resolution_attachments ?? []).map((a) => ({
+    name: a.name || "attachment",
+    url: a.url,
+    type: galleryType(a.mime),
+  }));
 
   // Bilingual field accessor — falls back to EN if a TA variant is missing.
   const pick = <T,>(en: T | null | undefined, ta: T | null | undefined): T | null | undefined =>
@@ -119,9 +168,7 @@ export default function TicketDetailDrawer({
             </SheetTitle>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="font-mono text-base font-semibold text-brand">{t?.ticket_number ?? "…"}</span>
-              {t?.priority && (
-                <span className={cn("rounded px-2 py-0.5 text-xs font-bold", PRIORITY_COLOR[t.priority])}>{t.priority}</span>
-              )}
+              {t?.priority && <PriorityBadge priority={t.priority} />}
               {t && (
                 <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", TICKET_STATUS_COLOR[t.status])}>
                   {TICKET_STATUS_DISPLAY[t.status] ?? t.status}
@@ -143,11 +190,24 @@ export default function TicketDetailDrawer({
             {/* Preview pane — uploads at-a-glance */}
             <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[52%] lg:border-b-0 lg:border-r">
               <div className="mb-3 flex flex-shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                <Paperclip className="h-3.5 w-3.5" /> Uploads
+                <Paperclip className="h-3.5 w-3.5" /> Citizen uploads
               </div>
               <div className="min-h-0 flex-1">
                 <InlineAttachmentPreview attachments={t.attachments ?? []} audioTranscript={t.audio_transcript} />
               </div>
+
+              {/* Resolution proof — attachments the department uploaded on resolve */}
+              {resAtt.length > 0 && (
+                <div className="mt-4 flex-shrink-0 border-t border-border pt-4">
+                  <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600">
+                    <FileCheck2 className="h-3.5 w-3.5" /> Resolution proof
+                    <span className="rounded-full bg-emerald-100 px-1.5 text-[10px] font-bold text-emerald-700">
+                      {resAtt.length}
+                    </span>
+                  </div>
+                  <InlineAttachmentPreview attachments={resAtt} />
+                </div>
+              )}
             </aside>
 
             <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 min-h-0 flex-1 flex-col">
@@ -190,11 +250,11 @@ export default function TicketDetailDrawer({
                       </div>
 
                       {/* Metadata strip — context before content */}
-                      {(t.urgency || t.department_label || t.category_label) && (
+                      {(t.priority || t.department_label || t.category_label) && (
                         <div className="mb-4 flex flex-wrap gap-1.5">
-                          {t.urgency && (
+                          {t.priority && (
                             <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-orange-700">
-                              {t.urgency} urgency
+                              {t.priority} priority
                             </span>
                           )}
                           {t.department_label && (
@@ -285,20 +345,34 @@ export default function TicketDetailDrawer({
                         </SelectContent>
                       </Select>
                     </div>
+                    {/* Assign — routes to a school department (logs "routed").
+                        Once a department accepts, ownership is locked here. */}
                     <div className="space-y-1.5">
-                      <Label>Priority</Label>
-                      <Select value={t.priority ?? NONE} onValueChange={(v) => patch({ priority: v === NONE ? "" : v })} disabled={busy}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>— None —</SelectItem>
-                          {priorityOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Label>Assign</Label>
+                      {t.accepted_at ? (
+                        <div className="flex h-9 items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                            <Building2 className="h-3.5 w-3.5" />
+                            {t.assigned_department_label ?? t.assigned_department}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">accepted · locked</span>
+                        </div>
+                      ) : (
+                        <Select value={t.assigned_department || undefined} onValueChange={routeToDepartment} disabled={busy}>
+                          <SelectTrigger className="h-9"><SelectValue placeholder="Assign a department" /></SelectTrigger>
+                          <SelectContent>
+                            {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Assignee</Label>
-                      <Input defaultValue={t.assigned_to_pa ?? ""} disabled={busy} placeholder="PA username" className="h-9"
-                        onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.assigned_to_pa ?? "")) patch({ assigned_to_pa: v }); }} />
+                      <Label>Priority (from review)</Label>
+                      <div className="flex h-9 items-center">
+                        {t.priority
+                          ? <PriorityBadge priority={t.priority} />
+                          : <span className="text-sm text-muted-foreground">— not yet reviewed —</span>}
+                      </div>
                     </div>
                     <div className="space-y-1.5">
                       <Label>Due date (SLA)</Label>
@@ -376,7 +450,7 @@ export default function TicketDetailDrawer({
                           <div className="min-w-0 flex-1 pb-4">
                             <div className="text-sm font-medium text-foreground">{title}</div>
                             <div className="text-[11px] text-muted-foreground">
-                              by <b className="font-semibold text-foreground/80">{e.actor}</b> · {formatDateTime(e.created_at)}
+                              by <b className="font-semibold text-foreground/80">{prettyActor(e.actor)}</b> · {formatDateTime(e.created_at)}
                             </div>
                             {renderedBody}
                           </div>
@@ -393,34 +467,13 @@ export default function TicketDetailDrawer({
               <div className="border-t border-border bg-muted/40 p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                    {activeAction === "forward" ? "Forward to department"
-                      : activeAction === "resolve" ? "Resolve ticket"
-                      : activeAction === "close" ? "Close ticket"
-                      : "Reopen ticket"}
+                    {activeAction === "close" ? "Close ticket" : "Reopen ticket"}
                   </span>
                   <button onClick={() => setActiveAction(null)} className="text-muted-foreground hover:text-foreground">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
 
-                {activeAction === "forward" && (
-                  <div className="space-y-2">
-                    <Select value={forwardDept || undefined} onValueChange={setForwardDept}>
-                      <SelectTrigger className="h-9"><SelectValue placeholder="Pick department" /></SelectTrigger>
-                      <SelectContent>
-                        {deptOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Textarea value={forwardNotes} onChange={(e) => setForwardNotes(e.target.value)} placeholder="Forwarding notes (contact, ref no.)…" rows={2} />
-                    <ActionSubmit busy={busy} label="Forward" disabled={!forwardDept} onClick={() => runAction("forward", { department: forwardDept, notes: forwardNotes })} />
-                  </div>
-                )}
-                {activeAction === "resolve" && (
-                  <div className="space-y-2">
-                    <Textarea value={resolutionNotes} onChange={(e) => setResolutionNotes(e.target.value)} placeholder="What action was taken? (required)" rows={3} />
-                    <ActionSubmit busy={busy} label="Resolve" disabled={!resolutionNotes.trim()} onClick={() => runAction("resolve", { resolution_notes: resolutionNotes })} />
-                  </div>
-                )}
                 {activeAction === "close" && (
                   <div className="space-y-2">
                     <Select value={closureReason || undefined} onValueChange={setClosureReason}>
@@ -443,17 +496,9 @@ export default function TicketDetailDrawer({
             )}
 
             {/* ── Footer actions ──────────────────────────────────────── */}
+            {/* Resolve + Forward belong to the department workspace, not the PA
+                monitor — the PA only assigns, closes, reopens, and comments. */}
             <div className="flex flex-wrap items-center gap-2 border-t border-border bg-card px-6 py-3">
-              {!isClosed && (
-                <Button size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "resolve" ? null : "resolve")}>
-                  <CheckCircle2 className="h-4 w-4" /> Resolve
-                </Button>
-              )}
-              {!isClosed && (
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "forward" ? null : "forward")}>
-                  <ArrowRight className="h-4 w-4" /> Forward
-                </Button>
-              )}
               {!isClosed && (
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "close" ? null : "close")}>
                   <Lock className="h-4 w-4" /> Close
@@ -521,6 +566,7 @@ function SubHead({ children, className }: { children: React.ReactNode; className
 // ── Activity rendering ──────────────────────────────────────────────────────
 
 const PRETTY_EVENT: Record<string, string> = {
+  petition_submitted: "Petition submitted",
   created: "Ticket created",
   ai_summarised: "Summary generated",
   status_changed: "Status changed",
@@ -530,6 +576,10 @@ const PRETTY_EVENT: Record<string, string> = {
   due_date_set: "Due date set",
   comment_added: "Comment added",
   comment: "Comment added",
+  routed_to_department: "Routed to department",
+  department_accepted: "Department accepted",
+  department_forwarded: "Forwarded to department",
+  progress_update: "Progress update",
   forwarded_to_dept: "Forwarded to department",
   forwarded: "Forwarded to department",
   resolved: "Ticket resolved",
@@ -583,11 +633,28 @@ function renderEventBody(e: { event_type: string; note?: string | null; payload?
     const sp = p.suggested_priority as string | undefined;
     return (
       <div className="mt-1.5 flex flex-wrap gap-1.5 rounded-lg bg-muted/60 p-2">
-        {u && <Chip label="Urgency" value={u} tone="orange" />}
+        {u && <Chip label="Priority" value={u} tone="orange" />}
         {c && <Chip label="Category" value={CATEGORY_DISPLAY[c] ?? c.replace(/_/g, " ")} tone="slate" />}
         {d && <Chip label="Department" value={DEPT_DISPLAY[d] ?? d.replace(/_/g, " ")} tone="indigo" />}
         {sp && <Chip label="Suggested priority" value={sp} tone="brand" />}
       </div>
+    );
+  }
+
+  // Routed / forwarded between School Education departments — show the target
+  // department (the "to whom") plus the reason note when present.
+  if (e.event_type === "routed_to_department" || e.event_type === "department_forwarded") {
+    const to = p.to ? String(p.to) : "";
+    return (
+      <>
+        {to && (
+          <div className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+            <Building2 className="h-3 w-3" />
+            {SCHOOL_DEPT_LABEL[to] ?? to.replace(/_/g, " ")}
+          </div>
+        )}
+        {e.note && <p className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/60 p-2 text-sm text-foreground/80">{e.note}</p>}
+      </>
     );
   }
 

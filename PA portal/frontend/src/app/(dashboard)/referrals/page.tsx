@@ -306,7 +306,7 @@ export default function ReferralsPage() {
                           style={{ width: `${(slot.booked_count / slot.max_capacity) * 100}%` }} />
                       </div>
                       <span className={cn("mt-0.5 self-start rounded px-1.5 py-0.5 text-[10px] font-semibold", badge.cls)}>{badge.label}</span>
-                      <div className="text-[10px] opacity-70">{slot.booked_count}/{slot.max_capacity} persons</div>
+                      <div className="text-[10px] opacity-70">{slot.booked_count}/{slot.max_capacity} bookings</div>
                       {loading && <div className="absolute inset-0 grid place-items-center rounded-lg bg-white/60"><RefreshCw className="h-4 w-4 animate-spin text-teal-600" /></div>}
                     </div>
                   );

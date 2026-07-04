@@ -6,11 +6,14 @@ Leave it unset to fall back to local disk (default for VPS-hosted backend).
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
 
 from src.core.config import settings
+
+logger = logging.getLogger("storage")
 
 
 def _get_client():
@@ -84,7 +87,9 @@ def get_file_url(storage_path: str) -> str:
 
 
 def get_file_bytes(storage_path: str) -> Optional[bytes]:
-    """Fetch raw bytes for a stored file."""
+    """Fetch raw bytes for a stored file. Logs the underlying error on failure
+    so 404s from the file-serving endpoint can be traced back to a real cause
+    (bad creds, unreachable endpoint, missing key, wrong bucket, etc.)."""
     client = _get_client()
     if client:
         key = storage_path.replace("\\", "/")
@@ -93,8 +98,18 @@ def get_file_bytes(storage_path: str) -> Optional[bytes]:
         try:
             obj = client.get_object(Bucket=_bucket(), Key=key)
             return obj["Body"].read()
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "get_file_bytes MinIO fetch failed | bucket=%s key=%s endpoint=%s err=%s",
+                _bucket(), key, getattr(settings, "FILE_STORAGE_ENDPOINT", None), repr(e),
+            )
             return None
     else:
+        logger.warning(
+            "get_file_bytes: no MinIO client (endpoint=%r access_key_set=%s). "
+            "Falling back to local disk read.",
+            getattr(settings, "FILE_STORAGE_ENDPOINT", None),
+            bool(getattr(settings, "FILE_STORAGE_ACCESS_KEY", None)),
+        )
         p = Path(storage_path)
         return p.read_bytes() if p.exists() else None

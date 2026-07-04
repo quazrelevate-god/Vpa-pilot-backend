@@ -30,7 +30,7 @@ import {
 import { cn, formatDateTime } from "@/lib/utils";
 import { fetchAppointments, fetchAppointmentCounts, updateAppointmentStatus } from "@/lib/api";
 import type { AppointmentRow, AppointmentStatus } from "@/lib/types";
-import { urgencyOptions, deptOptions, categoryOptions } from "@/lib/enums";
+import { priorityOptions, deptOptions, categoryOptions } from "@/lib/enums";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Appointments is meeting-centric. Direct petitions (Awaiting Review / Reviewed)
@@ -175,7 +175,7 @@ const AppointmentTableRow = memo(function AppointmentTableRow({
           </span>
         ) : <span className="text-muted-foreground/40">—</span>}
       </td>
-      <td className="px-4 py-3"><PriorityBadge urgency={row.urgency} /></td>
+      <td className="px-4 py-3"><PriorityBadge priority={row.priority} /></td>
       <td className="px-4 py-3">
         {apptDateLabel ? (
           <div>
@@ -292,7 +292,7 @@ const AppointmentCard = memo(function AppointmentCard({
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusPill status={row.status} t={t} />
-            <PriorityBadge urgency={row.urgency} />
+            <PriorityBadge priority={row.priority} />
           </div>
           <div className="mt-2 text-sm text-muted-foreground">{row.category_label ?? row.category}</div>
           {askText && (
@@ -331,7 +331,7 @@ function AppointmentsPageInner() {
   const initialTab = (searchParams.get("tab") as Tab) || DEFAULT_TAB;
   const [tab, setTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : DEFAULT_TAB);
   const [search, setSearch] = useState("");
-  // sort: "" | "urgency" | "appt_date_asc" | "appt_date_desc"
+  // sort: "" | "priority" | "appt_date_asc" | "appt_date_desc"
   const [sort, setSort] = useState<string>("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<AppointmentRow[]>([]);
@@ -340,7 +340,7 @@ function AppointmentsPageInner() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [openRow, setOpenRow] = useState<AppointmentRow | null>(null);
 
-  const [urgency, setUrgency] = useState("");
+  const [priority, setPriority] = useState("");
   const [department, setDepartment] = useState("");
   const [category, setCategory] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -356,22 +356,22 @@ function AppointmentsPageInner() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const advancedFilterCount =
-    (urgency ? 1 : 0) + (department ? 1 : 0) + (category ? 1 : 0) +
+    (priority ? 1 : 0) + (department ? 1 : 0) + (category ? 1 : 0) +
     (dateFrom || dateTo ? 1 : 0) + (!activeChip && (apptDateFrom || apptDateTo) ? 1 : 0);
 
   const anyFilterActive = Boolean(
-    search || urgency || department || category ||
+    search || priority || department || category ||
     dateFrom || dateTo || apptDateFrom || apptDateTo || activeChip
   );
 
   const secondary = useMemo(() => ({
     kind: "meeting" as const,
     search: search || undefined,
-    urgency: urgency || undefined, department: department || undefined, category: category || undefined,
+    priority: priority || undefined, department: department || undefined, category: category || undefined,
     dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
     apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
     sort: sort || undefined,
-  }), [search, urgency, department, category, dateFrom, dateTo, apptDateFrom, apptDateTo, sort]);
+  }), [search, priority, department, category, dateFrom, dateTo, apptDateFrom, apptDateTo, sort]);
 
   const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
@@ -456,7 +456,7 @@ function AppointmentsPageInner() {
   }, [activeChip]);
 
   const clearAllFilters = useCallback(() => {
-    setUrgency(""); setDepartment(""); setCategory("");
+    setPriority(""); setDepartment(""); setCategory("");
     setDateFrom(""); setDateTo(""); setApptDateFrom(""); setApptDateTo("");
     setActiveChip(null); setSearch(""); setPage(1);
   }, []);
@@ -466,9 +466,9 @@ function AppointmentsPageInner() {
     setSort((s) => s === "appt_date_asc" ? "appt_date_desc" : s === "appt_date_desc" ? "" : "appt_date_asc");
   }, []);
 
-  const toggleUrgencySort = useCallback(() => {
+  const togglePrioritySort = useCallback(() => {
     setPage(1);
-    setSort((s) => s === "urgency" ? "" : "urgency");
+    setSort((s) => s === "priority" ? "" : "priority");
   }, []);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -617,9 +617,9 @@ function AppointmentsPageInner() {
           {/* Advanced filters — collapsible */}
           {showFilters && (
             <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
-              <FilterSelect label={t("label.urgency")}    value={urgency}
-                            onChange={(v) => { setPage(1); setUrgency(v); }}    options={urgencyOptions} />
-              <FilterSelect label={t("label.department")} value={department}
+              <FilterSelect label={t("label.priority")}    value={priority}
+                            onChange={(v) => { setPage(1); setPriority(v); }}    options={priorityOptions} />
+              <FilterSelect label={t("label.ministry")} value={department}
                             onChange={(v) => { setPage(1); setDepartment(v); }} options={deptOptions} />
               <FilterSelect label={t("label.category")}   value={category}
                             onChange={(v) => { setPage(1); setCategory(v); }}   options={categoryOptions} />
@@ -648,10 +648,10 @@ function AppointmentsPageInner() {
                     <th className={cn(th, "min-w-[260px]")}>{t("appts.colAsk")}</th>
                     <th className={cn(th, "w-24")}>
                       <SortButton
-                        active={sort === "urgency"}
+                        active={sort === "priority"}
                         direction="active"
                         label={t("appts.colUrgency")}
-                        onClick={toggleUrgencySort}
+                        onClick={togglePrioritySort}
                       />
                     </th>
                     <th className={cn(th, "w-44")}>

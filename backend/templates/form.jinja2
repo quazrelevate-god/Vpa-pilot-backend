@@ -877,6 +877,14 @@
                         <div class="file-preview-list" id="filePreviews"></div>
                     </div>
 
+                    <!-- Courtesy hint (invitation / greetings) — shown when the
+                         category makes file upload unnecessary. -->
+                    <div id="lbl-courtesy-audio-only"
+                         style="display:none; margin: -0.25rem 0 1rem; padding: 0.75rem 1rem;
+                                background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25);
+                                border-radius: 8px; color: #1e3a8a; font-size: 0.87rem; font-weight: 600;">
+                    </div>
+
                     <!-- Voice Recording -->
                     <div class="field-group" id="sectionVoice">
                         <div class="label-container">
@@ -1201,6 +1209,8 @@
                 catOther: "Other", catGeneral: "General", catGreetings: "Greetings",
                 catSchoolUpgradation: "School Upgradation", catInvitation: "Invitation",
                 alertSelectCategory: "Please select a category.",
+                audioOnlyHint: "Kindly leave a short voice message with your invitation or greeting. No file upload is needed.",
+                audioHintCourtesy: "(Speak your reason)",
                 choiceTitle: "Choose an option below",
                 choicePetitionSub: "Submit your petition for review",
                 choiceMeetingSub: "Book a slot to meet in person",
@@ -1257,6 +1267,8 @@
                 catOther: "பிற", catGeneral: "பொது மனுக்கள்", catGreetings: "வாழ்த்து செய்திகள்",
                 catSchoolUpgradation: "பள்ளி தரம் உயர்த்தல்", catInvitation: "அழைப்பிதழ்",
                 alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
+                audioOnlyHint: "உங்கள் வாழ்த்து அல்லது அழைப்பிதழுக்கான காரணத்தை ஒரு குறுகிய குரல் செய்தியாக பதிவு செய்யவும். ஆவணம் பதிவேற்ற வேண்டியதில்லை.",
+                audioHintCourtesy: "(உங்கள் காரணத்தை பேசுங்கள்)",
                 choiceTitle: "கீழே ஒரு விருப்பத்தைத் தேர்ந்தெடுக்கவும்",
                 choicePetitionSub: "மனுவை பரிசீலிக்க சமர்பிக்கவும்",
                 choiceMeetingSub: "சந்திப்பிற்கு நேரம் பதிவு செய்யவும்",
@@ -1290,6 +1302,9 @@
             other: 'catOther', general: 'catGeneral', greetings: 'catGreetings',
             school_upgradation: 'catSchoolUpgradation', invitation: 'catInvitation',
         };
+        // Courtesy categories skip the petition/AI path — voice message only,
+        // and the submission always lands in Appointments (not Petition Review).
+        const COURTESY_CATEGORIES = new Set(['invitation', 'greetings']);
 
         function _fallbackLabel(key) {
             return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -1313,6 +1328,49 @@
                 ddl.appendChild(opt);
             });
             ddl.value = prevValue;
+        }
+
+        // Currently-selected category is a courtesy one.
+        function _isCourtesyCategory() {
+            const ddl = document.getElementById('ddlCategory');
+            return !!(ddl && COURTESY_CATEGORIES.has(ddl.value));
+        }
+
+        // Hide the file-upload block for invitation/greetings and show a short
+        // hint that voice is the only input needed. Any files already picked
+        // are cleared so they don't sneak into the submission. Re-runs on
+        // language switch too, so the hint stays localised.
+        function applyCourtesyModeToUploadSection() {
+            const uploadSection = document.getElementById('sectionUpload');
+            const noteEl        = document.getElementById('lbl-courtesy-audio-only');
+            const copy          = dynamicLocalizationDictionary[runtimeActiveLanguage];
+            if (!uploadSection) return;
+            const courtesy = _isCourtesyCategory();
+
+            uploadSection.style.display = courtesy ? 'none' : '';
+            if (courtesy) {
+                // Drop any queued files so the submission carries no attachments.
+                if (typeof registeredFileList !== 'undefined' && Array.isArray(registeredFileList)) {
+                    registeredFileList.length = 0;
+                    const preview = document.getElementById('filePreviews');
+                    if (preview) preview.innerHTML = '';
+                    const fi = document.getElementById('fileAttachments');
+                    if (fi) fi.value = '';
+                }
+            }
+            if (noteEl) {
+                noteEl.style.display   = courtesy ? '' : 'none';
+                noteEl.textContent     = copy.audioOnlyHint || '';
+            }
+            // Swap the voice-recording hint too — "(Speak your reason)" for
+            // courtesy submissions, the standard "(Speak your grievance)" hint
+            // otherwise.
+            const audioHintEl = document.getElementById('lbl-audio-hint');
+            if (audioHintEl) {
+                audioHintEl.textContent = courtesy
+                    ? (copy.audioHintCourtesy || copy.audioHint || '')
+                    : (copy.audioHint || '');
+            }
         }
 
         function switchLocalization(isChecked) {
@@ -1356,6 +1414,8 @@
             }
             _setText('lbl-audio',           copy.audio);
             _setText('lbl-audio-hint',      copy.audioHint);
+            // Re-apply courtesy overrides last, so the audio-hint swap sticks.
+            applyCourtesyModeToUploadSection();
             const micBtn = document.getElementById('btnStartRecording');
             if (!micBtn || !micBtn.classList.contains('recording')) {
                 _setText('lbl-record', copy.record);
@@ -1639,9 +1699,16 @@
             document.getElementById('txtMobile').addEventListener('input', validateFormForOTP);
             document.getElementById('txtDesc').addEventListener('input', validateFormForOTP);
             document.getElementById('ddlCategory').addEventListener('change', function() {
+                applyCourtesyModeToUploadSection();
                 validateFormForOTP();
-                if (this.value) _smoothScrollTo(document.getElementById('sectionUpload'));
+                if (this.value) {
+                    const target = _isCourtesyCategory()
+                        ? document.getElementById('sectionVoice')
+                        : document.getElementById('sectionUpload');
+                    if (target) _smoothScrollTo(target);
+                }
             });
+            applyCourtesyModeToUploadSection();
             document.getElementById('fileAttachments').addEventListener('change', function(e) {
                 renderUploadedFiles(e.target);
                 validateFormForOTP();
@@ -2103,9 +2170,18 @@
                     '</div>' +
                 '</div>';
 
-            wrap.innerHTML = meetingAvailable
-                ? meeting(true) + petition(false)
-                : fullNotice + petition(true) + waitlist(false);
+            // Courtesy categories (invitation, greetings) always go through the
+            // meeting path so they land in Appointments — never Petition Review.
+            // If no slot is available, join the waiting list; there is no
+            // "petition only" option for these.
+            const courtesy = _isCourtesyCategory();
+            if (courtesy) {
+                wrap.innerHTML = meetingAvailable ? meeting(true) : fullNotice + waitlist(true);
+            } else {
+                wrap.innerHTML = meetingAvailable
+                    ? meeting(true) + petition(false)
+                    : fullNotice + petition(true) + waitlist(false);
+            }
         }
 
         function startWaitlist() {

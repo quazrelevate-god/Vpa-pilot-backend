@@ -215,7 +215,7 @@ class AiUploadService:
                 row.extracted_name_ta = result.citizen_name_ta
                 row.extracted_mobile  = result.mobile
                 row.grievance_category = final_category
-                row.urgency            = result.urgency.value
+                row.priority           = result.urgency.value   # LLM field `urgency` -> `priority` column
                 row.summary_json       = payload
                 row.error_message      = None
                 row.status             = STATUS_AWAITING_REVIEW
@@ -257,7 +257,7 @@ class AiUploadService:
             "mobile": row.extracted_mobile,
             "category": row.grievance_category,
             "forced_category": row.forced_category,
-            "urgency": row.urgency,
+            "priority": row.priority,
             "headline": sj.get("headline"),
             "headline_ta": sj.get("headline_ta"),
             "summary": sj.get("summary"),
@@ -299,13 +299,17 @@ class AiUploadService:
             "name_ta":     ("extracted_name_ta", "citizen_name_ta"),
             "mobile":      ("extracted_mobile",  "mobile"),
             "category":    ("grievance_category", "category"),
-            "urgency":     ("urgency",            "urgency"),
+            "priority":    ("priority",           "priority"),
         }
         for key, (col, json_key) in mapping.items():
             if key in fields and fields[key] is not None:
                 val = str(fields[key]).strip()
                 setattr(row, col, val or None)
                 sj[json_key] = val
+        # Ministry (AI `department`) lives only in summary_json, not a column.
+        # Editing it here also decides the approve button (Accept vs Forward).
+        if "department" in fields and fields["department"] is not None:
+            sj["department"] = str(fields["department"]).strip() or None
         # Free-text narrative edits (summary, headline, citizen_ask + _ta)
         for k in ("summary", "summary_ta", "headline", "headline_ta", "citizen_ask", "citizen_ask_ta"):
             if k in fields and fields[k] is not None:
@@ -440,12 +444,23 @@ class AiUploadService:
         row.reviewed_by = reviewed_by
         await db.commit()
 
+        # Non-school ministry → auto-forward out of the school department
+        # workflow. School stays OPEN so it can be routed to one of the 10
+        # school departments ("Accept"). Shared with the QR/staff petition path.
+        from src.services import department_service
+        dept_val = extraction.department.value if extraction.department else None
+        forwarded = (
+            await department_service.forward_if_non_school(db, ticket.id, dept_val, reviewed_by)
+            if ticket else False
+        )
+
         return {
             "id": upload_id,
             "status": STATUS_REVIEWED,
             "appointment_id": appt.id,
             "token": f"TKN{token_assigned}",
             "ticket_number": row.ticket_number,
+            "forwarded": forwarded,
         }
 
     # ── Retry failed (single or bulk) ───────────────────────────────────────────

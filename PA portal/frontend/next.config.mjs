@@ -14,6 +14,10 @@ const nextConfig = {
       { source: "/api/v1/referral/:path*", destination: `${API_BASE}/api/v1/referral/:path*` },
       { source: "/api/files/:path*", destination: `${API_BASE}/dashboard/api/files/:path*` },
       { source: "/api/:path*", destination: `${API_BASE}/dashboard/api/:path*` },
+      // Department workspace API (its own auth cookie, separate from the PA portal).
+      { source: "/department/api/:path*", destination: `${API_BASE}/department/api/:path*` },
+      // Crowd Management PWA API (its own auth cookie: display_session).
+      { source: "/crowd/api/:path*", destination: `${API_BASE}/crowd/api/:path*` },
       { source: "/auth/login", destination: `${API_BASE}/dashboard/login` },
       { source: "/auth/logout", destination: `${API_BASE}/dashboard/logout` },
       { source: "/static/:path*", destination: `${API_BASE}/static/:path*` },
