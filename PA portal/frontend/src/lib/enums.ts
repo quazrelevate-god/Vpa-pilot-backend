@@ -124,11 +124,18 @@ export const PRIORITY_DISPLAY: Record<string, string> = {
 export const deptOptions = Object.entries(DEPT_DISPLAY).map(([value, label]) => ({ value, label }));
 export const categoryOptions = Object.entries(CATEGORY_DISPLAY).map(([value, label]) => ({ value, label }));
 export const ticketStatusOptions = Object.entries(TICKET_STATUS_DISPLAY).map(([value, label]) => ({ value, label }));
-// In-drawer manual status picker. Triaged / Resolved / Closed / Reopened are
-// excluded — those transitions happen via the dedicated bottom-bar action
-// buttons (which require an explanation note for the audit trail).
+// In-drawer manual status picker. The PA only owns the pre-assignment
+// lifecycle — Open, and Assigned (auto-set when they pick a department).
+// Every other status is driven by the department workspace or the dedicated
+// bottom-bar actions:
+//   in_progress / forwarded_to_dept  → department accepts / forwards
+//   pending_citizen                  → department paused for citizen input
+//   triaged / resolved / closed / reopened → bottom-bar action buttons
+//   awaiting_department              → legacy value; new assigns land at ASSIGNED
 export const ticketManualStatusOptions = ticketStatusOptions.filter(
-  (o) => !["triaged", "resolved", "closed", "reopened"].includes(o.value)
+  (o) => !["triaged", "resolved", "closed", "reopened",
+            "in_progress", "forwarded_to_dept", "pending_citizen",
+            "awaiting_department"].includes(o.value)
 );
 export const priorityOptions = Object.entries(PRIORITY_DISPLAY).map(([value, label]) => ({ value, label }));
 export const closureReasonOptions = Object.entries(CLOSURE_REASON_DISPLAY).map(([value, label]) => ({ value, label }));
