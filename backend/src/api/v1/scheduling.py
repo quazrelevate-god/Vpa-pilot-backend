@@ -279,6 +279,14 @@ async def reschedule_appointment(
     """
     Move an appointment to a different slot based on the selected datetime.
     Opens the target date if needed, finds the matching slot, and books it.
+
+    Status codes:
+      200 — rebooked; response has the new slot metadata.
+      404 — appointment not found.
+      409 — slot conflict (just filled / blocked) or invalid input (past date,
+            no open dates, malformed datetime). The PA should pick a different
+            slot; the row stays on the Rescheduled tab until they do.
+      500 — anything else.
     """
     try:
         result = await scheduling_service.reschedule_appointment(
@@ -289,7 +297,13 @@ async def reschedule_appointment(
         return JSONResponse(result)
     except ValueError as e:
         await db.rollback()
-        return JSONResponse({"error": str(e)}, status_code=404)
+        msg = str(e)
+        # "Appointment N not found" is the only truly not-found case here.
+        if "not found" in msg.lower():
+            return JSONResponse({"error": msg}, status_code=404)
+        # Every other ValueError means the PA needs to try again with a
+        # different slot / date — a client conflict, not a server error.
+        return JSONResponse({"error": msg}, status_code=409)
     except Exception as e:
         await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)

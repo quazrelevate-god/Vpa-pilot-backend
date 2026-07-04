@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 from src.core.utils import utc_iso
 from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment, AppointmentEvent
 from src.services.scheduling_service import scheduling_service
+from src.services.notification_service import notify as _notify
 from src.models.grievance_summary_record import GrievanceSummaryRecord
 from src.models.grievance_summary import CATEGORY_DISPLAY, DEPARTMENT_DISPLAY
 
@@ -836,13 +837,30 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
 
     old_status = appt.status
 
-    if new_status in ("Waiting", "Rescheduled"):
-        # Release the slot booking and move to waiting queue
+    if new_status == "Waiting":
+        # Move to the waiting queue: release slot and set status=WAITING via
+        # the scheduling service so queue_position/waiting_since stay coherent.
         await scheduling_service.release_slot(db, appt, commit=False)
         await scheduling_service.move_to_waiting_queue(
-            db, appt, "MANUAL_RESCHEDULE", commit=False
+            db, appt, "MANUAL_WAITING", commit=False
         )
         appt.schedule_meeting = True
+    elif new_status == "Rescheduled":
+        # Manual reschedule: PA is calling / messaging the citizen. The row
+        # belongs on the Rescheduled tab (not Waiting) so the PA can act on it
+        # from there — either pick a new slot (→ Scheduled) or convert to
+        # petition (→ Awaiting Review).
+        #
+        # Release the slot booking (frees the seat + nulls the day/time), then
+        # set RESCHEDULED explicitly. Clearing pre_floor_status too so a later
+        # floor 'reset' doesn't jump back to a stale state.
+        await scheduling_service.release_slot(db, appt, commit=False)
+        appt.status = "RESCHEDULED"
+        appt.schedule_meeting = True
+        appt.pre_floor_status = None
+        # Notify the citizen the appointment is cancelled — new time TBD.
+        import asyncio as _asyncio
+        _asyncio.create_task(_notify(kind="reschedule_cancel", appointment_id=appointment_id, ctx={"actor": "pa"}))
     elif new_status == "Scheduled":
         # PA manually marks as Scheduled — slot assignment handled separately
         # via the scheduling page reschedule flow; just set the flag here.
@@ -916,6 +934,14 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
             await scheduling_service.release_slot(db, appt, commit=False)
         appt.status = "AWAITING_REVIEW"
         appt.schedule_meeting = False
+        appt.pre_floor_status = None
+        # A rescheduled row converting to a petition (citizen agreed to just
+        # submit): notify them the petition is now under review.
+        if old_status == "RESCHEDULED":
+            import asyncio as _asyncio
+            _asyncio.create_task(_notify(kind="convert_to_petition",
+                                         appointment_id=appointment_id,
+                                         ctx={"actor": "pa"}))
     else:
         appt.status = _DISPLAY_TO_DB_STATUS.get(new_status, new_status.upper())
 
