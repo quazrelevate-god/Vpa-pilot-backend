@@ -113,6 +113,46 @@ CREATE TABLE IF NOT EXISTS ticket_attachments (
 );
 CREATE INDEX IF NOT EXISTS ix_ticket_attachments_ticket_id ON ticket_attachments(ticket_id);
 
+-- Department login accounts (one shared account per School Education dept).
+-- Seed with scripts/seed_departments.py.
+CREATE TABLE IF NOT EXISTS department_accounts (
+    id            SERIAL PRIMARY KEY,
+    department    VARCHAR(60)  NOT NULL UNIQUE,
+    username      VARCHAR(60)  NOT NULL UNIQUE,
+    password_hash VARCHAR(128) NOT NULL,
+    display_name  VARCHAR(150),
+    created_at    TIMESTAMP NOT NULL DEFAULT now()
+);
+-- (no extra indexes: the UNIQUE constraints on department/username already
+--  create indexes — adding ix_ duplicates would just bloat writes)
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Indexes the ORM declares that the base v2 schema didn't create.
+-- Hot paths: worker summary poll (5s cadence), dashboard status filters,
+-- OTP lookup on every verify/submit, availability-by-date on the citizen form.
+-- ═══════════════════════════════════════════════════════════════════════════════
+CREATE INDEX IF NOT EXISTS ix_appointments_status ON appointment(status);
+CREATE INDEX IF NOT EXISTS ix_appointments_slot_id ON appointment(slot_id);
+CREATE INDEX IF NOT EXISTS ix_appointments_summary_pending ON appointment(summary_status)
+    WHERE summary_status IN ('PENDING', 'PROCESSING');
+CREATE INDEX IF NOT EXISTS ix_otp_mobile_used_expires ON otp_verification(mobile_number, is_used, expires_at)
+    WHERE is_used = false;
+CREATE INDEX IF NOT EXISTS ix_otp_verification_session_token ON otp_verification(session_token);
+CREATE INDEX IF NOT EXISTS ix_tickets_status ON ticket(status);
+CREATE INDEX IF NOT EXISTS ix_mla_availability_date ON availability(date);
+CREATE INDEX IF NOT EXISTS ix_appointments_queue_position ON appointment(queue_position);
+CREATE INDEX IF NOT EXISTS ix_appointments_waiting_since ON appointment(waiting_since);
+CREATE INDEX IF NOT EXISTS ix_attachments_type ON attachments(attachment_type);
+CREATE INDEX IF NOT EXISTS ix_appointment_slots_status ON slots(status);
+CREATE INDEX IF NOT EXISTS ix_citizens_created_at ON citizens(created_at);
+CREATE INDEX IF NOT EXISTS ix_tickets_created_at ON ticket(created_at);
+CREATE INDEX IF NOT EXISTS ix_tickets_priority ON ticket(priority);
+CREATE INDEX IF NOT EXISTS ix_tickets_assigned_to ON ticket(assigned_to_pa);
+CREATE INDEX IF NOT EXISTS ix_tickets_forwarded_to_dept ON ticket(forwarded_to_dept);
+CREATE INDEX IF NOT EXISTS ix_tickets_due_date ON ticket(due_date);
+CREATE INDEX IF NOT EXISTS ix_mlas_constituency ON mla(constituency);
+CREATE INDEX IF NOT EXISTS ix_mlas_is_active ON mla(is_active);
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 9. attachments — rename columns to v1 names, add mime_type + created_at
 -- ═══════════════════════════════════════════════════════════════════════════════
