@@ -101,10 +101,16 @@ export default function CrowdApp() {
       const it = appt?.items.find((x) => x.id === id);
       if (!it) return;
       const cur = it.status_db;
-      const activeCame = cur === "AWAITING_REVIEW" || cur === "CAME";
+      const courtesy = ["invitation", "greetings"].includes((it.category_key || "").toLowerCase());
+      // For courtesy, the terminal "came" state is COURTESY_DONE, not AWAITING_REVIEW.
+      const activeCame = courtesy ? cur === "COURTESY_DONE" : (cur === "AWAITING_REVIEW" || cur === "CAME");
       const activeNo = cur === "NOT_CAME";
       const already = (wantCame && activeCame) || (!wantCame && activeNo);
-      const newState = already ? "SCHEDULED" : wantCame ? "AWAITING_REVIEW" : "NOT_CAME";
+      const newState = already
+        ? "SCHEDULED"
+        : wantCame
+          ? (courtesy ? "COURTESY_DONE" : "AWAITING_REVIEW")
+          : "NOT_CAME";
       const payload = already ? "Reset" : wantCame ? "Came" : "Not Came";
       setAppt((p) => (p ? { ...p, items: p.items.map((x) => (x.id === id ? { ...x, status_db: newState } : x)) } : p));
       api.markAppt(id, payload)

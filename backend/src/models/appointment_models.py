@@ -259,6 +259,16 @@ class Appointment(Base):
         comment="Fernet-encrypted Tamil name (PA-entered in the review drawer)"
     )
 
+    # STT transcript for courtesy submissions (invitation/greetings).
+    # Populated by transcribe_courtesy() when an audio recording is attached;
+    # NULL for every other row. Encrypted with the same Fernet key as the
+    # other PII columns since the citizen may name people/places in the clip.
+    encrypted_transcript = Column(
+        Text,
+        nullable=True,
+        comment="Fernet-encrypted STT transcript of the citizen's voice message"
+    )
+
     audio_recording_url = Column(
         Text,
         nullable=True,

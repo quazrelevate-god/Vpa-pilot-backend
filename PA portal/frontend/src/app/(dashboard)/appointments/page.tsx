@@ -58,6 +58,8 @@ function statusClass(s: string) {
     Reviewed: "s-Reviewed",
     Waiting: "s-Waiting",
     "Awaiting Review": "s-AwaitingReview",
+    "Courtesy Done": "s-CourtesyDone",
+    "Not Came": "s-NotCame",
   } as Record<string, string>)[s] ?? "";
 }
 
@@ -101,6 +103,9 @@ const STATUS_LABEL_KEY: Record<string, string> = {
   Scheduled: "appts.statusScheduled",
   Waiting: "appts.statusWaiting",
   Rescheduled: "appts.statusRescheduled",
+  // Terminal for invitation/greetings that were handed over in person.
+  "Courtesy Done": "appts.statusCourtesyDone",
+  "Not Came": "appts.statusNotCame",
 };
 
 /** Status pill — read-only visual indicator, real actions live in the row kebab. */
@@ -116,14 +121,45 @@ function StatusPill({ status, t }: { status: string; t: (k: string) => string })
   );
 }
 
-/** Picks the AI-derived "what they're asking for" line, with EN/TA + fallbacks. */
+/** Categories whose "ask" is a courtesy voice message, not a grievance. */
+const COURTESY_CATEGORIES = new Set(["invitation", "greetings"]);
+
+/**
+ * Picks the "what they're asking for" line for the Appointments table.
+ *
+ * Rules:
+ *  1. Courtesy (invitation/greetings) — show the STT transcript verbatim.
+ *  2. Walk-in with no description and no image attachment — show "Walk-in".
+ *  3. Everything else — AI ask → headline → citizen's own description.
+ */
 function pickAskText(row: AppointmentRow, lang: string): string {
   const ta = lang === "ta";
+  const cat = (row.category || "").toLowerCase();
+  const isWalkIn = row.source === "manual_staff";
+  const hasImage = (row.attachments ?? []).some((a) => a.type === "IMAGE");
+  const rawDesc = (row.description ?? "").trim();
+  // Floor intake fills description with a placeholder like "Walk-in petition
+  // registered by floor:display." when the staff didn't type anything —
+  // treat that as "no citizen-provided description" for display purposes.
+  const desc = isWalkIn && /^Walk-in (appointment|petition) registered by /i.test(rawDesc)
+    ? ""
+    : rawDesc;
+
+  if (COURTESY_CATEGORIES.has(cat)) {
+    const transcript = (row.transcript ?? "").trim();
+    if (transcript) return transcript;
+    // Courtesy still transcribing (or no audio uploaded from the floor PWA).
+    return "Voice message";
+  }
+
+  if (isWalkIn && !desc && !hasImage) return "Walk-in";
+
   const ask = ta ? (row.citizen_ask_ta ?? row.citizen_ask) : row.citizen_ask;
   if (ask && ask.trim()) return ask.trim();
   const head = ta ? (row.headline_ta ?? row.headline) : row.headline;
   if (head && head.trim()) return head.trim();
-  return (row.description ?? "").trim();
+  if (desc) return desc;
+  return isWalkIn ? "Walk-in" : "";
 }
 
 /** Memoized row — re-renders only when its own row payload changes. */

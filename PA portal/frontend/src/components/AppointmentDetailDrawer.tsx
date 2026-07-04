@@ -181,8 +181,31 @@ export default function AppointmentDetailDrawer({
               {/* ── Details tab ─────────────────────────────────────────── */}
               <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
                 <div className="space-y-4 p-6">
-                {/* Summary — the briefing */}
-                {(a.summary || a.summary_ta || a.description) && (
+                {/* Voice message transcript — courtesy submissions (invitation /
+                     greetings) don't run through the AI summariser, so their
+                     voice message is transcribed on its own and shown here. */}
+                {a.transcript && (
+                  <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
+                    <div className="h-1 w-full bg-gradient-to-r from-emerald-500 via-emerald-500/70 to-emerald-500/30" />
+                    <div className="p-5 sm:p-6">
+                      <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                        Voice message
+                      </h3>
+                      <p className={cn(
+                        "text-[15px] font-medium leading-[1.75] tracking-[-0.005em] text-foreground",
+                        lang === "ta" && "font-[Mukta_Malar,_'Noto_Sans_Tamil',_system-ui]",
+                      )}>
+                        {a.transcript}
+                      </p>
+                    </div>
+                  </section>
+                )}
+
+                {/* Summary — the AI briefing. Skipped entirely when the row's
+                    summary_status is DONE and there is no summary text
+                    (courtesy items, or a walk-in with no image/description). */}
+                {(a.summary || a.summary_ta || a.description
+                  || (a.summary_status && a.summary_status !== "DONE" && a.summary_status !== "FAILED")) && (
                   <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
                     <div className="h-1 w-full bg-gradient-to-r from-brand via-brand/70 to-brand/30" />
 
@@ -191,7 +214,8 @@ export default function AppointmentDetailDrawer({
                         <h3 className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand">
                           Summary
                         </h3>
-                        {!a.summary && !a.summary_ta && (
+                        {!a.summary && !a.summary_ta
+                          && (a.summary_status === "PENDING" || a.summary_status === "PROCESSING") && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
                             Generating
@@ -207,8 +231,15 @@ export default function AppointmentDetailDrawer({
                         )}>
                           {pick(a.summary, a.summary_ta)}
                         </p>
-                      ) : (
+                      ) : (a.summary_status === "PENDING" || a.summary_status === "PROCESSING") ? (
                         <p className="text-sm italic text-muted-foreground">Summary is being prepared…</p>
+                      ) : (
+                        <p className={cn(
+                          "text-[15px] font-medium leading-[1.75] tracking-[-0.005em] text-foreground",
+                          lang === "ta" && "font-[Mukta_Malar,_'Noto_Sans_Tamil',_system-ui]"
+                        )}>
+                          {a.description || "—"}
+                        </p>
                       )}
 
                       {/* Citizen ask */}

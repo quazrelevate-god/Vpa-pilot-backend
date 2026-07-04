@@ -918,6 +918,10 @@ class AppointmentService:
                     f"[GEMINI SKIP] appointment_id={appointment.id} | "
                     f"category={grievance_category} | reason=courtesy"
                 )
+                # Still transcribe the audio (if any) — the PA needs to see
+                # what the citizen said, just not routed through petition AI.
+                if audio_url:
+                    asyncio.create_task(self.transcribe_courtesy(appointment.id))
             else:
                 logger.info(
                     f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
@@ -1694,6 +1698,81 @@ class AppointmentService:
             await self._finish_summary(appointment_id, ok=True)
         except Exception:
             await self._finish_summary(appointment_id, ok=False)
+
+    async def transcribe_courtesy(self, appointment_id: int) -> None:
+        """
+        Transcribe the audio message on a courtesy submission (invitation or
+        greetings) and store the Fernet-encrypted transcript on the appointment.
+
+        Called after commit for courtesy items that included an audio recording.
+        Fires-and-forgets — a network hiccup shouldn't fail the submission, but
+        the PA won't see a transcript until they retry. Deliberately small; no
+        AI summary/routing.
+        """
+        from src.services.storage_service import get_file_bytes
+        from src.core.database import AsyncSessionLocal
+        from sqlalchemy import select as _select
+
+        try:
+            async with AsyncSessionLocal() as session:
+                appt = (await session.execute(
+                    _select(Appointment).where(Appointment.id == appointment_id)
+                )).scalar_one_or_none()
+                if not appt:
+                    logger.info(f"[COURTESY STT] appointment_id={appointment_id} not found")
+                    return
+                audio_url = appt.audio_recording_url
+                if not audio_url:
+                    logger.info(f"[COURTESY STT] appointment_id={appointment_id} no audio, skipping")
+                    return
+
+                # Read audio bytes (blocking I/O in a thread — same trick as the
+                # Gemini path uses).
+                audio_bytes = await asyncio.to_thread(get_file_bytes, audio_url)
+                if not audio_bytes:
+                    logger.info(f"[COURTESY STT] appointment_id={appointment_id} could not read audio at {audio_url}")
+                    return
+
+                # Sarvam first (better Tamil accuracy), Gemini as a fallback.
+                transcript = None
+                try:
+                    from src.services.stt_service import SarvamSTTService
+                    svc = SarvamSTTService.from_settings()
+                    result = await asyncio.to_thread(
+                        svc.transcribe, audio_bytes,
+                        # Recorder saves as webm/opus; Sarvam sniffs by content
+                        filename=f"appt_{appointment_id}.webm",
+                        mime_type="audio/webm",
+                    )
+                    if result and not result.error:
+                        transcript = (result.transcript or "").strip()
+                except Exception as sarvam_err:
+                    logger.info(f"[COURTESY STT] Sarvam failed for appointment_id={appointment_id}: {sarvam_err}")
+
+                if not transcript:
+                    try:
+                        from src.services.stt_service import GeminiSTTService
+                        gsvc = GeminiSTTService.from_settings()
+                        gresult = await asyncio.to_thread(
+                            gsvc.transcribe, audio_bytes,
+                            filename=f"appt_{appointment_id}.webm",
+                            mime_type="audio/webm",
+                        )
+                        if gresult and not gresult.error:
+                            transcript = (gresult.transcript or "").strip()
+                    except Exception as gemini_err:
+                        logger.info(f"[COURTESY STT] Gemini fallback failed for appointment_id={appointment_id}: {gemini_err}")
+
+                if not transcript:
+                    logger.info(f"[COURTESY STT] appointment_id={appointment_id} no transcript produced")
+                    return
+
+                appt.encrypted_transcript = self._encrypt_field(transcript)
+                await session.commit()
+                logger.info(f"[COURTESY STT OK] appointment_id={appointment_id} chars={len(transcript)}")
+
+        except Exception as e:
+            logger.info(f"[COURTESY STT ERROR] appointment_id={appointment_id}: {e}")
 
     async def try_summarise_now(self, appointment_id: int) -> None:
         """Optimistic web-side attempt: claim THIS row if still PENDING, then run.
