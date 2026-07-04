@@ -17,6 +17,7 @@ import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { priorityOptions, deptOptions, categoryOptions, DEPT_DISPLAY, CATEGORY_DISPLAY } from "@/lib/enums";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import RescheduleModal from "@/components/RescheduleModal";
 
 type Lang = "en" | "ta";
 
@@ -46,6 +47,7 @@ export default function AppointmentDetailDrawer({
   const [overrides, setOverrides] = useState<{ priority?: string | null; category?: string | null; department?: string | null }>({});
   const [editCategory, setEditCategory] = useState(false);
   const [editDepartment, setEditDepartment] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
 
   const open = row != null;
   const a = row;
@@ -147,6 +149,46 @@ export default function AppointmentDetailDrawer({
                 <X className="h-5 w-5" />
               </SheetClose>
             </div>
+
+            {/* Action bar for Rescheduled rows — the PA has two paths:
+                (i) call the citizen and pick a new slot, or
+                (ii) the citizen agreed to just submit the petition. */}
+            {a.status === "Rescheduled" && (
+              <div className="flex items-center justify-between gap-3 border-b border-border bg-violet-50/50 px-6 py-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-violet-700">
+                    Needs rescheduling
+                  </div>
+                  <div className="text-[13px] text-violet-900/80">
+                    Call the citizen — book a new slot, or convert to a petition.
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="outline"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (!a) return;
+                      setBusy(true);
+                      try {
+                        await updateAppointmentStatus(a.id, "Awaiting Review");
+                        toast.success("Moved to Awaiting Review");
+                        onStatusChange?.(a, "Awaiting Review");
+                        onClose();
+                      } catch (e) {
+                        toast.error("Failed", { description: (e as Error).message });
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}>
+                    Convert to petition
+                  </Button>
+                  <Button size="sm" onClick={() => setRescheduleOpen(true)} disabled={busy}>
+                    <CalendarDays className="h-4 w-4" />
+                    Reschedule to new slot
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
               {/* Preview pane — uploads at-a-glance */}
@@ -442,6 +484,19 @@ export default function AppointmentDetailDrawer({
           </>
         )}
       </SheetContent>
+
+      <RescheduleModal
+        open={rescheduleOpen}
+        appointmentId={a?.id ?? null}
+        onClose={() => setRescheduleOpen(false)}
+        onRebooked={() => {
+          // Backend flipped this row back to SCHEDULED with the new date.
+          // Close the drawer so the parent list refetches and the row moves
+          // off the Rescheduled tab immediately.
+          if (a) onStatusChange?.(a, "Scheduled");
+          onClose();
+        }}
+      />
     </Sheet>
   );
 }

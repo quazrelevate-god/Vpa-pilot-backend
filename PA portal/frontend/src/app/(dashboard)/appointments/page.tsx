@@ -854,23 +854,16 @@ function AppointmentsPageInner() {
 
       <RescheduleModal
         open={!!rescheduleFor}
-        citizenName={rescheduleFor?.name ?? ""}
+        appointmentId={rescheduleFor?.id ?? null}
         onClose={() => setRescheduleFor(null)}
-        onSubmit={async (datetime: string, sms: string) => {
-          if (!rescheduleFor) return;
-          const res = await fetch(`/api/v1/scheduling/admin/reschedule/${rescheduleFor.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ new_datetime: datetime, sms_text: sms }),
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            toast.error(t("appts.rescheduleFail"), { description: err.error || t("appts.rescheduleFailDesc") });
-            return;
+        onRebooked={() => {
+          // Backend flipped the row back to SCHEDULED with the new date. The
+          // parent list overlay follows suit so the row doesn't hang on the
+          // Rescheduled tab until the next fetch.
+          if (rescheduleFor) {
+            setRows((prev) => prev.map((r) => (r.id === rescheduleFor.id ? { ...r, status: "Scheduled" as const } : r)));
           }
-          setRows((prev) => prev.map((r) => (r.id === rescheduleFor.id ? { ...r, status: "Rescheduled" as const } : r)));
           setRescheduleFor(null);
-          toast.success(t("appts.rescheduleOk"), { description: t("appts.rescheduleOkDesc") });
         }}
       />
     </>
