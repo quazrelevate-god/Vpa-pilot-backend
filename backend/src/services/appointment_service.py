@@ -29,6 +29,14 @@ from src.services.scheduling_service import scheduling_service
 logger = logging.getLogger(__name__)
 
 
+# Courtesy categories skip the AI petition pipeline entirely. An invitation card
+# or a Pongal greeting has no grievance to summarise, no department to route to,
+# and no ticket to open — the audio (or optional text) is the whole message.
+# These land straight in Appointments (SCHEDULED / WAITING), never in Petition
+# Review, and summary_status is written as DONE so no worker ever tries.
+COURTESY_CATEGORIES = frozenset({"invitation", "greetings"})
+
+
 class AppointmentService:
     """
     Service layer for OTP generation, verification, and atomic appointment creation.
@@ -784,7 +792,15 @@ class AppointmentService:
                 # Direct-submit petitions land in AWAITING_REVIEW so the PA can
                 # check before moving them to REVIEWED.
                 # Meeting requests stay on the SCHEDULED path.
-                initial_status = 'SCHEDULED' if schedule_meeting else 'AWAITING_REVIEW'
+                # Courtesy categories (invitation, greetings) bypass Petition
+                # Review entirely — they always take the appointment path so the
+                # PA sees them in the meeting list, never in the AI inbox.
+                is_courtesy = grievance_category in COURTESY_CATEGORIES
+                take_slot_path = schedule_meeting or is_courtesy
+                initial_status = 'SCHEDULED' if take_slot_path else 'AWAITING_REVIEW'
+                # Courtesy items have nothing to summarise, so mark them DONE up
+                # front and no worker will ever pick them up.
+                initial_summary_status = 'DONE' if is_courtesy else 'PENDING'
                 appointment = Appointment(
                     citizen_id=citizen.id,
                     slot_id=legacy_slot_ref,
@@ -794,7 +810,8 @@ class AppointmentService:
                     audio_recording_url=audio_url,
                     grievance_category=grievance_category,
                     status=initial_status,
-                    schedule_meeting=schedule_meeting,
+                    schedule_meeting=take_slot_path,
+                    summary_status=initial_summary_status,
                     num_persons=max(1, min(4, num_persons)),
                     created_at=current_time
                 )
@@ -804,7 +821,7 @@ class AppointmentService:
                 # Step 10b: Meeting requests — book the citizen-selected slot.
                 # Falls back to waiting queue if no slot was selected or the slot
                 # filled up between the form load and submission.
-                if schedule_meeting:
+                if take_slot_path:
                     if slot_id:
                         try:
                             await scheduling_service.book_slot(
@@ -891,14 +908,25 @@ class AppointmentService:
             # latency. If this process dies before it finishes, the standalone
             # worker picks the row up — the summary can no longer be silently
             # lost the way the old fire-and-forget task could.
-            logger.info(
-                f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
-                f"schedule_meeting={schedule_meeting} | "
-                f"attachments={len(attachments_created)} | "
-                f"audio_url={'yes' if audio_url else 'no'} | "
-                f"desc_chars={len(description or '')}"
-            )
-            asyncio.create_task(self.try_summarise_now(appointment.id))
+            #
+            # Courtesy items (invitation, greetings) were written as
+            # summary_status='DONE'. There is no grievance to route, no ticket
+            # to open — the audio/text is the whole message — so we skip the
+            # Gemini dispatch entirely. The PA sees them in Appointments.
+            if is_courtesy:
+                logger.info(
+                    f"[GEMINI SKIP] appointment_id={appointment.id} | "
+                    f"category={grievance_category} | reason=courtesy"
+                )
+            else:
+                logger.info(
+                    f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
+                    f"schedule_meeting={take_slot_path} | "
+                    f"attachments={len(attachments_created)} | "
+                    f"audio_url={'yes' if audio_url else 'no'} | "
+                    f"desc_chars={len(description or '')}"
+                )
+                asyncio.create_task(self.try_summarise_now(appointment.id))
 
             if final_status == 'WAITING':
                 message = f"No slots available right now. Your token number is {token_assigned} and you have been added to the waiting queue."
@@ -1370,7 +1398,11 @@ class AppointmentService:
 
         if not (name or "").strip():
             raise HTTPException(status_code=400, detail="Name is required.")
-        if not user_desc and not file_contents and not slot_id and not schedule_meeting:
+        # Courtesy categories (invitation, greetings) are self-describing —
+        # allow them with just the category, no grievance/photo/slot needed.
+        is_courtesy_intake = (grievance_category or "").lower() in COURTESY_CATEGORIES
+        if (not user_desc and not file_contents and not slot_id
+                and not schedule_meeting and not is_courtesy_intake):
             raise HTTPException(status_code=400,
                                 detail="Write the grievance, add a photo, or pick a meeting slot.")
 
@@ -1379,6 +1411,12 @@ class AppointmentService:
         # (they also pick the category up front). A pure appointment obviously
         # has nothing to summarise either.
         has_image = bool(file_contents)
+
+        # Courtesy categories (invitation, greetings) bypass Petition Review
+        # and the AI pipeline — they always land as an appointment, and any
+        # attached image is treated as reference material, not a grievance.
+        is_courtesy = (grievance_category or "").lower() in COURTESY_CATEGORIES
+        take_slot_path = schedule_meeting or is_courtesy
 
         try:
             current_time = datetime.utcnow()
@@ -1420,11 +1458,13 @@ class AppointmentService:
                 encrypted_name=encrypted_name,
                 audio_recording_url=None,
                 grievance_category=grievance_category or None,
-                status=("SCHEDULED" if schedule_meeting else "AWAITING_REVIEW"),
-                schedule_meeting=schedule_meeting,
+                status=("SCHEDULED" if take_slot_path else "AWAITING_REVIEW"),
+                schedule_meeting=take_slot_path,
                 num_persons=max(1, min(4, num_persons)),
                 source="manual_staff",
-                summary_status=("PENDING" if has_image else "DONE"),
+                # Courtesy items skip AI regardless of image; other floor
+                # petitions still summarise when an image is attached.
+                summary_status=("DONE" if is_courtesy else ("PENDING" if has_image else "DONE")),
                 created_at=current_time,
             )
             db.add(appointment)
@@ -1432,7 +1472,7 @@ class AppointmentService:
 
             # ── Book a slot (SCHEDULED) or fall back to WAITING ───────────────
             scheduled: Dict[str, Any] = {}
-            if schedule_meeting:
+            if take_slot_path:
                 if slot_id:
                     try:
                         scheduled = await scheduling_service.book_slot(
@@ -1465,7 +1505,8 @@ class AppointmentService:
             await db.commit()
 
             # ── Summarise only when there is an IMAGE to read ─────────────────
-            if has_image:
+            # Courtesy items skip AI regardless.
+            if has_image and not is_courtesy:
                 _task = asyncio.create_task(self.try_summarise_now(appointment.id))
                 _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
