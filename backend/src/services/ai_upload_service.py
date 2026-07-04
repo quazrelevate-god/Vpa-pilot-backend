@@ -380,6 +380,11 @@ class AiUploadService:
         else:
             citizen.encrypted_name = enc_name
 
+        from src.services.v2_helpers import v2
+        ai_ids = v2.new_appointment_ids(
+            status="AWAITING_REVIEW",
+            category=extraction.category.value,
+        )
         appt = Appointment(
             citizen_id=citizen.id,
             slot_id=legacy_slot_ref,
@@ -388,6 +393,8 @@ class AiUploadService:
             encrypted_name=enc_name,
             grievance_category=extraction.category.value,
             status="AWAITING_REVIEW",
+            status_id=ai_ids["status_id"],
+            priority_id=ai_ids["priority_id"],
             schedule_meeting=False,
             priority_score=0,
             source="ai_scan",

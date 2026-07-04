@@ -1199,6 +1199,7 @@
                 catSchoolAdmission: "School Admission", catJobRequests: "Job Requests",
                 catRti: "RTI", catAssociationsUnions: "Associations / Unions",
                 catOther: "Other", catGeneral: "General", catGreetings: "Greetings",
+                catSchoolUpgradation: "School Upgradation", catInvitation: "Invitation",
                 alertSelectCategory: "Please select a category.",
                 choiceTitle: "Choose an option below",
                 choicePetitionSub: "Submit your petition for review",
@@ -1254,6 +1255,7 @@
                 catSchoolAdmission: "பள்ளி சேர்க்கை", catJobRequests: "வேலைவாய்ப்பு கோரிக்கைகள்",
                 catRti: "தகவல் அறியும் உரிமை", catAssociationsUnions: "சங்கங்கள் / தொழிற்சங்கங்கள்",
                 catOther: "பிற", catGeneral: "பொது மனுக்கள்", catGreetings: "வாழ்த்து செய்திகள்",
+                catSchoolUpgradation: "பள்ளி தரம் உயர்த்தல்", catInvitation: "அழைப்பிதழ்",
                 alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
                 choiceTitle: "கீழே ஒரு விருப்பத்தைத் தேர்ந்தெடுக்கவும்",
                 choicePetitionSub: "மனுவை பரிசீலிக்க சமர்பிக்கவும்",
@@ -1273,18 +1275,25 @@
             if (el) el[attr] = text;
         }
 
-        const CATEGORY_KEYS = [
-            'action_required', 'proposals', 'transfer_requests', 'pension_requests',
-            'school_admission', 'job_requests', 'rti', 'associations_unions',
-            'other', 'general', 'greetings',
-        ];
+        // Categories come from the admin table via the form endpoint.
+        // Adding a row in admin (entity='category') automatically appears here.
+        const CATEGORY_KEYS = {{ category_keys | tojson }};
+
+        // Tamil labels are still hardcoded in dynamicLocalizationDictionary.
+        // A category without a Tamil entry falls back to the English key
+        // (title-cased with underscores replaced by spaces).
         const CATEGORY_LABEL_KEYS = {
             action_required: 'catActionRequired', proposals: 'catProposals',
             transfer_requests: 'catTransferRequests', pension_requests: 'catPensionRequests',
             school_admission: 'catSchoolAdmission', job_requests: 'catJobRequests',
             rti: 'catRti', associations_unions: 'catAssociationsUnions',
             other: 'catOther', general: 'catGeneral', greetings: 'catGreetings',
+            school_upgradation: 'catSchoolUpgradation', invitation: 'catInvitation',
         };
+
+        function _fallbackLabel(key) {
+            return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
 
         function _populateCategoryDropdown() {
             const ddl = document.getElementById('ddlCategory');
@@ -1299,7 +1308,8 @@
             CATEGORY_KEYS.forEach(key => {
                 const opt = document.createElement('option');
                 opt.value = key;
-                opt.textContent = copy[CATEGORY_LABEL_KEYS[key]];
+                const labelKey = CATEGORY_LABEL_KEYS[key];
+                opt.textContent = (labelKey && copy[labelKey]) || _fallbackLabel(key);
                 ddl.appendChild(opt);
             });
             ddl.value = prevValue;

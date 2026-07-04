@@ -25,6 +25,7 @@ from src.models.appointment_models import (
     OTPVerification, Citizen, Appointment, AppointmentAttachment
 )
 from src.services.scheduling_service import scheduling_service
+from src.services.v2_helpers import v2
 
 logger = logging.getLogger(__name__)
 
@@ -276,26 +277,6 @@ class AppointmentService:
             logger.info(f"[SMS STATUS UPDATE ERROR] Failed to send to {mobile_number}: {e}")
             return False
     
-    # ── Twilio (commented out — replaced by APM Technologies SMS) ───────────────
-    # async def _send_otp_sms_twilio(self, mobile_number: str, otp_code: str):
-    #     if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_AUTH_TOKEN:
-    #         return None
-    #     try:
-    #         from twilio.rest import Client as TwilioClient
-    #         to_number = f"+91{mobile_number}" if not mobile_number.startswith("+") else mobile_number
-    #         def _send():
-    #             client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-    #             msg = client.messages.create(
-    #                 from_=settings.TWILIO_FROM_NUMBER,
-    #                 body=f"Your OTP is {otp_code}. Valid for {self.OTP_EXPIRY_MINUTES} minutes.",
-    #                 to=to_number,
-    #             )
-    #             return msg.sid
-    #         sid = await asyncio.get_event_loop().run_in_executor(None, _send)
-    #         return True
-    #     except Exception as e:
-    #         logger.info(f"[TWILIO ERROR] {e}")
-    #         return False
     
     async def verify_otp(
         self,
@@ -427,7 +408,7 @@ class AppointmentService:
                 .where(Appointment.created_at >= today_start)
                 .where(Appointment.status.notin_(["CANCELLED"]))
             ) or 0
-            if existing_today > 0:
+            if existing_today > 0 and not settings.DEBUG:
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -740,9 +721,12 @@ class AppointmentService:
             async with db.begin_nested():
                 # Step 5: Mark OTP as used
                 otp_record.is_used = True
-                
+
                 # Step 6: Assign token in YYYYMMDDNNNNN format (IST, collision-safe)
                 token_assigned, legacy_slot_ref = await self._assign_daily_token(db, current_time)
+
+                # Link OTP → this appointment's token for audit trail
+                otp_record.token_assigned = token_assigned
                 
                 # Step 7: Encrypt sensitive fields
                 encrypted_name = self._encrypt_field(name)
@@ -762,7 +746,6 @@ class AppointmentService:
                         encrypted_name=encrypted_name,
                         encrypted_mobile=encrypted_mobile,
                         mobile_index=mobile_idx,
-                        ward_or_region=constituency,
                         created_at=current_time
                     )
                     db.add(citizen)
@@ -781,16 +764,25 @@ class AppointmentService:
                 # check before moving them to REVIEWED.
                 # Meeting requests stay on the SCHEDULED path.
                 initial_status = 'SCHEDULED' if schedule_meeting else 'AWAITING_REVIEW'
+
+                # Resolve status/category/priority to admin FK ids (v2)
+                appt_ids = v2.new_appointment_ids(
+                    status=initial_status,
+                    category=grievance_category,
+                )
+
                 appointment = Appointment(
                     citizen_id=citizen.id,
-                    slot_id=legacy_slot_ref,
+                    # v2: slot_id is a real FK to slots.id — leave NULL at insert.
+                    # book_slot() sets it for meeting requests; petition-only rows stay NULL.
+                    slot_id=None,
                     token_assigned=token_assigned,
                     encrypted_grievance=encrypted_grievance,
-                    encrypted_name=encrypted_name,
-                    audio_recording_url=audio_url,
                     grievance_category=grievance_category,
                     status=initial_status,
-                    schedule_meeting=schedule_meeting,
+                    status_id=appt_ids["status_id"],
+                    priority_id=appt_ids["priority_id"],
+                    category_id=appt_ids.get("category_id"),
                     num_persons=max(1, min(4, num_persons)),
                     created_at=current_time
                 )
@@ -859,15 +851,17 @@ class AppointmentService:
                         db.add(attachment)
                         attachments_created.append(attachment)
             
-            # Step 11: Mark gatekeeper session as used to prevent reuse
+            # Step 11: Mark gatekeeper session as used and carry venue to appointment
             session_stmt = select(GatekeeperSession).where(
                 GatekeeperSession.session_token == str(session_token)
             )
             session_result = await db.execute(session_stmt)
             session = session_result.scalar_one_or_none()
-            
+
             if session:
                 session.is_used = True
+                if hasattr(session, 'venue_id') and session.venue_id:
+                    appointment.venue_id = session.venue_id
 
             # Capture final status before commit so we can return it without an extra DB round-trip
             final_status = appointment.status
@@ -908,17 +902,20 @@ class AppointmentService:
             scheduled_date_str  = None
             scheduled_time_str  = None   # slot window start (HH:MM)
             scheduled_end_str   = None   # slot window end   (HH:MM)
-            if final_status == 'SCHEDULED' and appointment.scheduled_date:
-                scheduled_date_str = appointment.scheduled_date.isoformat()
-            if final_status == 'SCHEDULED' and appointment.scheduled_end_time:
-                # Show the 30-min slot window, not the personal sub-slot.
-                # scheduled_end_time = slot end (e.g., 08:30)
-                # slot start = end - 30 min
-                from datetime import timedelta as _td
-                end_dt    = datetime.combine(datetime.min, appointment.scheduled_end_time)
-                start_dt  = end_dt - _td(minutes=30)
-                scheduled_time_str = start_dt.time().strftime("%H:%M")
-                scheduled_end_str  = appointment.scheduled_end_time.strftime("%H:%M")
+            if final_status == 'SCHEDULED' and appointment.slot_id:
+                # v2: derive scheduled date/time from the booked slot + its availability
+                from src.models.scheduling_models import AppointmentSlot, MLADailyAvailability
+                slot_stmt = (
+                    select(AppointmentSlot, MLADailyAvailability)
+                    .join(MLADailyAvailability, AppointmentSlot.availability_id == MLADailyAvailability.id)
+                    .where(AppointmentSlot.id == appointment.slot_id)
+                )
+                slot_row = (await db.execute(slot_stmt)).first()
+                if slot_row:
+                    slot_obj, avail_obj = slot_row
+                    scheduled_date_str = avail_obj.date.isoformat()
+                    scheduled_time_str = slot_obj.start_time.strftime("%H:%M")
+                    scheduled_end_str  = slot_obj.end_time.strftime("%H:%M")
 
             submitted_at_str = current_time.isoformat()
 
@@ -1114,9 +1111,8 @@ class AppointmentService:
 
                 # Auto-suggest ticket priority from AI urgency (PA can override).
                 # Only set if not already set manually by a PA.
-                from src.models.ticket_models import (
-                    Ticket, TicketEvent, TicketEventType, URGENCY_TO_PRIORITY,
-                )
+                from src.models.ticket_models import Ticket, URGENCY_TO_PRIORITY
+                from src.models.activity_models import Activity
                 tkt_result = await db.execute(
                     select(Ticket).where(Ticket.appointment_id == appointment_id)
                 )
@@ -1125,13 +1121,16 @@ class AppointmentService:
                     suggested_priority = URGENCY_TO_PRIORITY.get(summary.urgency.value)
                     if ticket.priority is None and suggested_priority:
                         ticket.priority = suggested_priority
-                    db.add(TicketEvent(
+                    # v2: single Activity row replaces TicketEvent
+                    db.add(Activity(
                         ticket_id=ticket.id,
-                        event_type=TicketEventType.AI_SUMMARISED.value,
-                        actor="system",
-                        note=f"AI summarised — urgency={summary.urgency.value}, "
-                             f"category={summary.category.value}, "
-                             f"department={summary.department.value}",
+                        user="system",
+                        action_type="ai_summarised",
+                        message=(
+                            f"AI summarised — urgency={summary.urgency.value}, "
+                            f"category={summary.category.value}, "
+                            f"department={summary.department.value}"
+                        ),
                         payload={
                             "urgency": summary.urgency.value,
                             "category": summary.category.value,
@@ -1237,7 +1236,6 @@ class AppointmentService:
                     encrypted_name=encrypted_name,
                     encrypted_mobile=encrypted_mobile,
                     mobile_index=mobile_idx,
-                    ward_or_region=constituency,
                     created_at=current_time,
                 )
                 db.add(citizen)
@@ -1246,17 +1244,16 @@ class AppointmentService:
                 citizen.encrypted_name = encrypted_name
 
             # ── Appointment (AWAITING_REVIEW — same as direct-submit) ─────────
+            manual_ids = v2.new_appointment_ids(status="AWAITING_REVIEW")
             appointment = Appointment(
                 citizen_id=citizen.id,
                 slot_id=legacy_slot_ref,
                 token_assigned=token_assigned,
                 encrypted_grievance=self._encrypt_field(description_text),
-                encrypted_name=encrypted_name,
-                audio_recording_url=None,
                 grievance_category=None,
                 status="AWAITING_REVIEW",
-                schedule_meeting=False,
-                source="manual_staff",
+                status_id=manual_ids["status_id"],
+                priority_id=manual_ids["priority_id"],
                 created_at=current_time,
             )
             db.add(appointment)
@@ -1366,7 +1363,6 @@ class AppointmentService:
             elapsed_ms = int((time.monotonic() - t0) * 1000)
 
             async with AsyncSessionLocal() as db:
-                from src.models.ticket_models import URGENCY_TO_PRIORITY, Ticket, TicketEvent, TicketEventType
                 record = GrievanceSummaryRecord.from_gemini_response(
                     appointment_id=appointment_id,
                     summary=summary,
@@ -1422,16 +1418,21 @@ class AppointmentService:
                 return  # row vanished — nothing to do
 
             citizen = appt.citizen
-            citizen_name = self._decrypt_field(appt.encrypted_name) if appt.encrypted_name \
-                else (self._decrypt_field(citizen.encrypted_name) if citizen else "")
-            constituency = (citizen.ward_or_region if citizen else "") or ""
+            citizen_name = self._decrypt_field(citizen.encrypted_name) if citizen else ""
+            constituency = ""  # v2: no longer stored on citizen (was ward_or_region)
             description = self._decrypt_field(appt.encrypted_grievance) if appt.encrypted_grievance else ""
-            source = appt.source
+            # v2: source column removed — inferred from grievance prefix
+            # (manual-scan rows always start with "Handwritten petition scanned by").
+            source = "manual_staff" if description.startswith("Handwritten petition scanned by") else "qr_citizen"
             attachments = [
                 {"attachment_type": a.attachment_type, "storage_url": a.storage_url, "mime_type": a.mime_type}
                 for a in appt.attachments
             ]
-            audio_url = appt.audio_recording_url
+            # v2: audio lives in attachments now (attachment_type='AUDIO'), not a column
+            audio_url = next(
+                (a["storage_url"] for a in attachments if a["attachment_type"] == "AUDIO"),
+                None,
+            )
 
         if source == "manual_staff":
             manual_snaps = [
@@ -1461,11 +1462,11 @@ class AppointmentService:
         async with AsyncSessionLocal() as db:
             if ok:
                 await db.execute(text(
-                    "UPDATE appointments SET summary_status='DONE', summary_claimed_at=NULL "
+                    "UPDATE appointment SET summary_status='DONE', summary_claimed_at=NULL "
                     "WHERE id=:id"), {"id": appointment_id})
             else:
                 await db.execute(text(
-                    "UPDATE appointments SET "
+                    "UPDATE appointment SET "
                     "summary_status = CASE WHEN summary_attempts >= :max THEN 'FAILED' ELSE 'PENDING' END, "
                     "summary_claimed_at = NULL "
                     "WHERE id=:id"), {"id": appointment_id, "max": self.MAX_SUMMARY_ATTEMPTS})
@@ -1489,7 +1490,7 @@ class AppointmentService:
         from src.core.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             claimed = (await db.execute(text(
-                "UPDATE appointments SET summary_status='PROCESSING', "
+                "UPDATE appointment SET summary_status='PROCESSING', "
                 "summary_attempts = summary_attempts + 1, summary_claimed_at = now() "
                 "WHERE id = :id AND summary_status = 'PENDING' "
                 "RETURNING id"), {"id": appointment_id})).scalar()
@@ -1503,12 +1504,12 @@ class AppointmentService:
         from src.core.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             row_id = (await db.execute(text(
-                "SELECT id FROM appointments WHERE summary_status='PENDING' "
+                "SELECT id FROM appointment WHERE summary_status='PENDING' "
                 "ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1"))).scalar()
             if row_id is None:
                 return None
             await db.execute(text(
-                "UPDATE appointments SET summary_status='PROCESSING', "
+                "UPDATE appointment SET summary_status='PROCESSING', "
                 "summary_attempts = summary_attempts + 1, summary_claimed_at = now() "
                 "WHERE id = :id"), {"id": row_id})
             await db.commit()
@@ -1520,7 +1521,7 @@ class AppointmentService:
         from src.core.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             res = await db.execute(text(
-                "UPDATE appointments SET "
+                "UPDATE appointment SET "
                 "summary_status = CASE WHEN summary_attempts >= :max THEN 'FAILED' ELSE 'PENDING' END, "
                 "summary_claimed_at = NULL "
                 "WHERE summary_status='PROCESSING' "

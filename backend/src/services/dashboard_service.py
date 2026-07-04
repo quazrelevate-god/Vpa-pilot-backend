@@ -13,10 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.utils import utc_iso
-from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment, AppointmentEvent
+from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment
+from src.models.activity_models import Activity
+from src.models.scheduling_models import AppointmentSlot, MLADailyAvailability
 from src.services.scheduling_service import scheduling_service
 from src.models.grievance_summary_record import GrievanceSummaryRecord
 from src.models.grievance_summary import CATEGORY_DISPLAY, DEPARTMENT_DISPLAY
+from src.services.v2_helpers import v2
 
 
 def _category_label(value: Optional[str]) -> str:
@@ -28,12 +31,14 @@ def _category_label(value: Optional[str]) -> str:
 
 def _log_appt_event(db: AsyncSession, appointment_id: int, event_type: str, actor: str = "pa_admin",
                      note: Optional[str] = None, payload: Optional[dict] = None) -> None:
-    """Append an AppointmentEvent audit row."""
-    db.add(AppointmentEvent(
+    """Append an activity audit row (v2 unified log)."""
+    # v2: single Activity row replaces separate AppointmentEvent/TicketEvent tables.
+    # Structured payload stays a JSONB column so the PA portal renders arrows.
+    db.add(Activity(
         appointment_id=appointment_id,
-        event_type=event_type,
-        actor=actor,
-        note=note,
+        user=actor,
+        action_type=event_type,
+        message=note,
         payload=payload,
     ))
 
@@ -59,8 +64,8 @@ def _resolve_display_status(appt) -> str:
     override = _STATUS_DISPLAY.get(appt.status)
     if override:
         return override
-    # SCHEDULED status — meeting requests only
-    return "Scheduled" if appt.schedule_meeting else "Reviewed"
+    # SCHEDULED status — a "meeting request" is one with a booked slot.
+    return "Scheduled" if appt.slot_id else "Reviewed"
 
 
 def _decode(value: str) -> str:
@@ -98,7 +103,7 @@ async def get_stats(
 
     total      = await db.scalar(_count()) or 0
     scheduled  = await db.scalar(_count([
-        Appointment.schedule_meeting == True,
+        Appointment.slot_id.isnot(None),
         Appointment.status == "SCHEDULED",
     ])) or 0
     reviewed   = await db.scalar(_count([
@@ -202,9 +207,9 @@ async def get_stats(
     # Meetings held — scheduled appointments whose slot end has passed
     now = datetime.utcnow()
     meetings_held_q = _count([
-        Appointment.schedule_meeting == True,
-        Appointment.scheduled_date.isnot(None),
-        Appointment.scheduled_date <= now.date(),
+        Appointment.slot_id.isnot(None),
+        Appointment.created_at.isnot(None),
+        Appointment.created_at <= now.date(),
         Appointment.status == "SCHEDULED",
     ])
     meetings_held = await db.scalar(meetings_held_q) or 0
@@ -362,9 +367,9 @@ async def get_appointments(
 
     # Kind: meeting requests vs direct petitions (ordering is applied later).
     if kind == "meeting":
-        stmt = stmt.where(Appointment.schedule_meeting == True)   # noqa: E712
+        stmt = stmt.where(Appointment.slot_id.isnot(None))   # noqa: E712
     elif kind == "petition":
-        stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
+        stmt = stmt.where(Appointment.slot_id.is_(None))  # noqa: E712
 
     # Submission date filter (when citizen submitted the form)
     if date_from:
@@ -375,14 +380,14 @@ async def get_appointments(
     # Appointment date filter (when the meeting slot is scheduled)
     from datetime import date as date_type
     if appt_date_from:
-        stmt = stmt.where(Appointment.scheduled_date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+        stmt = stmt.where(Appointment.created_at >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
     if appt_date_to:
-        stmt = stmt.where(Appointment.scheduled_date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+        stmt = stmt.where(Appointment.created_at <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
 
     if status_filter and status_filter != "All":
         if status_filter == "Scheduled":
             stmt = stmt.where(
-                Appointment.schedule_meeting == True,
+                Appointment.slot_id.isnot(None),
                 Appointment.status == "SCHEDULED"
             )
         elif status_filter == "Reviewed":
@@ -445,13 +450,13 @@ async def get_appointments(
         ).order_by(urgency_rank.asc(), Appointment.created_at.desc())
     elif sort == "appt_date_asc":
         stmt = stmt.order_by(
-            Appointment.scheduled_date.asc().nullslast(),
-            Appointment.scheduled_start_time.asc().nullslast(),
+            Appointment.created_at.asc().nullslast(),
+            Appointment.created_at.asc(),
         )
     elif sort == "appt_date_desc":
         stmt = stmt.order_by(
-            Appointment.scheduled_date.desc().nullslast(),
-            Appointment.scheduled_start_time.desc().nullslast(),
+            Appointment.created_at.desc().nullslast(),
+            Appointment.created_at.desc(),
         )
     else:
         # Default across all tabs (including Scheduled): newest submissions first,
@@ -470,7 +475,7 @@ async def get_appointments(
         matched = []
         for appt in all_rows:
             citizen = appt.citizen
-            name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "")
+            name = _decode(citizen.encrypted_name) if citizen else ""
             mobile = _decode(citizen.encrypted_mobile) if citizen else ""
             if (
                 q in name.lower()
@@ -516,21 +521,22 @@ async def get_appointment_counts(
     """
     from datetime import datetime as dt
 
-    base = select(Appointment.id, Appointment.status, Appointment.schedule_meeting)
+    # v2: use slot_id as the "is-a-meeting-request" flag (non-null ⇒ meeting)
+    base = select(Appointment.id, Appointment.status, Appointment.slot_id)
 
     if kind == "meeting":
-        base = base.where(Appointment.schedule_meeting == True)   # noqa: E712
+        base = base.where(Appointment.slot_id.isnot(None))   # noqa: E712
     elif kind == "petition":
-        base = base.where(Appointment.schedule_meeting == False)  # noqa: E712
+        base = base.where(Appointment.slot_id.is_(None))  # noqa: E712
 
     if date_from:
         base = base.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
     if date_to:
         base = base.where(Appointment.created_at <= dt.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
     if appt_date_from:
-        base = base.where(Appointment.scheduled_date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+        base = base.where(Appointment.created_at >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
     if appt_date_to:
-        base = base.where(Appointment.scheduled_date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+        base = base.where(Appointment.created_at <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
 
     if urgency or department or category:
         gsr_sub = (
@@ -559,17 +565,17 @@ async def get_appointment_counts(
         )
         # Re-apply the same WHERE conditions on the ORM-level statement
         if kind == "meeting":
-            stmt = stmt.where(Appointment.schedule_meeting == True)   # noqa: E712
+            stmt = stmt.where(Appointment.slot_id.isnot(None))   # noqa: E712
         elif kind == "petition":
-            stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
+            stmt = stmt.where(Appointment.slot_id.is_(None))  # noqa: E712
         if date_from:
             stmt = stmt.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
         if date_to:
             stmt = stmt.where(Appointment.created_at <= dt.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
         if appt_date_from:
-            stmt = stmt.where(Appointment.scheduled_date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+            stmt = stmt.where(Appointment.created_at >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
         if appt_date_to:
-            stmt = stmt.where(Appointment.scheduled_date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+            stmt = stmt.where(Appointment.created_at <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
         if urgency or department or category:
             gsr_sub = (
                 select(GrievanceSummaryRecord.appointment_id)
@@ -591,7 +597,7 @@ async def get_appointment_counts(
         scheduled = waiting = rescheduled = all_count = 0
         for appt in rows:
             citizen = appt.citizen
-            name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "")
+            name = _decode(citizen.encrypted_name) if citizen else ""
             mobile = _decode(citizen.encrypted_mobile) if citizen else ""
             if not (
                 q in name.lower()
@@ -601,7 +607,7 @@ async def get_appointment_counts(
             ):
                 continue
             all_count += 1
-            if appt.status == "SCHEDULED" and appt.schedule_meeting:
+            if appt.status == "SCHEDULED" and appt.slot_id is not None:
                 scheduled += 1
             elif appt.status in ("WAITING", "IN_PROGRESS"):
                 waiting += 1
@@ -619,7 +625,7 @@ async def get_appointment_counts(
     agg = select(
         func.count().label("all_count"),
         func.count().filter(
-            and_(sub.c.status == "SCHEDULED", sub.c.schedule_meeting == True)  # noqa: E712
+            and_(sub.c.status == "SCHEDULED", sub.c.slot_id.isnot(None))
         ).label("scheduled"),
         func.count().filter(sub.c.status.in_(["WAITING", "IN_PROGRESS"])).label("waiting"),
         func.count().filter(sub.c.status == "RESCHEDULED").label("rescheduled"),
@@ -638,7 +644,7 @@ def build_appointment_row(appt) -> Dict[str, Any]:
     the appointments table AND the dashboard detail drawer."""
     from src.services.storage_service import get_file_url
     citizen = appt.citizen
-    name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else "—")
+    name = _decode(citizen.encrypted_name) if citizen else "—"
     mobile = _decode(citizen.encrypted_mobile) if citizen else "—"
     summary_rec: Optional[GrievanceSummaryRecord] = next(
         (s for s in appt.grievance_summary if s.is_latest), None
@@ -647,7 +653,17 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         {"url": get_file_url(a.storage_url), "type": a.attachment_type, "mime": a.mime_type, "name": Path(a.storage_url).name}
         for a in appt.attachments
     ]
-    audio_url = get_file_url(appt.audio_recording_url) if appt.audio_recording_url else None
+    # v2: audio lives in attachments (type='AUDIO'), no dedicated column
+    audio_url = next(
+        (get_file_url(a.storage_url) for a in appt.attachments if a.attachment_type == "AUDIO"),
+        None,
+    )
+    # v2: scheduled date/time derived from the booked slot (populated by caller
+    # via selectinload of Appointment → scheduled_slot when needed).
+    slot_obj = getattr(appt, "scheduled_slot", None)
+    slot_date = getattr(getattr(slot_obj, "availability", None), "date", None) if slot_obj else None
+    slot_start = slot_obj.start_time if slot_obj else None
+    slot_end = slot_obj.end_time if slot_obj else None
     return {
         "id": appt.id,
         "token": f"TKN{appt.token_assigned}",
@@ -658,17 +674,17 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
         "status_db": appt.status,
         "status": _resolve_display_status(appt),
-        "source": appt.source,
+        "source": "qr_citizen",  # v2: source column removed; default for now
         "created_at": utc_iso(appt.created_at),
-        "scheduled_date": (appt.scheduled_date.isoformat() if appt.scheduled_date else None),
+        "scheduled_date": (slot_date.isoformat() if slot_date else None),
         "appointment_time": (
-            datetime.combine(appt.scheduled_date, appt.scheduled_start_time).isoformat()
-            if appt.scheduled_date and appt.scheduled_start_time else None
+            datetime.combine(slot_date, slot_start).isoformat()
+            if slot_date and slot_start else None
         ),
-        "appointment_slot_end": (appt.scheduled_end_time.strftime("%H:%M") if appt.scheduled_end_time else None),
+        "appointment_slot_end": (slot_end.strftime("%H:%M") if slot_end else None),
         "slot_window": (
-            f"{(datetime.combine(datetime.min, appt.scheduled_end_time) - timedelta(minutes=30)).strftime('%H:%M')} – {appt.scheduled_end_time.strftime('%H:%M')}"
-            if appt.scheduled_end_time else None
+            f"{slot_start.strftime('%H:%M')} – {slot_end.strftime('%H:%M')}"
+            if slot_start and slot_end else None
         ),
         "num_persons": appt.num_persons,
         "description": _decode(appt.encrypted_grievance) if appt.encrypted_grievance else None,
@@ -793,39 +809,38 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         await scheduling_service.move_to_waiting_queue(
             db, appt, "MANUAL_RESCHEDULE", commit=False
         )
-        appt.schedule_meeting = True
+        # v2: schedule_meeting flag removed — slot_id presence conveys it.
     elif new_status == "Scheduled":
         # PA manually marks as Scheduled — slot assignment handled separately
-        # via the scheduling page reschedule flow; just set the flag here.
-        appt.schedule_meeting = True
+        # via the scheduling page reschedule flow.
         appt.status = "SCHEDULED"
+        appt.status_id = v2.appointment_status_id("SCHEDULED")
     elif new_status == "Reviewed":
         # PA marks petition as reviewed — release slot only if the meeting
-        # hasn't started yet (future date, or today but start time still ahead).
-        if appt.scheduled_date and appt.scheduled_start_time:
-            slot_dt = datetime.combine(appt.scheduled_date, appt.scheduled_start_time)
-            if slot_dt > datetime.utcnow():
-                await scheduling_service.release_slot(db, appt, commit=False)
-        elif appt.scheduled_date and appt.scheduled_date > date.today():
-            await scheduling_service.release_slot(db, appt, commit=False)
+        # hasn't started yet (v2: check slot start_time via AppointmentSlot).
+        if appt.slot_id:
+            slot_obj = await db.get(AppointmentSlot, appt.slot_id)
+            if slot_obj:
+                avail = await db.get(MLADailyAvailability, slot_obj.availability_id)
+                slot_dt = datetime.combine(avail.date, slot_obj.start_time) if avail else None
+                if slot_dt and slot_dt > datetime.utcnow():
+                    await scheduling_service.release_slot(db, appt, commit=False)
         appt.status = "REVIEWED"
-        appt.schedule_meeting = False
-        
+        appt.status_id = v2.appointment_status_id("REVIEWED")
+
         # Create ticket when petition is reviewed (if not already exists)
         from src.models.ticket_models import (
-            Ticket, TicketEvent, TicketStatus,
-            TicketEventType, generate_ticket_number,
+            Ticket, TicketStatus, generate_ticket_number,
         )
         from sqlalchemy import func as sa_func
-        
+
         # Check if ticket already exists for this appointment
         existing_ticket = await db.execute(
             select(Ticket).where(Ticket.appointment_id == appointment_id)
         )
         if not existing_ticket.scalar_one_or_none():
-            # Create new ticket. Sequence = MAX existing suffix for the year + 1
-            # (NOT count+1, which collides whenever there is a gap). An advisory
-            # xact-lock keyed on the year serialises concurrent creations.
+            # Create new ticket. Sequence = MAX existing suffix for the year + 1.
+            # Advisory xact-lock keyed on year serialises concurrent creations.
             from sqlalchemy import text as _sa_text
             year = datetime.utcnow().year
             await db.execute(_sa_text("SELECT pg_advisory_xact_lock(:k)"), {"k": 880000 + year})
@@ -833,42 +848,45 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
                 select(sa_func.max(Ticket.ticket_number))
                 .where(Ticket.ticket_number.like(f"TKT-{year}-%"))
             )
-            # ticket numbers are zero-padded fixed width, so lexical max = numeric max
             year_count = (int(max_tn.split("-")[-1]) if max_tn else 0) + 1
             current_time = datetime.utcnow()
-            
+
+            ticket_ids = v2.new_ticket_ids(status="open")
             new_ticket = Ticket(
                 appointment_id=appointment_id,
                 ticket_number=generate_ticket_number(year, year_count),
                 status=TicketStatus.OPEN.value,
+                status_id=ticket_ids["status_id"],
+                priority_id=ticket_ids["priority_id"],
                 created_at=current_time,
                 updated_at=current_time,
             )
             db.add(new_ticket)
-            await db.flush()  # get ticket.id for the event
-            
-            db.add(TicketEvent(
+            await db.flush()  # get ticket.id for the activity row
+
+            # v2: single Activity row instead of separate TicketEvent
+            db.add(Activity(
                 ticket_id=new_ticket.id,
-                event_type=TicketEventType.CREATED.value,
-                actor="pa_admin",
-                note=f"Ticket created after PA review (token {appt.token_assigned})",
+                user="pa_admin",
+                action_type="created",
+                message=f"Ticket created after PA review (token {appt.token_assigned})",
                 payload={"token": appt.token_assigned, "appointment_id": appointment_id},
-                created_at=current_time,
             ))
     elif new_status == "Awaiting Review":
         # Allow moving a record back into the review queue (PA correction).
-        # Release slot if the meeting hasn't started yet (future date, or
-        # today but start time still ahead).
-        if appt.scheduled_date and appt.scheduled_start_time:
-            slot_dt = datetime.combine(appt.scheduled_date, appt.scheduled_start_time)
-            if slot_dt > datetime.utcnow():
-                await scheduling_service.release_slot(db, appt, commit=False)
-        elif appt.scheduled_date and appt.scheduled_date > date.today():
-            await scheduling_service.release_slot(db, appt, commit=False)
+        if appt.slot_id:
+            slot_obj = await db.get(AppointmentSlot, appt.slot_id)
+            if slot_obj:
+                avail = await db.get(MLADailyAvailability, slot_obj.availability_id)
+                slot_dt = datetime.combine(avail.date, slot_obj.start_time) if avail else None
+                if slot_dt and slot_dt > datetime.utcnow():
+                    await scheduling_service.release_slot(db, appt, commit=False)
         appt.status = "AWAITING_REVIEW"
-        appt.schedule_meeting = False
+        appt.status_id = v2.appointment_status_id("AWAITING_REVIEW")
     else:
-        appt.status = _DISPLAY_TO_DB_STATUS.get(new_status, new_status.upper())
+        resolved_status = _DISPLAY_TO_DB_STATUS.get(new_status, new_status.upper())
+        appt.status = resolved_status
+        appt.status_id = v2.appointment_status_id_or_none(resolved_status)
 
     # Log the status change
     if old_status != appt.status:
@@ -880,7 +898,7 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
     # Return appointment details for SMS notification
     citizen = appt.citizen
     mobile = _decode(citizen.encrypted_mobile) if citizen else None
-    name = _decode(appt.encrypted_name) if appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else None)
+    name = _decode(citizen.encrypted_name) if citizen else None
 
     return {
         "success": True,
@@ -921,14 +939,17 @@ async def set_floor_attendance(db: AsyncSession, appointment_id: int, action: st
     old_status = appt.status
 
     if action == "reset":
-        # Undo: go back to the captured original (fallback to SCHEDULED).
-        appt.status = appt.pre_floor_status or "SCHEDULED"
-        appt.pre_floor_status = None
+        # v2: pre_floor_status column removed — reset always goes to
+        # SCHEDULED (if there's still a booked slot) or AWAITING_REVIEW otherwise.
+        # This loses the SCHEDULED vs RESCHEDULED distinction on undo but keeps
+        # the floor-board workflow functional.
+        reset_status = "SCHEDULED" if appt.slot_id else "AWAITING_REVIEW"
+        appt.status = reset_status
+        appt.status_id = v2.appointment_status_id(reset_status)
     else:
-        # Capture the original scheduling status once, before we overwrite it.
-        if appt.pre_floor_status is None and old_status in ("SCHEDULED", "RESCHEDULED"):
-            appt.pre_floor_status = old_status
-        appt.status = "AWAITING_REVIEW" if action == "came" else "NOT_CAME"
+        floor_status = "AWAITING_REVIEW" if action == "came" else "NOT_CAME"
+        appt.status = floor_status
+        appt.status_id = v2.appointment_status_id(floor_status)
 
     if old_status != appt.status:
         _log_appt_event(db, appointment_id, "status_changed",

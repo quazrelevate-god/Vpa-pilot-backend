@@ -35,6 +35,8 @@ import src.models.scheduling_models         # noqa: F401
 import src.models.referral_models           # noqa: F401
 import src.models.ai_upload_models          # noqa: F401
 import src.models.qr_models                 # noqa: F401
+import src.models.login_models              # noqa: F401
+import src.models.activity_models           # noqa: F401
 
 POLL_SECONDS = 5
 CLEANUP_EVERY_SECONDS = 3600  # prune expired OTP/session rows hourly

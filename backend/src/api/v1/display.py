@@ -79,20 +79,22 @@ async def display_today_api(
     """Return today's scheduled + rescheduled appointments, optionally filtered by search."""
     today = date.today()
 
+    # v2: scheduled date/time live on the joined slot + availability.
+    # Floor board wants today's meeting visitors + their post-arrival states.
+    from src.models.scheduling_models import AppointmentSlot, MLADailyAvailability
     stmt = (
         select(Appointment)
         .options(
             selectinload(Appointment.citizen),
             selectinload(Appointment.grievance_summary),
+            selectinload(Appointment.scheduled_slot).selectinload(AppointmentSlot.availability),
         )
-        .where(Appointment.scheduled_date == today)
-        # Floor board: meeting visitors for today, plus their post-arrival states
-        # (Came -> AWAITING_REVIEW, no-show -> NOT_CAME) so rows stay visible
-        # after the team toggles them. Direct-submit petitions have no
-        # scheduled_date, so they are naturally excluded.
+        .join(AppointmentSlot, AppointmentSlot.id == Appointment.slot_id)
+        .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
+        .where(MLADailyAvailability.date == today)
         .where(Appointment.status.in_(
             ["SCHEDULED", "RESCHEDULED", "AWAITING_REVIEW", "NOT_CAME"]))
-        .order_by(Appointment.scheduled_start_time)
+        .order_by(AppointmentSlot.start_time)
     )
 
     result = await db.execute(stmt)
@@ -101,9 +103,7 @@ async def display_today_api(
     items = []
     for appt in appointments:
         citizen = appt.citizen
-        name = _decode(appt.encrypted_name) if appt.encrypted_name else (
-            _decrypt(citizen.encrypted_name) if citizen and citizen.encrypted_name else "—"
-        )
+        name = _decrypt(citizen.encrypted_name) if citizen and citizen.encrypted_name else "—"
         mobile = _decrypt(citizen.encrypted_mobile) if citizen and citizen.encrypted_mobile else "—"
 
         if search:
@@ -112,10 +112,10 @@ async def display_today_api(
                 continue
 
         time_str = ""
-        if appt.scheduled_start_time:
-            t = appt.scheduled_start_time
-            hour = t.hour
-            minute = t.minute
+        slot_start = appt.scheduled_slot.start_time if appt.scheduled_slot else None
+        if slot_start:
+            hour = slot_start.hour
+            minute = slot_start.minute
             ampm = "AM" if hour < 12 else "PM"
             display_hour = hour if hour <= 12 else hour - 12
             if display_hour == 0:

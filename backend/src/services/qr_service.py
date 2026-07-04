@@ -66,7 +66,7 @@ class QRService:
         signature_string = signature_bytes.decode('utf-8')
         
         # Step 2: Compute deterministic hash for database uniqueness constraint
-        signature_hash = hashlib.sha512(signature_string.encode('utf-8')).hexdigest()
+        signature_hash = hashlib.sha256(signature_string.encode('utf-8')).hexdigest()
         
         # Step 3: Calculate expiration timestamp
         expires_at = created_at + timedelta(seconds=settings.QR_EXPIRY_SECONDS+10)
@@ -181,6 +181,7 @@ class QRService:
         session_expires_at = current_time + timedelta(seconds=settings.SESSION_EXPIRY_SECONDS)
         
         gatekeeper_session = GatekeeperSession(
+            venue_id=venue_id,
             device_fingerprint=device_fingerprint,
             qr_signature_hash=qr_signature_hash,
             is_used=False,

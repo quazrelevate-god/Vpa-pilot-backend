@@ -43,7 +43,6 @@ from sqlalchemy import (
     Text,
     VARCHAR,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
@@ -100,22 +99,6 @@ class ClosureReason(str, Enum):
     OUT_OF_SCOPE              = "out_of_scope"
 
 
-class TicketEventType(str, Enum):
-    """Audit log event types — every state-changing action writes one."""
-    CREATED            = "created"
-    AI_SUMMARISED      = "ai_summarised"
-    STATUS_CHANGED     = "status_changed"
-    PRIORITY_CHANGED   = "priority_changed"
-    ASSIGNED           = "assigned"
-    UNASSIGNED         = "unassigned"
-    DUE_DATE_SET       = "due_date_set"
-    COMMENT_ADDED      = "comment_added"
-    FORWARDED_TO_DEPT  = "forwarded_to_dept"
-    RESOLVED           = "resolved"
-    CLOSED             = "closed"
-    REOPENED           = "reopened"
-
-
 # Suggested initial priority based on AI-assigned urgency.
 URGENCY_TO_PRIORITY: dict[str, str] = {
     "critical": TicketPriority.P0.value,
@@ -136,7 +119,7 @@ class Ticket(Base):
     mutation appends a row to ticket_events.
     """
 
-    __tablename__ = "tickets"
+    __tablename__ = "ticket"
 
     # ── Primary key ────────────────────────────────────────────────────────────
     id = Column(
@@ -148,7 +131,7 @@ class Ticket(Base):
     # ── Foreign key (one ticket per appointment) ───────────────────────────────
     appointment_id = Column(
         Integer,
-        ForeignKey("appointments.id", ondelete="CASCADE"),
+        ForeignKey("appointment.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         comment="One-to-one link back to the originating appointment",
@@ -177,16 +160,40 @@ class Ticket(Base):
         comment="TicketPriority enum (P0/P1/P2/P3). Auto-suggested from AI urgency, PA can override.",
     )
 
+    status_id = Column(
+        BigInteger,
+        nullable=True,
+        comment="FK to admin.id (entity=ticket) — v2 normalised status",
+    )
+
+    priority_id = Column(
+        BigInteger,
+        nullable=True,
+        comment="FK to admin.id (entity=priority) — v2 normalised priority",
+    )
+
+    # v2 FK to login table (integer)
+    assigned_to = Column(
+        BigInteger,
+        ForeignKey("login.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Bridge: v1 services still write PA username string
     assigned_to_pa = Column(
         VARCHAR(100),
         nullable=True,
-        comment="PA username currently owning this ticket. NULL = unassigned.",
     )
 
     due_date = Column(
         DateTime,
         nullable=True,
         comment="Manual SLA deadline set by PA. NULL = no deadline.",
+    )
+
+    notes = Column(
+        Text,
+        nullable=True,
     )
 
     # ── Forwarding (first-class because we deploy for Education Minister) ─────
@@ -274,13 +281,6 @@ class Ticket(Base):
         back_populates="ticket",
     )
 
-    events = relationship(
-        "TicketEvent",
-        back_populates="ticket",
-        cascade="all, delete-orphan",
-        order_by="TicketEvent.created_at.desc()",
-    )
-
     # ── Indexes (filter/sort surfaces in the PA portal) ────────────────────────
     __table_args__ = (
         Index("ix_tickets_status", "status"),
@@ -289,61 +289,6 @@ class Ticket(Base):
         Index("ix_tickets_created_at", "created_at"),
         Index("ix_tickets_forwarded_to_dept", "forwarded_to_dept"),
         Index("ix_tickets_due_date", "due_date"),
-    )
-
-
-class TicketEvent(Base):
-    """
-    Audit log row. Every state change to a ticket appends one of these so we
-    can render a timeline in the PA portal and answer "who did what when".
-    """
-
-    __tablename__ = "ticket_events"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-
-    ticket_id = Column(
-        BigInteger,
-        ForeignKey("tickets.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    event_type = Column(
-        VARCHAR(40),
-        nullable=False,
-        comment="TicketEventType enum value",
-    )
-
-    actor = Column(
-        VARCHAR(100),
-        nullable=False,
-        comment="PA username (or 'system' for AI/automation events)",
-    )
-
-    note = Column(
-        Text,
-        nullable=True,
-        comment="Free-text note attached to the event (e.g. comment body)",
-    )
-
-    payload = Column(
-        JSONB,
-        nullable=True,
-        comment="Event-specific structured data, e.g. {from: 'open', to: 'triaged'}",
-    )
-
-    created_at = Column(
-        DateTime,
-        nullable=False,
-        default=datetime.utcnow,
-    )
-
-    # ── Relationship ───────────────────────────────────────────────────────────
-    ticket = relationship("Ticket", back_populates="events")
-
-    __table_args__ = (
-        Index("ix_ticket_events_ticket_created", "ticket_id", "created_at"),
     )
 
 

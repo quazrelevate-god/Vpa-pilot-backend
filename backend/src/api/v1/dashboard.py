@@ -293,21 +293,21 @@ async def api_appointment_activity(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    """Return the activity timeline for an appointment."""
-    from src.models.appointment_models import AppointmentEvent
+    """Return the activity timeline for an appointment (v2: unified activity table)."""
+    from src.models.activity_models import Activity
     result = await db.execute(
-        select(AppointmentEvent)
-        .where(AppointmentEvent.appointment_id == appointment_id)
-        .order_by(AppointmentEvent.created_at.desc())
+        select(Activity)
+        .where(Activity.appointment_id == appointment_id)
+        .order_by(Activity.created_at.desc())
     )
     events = result.scalars().all()
     return JSONResponse({
         "items": [
             {
                 "id": e.id,
-                "event_type": e.event_type,
-                "actor": e.actor,
-                "note": e.note,
+                "event_type": e.action_type,
+                "actor": e.user,
+                "note": e.message,
                 "payload": e.payload,
                 "created_at": e.created_at.isoformat() + "Z" if e.created_at else None,
             }
@@ -540,8 +540,34 @@ async def serve_upload(
     file_path: str,
     user: str = Depends(require_auth),
 ):
-    """Serve uploaded files — requires dashboard auth. Prevents public access."""
+    """Serve uploaded files — requires dashboard auth. Prevents public access.
+
+    Handles both storage backends transparently:
+      - MinIO configured  → fetch the object via boto3 and stream bytes back.
+      - No FILE_STORAGE_ENDPOINT → read from local uploads/ directory.
+    """
     import mimetypes
+    from src.services.storage_service import get_file_bytes
+    from pathlib import PurePosixPath
+
+    filename = PurePosixPath(file_path).name or "file"
+    mime, _ = mimetypes.guess_type(filename)
+
+    endpoint = getattr(settings, "FILE_STORAGE_ENDPOINT", None)
+    if endpoint:
+        # MinIO: the key is the incoming path as-is (get_file_bytes strips a
+        # leading "uploads/" if callers still pass one, but our get_file_url
+        # has already trimmed it).
+        data = get_file_bytes(file_path)
+        if data is None:
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        return Response(
+            content=data,
+            media_type=mime or "application/octet-stream",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+
+    # Local disk: keep the traversal-safe path resolution.
     try:
         full_path = (_UPLOADS_ROOT / file_path).resolve()
         full_path.relative_to(_UPLOADS_ROOT.resolve())
@@ -551,7 +577,6 @@ async def serve_upload(
     if not full_path.exists() or not full_path.is_file():
         return JSONResponse({"error": "Not found"}, status_code=404)
 
-    mime, _ = mimetypes.guess_type(str(full_path))
     return Response(
         content=full_path.read_bytes(),
         media_type=mime or "application/octet-stream",

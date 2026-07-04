@@ -70,10 +70,10 @@ class AiUpload(Base):
 
     # ── Set on approve ──────────────────────────────────────────────────────────
     appointment_id = Column(
-        Integer, ForeignKey("appointments.id", ondelete="SET NULL"), nullable=True,
+        Integer, ForeignKey("appointment.id", ondelete="SET NULL"), nullable=True,
     )
     ticket_id = Column(
-        BigInteger, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True,
+        BigInteger, ForeignKey("ticket.id", ondelete="SET NULL"), nullable=True,
     )
     ticket_number = Column(VARCHAR(20), nullable=True)
 
