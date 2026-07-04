@@ -141,6 +141,8 @@
 .s-Waiting        { background: #ffedd5; color: #c2410c; }
 .s-AwaitingReview { background: #fae8ff; color: #86198f; }
 .s-Reviewed       { background: #dbeafe; color: #1d4ed8; }
+.s-CourtesyDone   { background: #cffafe; color: #0e7490; }
+.s-NotCame        { background: #fee2e2; color: #b91c1c; }
 
 /* ── Fade/slide entrance for content ─────────────────────────────────────── */
 @keyframes fade-in-up {

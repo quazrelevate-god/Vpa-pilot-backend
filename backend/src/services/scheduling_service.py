@@ -352,6 +352,10 @@ class SchedulingService:
         relocated = 0
         moved_to_waiting = 0
         is_today = False
+        # Rows that need a citizen SMS after the transaction commits — we
+        # collect ids inside the loop and fire outside so a notification hiccup
+        # can't unwind the block.
+        _cascade_appointment_ids: list[int] = []
 
         if booked_count > 0:
             # Fetch appointments booked into this slot (v2: appointment.slot_id)
@@ -396,27 +400,75 @@ class SchedulingService:
                             continue
 
                     if not relocated_ok:
+                        # No same-day slot available — flip to RESCHEDULED so
+                        # the PA can call this citizen and pick a new time.
+                        # (WAITING is reserved for citizens whose original
+                        # submission had no slot; a mid-day cancel is
+                        # different.)
                         await self.release_slot(db, appt, commit=False)
-                        await self.move_to_waiting_queue(
-                            db, appt, "SLOT_BLOCKED", commit=False
-                        )
+                        appt.status = "RESCHEDULED"
+                        appt.status_id = v2.appointment_status_id("RESCHEDULED")
+                        appt.schedule_meeting = True
+                        db.add(Activity(
+                            appointment_id=appt.id,
+                            user="pa_admin",
+                            action_type="rescheduled",
+                            message="SLOT_BLOCKED_CASCADE",
+                            payload={"from_status": "SCHEDULED",
+                                     "to_status": "RESCHEDULED",
+                                     "reason": "slot_blocked",
+                                     "blocked_slot_id": slot_id},
+                        ))
+                        _cascade_appointment_ids.append(appt.id)
                         moved_to_waiting += 1
             else:
+                # Future date — flip all bookings to RESCHEDULED so the PA can
+                # rebook them onto a live day. (v2: bookings ARE the
+                # appointments — no SlotBooking junction.)
                 for appt in bookings:
                     await self.release_slot(db, appt, commit=False)
-                    await self.move_to_waiting_queue(
-                        db, appt, "SLOT_BLOCKED", commit=False
-                    )
+                    appt.status = "RESCHEDULED"
+                    appt.status_id = v2.appointment_status_id("RESCHEDULED")
+                    appt.schedule_meeting = True
+                    db.add(Activity(
+                        appointment_id=appt.id,
+                        user="pa_admin",
+                        action_type="rescheduled",
+                        message="SLOT_BLOCKED_CASCADE",
+                        payload={"from_status": "SCHEDULED",
+                                 "to_status": "RESCHEDULED",
+                                 "reason": "slot_blocked",
+                                 "blocked_slot_id": slot_id},
+                    ))
+                    _cascade_appointment_ids.append(appt.id)
                     moved_to_waiting += 1
 
         slot.status = "BLOCKED"
         slot.booked_count = 0
         await db.commit()
 
+        # Fire notifications after commit so partial failure can't unwind the
+        # block itself. Every affected citizen learns the meeting was cancelled.
+        if _cascade_appointment_ids:
+            try:
+                import asyncio as _asyncio
+                from src.services.notification_service import notify as _notify
+                for _aid in _cascade_appointment_ids:
+                    _asyncio.create_task(_notify(
+                        kind="reschedule_cancel",
+                        appointment_id=_aid,
+                        ctx={"actor": "pa", "reason": "slot_blocked"},
+                    ))
+            except Exception:
+                pass
+
         result = {"slot_id": slot_id, "status": "BLOCKED"}
         if booked_count > 0:
             result["relocated"] = relocated if is_today else 0
+            # Legacy field name — these rows now go to RESCHEDULED (not
+            # waiting); kept as-is so existing UI counts still line up.
             result["moved_to_waiting"] = moved_to_waiting
+            result["moved_to_rescheduled"] = moved_to_waiting
         return result
 
     async def unblock_slot(self, db: AsyncSession, slot_id: int) -> Dict:
@@ -613,23 +665,44 @@ class SchedulingService:
             raise ValueError(f"Appointment {appointment_id} not found.")
 
         old_slot_id = appt.slot_id
+        old_status = appt.status
         await self.release_slot(db, appt, commit=False)
         result = await self.book_slot(db, appt, slot.id, commit=False)
-        appt.status = "RESCHEDULED"
-        appt.status_id = v2.appointment_status_id("RESCHEDULED")
+        # A successful rebook lands the row on the Scheduled tab, not the
+        # Rescheduled tab. Rescheduled is where a row waits until it's rebooked
+        # or converted to a petition — coming out of it means "back to normal".
+        # (book_slot already set status/status_id=SCHEDULED + schedule_meeting.)
         db.add(Activity(
             appointment_id=appt.id,
             user="pa_admin",
             action_type="rescheduled",
-            message=f"Rescheduled to {result['scheduled_date']} {result['scheduled_time']}",
-            payload={
-                "old_slot_id": old_slot_id,
-                "new_slot_id": slot.id,
-                "scheduled_date": str(result["scheduled_date"]),
-                "scheduled_time": str(result["scheduled_time"]),
-            },
+            message=f"Rebooked to {result['scheduled_date']} {result['scheduled_time']}",
+            payload={"from_status": old_status,
+                     "to_status": "SCHEDULED",
+                     "old_slot_id": old_slot_id,
+                     "new_slot_id": slot.id,
+                     "scheduled_date": str(result["scheduled_date"]),
+                     "scheduled_time": str(result["scheduled_time"])},
         ))
         await db.commit()
+
+        # Notify the citizen of the new time + token (fire-and-forget).
+        try:
+            import asyncio as _asyncio
+            from src.services.notification_service import notify as _notify
+            _asyncio.create_task(_notify(
+                kind="reschedule_rebook",
+                appointment_id=appt.id,
+                ctx={
+                    "actor": "pa",
+                    "scheduled_date": str(result["scheduled_date"]),
+                    "scheduled_time": str(result["scheduled_time"]),
+                    "token": appt.token_assigned,
+                },
+            ))
+        except Exception:
+            # Never let a notification issue break the reschedule.
+            pass
 
         return {
             "appointment_id":  appt.id,

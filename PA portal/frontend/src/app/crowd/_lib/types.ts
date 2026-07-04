@@ -7,9 +7,10 @@ export type ApptItem = {
   mobile: string;
   num_persons: number;
   category: string;
+  category_key?: string | null; // raw enum key — drives courtesy detection
   reason: string;
   status: string;
-  status_db: string; // SCHEDULED | RESCHEDULED | AWAITING_REVIEW | NOT_CAME
+  status_db: string; // SCHEDULED | RESCHEDULED | AWAITING_REVIEW | NOT_CAME | COURTESY_DONE
   time: string;
 };
 

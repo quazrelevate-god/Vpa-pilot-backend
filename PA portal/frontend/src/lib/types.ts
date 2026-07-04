@@ -81,6 +81,12 @@ export interface AppointmentRow {
   category_label?: string | null;
   department_label?: string | null;
   num_persons?: number | null;
+  // Standalone STT transcript for courtesy submissions (invitation/greetings).
+  // Populated by the backend when audio was attached and AI was skipped.
+  transcript?: string | null;
+  // 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'. Lets the UI decide whether
+  // to show "Summary is being prepared" honestly.
+  summary_status?: string | null;
 }
 
 export interface AppointmentsResponse {

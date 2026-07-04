@@ -377,7 +377,7 @@ class AiUploadService:
         if citizen is None:
             citizen = Citizen(
                 encrypted_name=enc_name, encrypted_mobile=enc_mobile,
-                mobile_index=mobile_idx, ward_or_region="Tamil Nadu", created_at=now,
+                mobile_index=mobile_idx, created_at=now,
             )
             db.add(citizen)
             await db.flush()
@@ -391,17 +391,16 @@ class AiUploadService:
         )
         appt = Appointment(
             citizen_id=citizen.id,
-            slot_id=legacy_slot_ref,
+            # v2: slot_id is a real FK — AI-scan rows never book a slot.
+            slot_id=None,
             token_assigned=token_assigned,
             encrypted_grievance=appointment_service._encrypt_field(extraction.summary or extraction.headline or ""),
-            encrypted_name=enc_name,
             grievance_category=extraction.category.value,
             status="AWAITING_REVIEW",
             status_id=ai_ids["status_id"],
             priority_id=ai_ids["priority_id"],
+            category_id=ai_ids.get("category_id"),
             schedule_meeting=False,
-            priority_score=0,
-            source="ai_scan",
             summary_status="DONE",  # ai_scan summarises inline below; keep the worker off it
             created_at=now,
         )

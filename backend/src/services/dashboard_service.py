@@ -17,6 +17,7 @@ from src.models.appointment_models import Appointment, Citizen, AppointmentAttac
 from src.models.activity_models import Activity
 from src.models.scheduling_models import AppointmentSlot, MLADailyAvailability
 from src.services.scheduling_service import scheduling_service
+from src.services.notification_service import notify as _notify
 from src.models.grievance_summary_record import GrievanceSummaryRecord
 from src.models.grievance_summary import CATEGORY_DISPLAY, DEPARTMENT_DISPLAY
 from src.services.v2_helpers import v2
@@ -52,6 +53,9 @@ _STATUS_DISPLAY = {
     "REVIEWED":        "Reviewed",
     "SCHEDULED":       "Scheduled",
     "NOT_CAME":        "Not Came",
+    # Terminal state for invitation/greetings visitors who came in person to
+    # hand over the card/message — no review, no ticket, nothing pending.
+    "COURTESY_DONE":   "Courtesy Done",
 }
 
 
@@ -466,10 +470,36 @@ async def get_appointments(
             Appointment.created_at.desc(),
         )
     else:
-        # Default across all tabs (including Scheduled): newest submissions first,
-        # so recent petitions surface immediately. PAs can opt into appt-date
-        # ordering via the appt_date_asc / appt_date_desc sort options.
-        stmt = stmt.order_by(Appointment.created_at.desc())
+        # Default: put today's meetings first, then upcoming days ascending, then
+        # yesterday-and-earlier at the bottom (most-recent past first). Rows with
+        # no booked slot (petitions / waiting) fall after all dated rows, newest-
+        # first. This matches how a PA scans the day: "who's coming today, then
+        # this week, then what's overdue — and let me see recent petitions after".
+        # v2: the meeting date lives on the joined slot → availability.
+        from datetime import date as _date_type
+        today = _date_type.today()
+        _slot_date = MLADailyAvailability.date
+        stmt = stmt.outerjoin(
+            AppointmentSlot, AppointmentSlot.id == Appointment.slot_id
+        ).outerjoin(
+            MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id
+        )
+        bucket = case(
+            (_slot_date == None, 3),                # no date last  # noqa: E711
+            (_slot_date == today, 0),               # today first
+            (_slot_date > today, 1),                # upcoming
+            else_=2,                                 # past
+        )
+        # Two disjoint keys so upcoming sorts ascending and past sorts descending.
+        upcoming_asc = case((_slot_date >= today, _slot_date), else_=None)
+        past_desc = case((_slot_date < today, _slot_date), else_=None)
+        stmt = stmt.order_by(
+            bucket.asc(),
+            upcoming_asc.asc().nullslast(),
+            past_desc.desc().nullslast(),
+            AppointmentSlot.start_time.asc().nullslast(),
+            Appointment.created_at.desc(),
+        )
 
     # ── Search path ───────────────────────────────────────────────────────────
     # Name and mobile are encrypted, so they can't be matched in SQL. Decrypt-and-
@@ -708,6 +738,11 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "key_details": summary_rec.key_details if summary_rec else [],
         "key_details_ta": summary_rec.key_details_ta if summary_rec else [],
         "audio_transcript": summary_rec.audio_transcript if summary_rec else None,
+        # Standalone STT transcript populated for courtesy submissions
+        # (invitation/greetings) that skip the AI summary pipeline.
+        "transcript": _decode(appt.encrypted_transcript) if appt.encrypted_transcript else None,
+        # Lets the UI decide whether "Summary is being prepared" is honest.
+        "summary_status": appt.summary_status,
         "category_label": _category_label(appt.grievance_category),
         "department_label": (DEPARTMENT_DISPLAY.get(summary_rec.department, summary_rec.department) if summary_rec and summary_rec.department else None),
         "attachments": attachments_data,
@@ -751,12 +786,18 @@ async def update_appointment_derived_fields(
     """
     from src.core import crypto
     # priority lives on GrievanceSummaryRecord; category lives on Appointment.
-    appt = await db.scalar(select(Appointment).where(Appointment.id == appointment_id))
+    appt = await db.scalar(
+        select(Appointment)
+        .options(selectinload(Appointment.citizen))
+        .where(Appointment.id == appointment_id)
+    )
     if not appt:
         return {"success": False}
 
-    if name is not None:
-        appt.encrypted_name = crypto.encrypt(name.strip()) if name.strip() else None
+    if name is not None and name.strip():
+        # v2: the English name lives on the Citizen record (no per-appointment copy).
+        if appt.citizen:
+            appt.citizen.encrypted_name = crypto.encrypt(name.strip())
     if name_ta is not None:
         appt.encrypted_name_ta = crypto.encrypt(name_ta.strip()) if name_ta.strip() else None
 
@@ -799,6 +840,7 @@ _DISPLAY_TO_DB_STATUS = {
     "Waiting":         "WAITING",
     "Rescheduled":     "RESCHEDULED",
     "Awaiting Review": "AWAITING_REVIEW",
+    "Courtesy Done":   "COURTESY_DONE",
 }
 
 async def update_appointment_status(db: AsyncSession, appointment_id: int, new_status: str) -> dict:
@@ -825,14 +867,30 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
 
     old_status = appt.status
 
-    if new_status in ("Waiting", "Rescheduled"):
-        # Release the slot booking and move to waiting queue.
+    if new_status == "Waiting":
+        # Move to the waiting queue: release slot and set status=WAITING via
+        # the scheduling service so queue_position/waiting_since stay coherent.
         # Preserve schedule_meeting intent — waiting meetings are still meetings.
         await scheduling_service.release_slot(db, appt, commit=False)
         await scheduling_service.move_to_waiting_queue(
-            db, appt, "MANUAL_RESCHEDULE", commit=False
+            db, appt, "MANUAL_WAITING", commit=False
         )
         appt.schedule_meeting = True
+    elif new_status == "Rescheduled":
+        # Manual reschedule: PA is calling / messaging the citizen. The row
+        # belongs on the Rescheduled tab (not Waiting) so the PA can act on it
+        # from there — either pick a new slot (→ Scheduled) or convert to
+        # petition (→ Awaiting Review).
+        #
+        # Release the slot booking (frees the seat + nulls the day/time), then
+        # set RESCHEDULED explicitly. (v2: no pre_floor_status column to clear.)
+        await scheduling_service.release_slot(db, appt, commit=False)
+        appt.status = "RESCHEDULED"
+        appt.status_id = v2.appointment_status_id("RESCHEDULED")
+        appt.schedule_meeting = True
+        # Notify the citizen the appointment is cancelled — new time TBD.
+        import asyncio as _asyncio
+        _asyncio.create_task(_notify(kind="reschedule_cancel", appointment_id=appointment_id, ctx={"actor": "pa"}))
     elif new_status == "Scheduled":
         # PA manually marks as Scheduled — slot assignment handled separately
         # via the scheduling page reschedule flow.
@@ -909,6 +967,13 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         appt.schedule_meeting = False
         appt.status = "AWAITING_REVIEW"
         appt.status_id = v2.appointment_status_id("AWAITING_REVIEW")
+        # A rescheduled row converting to a petition (citizen agreed to just
+        # submit): notify them the petition is now under review.
+        if old_status == "RESCHEDULED":
+            import asyncio as _asyncio
+            _asyncio.create_task(_notify(kind="convert_to_petition",
+                                         appointment_id=appointment_id,
+                                         ctx={"actor": "pa"}))
     else:
         resolved_status = _DISPLAY_TO_DB_STATUS.get(new_status, new_status.upper())
         appt.status = resolved_status
@@ -961,6 +1026,39 @@ async def approve_petition(db: AsyncSession, appointment_id: int, actor: str = "
     }
 
 
+async def auto_reschedule_stale_scheduled(db: AsyncSession) -> int:
+    """
+    Flip any SCHEDULED appointment whose day has already passed to RESCHEDULED,
+    unless the floor already marked them (AWAITING_REVIEW / NOT_CAME / COURTESY_DONE).
+
+    Runs at startup and again just after midnight so the Scheduled tab never
+    accumulates yesterday's rows the PA forgot to cancel. Returns the row count
+    for the log line.
+    """
+    from datetime import date as _date_type
+    today = _date_type.today()
+    # v2: meeting date lives on slot → availability.
+    stmt = (
+        select(Appointment)
+        .join(AppointmentSlot, AppointmentSlot.id == Appointment.slot_id)
+        .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
+        .where(
+            Appointment.status == "SCHEDULED",
+            MLADailyAvailability.date < today,
+        )
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    if not rows:
+        return 0
+    for appt in rows:
+        appt.status = "RESCHEDULED"
+        appt.status_id = v2.appointment_status_id("RESCHEDULED")
+        _log_appt_event(db, appt.id, "status_changed",
+                        payload={"from": "SCHEDULED", "to": "RESCHEDULED", "via": "auto_reschedule"})
+    await db.commit()
+    return len(rows)
+
+
 async def set_floor_attendance(db: AsyncSession, appointment_id: int, action: str) -> dict:
     """
     Floor-board attendance toggle used by the crowd-management PWA.
@@ -970,13 +1068,16 @@ async def set_floor_attendance(db: AsyncSession, appointment_id: int, action: st
     nulls scheduled_date, which would drop the row off today's board, and freeing
     capacity on a same-day passed slot is pointless.
 
-      action="came"     -> AWAITING_REVIEW (visitor showed up, enters PA review)
-      action="not_came" -> NOT_CAME        (no-show)
+      action="came"     -> AWAITING_REVIEW (regular petitioner enters PA review)
+                           -> COURTESY_DONE  (invitation/greetings — nothing to review)
+      action="not_came" -> NOT_CAME         (no-show)
       action="reset"    -> restore the original scheduling status (undo a mistake)
 
-    The first time the board marks a row, the original status is saved in
-    pre_floor_status so 'reset' restores SCHEDULED vs RESCHEDULED exactly.
+    v2: no pre_floor_status column — 'reset' derives the restore state from
+    whether the row still holds a booked slot (SCHEDULED vs AWAITING_REVIEW).
     """
+    from src.services.appointment_service import COURTESY_CATEGORIES
+
     action = (action or "").strip().lower().replace(" ", "_")
     if action not in ("came", "not_came", "reset"):
         return {"success": False, "error": "invalid action"}
@@ -989,6 +1090,7 @@ async def set_floor_attendance(db: AsyncSession, appointment_id: int, action: st
         return {"success": False}
 
     old_status = appt.status
+    is_courtesy = (appt.grievance_category or "").lower() in COURTESY_CATEGORIES
 
     if action == "reset":
         # v2: pre_floor_status column removed — reset always goes to
@@ -999,7 +1101,13 @@ async def set_floor_attendance(db: AsyncSession, appointment_id: int, action: st
         appt.status = reset_status
         appt.status_id = v2.appointment_status_id(reset_status)
     else:
-        floor_status = "AWAITING_REVIEW" if action == "came" else "NOT_CAME"
+        # v2: no pre_floor_status capture (column removed).
+        if action == "came":
+            # Courtesy visitors have nothing to review — they handed over an
+            # invitation card or wished the Minister well. Terminal status.
+            floor_status = "COURTESY_DONE" if is_courtesy else "AWAITING_REVIEW"
+        else:
+            floor_status = "NOT_CAME"
         appt.status = floor_status
         appt.status_id = v2.appointment_status_id(floor_status)
 

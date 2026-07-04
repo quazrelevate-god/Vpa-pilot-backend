@@ -79,7 +79,8 @@ def seed_admin(session: Session) -> int:
 
     groups: dict[str, list[str]] = {
         "appointment": ["SCHEDULED", "WAITING", "RESCHEDULED",
-                        "AWAITING_REVIEW", "REVIEWED", "NOT_CAME"],
+                        "AWAITING_REVIEW", "REVIEWED", "NOT_CAME",
+                        "COURTESY_DONE"],
         "ticket":   [s.value for s in TicketStatus],
         "priority": [p.value for p in TicketPriority],
         "category": [c.value for c in GrievanceCategory],

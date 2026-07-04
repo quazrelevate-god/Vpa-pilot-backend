@@ -47,7 +47,10 @@ function AttendanceButtons({ came, no, onMark }: {
 
 export function ApptCard({ it, onMark }: { it: ApptItem; onMark: (id: number, wantCame: boolean) => void }) {
   const st = it.status_db;
-  const came = st === "AWAITING_REVIEW" || st === "CAME";
+  // Any of the terminal "the visitor arrived" statuses render as Came,
+  // including COURTESY_DONE for invitation/greetings — the floor only cares
+  // about presence, not the workflow branch behind it.
+  const came = st === "AWAITING_REVIEW" || st === "CAME" || st === "COURTESY_DONE";
   const no = st === "NOT_CAME";
   const kind: PillKind = came ? "came" : no ? "notcame" : st === "RESCHEDULED" ? "resch" : "expected";
 

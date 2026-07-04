@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Download, Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron,
   CalendarClock, CalendarDays, CalendarRange, X, ArrowUpDown, ArrowDownNarrowWide,
-  ArrowDownAZ, ArrowUpAZ, SlidersHorizontal, MoreVertical, Clock, AlarmClockOff,
+  ArrowDownAZ, ArrowUpAZ, SlidersHorizontal, MoreVertical, Clock,
   CalendarCheck, RotateCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -49,7 +49,7 @@ const TAB_KEYS: Record<Tab, string> = {
 
 const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Waiting", "Rescheduled"];
 
-type QuickChip = "today" | "tomorrow" | "this_week" | "overdue";
+type QuickChip = "today" | "tomorrow" | "this_week";
 
 function statusClass(s: string) {
   return ({
@@ -58,6 +58,8 @@ function statusClass(s: string) {
     Reviewed: "s-Reviewed",
     Waiting: "s-Waiting",
     "Awaiting Review": "s-AwaitingReview",
+    "Courtesy Done": "s-CourtesyDone",
+    "Not Came": "s-NotCame",
   } as Record<string, string>)[s] ?? "";
 }
 
@@ -78,17 +80,12 @@ function computeChipRange(chip: QuickChip): { from: string; to: string } {
     const s = toISODate(t);
     return { from: s, to: s };
   }
-  if (chip === "this_week") {
-    // Mon–Sun
-    const day = now.getDay(); // 0=Sun
-    const monOffset = day === 0 ? -6 : 1 - day;
-    const start = new Date(now); start.setDate(start.getDate() + monOffset);
-    const end = new Date(start); end.setDate(end.getDate() + 6);
-    return { from: toISODate(start), to: toISODate(end) };
-  }
-  // overdue → appt before today
-  const yest = new Date(now); yest.setDate(yest.getDate() - 1);
-  return { from: "", to: toISODate(yest) };
+  // this_week — Mon–Sun spanning the current week.
+  const day = now.getDay(); // 0=Sun
+  const monOffset = day === 0 ? -6 : 1 - day;
+  const start = new Date(now); start.setDate(start.getDate() + monOffset);
+  const end = new Date(start); end.setDate(end.getDate() + 6);
+  return { from: toISODate(start), to: toISODate(end) };
 }
 
 /** Locale-aware date/time formatting hook. */
@@ -101,6 +98,9 @@ const STATUS_LABEL_KEY: Record<string, string> = {
   Scheduled: "appts.statusScheduled",
   Waiting: "appts.statusWaiting",
   Rescheduled: "appts.statusRescheduled",
+  // Terminal for invitation/greetings that were handed over in person.
+  "Courtesy Done": "appts.statusCourtesyDone",
+  "Not Came": "appts.statusNotCame",
 };
 
 /** Status pill — read-only visual indicator, real actions live in the row kebab. */
@@ -116,14 +116,45 @@ function StatusPill({ status, t }: { status: string; t: (k: string) => string })
   );
 }
 
-/** Picks the AI-derived "what they're asking for" line, with EN/TA + fallbacks. */
+/** Categories whose "ask" is a courtesy voice message, not a grievance. */
+const COURTESY_CATEGORIES = new Set(["invitation", "greetings"]);
+
+/**
+ * Picks the "what they're asking for" line for the Appointments table.
+ *
+ * Rules:
+ *  1. Courtesy (invitation/greetings) — show the STT transcript verbatim.
+ *  2. Walk-in with no description and no image attachment — show "Walk-in".
+ *  3. Everything else — AI ask → headline → citizen's own description.
+ */
 function pickAskText(row: AppointmentRow, lang: string): string {
   const ta = lang === "ta";
+  const cat = (row.category || "").toLowerCase();
+  const isWalkIn = row.source === "manual_staff";
+  const hasImage = (row.attachments ?? []).some((a) => a.type === "IMAGE");
+  const rawDesc = (row.description ?? "").trim();
+  // Floor intake fills description with a placeholder like "Walk-in petition
+  // registered by floor:display." when the staff didn't type anything —
+  // treat that as "no citizen-provided description" for display purposes.
+  const desc = isWalkIn && /^Walk-in (appointment|petition) registered by /i.test(rawDesc)
+    ? ""
+    : rawDesc;
+
+  if (COURTESY_CATEGORIES.has(cat)) {
+    const transcript = (row.transcript ?? "").trim();
+    if (transcript) return transcript;
+    // Courtesy still transcribing (or no audio uploaded from the floor PWA).
+    return "Voice message";
+  }
+
+  if (isWalkIn && !desc && !hasImage) return "Walk-in";
+
   const ask = ta ? (row.citizen_ask_ta ?? row.citizen_ask) : row.citizen_ask;
   if (ask && ask.trim()) return ask.trim();
   const head = ta ? (row.headline_ta ?? row.headline) : row.headline;
   if (head && head.trim()) return head.trim();
-  return (row.description ?? "").trim();
+  if (desc) return desc;
+  return isWalkIn ? "Walk-in" : "";
 }
 
 /** Memoized row — re-renders only when its own row payload changes. */
@@ -513,7 +544,6 @@ function AppointmentsPageInner() {
     { key: "today",     label: t("appts.chipToday"),    icon: <CalendarCheck className="h-3.5 w-3.5" /> },
     { key: "tomorrow",  label: t("appts.chipTomorrow"), icon: <CalendarDays className="h-3.5 w-3.5" /> },
     { key: "this_week", label: t("appts.chipThisWeek"), icon: <CalendarRange className="h-3.5 w-3.5" /> },
-    { key: "overdue",   label: t("appts.chipOverdue"),  icon: <AlarmClockOff className="h-3.5 w-3.5" /> },
   ];
 
   return (
@@ -818,23 +848,16 @@ function AppointmentsPageInner() {
 
       <RescheduleModal
         open={!!rescheduleFor}
-        citizenName={rescheduleFor?.name ?? ""}
+        appointmentId={rescheduleFor?.id ?? null}
         onClose={() => setRescheduleFor(null)}
-        onSubmit={async (datetime: string, sms: string) => {
-          if (!rescheduleFor) return;
-          const res = await fetch(`/api/v1/scheduling/admin/reschedule/${rescheduleFor.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ new_datetime: datetime, sms_text: sms }),
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            toast.error(t("appts.rescheduleFail"), { description: err.error || t("appts.rescheduleFailDesc") });
-            return;
+        onRebooked={() => {
+          // Backend flipped the row back to SCHEDULED with the new date. The
+          // parent list overlay follows suit so the row doesn't hang on the
+          // Rescheduled tab until the next fetch.
+          if (rescheduleFor) {
+            setRows((prev) => prev.map((r) => (r.id === rescheduleFor.id ? { ...r, status: "Scheduled" as const } : r)));
           }
-          setRows((prev) => prev.map((r) => (r.id === rescheduleFor.id ? { ...r, status: "Rescheduled" as const } : r)));
           setRescheduleFor(null);
-          toast.success(t("appts.rescheduleOk"), { description: t("appts.rescheduleOkDesc") });
         }}
       />
     </>

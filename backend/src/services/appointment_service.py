@@ -784,6 +784,10 @@ class AppointmentService:
                 # Courtesy items have nothing to summarise, so mark them DONE up
                 # front and no worker will ever pick them up.
                 initial_summary_status = 'DONE' if is_courtesy else 'PENDING'
+                # Courtesy + audio → PENDING so the durable STT worker will
+                # retry if the initial async call fails. NULL for everything
+                # else so the poll stays cheap.
+                initial_transcript_status = 'PENDING' if (is_courtesy and audio_url) else None
 
                 # Resolve status/category/priority to admin FK ids (v2)
                 appt_ids = v2.new_appointment_ids(
@@ -805,6 +809,7 @@ class AppointmentService:
                     priority_id=appt_ids["priority_id"],
                     category_id=appt_ids.get("category_id"),
                     summary_status=initial_summary_status,
+                    transcript_status=initial_transcript_status,
                     num_persons=max(1, min(4, num_persons)),
                     created_at=current_time
                 )
@@ -913,6 +918,10 @@ class AppointmentService:
                     f"[GEMINI SKIP] appointment_id={appointment.id} | "
                     f"category={grievance_category} | reason=courtesy"
                 )
+                # Still transcribe the audio (if any) — the PA needs to see
+                # what the citizen said, just not routed through petition AI.
+                if audio_url:
+                    asyncio.create_task(self.transcribe_courtesy(appointment.id))
             else:
                 logger.info(
                     f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
@@ -1440,7 +1449,6 @@ class AppointmentService:
                     encrypted_name=encrypted_name,
                     encrypted_mobile=self._encrypt_field(mobile or ""),
                     mobile_index=mobile_idx,
-                    ward_or_region=constituency,
                     created_at=current_time,
                 )
                 db.add(citizen)
@@ -1448,18 +1456,23 @@ class AppointmentService:
             else:
                 citizen.encrypted_name = encrypted_name
 
+            walkin_status = "SCHEDULED" if take_slot_path else "AWAITING_REVIEW"
+            walkin_ids = v2.new_appointment_ids(
+                status=walkin_status, category=grievance_category or None,
+            )
             appointment = Appointment(
                 citizen_id=citizen.id,
-                slot_id=legacy_slot_ref,
+                # v2: slot_id is a real FK — book_slot() sets it below.
+                slot_id=None,
                 token_assigned=token_assigned,
                 encrypted_grievance=self._encrypt_field(grievance_text),
-                encrypted_name=encrypted_name,
-                audio_recording_url=None,
                 grievance_category=grievance_category or None,
-                status=("SCHEDULED" if take_slot_path else "AWAITING_REVIEW"),
+                status=walkin_status,
+                status_id=walkin_ids["status_id"],
+                priority_id=walkin_ids["priority_id"],
+                category_id=walkin_ids.get("category_id"),
                 schedule_meeting=take_slot_path,
                 num_persons=max(1, min(4, num_persons)),
-                source="manual_staff",
                 # Courtesy items skip AI regardless of image; other floor
                 # petitions still summarise when an image is attached.
                 summary_status=("DONE" if is_courtesy else ("PENDING" if has_image else "DONE")),
@@ -1697,6 +1710,139 @@ class AppointmentService:
         except Exception:
             await self._finish_summary(appointment_id, ok=False)
 
+    # After this many attempts, the row is marked FAILED and the worker stops
+    # polling it. The PA still has the audio file to play back.
+    TRANSCRIPT_MAX_ATTEMPTS = 5
+
+    async def transcribe_courtesy(self, appointment_id: int) -> bool:
+        """
+        Transcribe the audio message on a courtesy submission (invitation or
+        greetings) and persist a Fernet-encrypted transcript.
+
+        Returns True if a transcript was written (or was already present),
+        False if this attempt failed and the row should be retried later.
+
+        Called after commit for courtesy items with audio, and also from the
+        durable worker (`drain_pending_transcripts`) which polls PENDING rows
+        every 5 minutes.
+        """
+        from src.services.storage_service import get_file_bytes
+        from src.core.database import AsyncSessionLocal
+        from sqlalchemy import select as _select
+
+        async with AsyncSessionLocal() as session:
+            appt = (await session.execute(
+                _select(Appointment).where(Appointment.id == appointment_id)
+            )).scalar_one_or_none()
+            if not appt:
+                logger.info(f"[COURTESY STT] appointment_id={appointment_id} not found")
+                return False
+
+            # Idempotent — a concurrent worker may have already finished it.
+            if appt.encrypted_transcript and appt.transcript_status == "DONE":
+                return True
+
+            # v2: audio lives in attachments (attachment_type='AUDIO')
+            audio_url = (await session.execute(
+                _select(AppointmentAttachment.storage_url)
+                .where(AppointmentAttachment.appointment_id == appointment_id)
+                .where(AppointmentAttachment.attachment_type == "AUDIO")
+                .limit(1)
+            )).scalar_one_or_none()
+            if not audio_url:
+                # Nothing we can do; keep the state so the worker moves on.
+                appt.transcript_status = "DONE"
+                await session.commit()
+                logger.info(f"[COURTESY STT] appointment_id={appointment_id} no audio, marking DONE")
+                return True
+
+            try:
+                audio_bytes = await asyncio.to_thread(get_file_bytes, audio_url)
+            except Exception as read_err:
+                audio_bytes = None
+                logger.info(f"[COURTESY STT] appointment_id={appointment_id} audio read error: {read_err}")
+
+            transcript = ""
+            if audio_bytes:
+                # Sarvam first (better Tamil accuracy), Gemini as fallback.
+                try:
+                    from src.services.stt_service import SarvamSTTService
+                    svc = SarvamSTTService.from_settings()
+                    r = await asyncio.to_thread(
+                        svc.transcribe, audio_bytes,
+                        filename=f"appt_{appointment_id}.webm",
+                        mime_type="audio/webm",
+                    )
+                    if r and not r.error:
+                        transcript = (r.transcript or "").strip()
+                except Exception as sarvam_err:
+                    logger.info(f"[COURTESY STT] Sarvam failed for appointment_id={appointment_id}: {sarvam_err}")
+
+                if not transcript:
+                    try:
+                        from src.services.stt_service import GeminiSTTService
+                        gsvc = GeminiSTTService.from_settings()
+                        g = await asyncio.to_thread(
+                            gsvc.transcribe, audio_bytes,
+                            filename=f"appt_{appointment_id}.webm",
+                            mime_type="audio/webm",
+                        )
+                        if g and not g.error:
+                            transcript = (g.transcript or "").strip()
+                    except Exception as gemini_err:
+                        logger.info(f"[COURTESY STT] Gemini fallback failed for appointment_id={appointment_id}: {gemini_err}")
+
+            if transcript:
+                appt.encrypted_transcript = self._encrypt_field(transcript)
+                appt.transcript_status = "DONE"
+                await session.commit()
+                logger.info(f"[COURTESY STT OK] appointment_id={appointment_id} chars={len(transcript)}")
+                return True
+
+            # Failure path — count the attempt, cap and give up if we hit it.
+            appt.transcript_attempts = (appt.transcript_attempts or 0) + 1
+            if appt.transcript_attempts >= self.TRANSCRIPT_MAX_ATTEMPTS:
+                appt.transcript_status = "FAILED"
+                logger.info(
+                    f"[COURTESY STT FAILED] appointment_id={appointment_id} "
+                    f"attempts={appt.transcript_attempts} — giving up"
+                )
+            else:
+                appt.transcript_status = "PENDING"
+                logger.info(
+                    f"[COURTESY STT RETRY] appointment_id={appointment_id} "
+                    f"attempts={appt.transcript_attempts}"
+                )
+            await session.commit()
+            return False
+
+    async def drain_pending_transcripts(self, limit: int = 25) -> int:
+        """
+        Retry every appointment stuck at transcript_status='PENDING' (capped at
+        `limit` per pass). Called by the background worker every 5 minutes and
+        once at startup so a Sarvam/Gemini outage doesn't strand transcripts.
+        Returns the number of rows successfully transcribed this pass.
+        """
+        from src.core.database import AsyncSessionLocal
+        from sqlalchemy import select as _select
+
+        async with AsyncSessionLocal() as session:
+            ids = (await session.execute(
+                _select(Appointment.id).where(
+                    Appointment.transcript_status == "PENDING",
+                    Appointment.transcript_attempts < self.TRANSCRIPT_MAX_ATTEMPTS,
+                ).limit(limit)
+            )).scalars().all()
+
+        done = 0
+        for aid in ids:
+            try:
+                if await self.transcribe_courtesy(aid):
+                    done += 1
+            except Exception as e:
+                logger.info(f"[COURTESY STT DRAIN] appointment_id={aid} error: {e}")
+        return done
+
     async def try_summarise_now(self, appointment_id: int) -> None:
         """Optimistic web-side attempt: claim THIS row if still PENDING, then run.
 
@@ -1717,12 +1863,36 @@ class AppointmentService:
         await self._process_claimed_summary(appointment_id)
 
     async def _claim_next_pending_summary(self) -> Optional[int]:
-        """Worker: atomically claim the oldest PENDING row (PENDING->PROCESSING)."""
+        """Worker: atomically claim the next PENDING row (PENDING->PROCESSING).
+
+        Ordering — highest urgency first, then FIFO within a bucket:
+          0. Meeting scheduled for today   (citizen is coming NOW)
+          1. Meeting scheduled for tomorrow
+          2. Meeting scheduled further out
+          3. Petition-only submissions     (no meeting requested)
+
+        The bucket priority only bites when the worker has a backlog — an empty
+        queue processes rows the moment they arrive. Cheap to compute: the
+        filter `summary_status='PENDING'` already narrows the candidate set to
+        a handful of rows, so re-evaluating the CASE per row is trivial.
+        """
         from src.core.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             row_id = (await db.execute(text(
-                "SELECT id FROM appointment WHERE summary_status='PENDING' "
-                "ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1"))).scalar()
+                # v2: meeting date lives on the joined slot → availability.
+                # FOR UPDATE OF a — can't lock the nullable side of an outer join.
+                "SELECT a.id FROM appointment a "
+                "LEFT JOIN slots s ON s.id = a.slot_id "
+                "LEFT JOIN availability av ON av.id = s.availability_id "
+                "WHERE a.summary_status='PENDING' "
+                "ORDER BY "
+                "  CASE "
+                "    WHEN a.schedule_meeting AND av.date = CURRENT_DATE               THEN 0 "
+                "    WHEN a.schedule_meeting AND av.date = CURRENT_DATE + INTEGER '1' THEN 1 "
+                "    WHEN a.schedule_meeting                                          THEN 2 "
+                "    ELSE                                                                  3 "
+                "  END, a.created_at "
+                "FOR UPDATE OF a SKIP LOCKED LIMIT 1"))).scalar()
             if row_id is None:
                 return None
             await db.execute(text(

@@ -25,13 +25,16 @@ import {
 
 const PAGE_SIZE = 25;
 
+// Open first — that's where every fresh ticket lands and where the PA's
+// attention needs to go. All is last so it stays as a "show everything"
+// escape hatch without being the default landing state.
 const SEGMENTS: { key: string; tKey: string }[] = [
-  { key: "",                  tKey: "tickets.segAll" },
   { key: "open",              tKey: "tickets.segOpen" },
   { key: "in_progress",       tKey: "tickets.segProgress" },
   { key: "forwarded_to_dept", tKey: "tickets.segFwd" },
   { key: "resolved",          tKey: "tickets.segResolved" },
   { key: "closed",            tKey: "tickets.segClosed" },
+  { key: "",                  tKey: "tickets.segAll" },
 ];
 
 const PRIORITY_RAIL: Record<string, string> = {
@@ -120,7 +123,7 @@ const TicketTableRow = memo(function TicketTableRow({
           {row.headline ?? <span className="italic text-muted-foreground/60">No headline</span>}
         </div>
       </td>
-      <td className="px-4 py-3 text-sm text-muted-foreground">{row.department_label ?? "—"}</td>
+      <td className="px-4 py-3 text-sm text-muted-foreground">{row.category_label ?? "—"}</td>
       <td className="px-4 py-3">
         {row.priority
           ? <span className={cn("rounded px-2 py-0.5 text-[13px] font-bold", PRIORITY_COLOR[row.priority])}>{PRIORITY_DISPLAY[row.priority] ?? row.priority}</span>
@@ -196,7 +199,7 @@ const TicketCard = memo(function TicketCard({
         <div className="mt-2 line-clamp-2 text-sm leading-snug text-foreground/85">{row.headline}</div>
       )}
       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-        <span>{row.department_label ?? "—"}</span>
+        <span>{row.category_label ?? "—"}</span>
         <span>{row.assigned_to_pa ?? t("tickets.unassigned")}</span>
       </div>
     </div>
@@ -210,7 +213,9 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
 
-  const [status, setStatus] = useState("");
+  // Default to 'open' — the PA's queue-of-attention. All is still reachable
+  // as the last segment tab if they want everything at once.
+  const [status, setStatus] = useState("open");
   const [priority, setPriority] = useState("");
   const [department, setDepartment] = useState("");
   const [category, setCategory] = useState("");
@@ -460,7 +465,7 @@ export default function TicketsPage() {
                     <th className={cn(th, "w-[150px]")}>{t("tickets.colTicket")}</th>
                     <th className={th}>{t("tickets.colCitizen")}</th>
                     <th className={th}>{t("label.summary")}</th>
-                    <th className={th}>{t("label.department")}</th>
+                    <th className={th}>{t("label.category")}</th>
                     <th className={cn(th, "w-20")}>{t("tickets.colPriority")}</th>
                     <th className={cn(th, "w-36")}>{t("tickets.colStatus")}</th>
                     <th className={cn(th, "w-32")}>{t("tickets.colAssigned")}</th>

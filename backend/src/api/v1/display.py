@@ -89,7 +89,7 @@ async def display_today_api(
         .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
         .where(MLADailyAvailability.date == today)
         .where(Appointment.status.in_(
-            ["SCHEDULED", "RESCHEDULED", "AWAITING_REVIEW", "NOT_CAME"]))
+            ["SCHEDULED", "RESCHEDULED", "AWAITING_REVIEW", "NOT_CAME", "COURTESY_DONE"]))
         .order_by(AppointmentSlot.start_time)
     )
 
@@ -127,6 +127,9 @@ async def display_today_api(
             "mobile": mobile,
             "num_persons": appt.num_persons or 1,
             "category": _category_label(appt.grievance_category),
+            # Raw enum key so the client can detect courtesy items (invitation /
+            # greetings) and swap labels/actions without brittle label matching.
+            "category_key": appt.grievance_category,
             "reason": headline or _category_label(appt.grievance_category),
             "status": _resolve_display_status(appt),
             "status_db": appt.status,
@@ -137,7 +140,7 @@ async def display_today_api(
         "items": items,
         "total": len(items),
         "expected": sum(1 for i in items if i["status_db"] in ("SCHEDULED", "RESCHEDULED")),
-        "present": sum(1 for i in items if i["status_db"] == "AWAITING_REVIEW"),
+        "present": sum(1 for i in items if i["status_db"] in ("AWAITING_REVIEW", "COURTESY_DONE")),
         "not_came": sum(1 for i in items if i["status_db"] == "NOT_CAME"),
         "date": today.strftime("%d %b %Y"),
     })

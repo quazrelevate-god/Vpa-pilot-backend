@@ -141,6 +141,75 @@ async def _recover_ai_uploads():
         logging.getLogger("ai_upload").warning("startup recovery skipped: %s", e)
 
 
+@app.on_event("startup")
+async def _start_auto_reschedule_loop():
+    """
+    Housekeeping: flip past-day SCHEDULED rows to RESCHEDULED so the Scheduled
+    tab isn't full of yesterday's forgotten meetings. Runs once at startup, then
+    every day at 00:05 local time. Failures never crash the process.
+    """
+    from src.core.database import AsyncSessionLocal
+    from src.services.dashboard_service import auto_reschedule_stale_scheduled
+    from datetime import datetime, timedelta
+    import asyncio as _asyncio
+    log = logging.getLogger("auto_reschedule")
+
+    async def _sweep_once():
+        try:
+            async with AsyncSessionLocal() as db:
+                n = await auto_reschedule_stale_scheduled(db)
+            if n:
+                log.info("auto_reschedule: flipped %d SCHEDULED → RESCHEDULED", n)
+        except Exception as e:
+            log.warning("auto_reschedule sweep failed: %s", e)
+
+    async def _loop():
+        # Immediate sweep on boot — a crash right after midnight would otherwise
+        # leave yesterday's rows sitting on the Scheduled tab until tomorrow.
+        await _sweep_once()
+        while True:
+            now = datetime.now()
+            # Next fire: 00:05 tomorrow.
+            target = (now + timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
+            await _asyncio.sleep(max(60, (target - now).total_seconds()))
+            await _sweep_once()
+
+    _asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _start_courtesy_transcript_loop():
+    """
+    Durable retry for courtesy-audio transcription (invitation/greetings).
+
+    On a Sarvam/Gemini outage the initial fire-and-forget attempt at submission
+    time leaves the row marked transcript_status='PENDING'. This loop drains
+    those rows every 5 minutes so a temporary outage doesn't strand the
+    transcript on the floor.
+    """
+    from src.services.appointment_service import appointment_service
+    import asyncio as _asyncio
+    log = logging.getLogger("courtesy_stt")
+
+    async def _drain_once():
+        try:
+            n = await appointment_service.drain_pending_transcripts(limit=25)
+            if n:
+                log.info("courtesy_stt drain: transcribed %d PENDING rows", n)
+        except Exception as e:
+            log.warning("courtesy_stt drain failed: %s", e)
+
+    async def _loop():
+        # Immediate sweep on boot so a crash mid-transcription doesn't wait
+        # 5 minutes to recover.
+        await _drain_once()
+        while True:
+            await _asyncio.sleep(5 * 60)
+            await _drain_once()
+
+    _asyncio.create_task(_loop())
+
+
 @app.get("/health", tags=["Health Check"])
 async def health_check():
     """Liveness — process is up. Cheap, no dependencies."""

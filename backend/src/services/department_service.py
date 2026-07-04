@@ -74,12 +74,17 @@ def _valid_department(value: str) -> str:
 
 async def route_to_department(db: AsyncSession, ticket_id: int, department: str,
                               actor: str, note: Optional[str] = None) -> dict:
-    """PA assigns the ticket to a school department (assign = select dept)."""
+    """PA assigns the ticket to a school department.
+
+    Landing status is ASSIGNED — the PA's job is done once a department owns
+    the row. The department accepts to move it to IN_PROGRESS. AWAITING_DEPARTMENT
+    is kept in the enum for backward compat but new assigns don't use it.
+    """
     dept = _valid_department(department)
     t = await _get(db, ticket_id)
     prev = t.department
     t.department = dept
-    t.status = TicketStatus.AWAITING_DEPARTMENT.value
+    t.status = TicketStatus.ASSIGNED.value
     t.accepted_at = None
     t.accepted_by = None
     _event(db, ticket_id, TicketEventType.ROUTED_TO_DEPARTMENT.value, actor,
@@ -165,7 +170,8 @@ async def _get_owned(db: AsyncSession, ticket_id: int, department: str) -> Ticke
 
 async def dept_accept(db: AsyncSession, ticket_id: int, department: str) -> dict:
     t = await _get_owned(db, ticket_id, department)
-    if t.status != TicketStatus.AWAITING_DEPARTMENT.value:
+    # New assigns land at ASSIGNED; legacy rows may still be AWAITING_DEPARTMENT.
+    if t.status not in (TicketStatus.ASSIGNED.value, TicketStatus.AWAITING_DEPARTMENT.value):
         raise HTTPException(status_code=409, detail="Only tickets awaiting acceptance can be accepted.")
     t.status = TicketStatus.IN_PROGRESS.value
     t.accepted_at = datetime.utcnow()
@@ -185,7 +191,8 @@ async def dept_forward(db: AsyncSession, ticket_id: int, department: str,
         raise HTTPException(status_code=400, detail="Cannot forward to the same department.")
     t = await _get_owned(db, ticket_id, department)
     t.department = to_dept
-    t.status = TicketStatus.AWAITING_DEPARTMENT.value
+    # New dept-of-record sees an 'assigned' ticket, same as a PA assignment.
+    t.status = TicketStatus.ASSIGNED.value
     t.accepted_at = None
     t.accepted_by = None
     _event(db, ticket_id, TicketEventType.DEPARTMENT_FORWARDED.value, department,
@@ -242,8 +249,8 @@ def _decode(v):
 
 def _ticket_row(t: Ticket, appt: Optional[Appointment], citizen: Optional[Citizen],
                 summary: Optional[GrievanceSummaryRecord]) -> dict:
-    name = _decode(appt.encrypted_name) if (appt and appt.encrypted_name) else \
-        (_decode(citizen.encrypted_name) if citizen else "—")
+    # v2: name lives on the Citizen record only.
+    name = _decode(citizen.encrypted_name) if citizen else "—"
     mobile = _decode(citizen.encrypted_mobile) if citizen else "—"
     return {
         "id": t.id,

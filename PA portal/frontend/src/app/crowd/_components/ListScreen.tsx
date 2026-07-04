@@ -39,7 +39,7 @@ export default function ListScreen({
   const pass = (statusDb: string) => {
     if (!filter) return true;
     const st = statusDb.toUpperCase();
-    if (filter === "CAME") return st === "CAME" || st === "AWAITING_REVIEW";
+    if (filter === "CAME") return st === "CAME" || st === "AWAITING_REVIEW" || st === "COURTESY_DONE";
     if (filter === "NOT_CAME") return st === "NOT_CAME";
     return true;
   };

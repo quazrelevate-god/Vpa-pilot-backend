@@ -170,6 +170,36 @@ class Appointment(Base):
         comment="Fernet-encrypted Tamil name (PA-entered in the review drawer)"
     )
 
+    # STT transcript for courtesy submissions (invitation/greetings).
+    # Populated by transcribe_courtesy() when an audio recording is attached;
+    # NULL for every other row. Encrypted with the same Fernet key as the
+    # other PII columns since the citizen may name people/places in the clip.
+    encrypted_transcript = Column(
+        Text,
+        nullable=True,
+        comment="Fernet-encrypted STT transcript of the citizen's voice message"
+    )
+
+    # Durable-worker state for the transcript above. NULL for non-courtesy or
+    # audio-less rows; PENDING → DONE / FAILED. A background loop drains
+    # PENDING rows on a 5-minute cadence, so an STT outage doesn't drop the
+    # transcript on the floor.
+    transcript_status = Column(
+        String(20),
+        nullable=True,
+        comment="PENDING / DONE / FAILED — courtesy STT state",
+    )
+    transcript_attempts = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="Number of STT attempts (capped, then FAILED)",
+    )
+
+    # v2: no audio_recording_url column — audio lives in attachments
+    # (attachment_type='AUDIO').
+
     # v1 attr → v2 DB column "category"
     grievance_category = Column("category", String(50), nullable=True)
 

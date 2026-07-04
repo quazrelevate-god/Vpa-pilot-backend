@@ -17,6 +17,7 @@ import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { priorityOptions, deptOptions, categoryOptions, DEPT_DISPLAY, CATEGORY_DISPLAY } from "@/lib/enums";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import RescheduleModal from "@/components/RescheduleModal";
 
 type Lang = "en" | "ta";
 
@@ -46,6 +47,7 @@ export default function AppointmentDetailDrawer({
   const [overrides, setOverrides] = useState<{ priority?: string | null; category?: string | null; department?: string | null }>({});
   const [editCategory, setEditCategory] = useState(false);
   const [editDepartment, setEditDepartment] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
 
   const open = row != null;
   const a = row;
@@ -148,6 +150,80 @@ export default function AppointmentDetailDrawer({
               </SheetClose>
             </div>
 
+            {/* Action bar — workflow actions per current status. Every
+                Appointments-tab row where the PA has real work to do gets
+                a colour-coded strip below the header:
+
+                  Rescheduled — needs to be re-booked or converted to a petition
+                  Waiting     — same options; Schedule opens the same picker
+                  Scheduled   — only convert-to-petition (the meeting is set)
+
+                All other statuses (Awaiting Review, Reviewed, Not Came,
+                Courtesy Done) have no interactive bar — they're terminal or
+                already routed through Petition Review. */}
+            {(() => {
+              const s = a.status;
+              const cfg =
+                s === "Rescheduled" ? {
+                  bg: "bg-violet-50/50", tone: "text-violet-700", sub: "text-violet-900/80",
+                  title: "Needs rescheduling",
+                  hint: "Call the citizen — book a new slot, or convert to a petition.",
+                  primary: { kind: "reschedule" as const, label: "Reschedule to new slot" },
+                }
+                : s === "Waiting" ? {
+                  bg: "bg-amber-50/60", tone: "text-amber-700", sub: "text-amber-900/80",
+                  title: "In the waiting queue",
+                  hint: "Book them into a slot when one opens, or convert to a petition.",
+                  primary: { kind: "reschedule" as const, label: "Schedule" },
+                }
+                : s === "Scheduled" ? {
+                  bg: "bg-emerald-50/60", tone: "text-emerald-700", sub: "text-emerald-900/80",
+                  title: "Scheduled meeting",
+                  hint: "Convert to a petition if the citizen no longer wants to meet.",
+                  primary: null,
+                }
+                : null;
+              if (!cfg) return null;
+              return (
+                <div className={cn("flex items-center justify-between gap-3 border-b border-border px-6 py-3", cfg.bg)}>
+                  <div className="min-w-0">
+                    <div className={cn("text-[11px] font-bold uppercase tracking-wider", cfg.tone)}>
+                      {cfg.title}
+                    </div>
+                    <div className={cn("text-[13px]", cfg.sub)}>
+                      {cfg.hint}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="outline"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!a) return;
+                        setBusy(true);
+                        try {
+                          await updateAppointmentStatus(a.id, "Awaiting Review");
+                          toast.success("Moved to Awaiting Review");
+                          onStatusChange?.(a, "Awaiting Review");
+                          onClose();
+                        } catch (e) {
+                          toast.error("Failed", { description: (e as Error).message });
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}>
+                      Convert to petition
+                    </Button>
+                    {cfg.primary && (
+                      <Button size="sm" onClick={() => setRescheduleOpen(true)} disabled={busy}>
+                        <CalendarDays className="h-4 w-4" />
+                        {cfg.primary.label}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
               {/* Preview pane — uploads at-a-glance */}
               <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[52%] lg:border-b-0 lg:border-r">
@@ -162,27 +238,47 @@ export default function AppointmentDetailDrawer({
                 </div>
               </aside>
 
-              <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 min-h-0 flex-1 flex-col">
-              {/* Tab bar */}
-              <div className="border-b border-border bg-card px-6 pt-3">
-                <TabsList className="bg-muted">
-                  <TabsTrigger value="details">Details</TabsTrigger>
-                  <TabsTrigger value="activity">
-                    Activity
-                    {activity.length > 0 && (
-                      <span className="ml-1.5 rounded-full bg-background px-1.5 text-[10px] font-bold text-muted-foreground">
-                        {activity.length}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              {/* ── Details tab ─────────────────────────────────────────── */}
-              <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
+              {/* Activity feed removed — the drawer is Details only. */}
+              <div className="flex min-w-0 min-h-0 flex-1 flex-col">
+              <div className="m-0 min-h-0 flex-1 overflow-y-auto">
                 <div className="space-y-4 p-6">
-                {/* Summary — the briefing */}
-                {(a.summary || a.summary_ta || a.description) && (
+                {/* Voice message transcript — courtesy submissions (invitation /
+                     greetings) don't run through the AI summariser, so their
+                     voice message is transcribed on its own and shown here. */}
+                {a.transcript && (
+                  <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
+                    <div className="h-1 w-full bg-gradient-to-r from-emerald-500 via-emerald-500/70 to-emerald-500/30" />
+                    <div className="p-5 sm:p-6">
+                      <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                        Voice message
+                      </h3>
+                      <p className={cn(
+                        "text-[15px] font-medium leading-[1.75] tracking-[-0.005em] text-foreground",
+                        lang === "ta" && "font-[Mukta_Malar,_'Noto_Sans_Tamil',_system-ui]",
+                      )}>
+                        {a.transcript}
+                      </p>
+                    </div>
+                  </section>
+                )}
+
+                {/* Summary — the AI briefing.
+                    Hidden entirely for the edge cases where no AI runs:
+                      - invitation / greetings (voice message is the whole ask)
+                      - floor walk-ins where the operator only filed the
+                        auto-generated placeholder description
+                    Rendered normally when there's real text (summary or
+                    citizen-typed description) or when AI is actively running. */}
+                {(() => {
+                  const cat = (a.category || "").toLowerCase();
+                  if (cat === "invitation" || cat === "greetings") return false;
+                  const desc = (a.description || "").trim();
+                  const isFloorPlaceholder = a.source === "manual_staff"
+                    && /^Walk-in (appointment|petition) registered by /i.test(desc);
+                  const meaningfulDesc = desc && !isFloorPlaceholder;
+                  return !!(a.summary || a.summary_ta || meaningfulDesc
+                    || (a.summary_status && a.summary_status !== "DONE" && a.summary_status !== "FAILED"));
+                })() && (
                   <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
                     <div className="h-1 w-full bg-gradient-to-r from-brand via-brand/70 to-brand/30" />
 
@@ -191,7 +287,8 @@ export default function AppointmentDetailDrawer({
                         <h3 className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand">
                           Summary
                         </h3>
-                        {!a.summary && !a.summary_ta && (
+                        {!a.summary && !a.summary_ta
+                          && (a.summary_status === "PENDING" || a.summary_status === "PROCESSING") && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
                             Generating
@@ -207,8 +304,15 @@ export default function AppointmentDetailDrawer({
                         )}>
                           {pick(a.summary, a.summary_ta)}
                         </p>
-                      ) : (
+                      ) : (a.summary_status === "PENDING" || a.summary_status === "PROCESSING") ? (
                         <p className="text-sm italic text-muted-foreground">Summary is being prepared…</p>
+                      ) : (
+                        <p className={cn(
+                          "text-[15px] font-medium leading-[1.75] tracking-[-0.005em] text-foreground",
+                          lang === "ta" && "font-[Mukta_Malar,_'Noto_Sans_Tamil',_system-ui]"
+                        )}>
+                          {a.description || "—"}
+                        </p>
                       )}
 
                       {/* Citizen ask */}
@@ -293,162 +397,28 @@ export default function AppointmentDetailDrawer({
                 {/* Citizen's description / audio transcript now rendered under
                     the audio player in the left preview pane. */}
 
-                {/* Properties — admin overrides for AI-derived fields */}
-                <Panel icon={User} title="Properties">
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Status — always editable */}
-                    <div className="space-y-1.5">
-                      <Label>Status</Label>
-                      <Select value={a.status} onValueChange={(v) => changeStatus(v as AppointmentStatus)} disabled={busy}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Priority — always editable */}
-                    <div className="space-y-1.5">
-                      <Label>Priority</Label>
-                      <Select
-                        value={currentPriority ?? undefined}
-                        onValueChange={(v) => patchDetails({ priority: v })}
-                        disabled={busy}
-                      >
-                        <SelectTrigger className="h-9"><SelectValue placeholder="— Set priority —" /></SelectTrigger>
-                        <SelectContent>
-                          {priorityOptions.map((o) => (
-                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Category — read-only with Edit toggle */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <Label>Category</Label>
-                        {!editCategory && (
-                          <button
-                            onClick={() => setEditCategory(true)}
-                            className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand hover:underline"
-                            disabled={busy}
-                          >
-                            <Pencil className="h-3 w-3" /> Edit
-                          </button>
-                        )}
-                      </div>
-                      {editCategory ? (
-                        <div className="flex gap-1.5">
-                          <Select
-                            value={currentCategoryKey ?? a.category ?? undefined}
-                            onValueChange={(v) => patchDetails({ category: v }).then(() => setEditCategory(false))}
-                            disabled={busy}
-                          >
-                            <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="— Select —" /></SelectTrigger>
-                            <SelectContent className="max-h-72">
-                              {categoryOptions.map((o) => (
-                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button variant="ghost" size="sm" className="h-9 px-2" onClick={() => setEditCategory(false)} disabled={busy}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3 text-sm text-foreground">
-                          {categoryLabel ?? <span className="text-muted-foreground">—</span>}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Ministry — read-only with Edit toggle */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <Label>Ministry</Label>
-                        {!editDepartment && (
-                          <button
-                            onClick={() => setEditDepartment(true)}
-                            className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand hover:underline"
-                            disabled={busy}
-                          >
-                            <Pencil className="h-3 w-3" /> Edit
-                          </button>
-                        )}
-                      </div>
-                      {editDepartment ? (
-                        <div className="flex gap-1.5">
-                          <Select
-                            value={currentDeptKey ?? undefined}
-                            onValueChange={(v) => patchDetails({ department: v }).then(() => setEditDepartment(false))}
-                            disabled={busy}
-                          >
-                            <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="— Select —" /></SelectTrigger>
-                            <SelectContent className="max-h-72">
-                              {deptOptions.map((o) => (
-                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button variant="ghost" size="sm" className="h-9 px-2" onClick={() => setEditDepartment(false)} disabled={busy}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex h-9 items-center rounded-md border border-input bg-muted/40 px-3 text-sm text-foreground">
-                          {departmentLabel ?? <span className="text-muted-foreground">—</span>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 inline-flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
-                    <Check className="h-3 w-3 text-emerald-500" />
-                    Edits override the model's suggestion and are saved immediately.
-                  </div>
-                </Panel>
+                {/* Properties panel removed — workflow actions now live in
+                    the top action bar (Scheduled / Waiting / Rescheduled). */}
               </div>
-            </TabsContent>
-
-              {/* ── Activity tab ────────────────────────────────────────── */}
-              <TabsContent value="activity" className="m-0 min-h-0 flex-1 overflow-y-auto">
-                <div className="space-y-4 p-6">
-                  {activity.length === 0 ? (
-                    <div className="py-10 text-center text-sm italic text-muted-foreground">No activity yet.</div>
-                  ) : (
-                    <ol className="space-y-1">
-                      {activity.map((e, idx) => {
-                        const Icon = APPT_EVENT_ICON[e.event_type] ?? Clock;
-                        const last = idx === activity.length - 1;
-                        const title = formatApptEventTitle(e.event_type);
-                        const renderedBody = renderApptEventBody(e);
-                        return (
-                          <li key={e.id} className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand/10 text-brand ring-1 ring-brand/15">
-                                <Icon className="h-3.5 w-3.5" />
-                              </span>
-                              {!last && <span className="my-1 w-px flex-1 bg-border" />}
-                            </div>
-                            <div className="min-w-0 flex-1 pb-4">
-                              <div className="text-sm font-medium text-foreground">{title}</div>
-                              <div className="text-[11px] text-muted-foreground">
-                                by <b className="font-semibold text-foreground/80">{e.actor}</b> · {formatDateTime(e.created_at)}
-                              </div>
-                              {renderedBody}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+            </div>
+            </div>
             </div>
           </>
         )}
       </SheetContent>
+
+      <RescheduleModal
+        open={rescheduleOpen}
+        appointmentId={a?.id ?? null}
+        onClose={() => setRescheduleOpen(false)}
+        onRebooked={() => {
+          // Backend flipped this row back to SCHEDULED with the new date.
+          // Close the drawer so the parent list refetches and the row moves
+          // off the Rescheduled tab immediately.
+          if (a) onStatusChange?.(a, "Scheduled");
+          onClose();
+        }}
+      />
     </Sheet>
   );
 }
