@@ -1851,12 +1851,32 @@ class AppointmentService:
         await self._process_claimed_summary(appointment_id)
 
     async def _claim_next_pending_summary(self) -> Optional[int]:
-        """Worker: atomically claim the oldest PENDING row (PENDING->PROCESSING)."""
+        """Worker: atomically claim the next PENDING row (PENDING->PROCESSING).
+
+        Ordering — highest urgency first, then FIFO within a bucket:
+          0. Meeting scheduled for today   (citizen is coming NOW)
+          1. Meeting scheduled for tomorrow
+          2. Meeting scheduled further out
+          3. Petition-only submissions     (no meeting requested)
+
+        The bucket priority only bites when the worker has a backlog — an empty
+        queue processes rows the moment they arrive. Cheap to compute: the
+        filter `summary_status='PENDING'` already narrows the candidate set to
+        a handful of rows, so re-evaluating the CASE per row is trivial.
+        """
         from src.core.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             row_id = (await db.execute(text(
-                "SELECT id FROM appointments WHERE summary_status='PENDING' "
-                "ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1"))).scalar()
+                "SELECT id FROM appointments "
+                "WHERE summary_status='PENDING' "
+                "ORDER BY "
+                "  CASE "
+                "    WHEN schedule_meeting AND scheduled_date = CURRENT_DATE                 THEN 0 "
+                "    WHEN schedule_meeting AND scheduled_date = CURRENT_DATE + INTEGER '1'   THEN 1 "
+                "    WHEN schedule_meeting                                                    THEN 2 "
+                "    ELSE                                                                          3 "
+                "  END, created_at "
+                "FOR UPDATE SKIP LOCKED LIMIT 1"))).scalar()
             if row_id is None:
                 return None
             await db.execute(text(
