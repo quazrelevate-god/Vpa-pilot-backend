@@ -269,6 +269,23 @@ class Appointment(Base):
         comment="Fernet-encrypted STT transcript of the citizen's voice message"
     )
 
+    # Durable-worker state for the transcript above. NULL for non-courtesy or
+    # audio-less rows; PENDING → DONE / FAILED. A background loop drains
+    # PENDING rows on a 5-minute cadence, so an STT outage doesn't drop the
+    # transcript on the floor.
+    transcript_status = Column(
+        String(20),
+        nullable=True,
+        comment="PENDING / DONE / FAILED — courtesy STT state",
+    )
+    transcript_attempts = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="Number of STT attempts (capped, then FAILED)",
+    )
+
     audio_recording_url = Column(
         Text,
         nullable=True,

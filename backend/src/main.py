@@ -163,6 +163,39 @@ async def _start_auto_reschedule_loop():
     _asyncio.create_task(_loop())
 
 
+@app.on_event("startup")
+async def _start_courtesy_transcript_loop():
+    """
+    Durable retry for courtesy-audio transcription (invitation/greetings).
+
+    On a Sarvam/Gemini outage the initial fire-and-forget attempt at submission
+    time leaves the row marked transcript_status='PENDING'. This loop drains
+    those rows every 5 minutes so a temporary outage doesn't strand the
+    transcript on the floor.
+    """
+    from src.services.appointment_service import appointment_service
+    import asyncio as _asyncio
+    log = logging.getLogger("courtesy_stt")
+
+    async def _drain_once():
+        try:
+            n = await appointment_service.drain_pending_transcripts(limit=25)
+            if n:
+                log.info("courtesy_stt drain: transcribed %d PENDING rows", n)
+        except Exception as e:
+            log.warning("courtesy_stt drain failed: %s", e)
+
+    async def _loop():
+        # Immediate sweep on boot so a crash mid-transcription doesn't wait
+        # 5 minutes to recover.
+        await _drain_once()
+        while True:
+            await _asyncio.sleep(5 * 60)
+            await _drain_once()
+
+    _asyncio.create_task(_loop())
+
+
 @app.get("/health", tags=["Health Check"])
 async def health_check():
     """Liveness — process is up. Cheap, no dependencies."""

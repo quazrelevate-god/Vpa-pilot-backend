@@ -801,6 +801,10 @@ class AppointmentService:
                 # Courtesy items have nothing to summarise, so mark them DONE up
                 # front and no worker will ever pick them up.
                 initial_summary_status = 'DONE' if is_courtesy else 'PENDING'
+                # Courtesy + audio → PENDING so the durable STT worker will
+                # retry if the initial async call fails. NULL for everything
+                # else so the poll stays cheap.
+                initial_transcript_status = 'PENDING' if (is_courtesy and audio_url) else None
                 appointment = Appointment(
                     citizen_id=citizen.id,
                     slot_id=legacy_slot_ref,
@@ -812,6 +816,7 @@ class AppointmentService:
                     status=initial_status,
                     schedule_meeting=take_slot_path,
                     summary_status=initial_summary_status,
+                    transcript_status=initial_transcript_status,
                     num_persons=max(1, min(4, num_persons)),
                     created_at=current_time
                 )
@@ -1699,53 +1704,65 @@ class AppointmentService:
         except Exception:
             await self._finish_summary(appointment_id, ok=False)
 
-    async def transcribe_courtesy(self, appointment_id: int) -> None:
+    # After this many attempts, the row is marked FAILED and the worker stops
+    # polling it. The PA still has the audio file to play back.
+    TRANSCRIPT_MAX_ATTEMPTS = 5
+
+    async def transcribe_courtesy(self, appointment_id: int) -> bool:
         """
         Transcribe the audio message on a courtesy submission (invitation or
-        greetings) and store the Fernet-encrypted transcript on the appointment.
+        greetings) and persist a Fernet-encrypted transcript.
 
-        Called after commit for courtesy items that included an audio recording.
-        Fires-and-forgets — a network hiccup shouldn't fail the submission, but
-        the PA won't see a transcript until they retry. Deliberately small; no
-        AI summary/routing.
+        Returns True if a transcript was written (or was already present),
+        False if this attempt failed and the row should be retried later.
+
+        Called after commit for courtesy items with audio, and also from the
+        durable worker (`drain_pending_transcripts`) which polls PENDING rows
+        every 5 minutes.
         """
         from src.services.storage_service import get_file_bytes
         from src.core.database import AsyncSessionLocal
         from sqlalchemy import select as _select
 
-        try:
-            async with AsyncSessionLocal() as session:
-                appt = (await session.execute(
-                    _select(Appointment).where(Appointment.id == appointment_id)
-                )).scalar_one_or_none()
-                if not appt:
-                    logger.info(f"[COURTESY STT] appointment_id={appointment_id} not found")
-                    return
-                audio_url = appt.audio_recording_url
-                if not audio_url:
-                    logger.info(f"[COURTESY STT] appointment_id={appointment_id} no audio, skipping")
-                    return
+        async with AsyncSessionLocal() as session:
+            appt = (await session.execute(
+                _select(Appointment).where(Appointment.id == appointment_id)
+            )).scalar_one_or_none()
+            if not appt:
+                logger.info(f"[COURTESY STT] appointment_id={appointment_id} not found")
+                return False
 
-                # Read audio bytes (blocking I/O in a thread — same trick as the
-                # Gemini path uses).
+            # Idempotent — a concurrent worker may have already finished it.
+            if appt.encrypted_transcript and appt.transcript_status == "DONE":
+                return True
+
+            audio_url = appt.audio_recording_url
+            if not audio_url:
+                # Nothing we can do; keep the state so the worker moves on.
+                appt.transcript_status = "DONE"
+                await session.commit()
+                logger.info(f"[COURTESY STT] appointment_id={appointment_id} no audio, marking DONE")
+                return True
+
+            try:
                 audio_bytes = await asyncio.to_thread(get_file_bytes, audio_url)
-                if not audio_bytes:
-                    logger.info(f"[COURTESY STT] appointment_id={appointment_id} could not read audio at {audio_url}")
-                    return
+            except Exception as read_err:
+                audio_bytes = None
+                logger.info(f"[COURTESY STT] appointment_id={appointment_id} audio read error: {read_err}")
 
-                # Sarvam first (better Tamil accuracy), Gemini as a fallback.
-                transcript = None
+            transcript = ""
+            if audio_bytes:
+                # Sarvam first (better Tamil accuracy), Gemini as fallback.
                 try:
                     from src.services.stt_service import SarvamSTTService
                     svc = SarvamSTTService.from_settings()
-                    result = await asyncio.to_thread(
+                    r = await asyncio.to_thread(
                         svc.transcribe, audio_bytes,
-                        # Recorder saves as webm/opus; Sarvam sniffs by content
                         filename=f"appt_{appointment_id}.webm",
                         mime_type="audio/webm",
                     )
-                    if result and not result.error:
-                        transcript = (result.transcript or "").strip()
+                    if r and not r.error:
+                        transcript = (r.transcript or "").strip()
                 except Exception as sarvam_err:
                     logger.info(f"[COURTESY STT] Sarvam failed for appointment_id={appointment_id}: {sarvam_err}")
 
@@ -1753,26 +1770,66 @@ class AppointmentService:
                     try:
                         from src.services.stt_service import GeminiSTTService
                         gsvc = GeminiSTTService.from_settings()
-                        gresult = await asyncio.to_thread(
+                        g = await asyncio.to_thread(
                             gsvc.transcribe, audio_bytes,
                             filename=f"appt_{appointment_id}.webm",
                             mime_type="audio/webm",
                         )
-                        if gresult and not gresult.error:
-                            transcript = (gresult.transcript or "").strip()
+                        if g and not g.error:
+                            transcript = (g.transcript or "").strip()
                     except Exception as gemini_err:
                         logger.info(f"[COURTESY STT] Gemini fallback failed for appointment_id={appointment_id}: {gemini_err}")
 
-                if not transcript:
-                    logger.info(f"[COURTESY STT] appointment_id={appointment_id} no transcript produced")
-                    return
-
+            if transcript:
                 appt.encrypted_transcript = self._encrypt_field(transcript)
+                appt.transcript_status = "DONE"
                 await session.commit()
                 logger.info(f"[COURTESY STT OK] appointment_id={appointment_id} chars={len(transcript)}")
+                return True
 
-        except Exception as e:
-            logger.info(f"[COURTESY STT ERROR] appointment_id={appointment_id}: {e}")
+            # Failure path — count the attempt, cap and give up if we hit it.
+            appt.transcript_attempts = (appt.transcript_attempts or 0) + 1
+            if appt.transcript_attempts >= self.TRANSCRIPT_MAX_ATTEMPTS:
+                appt.transcript_status = "FAILED"
+                logger.info(
+                    f"[COURTESY STT FAILED] appointment_id={appointment_id} "
+                    f"attempts={appt.transcript_attempts} — giving up"
+                )
+            else:
+                appt.transcript_status = "PENDING"
+                logger.info(
+                    f"[COURTESY STT RETRY] appointment_id={appointment_id} "
+                    f"attempts={appt.transcript_attempts}"
+                )
+            await session.commit()
+            return False
+
+    async def drain_pending_transcripts(self, limit: int = 25) -> int:
+        """
+        Retry every appointment stuck at transcript_status='PENDING' (capped at
+        `limit` per pass). Called by the background worker every 5 minutes and
+        once at startup so a Sarvam/Gemini outage doesn't strand transcripts.
+        Returns the number of rows successfully transcribed this pass.
+        """
+        from src.core.database import AsyncSessionLocal
+        from sqlalchemy import select as _select
+
+        async with AsyncSessionLocal() as session:
+            ids = (await session.execute(
+                _select(Appointment.id).where(
+                    Appointment.transcript_status == "PENDING",
+                    Appointment.transcript_attempts < self.TRANSCRIPT_MAX_ATTEMPTS,
+                ).limit(limit)
+            )).scalars().all()
+
+        done = 0
+        for aid in ids:
+            try:
+                if await self.transcribe_courtesy(aid):
+                    done += 1
+            except Exception as e:
+                logger.info(f"[COURTESY STT DRAIN] appointment_id={aid} error: {e}")
+        return done
 
     async def try_summarise_now(self, appointment_id: int) -> None:
         """Optimistic web-side attempt: claim THIS row if still PENDING, then run.
