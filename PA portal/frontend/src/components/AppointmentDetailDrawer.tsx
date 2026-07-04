@@ -162,24 +162,9 @@ export default function AppointmentDetailDrawer({
                 </div>
               </aside>
 
-              <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 min-h-0 flex-1 flex-col">
-              {/* Tab bar */}
-              <div className="border-b border-border bg-card px-6 pt-3">
-                <TabsList className="bg-muted">
-                  <TabsTrigger value="details">Details</TabsTrigger>
-                  <TabsTrigger value="activity">
-                    Activity
-                    {activity.length > 0 && (
-                      <span className="ml-1.5 rounded-full bg-background px-1.5 text-[10px] font-bold text-muted-foreground">
-                        {activity.length}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              {/* ── Details tab ─────────────────────────────────────────── */}
-              <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
+              {/* Activity feed removed — the drawer is Details only. */}
+              <div className="flex min-w-0 min-h-0 flex-1 flex-col">
+              <div className="m-0 min-h-0 flex-1 overflow-y-auto">
                 <div className="space-y-4 p-6">
                 {/* Voice message transcript — courtesy submissions (invitation /
                      greetings) don't run through the AI summariser, so their
@@ -201,11 +186,23 @@ export default function AppointmentDetailDrawer({
                   </section>
                 )}
 
-                {/* Summary — the AI briefing. Skipped entirely when the row's
-                    summary_status is DONE and there is no summary text
-                    (courtesy items, or a walk-in with no image/description). */}
-                {(a.summary || a.summary_ta || a.description
-                  || (a.summary_status && a.summary_status !== "DONE" && a.summary_status !== "FAILED")) && (
+                {/* Summary — the AI briefing.
+                    Hidden entirely for the edge cases where no AI runs:
+                      - invitation / greetings (voice message is the whole ask)
+                      - floor walk-ins where the operator only filed the
+                        auto-generated placeholder description
+                    Rendered normally when there's real text (summary or
+                    citizen-typed description) or when AI is actively running. */}
+                {(() => {
+                  const cat = (a.category || "").toLowerCase();
+                  if (cat === "invitation" || cat === "greetings") return false;
+                  const desc = (a.description || "").trim();
+                  const isFloorPlaceholder = a.source === "manual_staff"
+                    && /^Walk-in (appointment|petition) registered by /i.test(desc);
+                  const meaningfulDesc = desc && !isFloorPlaceholder;
+                  return !!(a.summary || a.summary_ta || meaningfulDesc
+                    || (a.summary_status && a.summary_status !== "DONE" && a.summary_status !== "FAILED"));
+                })() && (
                   <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
                     <div className="h-1 w-full bg-gradient-to-r from-brand via-brand/70 to-brand/30" />
 
@@ -439,43 +436,8 @@ export default function AppointmentDetailDrawer({
                   </div>
                 </Panel>
               </div>
-            </TabsContent>
-
-              {/* ── Activity tab ────────────────────────────────────────── */}
-              <TabsContent value="activity" className="m-0 min-h-0 flex-1 overflow-y-auto">
-                <div className="space-y-4 p-6">
-                  {activity.length === 0 ? (
-                    <div className="py-10 text-center text-sm italic text-muted-foreground">No activity yet.</div>
-                  ) : (
-                    <ol className="space-y-1">
-                      {activity.map((e, idx) => {
-                        const Icon = APPT_EVENT_ICON[e.event_type] ?? Clock;
-                        const last = idx === activity.length - 1;
-                        const title = formatApptEventTitle(e.event_type);
-                        const renderedBody = renderApptEventBody(e);
-                        return (
-                          <li key={e.id} className="flex gap-3">
-                            <div className="flex flex-col items-center">
-                              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand/10 text-brand ring-1 ring-brand/15">
-                                <Icon className="h-3.5 w-3.5" />
-                              </span>
-                              {!last && <span className="my-1 w-px flex-1 bg-border" />}
-                            </div>
-                            <div className="min-w-0 flex-1 pb-4">
-                              <div className="text-sm font-medium text-foreground">{title}</div>
-                              <div className="text-[11px] text-muted-foreground">
-                                by <b className="font-semibold text-foreground/80">{e.actor}</b> · {formatDateTime(e.created_at)}
-                              </div>
-                              {renderedBody}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+            </div>
+            </div>
             </div>
           </>
         )}
