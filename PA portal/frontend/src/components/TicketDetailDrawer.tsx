@@ -5,7 +5,11 @@ import {
   ArrowRight, MessageSquare, CheckCircle2, Lock, RotateCcw, Send, Building2,
   Clock, User, Phone, Hash, CalendarDays, X, Languages, Sparkles,
   GitBranch, Flag, UserCheck, Paperclip, FileSignature, FileCheck2, Inbox,
+  ClipboardList, Landmark, Tag, BarChart3, Image as ImageIcon,
 } from "lucide-react";
+import {
+  SectionCard, OverviewGrid, OverviewItem, StatusDot, statusTone, priorityTone,
+} from "@/components/ui/detail-primitives";
 import type { TicketDetail } from "@/lib/types";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { fetchTicket, patchTicket, ticketAction } from "@/lib/api";
@@ -168,12 +172,16 @@ export default function TicketDetailDrawer({
             </SheetTitle>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="font-mono text-base font-semibold text-brand">{t?.ticket_number ?? "…"}</span>
-              {t?.priority && <PriorityBadge priority={t.priority} />}
               {t && (
-                <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", TICKET_STATUS_COLOR[t.status])}>
-                  {TICKET_STATUS_DISPLAY[t.status] ?? t.status}
-                </span>
+                <StatusDot
+                  label={TICKET_STATUS_DISPLAY[t.status] ?? t.status}
+                  tone={statusTone(TICKET_STATUS_DISPLAY[t.status] ?? t.status)}
+                />
               )}
+              {t?.priority && (
+                <StatusDot label={<span className="uppercase tracking-wide">{t.priority}</span>} tone={priorityTone(t.priority)} />
+              )}
+              {t?.category_label && <StatusDot label={t.category_label} tone="slate" />}
             </div>
           </div>
           {/* Language toggle */}
@@ -189,8 +197,16 @@ export default function TicketDetailDrawer({
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
             {/* Preview pane — uploads at-a-glance */}
             <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[52%] lg:border-b-0 lg:border-r">
-              <div className="mb-3 flex flex-shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                <Paperclip className="h-3.5 w-3.5" /> Citizen uploads
+              <div className="mb-3 flex flex-shrink-0 items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <span className="grid h-6 w-6 place-items-center rounded-md bg-brand/10 text-brand">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                </span>
+                Citizen Uploads
+                {(t.attachments?.length ?? 0) > 0 && (
+                  <span className="rounded-full bg-brand/10 px-1.5 text-[10px] font-bold text-brand">
+                    {t.attachments!.length}
+                  </span>
+                )}
               </div>
               <div className="min-h-0 flex-1">
                 <InlineAttachmentPreview attachments={t.attachments ?? []} audioTranscript={t.audio_transcript} />
@@ -229,47 +245,38 @@ export default function TicketDetailDrawer({
             {/* ── Details ─────────────────────────────────────────────── */}
             <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
               <div className="space-y-4 p-6">
+                {/* Overview — the case facts at a glance */}
+                <SectionCard icon={ClipboardList} title="Overview">
+                  <OverviewGrid>
+                    <OverviewItem icon={User} label="Name" value={t.citizen_name} />
+                    <OverviewItem icon={Phone} label="Phone" value={t.citizen_mobile} mono />
+                    <OverviewItem icon={Tag} label="Category" value={t.category_label} />
+                    <OverviewItem
+                      icon={BarChart3}
+                      label="Priority"
+                      value={t.priority ? <span className="capitalize">{t.priority}</span> : null}
+                      accent={t.priority ? "amber" : undefined}
+                    />
+                    {t.ministry_label && (
+                      <OverviewItem icon={Landmark} label="Ministry" value={t.ministry_label} />
+                    )}
+                    <OverviewItem icon={CalendarDays} label="Created" value={formatDate(t.created_at)} />
+                  </OverviewGrid>
+                </SectionCard>
+
                 {/* Summary — the briefing */}
                 {(t.summary || t.description) && (
-                  <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
-                    {/* Top accent bar — signals importance */}
-                    <div className="h-1 w-full bg-gradient-to-r from-brand via-brand/70 to-brand/30" />
-
-                    <div className="p-5 sm:p-6">
-                      {/* Heading row */}
-                      <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand">
-                          Summary
-                        </h3>
-                        {!t.summary && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-                            Generating
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Metadata strip — context before content */}
-                      {(t.priority || t.ministry_label || t.category_label) && (
-                        <div className="mb-4 flex flex-wrap gap-1.5">
-                          {t.priority && (
-                            <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-orange-700">
-                              {t.priority} priority
-                            </span>
-                          )}
-                          {t.ministry_label && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">
-                              <Building2 className="h-3 w-3" />{t.ministry_label}
-                            </span>
-                          )}
-                          {t.category_label && (
-                            <span className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                              {t.category_label}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
+                  <SectionCard
+                    icon={Sparkles}
+                    title="Summary"
+                    right={!t.summary ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+                        Generating
+                      </span>
+                    ) : undefined}
+                  >
+                    <div>
                       {/* Body — the briefing prose */}
                       {pick(t.summary, t.summary_ta) ? (
                         <p className="text-[15px] font-medium leading-[1.75] tracking-[-0.005em] text-foreground">
@@ -314,24 +321,8 @@ export default function TicketDetailDrawer({
                         );
                       })()}
                     </div>
-                  </section>
+                  </SectionCard>
                 )}
-
-                {/* Citizen — structured form */}
-                <Panel icon={User} title="Citizen">
-                  <div className="flex items-center gap-4 border-b border-border pb-5">
-                    <InitialsAvatar name={t.citizen_name} className="h-12 w-12 text-base" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-base font-semibold text-foreground">{t.citizen_name ?? "—"}</div>
-                      <div className="mt-0.5 text-xs uppercase tracking-wider text-muted-foreground">Citizen</div>
-                    </div>
-                  </div>
-                  <dl className="grid grid-cols-1 gap-x-8 gap-y-5 pt-5 sm:grid-cols-2">
-                    <Field icon={Phone} label="Mobile" value={t.citizen_mobile} mono />
-                    <Field icon={Hash} label="Token" value={t.token} mono accent="brand" />
-                    <Field icon={CalendarDays} label="Created" value={formatDate(t.created_at)} />
-                  </dl>
-                </Panel>
 
                 {/* Properties */}
                 <Panel icon={User} title="Properties">

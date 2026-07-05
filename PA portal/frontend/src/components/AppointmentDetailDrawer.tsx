@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import {
   Phone, Hash, CalendarDays, X, User, Users, Languages, FileText, Mic, Pencil, Check, ShieldAlert,
   Clock, GitBranch, Flag, ArrowRight, Activity as ActivityIcon,
+  ClipboardList, Landmark, Tag, BarChart3, Sparkles, Image as ImageIcon,
 } from "lucide-react";
+import {
+  SectionCard, OverviewGrid, OverviewItem, StatusDot, statusTone, priorityTone,
+} from "@/components/ui/detail-primitives";
 import type { AppointmentRow, AppointmentStatus, AppointmentActivityEvent } from "@/lib/types";
 import { updateAppointmentStatus, updateAppointmentDetails, fetchAppointmentActivity } from "@/lib/api";
 import { toast } from "sonner";
@@ -131,14 +135,11 @@ export default function AppointmentDetailDrawer({
                   <span className="font-mono text-base font-semibold text-brand">
                     {String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}
                   </span>
-                  <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", STATUS_COLOR[a.status])}>
-                    {a.status}
-                  </span>
+                  <StatusDot label={a.status} tone={statusTone(a.status)} />
                   {a.priority && (
-                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-orange-700">
-                      {a.priority}
-                    </span>
+                    <StatusDot label={<span className="uppercase tracking-wide">{a.priority}</span>} tone={priorityTone(a.priority)} />
                   )}
+                  {categoryLabel && <StatusDot label={categoryLabel} tone="slate" />}
                 </div>
               </div>
 
@@ -227,8 +228,16 @@ export default function AppointmentDetailDrawer({
             <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
               {/* Preview pane — uploads at-a-glance */}
               <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[52%] lg:border-b-0 lg:border-r">
-                <div className="mb-3 flex flex-shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  <Mic className="h-3.5 w-3.5" /> Uploads
+                <div className="mb-3 flex flex-shrink-0 items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <span className="grid h-6 w-6 place-items-center rounded-md bg-brand/10 text-brand">
+                    <ImageIcon className="h-3.5 w-3.5" />
+                  </span>
+                  Citizen Uploads
+                  {(a.attachments?.length ?? 0) > 0 && (
+                    <span className="rounded-full bg-brand/10 px-1.5 text-[10px] font-bold text-brand">
+                      {a.attachments!.length}
+                    </span>
+                  )}
                 </div>
                 <div className="min-h-0 flex-1">
                   <InlineAttachmentPreview
@@ -242,24 +251,40 @@ export default function AppointmentDetailDrawer({
               <div className="flex min-w-0 min-h-0 flex-1 flex-col">
               <div className="m-0 min-h-0 flex-1 overflow-y-auto">
                 <div className="space-y-4 p-6">
+                {/* Overview — the case facts at a glance */}
+                <SectionCard icon={ClipboardList} title="Overview">
+                  <OverviewGrid>
+                    <OverviewItem icon={User} label="Name" value={a.name} />
+                    <OverviewItem icon={Phone} label="Phone" value={a.mobile} mono />
+                    <OverviewItem icon={Tag} label="Category" value={categoryLabel} />
+                    <OverviewItem
+                      icon={BarChart3}
+                      label="Priority"
+                      value={currentPriority ? <span className="capitalize">{currentPriority}</span> : null}
+                      accent={currentPriority ? "amber" : undefined}
+                    />
+                    {ministryLabel && (
+                      <OverviewItem icon={Landmark} label="Ministry" value={ministryLabel} />
+                    )}
+                    {a.appointment_time && (
+                      <OverviewItem icon={CalendarDays} label="Appointment"
+                        value={formatDateTime(a.appointment_time)} accent="emerald" />
+                    )}
+                  </OverviewGrid>
+                </SectionCard>
+
                 {/* Voice message transcript — courtesy submissions (invitation /
                      greetings) don't run through the AI summariser, so their
                      voice message is transcribed on its own and shown here. */}
                 {a.transcript && (
-                  <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
-                    <div className="h-1 w-full bg-gradient-to-r from-emerald-500 via-emerald-500/70 to-emerald-500/30" />
-                    <div className="p-5 sm:p-6">
-                      <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
-                        Voice message
-                      </h3>
-                      <p className={cn(
-                        "text-[15px] font-medium leading-[1.75] tracking-[-0.005em] text-foreground",
-                        lang === "ta" && "font-[Mukta_Malar,_'Noto_Sans_Tamil',_system-ui]",
-                      )}>
-                        {a.transcript}
-                      </p>
-                    </div>
-                  </section>
+                  <SectionCard icon={Mic} title="Voice message">
+                    <p className={cn(
+                      "text-[15px] font-medium leading-[1.75] tracking-[-0.005em] text-foreground",
+                      lang === "ta" && "font-[Mukta_Malar,_'Noto_Sans_Tamil',_system-ui]",
+                    )}>
+                      {a.transcript}
+                    </p>
+                  </SectionCard>
                 )}
 
                 {/* Summary — the AI briefing.
@@ -279,23 +304,18 @@ export default function AppointmentDetailDrawer({
                   return !!(a.summary || a.summary_ta || meaningfulDesc
                     || (a.summary_status && a.summary_status !== "DONE" && a.summary_status !== "FAILED"));
                 })() && (
-                  <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-card">
-                    <div className="h-1 w-full bg-gradient-to-r from-brand via-brand/70 to-brand/30" />
-
-                    <div className="p-5 sm:p-6">
-                      <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand">
-                          Summary
-                        </h3>
-                        {!a.summary && !a.summary_ta
-                          && (a.summary_status === "PENDING" || a.summary_status === "PROCESSING") && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-                            Generating
-                          </span>
-                        )}
-                      </div>
-
+                  <SectionCard
+                    icon={Sparkles}
+                    title="Summary"
+                    right={!a.summary && !a.summary_ta
+                      && (a.summary_status === "PENDING" || a.summary_status === "PROCESSING") ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+                        Generating
+                      </span>
+                    ) : undefined}
+                  >
+                    <div>
                       {/* Body */}
                       {pick(a.summary, a.summary_ta) ? (
                         <p className={cn(
@@ -348,57 +368,11 @@ export default function AppointmentDetailDrawer({
                         );
                       })()}
                     </div>
-                  </section>
+                  </SectionCard>
                 )}
 
-                {/* Citizen — structured form */}
-                <Panel icon={User} title="Citizen">
-                  <div className="flex items-center gap-4 border-b border-border pb-5">
-                    <InitialsAvatar name={a.name} className="h-12 w-12 text-base" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-base font-semibold text-foreground">{a.name ?? "—"}</div>
-                      <div className="mt-0.5 text-xs uppercase tracking-wider text-muted-foreground">Citizen</div>
-                    </div>
-                    {currentPriority && (
-                      <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-orange-700">
-                        <ShieldAlert className="h-3.5 w-3.5" />{currentPriority} priority
-                      </span>
-                    )}
-                  </div>
-                  <dl className="grid grid-cols-1 gap-x-8 gap-y-5 pt-5 sm:grid-cols-2">
-                    <Field icon={Phone} label="Mobile" value={a.mobile} mono />
-                    <Field
-                      icon={Hash}
-                      label="Token"
-                      value={String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}
-                      mono
-                      accent="brand"
-                    />
-                    <Field icon={CalendarDays} label="Submitted" value={formatDate(a.created_at)} />
-                    {a.appointment_time && (
-                      <Field
-                        icon={CalendarDays}
-                        label="Appointment"
-                        value={formatDateTime(a.appointment_time)}
-                        accent="emerald"
-                      />
-                    )}
-                    {a.appointment_time && a.num_persons && a.num_persons > 0 && (
-                      <Field
-                        icon={Users}
-                        label="Visitors"
-                        value={`${a.num_persons} ${a.num_persons === 1 ? "person" : "persons"}`}
-                        accent="violet"
-                      />
-                    )}
-                  </dl>
-                </Panel>
-
-                {/* Citizen's description / audio transcript now rendered under
-                    the audio player in the left preview pane. */}
-
-                {/* Properties panel removed — workflow actions now live in
-                    the top action bar (Scheduled / Waiting / Rescheduled). */}
+                {/* Citizen facts now live in the Overview card above;
+                    workflow actions live in the top action bar. */}
               </div>
             </div>
             </div>
