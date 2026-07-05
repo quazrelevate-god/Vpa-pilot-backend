@@ -31,7 +31,7 @@ const STATUS_OPTIONS: AppointmentStatus[] = ["Waiting", "Scheduled", "Awaiting R
 const STATUS_COLOR: Record<string, string> = {
   Scheduled:        "bg-emerald-100 text-emerald-700 border-emerald-200",
   Waiting:          "bg-amber-100 text-amber-800 border-amber-200",
-  Rescheduled:      "bg-violet-100 text-violet-700 border-violet-200",
+  Rescheduled:      "bg-blue-100 text-blue-700 border-blue-200",
   "Awaiting Review": "bg-orange-100 text-orange-700 border-orange-200",
   Reviewed:         "bg-blue-100 text-blue-700 border-blue-200",
 };
@@ -165,7 +165,7 @@ export default function AppointmentDetailDrawer({
               const s = a.status;
               const cfg =
                 s === "Rescheduled" ? {
-                  bg: "bg-violet-50/50", tone: "text-violet-700", sub: "text-violet-900/80",
+                  bg: "bg-blue-50/50", tone: "text-blue-700", sub: "text-blue-900/80",
                   title: "Needs rescheduling",
                   hint: "Call the citizen — book a new slot, or convert to a petition.",
                   primary: { kind: "reschedule" as const, label: "Reschedule to new slot" },
@@ -435,7 +435,7 @@ function Field({
   const accentText =
     accent === "brand"   ? "text-brand"   :
     accent === "emerald" ? "text-emerald-600" :
-    accent === "violet"  ? "text-violet-600"  : "text-foreground";
+    accent === "violet"  ? "text-blue-600"  : "text-foreground";
   return (
     <div className="flex flex-col gap-1.5">
       <dt className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

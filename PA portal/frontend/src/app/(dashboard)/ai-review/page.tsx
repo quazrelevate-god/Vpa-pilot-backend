@@ -5,8 +5,8 @@ import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, Languages, ShieldAlert,
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
-  MoreVertical, Eye, ArrowUpDown, ArrowUp, ArrowDown, Download, Flag, FolderOpen, CalendarDays,
-  CalendarCheck, CalendarRange,
+  ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
+  CalendarCheck, CalendarRange, HelpCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -18,10 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -68,6 +64,8 @@ interface InboxRow {
   source: string;
   created_at: string | null;
   ticket_number: string | null;
+  summary: string | null;       // citizen's ask ("what they want") shown in the list
+  summary_ta: string | null;
   upload?: Upload;
   petition?: AppointmentRow;
 }
@@ -94,7 +92,7 @@ const PRIORITY_CLS: Record<string, string> = {
 
 const SOURCE_META: Record<string, { tKey: string; cls: string; icon: typeof QrCode }> = {
   qr_citizen:  { tKey: "petition.sourceCitizen", cls: "bg-sky-100 text-sky-700",       icon: QrCode },
-  ai_scan:     { tKey: "petition.sourceScanned", cls: "bg-violet-100 text-violet-700", icon: ScanLine },
+  ai_scan:     { tKey: "petition.sourceScanned", cls: "bg-blue-100 text-blue-700", icon: ScanLine },
   manual_staff:{ tKey: "petition.sourceStaff",   cls: "bg-slate-100 text-slate-600",   icon: UserCog },
 };
 const SOURCE_KEYS = Object.keys(SOURCE_META);
@@ -228,19 +226,18 @@ function pageList(current: number, last: number): (number | "…")[] {
 }
 
 const InboxTableRow = memo(function InboxTableRow({
-  row, t, lang, active, onOpen, onRetry,
+  row, t, lang, active, onOpen,
 }: {
   row: InboxRow;
   t: (k: string) => string;
   lang: string;
   active: boolean;
   onOpen: (r: InboxRow) => void;
-  onRetry: (ids: number[]) => void;
 }) {
-  const Icon = STATUS_ICON[row.statusKey];
   const sm = SOURCE_META[row.source] ?? { tKey: "petition.sourceStaff", cls: "bg-muted text-muted-foreground", icon: FileText };
   const SIcon = sm.icon;
   const sub = fmtSubmitted(row.created_at, lang);
+  const summaryText = lang === "ta" ? (row.summary_ta || row.summary) : row.summary;
   return (
     <tr
       onClick={() => onOpen(row)}
@@ -248,7 +245,7 @@ const InboxTableRow = memo(function InboxTableRow({
         "group cursor-pointer border-b border-border/60 transition-[background-color,box-shadow] duration-150",
         active
           ? "bg-brand/[0.05] shadow-[inset_3px_0_0_hsl(var(--accent-blue)),inset_0_0_0_1px_hsl(var(--accent-blue)/0.14)]"
-          : "hover:bg-[#FBFAF8] hover:shadow-[inset_3px_0_0_hsl(var(--accent-blue)/0.45)]",
+          : "hover:bg-[#EFF3FB] hover:shadow-[inset_3px_0_0_hsl(var(--accent-blue)/0.45)]",
       )}
     >
       <td className="px-4 py-4">
@@ -260,10 +257,10 @@ const InboxTableRow = memo(function InboxTableRow({
           </div>
         </div>
       </td>
-      <td className="px-4 py-4">
-        {row.mobile
-          ? <span className="inline-flex items-center gap-1.5 font-mono text-sm text-foreground/80"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{row.mobile}</span>
-          : <span className="text-muted-foreground/40">—</span>}
+      <td className="max-w-[340px] px-4 py-4">
+        {summaryText
+          ? <div className="line-clamp-2 text-sm leading-snug text-foreground/85">{summaryText}</div>
+          : <span className="text-sm italic text-muted-foreground/40">—</span>}
       </td>
       <td className="whitespace-nowrap px-4 py-4">
         <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[13px] font-semibold", sm.cls)}>
@@ -277,12 +274,6 @@ const InboxTableRow = memo(function InboxTableRow({
           : <span className="text-muted-foreground/40">—</span>}
       </td>
       <td className="whitespace-nowrap px-4 py-4">
-        <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] font-semibold", STATUS_CLS[row.statusKey])}>
-          <Icon className={cn("h-3.5 w-3.5", row.statusKey === "PROCESSING" && "animate-spin")} /> {t(STATUS_TKEY[row.statusKey])}
-        </span>
-        {row.ticket_number && <span className="ml-1.5 font-mono text-[13px] text-emerald-600">{row.ticket_number}</span>}
-      </td>
-      <td className="whitespace-nowrap px-4 py-4">
         {row.created_at ? (
           <div>
             <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
@@ -291,45 +282,6 @@ const InboxTableRow = memo(function InboxTableRow({
             {sub.time && <div className="mt-0.5 pl-5 text-[13px] text-muted-foreground">{sub.time}</div>}
           </div>
         ) : <span className="text-muted-foreground/40">—</span>}
-      </td>
-      <td className="pr-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-1">
-          {row.statusKey === "AWAITING_REVIEW" && (
-            <Button size="sm" className="aurora-primary h-8 rounded-lg px-3.5 text-[13px]" onClick={() => onOpen(row)}>{t("petition.review")}</Button>
-          )}
-          {row.statusKey === "REVIEWED" && (
-            <button onClick={() => onOpen(row)} aria-label={t("petition.done")}
-              className="grid h-8 w-8 place-items-center rounded-md text-emerald-600 transition-colors hover:bg-emerald-50">
-              <Eye className="h-4 w-4" />
-            </button>
-          )}
-          {row.statusKey === "FAILED" && (
-            <Button size="sm" variant="outline" className="h-8 rounded-lg px-3" onClick={() => onRetry([row.id])}>
-              <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retry")}
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button aria-label={t("petition.colAction")}
-                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground">
-                <MoreVertical className="h-4 w-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onSelect={() => onOpen(row)}>
-                <Eye className="h-3.5 w-3.5" /> {row.statusKey === "AWAITING_REVIEW" ? t("petition.review") : t("petition.done")}
-              </DropdownMenuItem>
-              {row.statusKey === "FAILED" && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => onRetry([row.id])}>
-                    <RefreshCw className="h-3.5 w-3.5" /> {t("petition.retry")}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
       </td>
     </tr>
   );
@@ -494,14 +446,18 @@ export default function AiReviewPage() {
       kind: "upload", id: u.id, name: u.name, name_ta: u.name_ta, mobile: u.mobile,
       token: u.ticket_number, categoryKey: u.category,
       priority: u.priority, statusKey: u.status, source: "ai_scan",
-      created_at: u.created_at, ticket_number: u.ticket_number, upload: u,
+      created_at: u.created_at, ticket_number: u.ticket_number,
+      summary: u.citizen_ask ?? null, summary_ta: u.citizen_ask_ta ?? null,
+      upload: u,
     }));
     const pet: InboxRow[] = petitions.map(p => ({
       kind: "petition", id: p.id, name: p.name, name_ta: p.name_ta ?? null, mobile: p.mobile,
       token: p.token != null ? String(p.token) : null,
       categoryKey: p.category ?? null, priority: p.priority ?? null,
       statusKey: petitionStatusKey(p.status), source: p.source || "qr_citizen",
-      created_at: p.created_at, ticket_number: null, petition: p,
+      created_at: p.created_at, ticket_number: null,
+      summary: p.citizen_ask ?? null, summary_ta: p.citizen_ask_ta ?? null,
+      petition: p,
     }));
     return [...up, ...pet].sort((a, b) =>
       (b.created_at || "").localeCompare(a.created_at || ""));
@@ -699,10 +655,6 @@ export default function AiReviewPage() {
   const lo = total === 0 ? 0 : offset + 1;
   const hi = Math.min(offset + pageSize, total);
 
-  const sourceLabel = fSource ? t(SOURCE_META[fSource]?.tKey ?? "petition.sourceStaff") : t("petition.allSources");
-  const priorityLabel = fPriority ? pretty(fPriority) : t("petition.allPriority");
-  const submittedLabel = (dateFrom || dateTo) ? dateRangeLabel(dateFrom, dateTo, lang) : t("petition.dateThisWeek");
-  const categoryLabel = fCategory ? catLabel(fCategory, lang) : t("petition.allCategories");
 
   return (
     <>
@@ -780,7 +732,7 @@ export default function AiReviewPage() {
                   className={cn(
                     "inline-flex h-[38px] items-center gap-1.5 rounded-xl border px-3.5 text-sm font-semibold transition-colors",
                     dateChip === key
-                      ? "border-[#E4DCFC] bg-accent text-brand"
+                      ? "border-[#CFE0FB] bg-accent text-brand"
                       : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
@@ -792,7 +744,7 @@ export default function AiReviewPage() {
                 className={cn(
                   "inline-flex h-[38px] items-center gap-1.5 rounded-xl border px-3.5 text-sm font-semibold transition-colors",
                   showRail || advancedFilterCount > 0
-                    ? "border-[#E4DCFC] bg-accent text-brand"
+                    ? "border-[#CFE0FB] bg-accent text-brand"
                     : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
@@ -820,35 +772,25 @@ export default function AiReviewPage() {
             showRail ? "xl:grid-cols-[minmax(0,1fr)_360px]" : "xl:grid-cols-1",
           )}>
             <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
-              {/* Scope summary strip */}
-              <Card className="grid shrink-0 grid-cols-2 gap-px overflow-hidden bg-border p-0 sm:grid-cols-4">
-                <SummaryTile icon={QrCode} label={t("petition.colSource")} value={sourceLabel} badge={total} />
-                <SummaryTile icon={Flag} label={t("petition.colUrgency")} value={priorityLabel} />
-                <SummaryTile icon={CalendarDays} label={t("appts.dateSubmitted")} value={submittedLabel} />
-                <SummaryTile icon={FolderOpen} label={t("petition.colCategory")} value={categoryLabel} />
-              </Card>
-
               {/* Desktop table — fills to the bottom of the page; body scrolls */}
               <Card className="hidden overflow-hidden p-0 shadow-card-md md:block xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
                 <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-                  <table className="w-full min-w-[900px] text-base">
+                  <table className="w-full min-w-[860px] text-base">
                     <thead className="sticky top-0 z-10 bg-card">
                       <tr className="border-b border-border">
-                        <th className={th}>{t("petition.colName")}</th>
-                        <th className={cn(th, "w-36")}>{t("petition.colPhone")}</th>
+                        <th className={cn(th, "w-[210px]")}>{t("petition.colName")}</th>
+                        <th className={th}>{t("petition.colAsk")}</th>
                         <th className={cn(th, "w-36")}>{t("petition.colSource")}</th>
                         <th className={cn(th, "w-44")}>{t("petition.colCategory")}</th>
                         <th className={cn(th, "w-28")}>
                           <SortHeader label={t("petition.colUrgency")} state={sort === "priority_desc" ? "desc" : null}
                             onClick={() => { setPage(1); setSort((s) => s === "priority_desc" ? "submitted_desc" : "priority_desc"); }} />
                         </th>
-                        <th className={cn(th, "w-36")}>{t("petition.colStatus")}</th>
                         <th className={cn(th, "w-40")}>
                           <SortHeader label={t("petition.colSubmitted")}
                             state={sort === "submitted_asc" ? "asc" : sort === "submitted_desc" ? "desc" : null}
                             onClick={() => { setPage(1); setSort((s) => s === "submitted_desc" ? "submitted_asc" : "submitted_desc"); }} />
                         </th>
-                        <th className={cn(th, "w-32 text-right")}>{t("petition.colAction")}</th>
                       </tr>
                     </thead>
                     <tbody key={`${fStatus}-${page}-${sort}`}>
@@ -856,17 +798,15 @@ export default function AiReviewPage() {
                         Array.from({ length: 4 }).map((_, i) => (
                           <tr key={i} className="border-b border-border/60">
                             <td className="px-4 py-4"><div className="flex items-center gap-2.5"><Skeleton className="h-9 w-9 rounded-lg" /><div className="space-y-1.5"><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3 w-20" /></div></div></td>
-                            <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
+                            <td className="px-4 py-4"><div className="space-y-1.5"><Skeleton className="h-3.5 w-full max-w-[240px]" /><Skeleton className="h-3.5 w-3/4 max-w-[180px]" /></div></td>
                             <td className="px-4 py-4"><Skeleton className="h-5 w-24 rounded-full" /></td>
                             <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
                             <td className="px-4 py-4"><Skeleton className="h-5 w-12 rounded" /></td>
-                            <td className="px-4 py-4"><Skeleton className="h-6 w-24 rounded-lg" /></td>
                             <td className="px-4 py-4"><Skeleton className="h-4 w-20" /></td>
-                            <td className="px-4 py-4"><Skeleton className="ml-auto h-8 w-20 rounded-lg" /></td>
                           </tr>
                         ))
                       ) : pageRows.length === 0 ? (
-                        <tr><td colSpan={8} className="px-4 py-16 text-center">
+                        <tr><td colSpan={6} className="px-4 py-16 text-center">
                           <ClipboardCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
                           <div className="text-base font-semibold text-foreground">{t("petition.noResults")}</div>
                           {anyFilterActive && (
@@ -883,7 +823,7 @@ export default function AiReviewPage() {
                         </td></tr>
                       ) : pageRows.map(r => (
                         <InboxTableRow key={`${r.kind}-${r.id}`} row={r} t={t} lang={lang}
-                          active={review?.id === r.id && review?._kind === r.kind} onOpen={openRow} onRetry={retry} />
+                          active={review?.id === r.id && review?._kind === r.kind} onOpen={openRow} />
                       ))}
                     </tbody>
                   </table>
@@ -1074,110 +1014,117 @@ export default function AiReviewPage() {
         </div>
       </main>
 
-      {/* Upload review — document left, fields right */}
+      {/* Petition review — document (left) · details (right); no title header */}
       {review && (
-        <div className="fixed inset-0 z-50 flex bg-slate-900/50" onClick={() => !busy && setReview(null)}>
-          <div className="m-auto flex h-[94vh] w-[95vw] overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
-            {/* Left — document (inline preview, download disabled) */}
-            <div className="hidden w-[48%] flex-col border-r border-border bg-slate-100 md:flex">
-              <div className="flex items-center gap-1.5 border-b border-border bg-white px-4 py-2.5 text-base font-semibold">
-                <FileText className="h-4 w-4 text-muted-foreground" /> <span className="truncate">{review._kind === "petition" ? "Citizen uploads" : review.filename}</span>
+        <div className="fixed inset-0 z-50 flex bg-slate-900/50 p-3" onClick={() => !busy && setReview(null)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: [0.25, 0.8, 0.35, 1] }}
+            className="m-auto flex h-[94vh] w-[95vw] overflow-hidden rounded-2xl bg-card shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Left — document preview (desktop) */}
+            <div className="hidden w-[48%] flex-col border-r border-border bg-muted md:flex">
+              <div className="flex items-center gap-1.5 border-b border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground">
+                <FileText className="h-4 w-4 text-muted-foreground" /> <span className="truncate">{review._kind === "petition" ? t("petition.citizenUploads") : review.filename}</span>
               </div>
               <div className="flex-1 overflow-auto p-3" onContextMenu={(e) => e.preventDefault()}>
-                {review._kind === "petition" ? (() => {
-                  const att = [...(review.attachments ?? [])];
-                  if (review.audio_url && !att.some(a => a.type === "AUDIO")) att.push({ name: "Voice recording", url: review.audio_url, type: "AUDIO" });
-                  return att.length || review.audio_transcript
-                    ? <InlineAttachmentPreview attachments={att} audioTranscript={review.audio_transcript} />
-                    : <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
-                })() : review.file_url ? (
-                  review.mime_type === "application/pdf"
-                    ? <iframe
-                        src={`${review.file_url}#toolbar=0&navpanes=0`}
-                        className="h-full w-full rounded-lg border border-border bg-white"
-                        title="document"
-                        sandbox="allow-same-origin allow-scripts"
-                      />
-                    : (// eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={review.file_url}
-                        alt="petition"
-                        className="mx-auto max-w-full select-none rounded-lg shadow"
-                        draggable={false}
-                      />)
-                ) : <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>}
+                <DocPreview review={review} t={t} />
               </div>
             </div>
 
             {/* Right — details */}
             <div className="flex w-full flex-col md:w-[52%]">
-              <div className="flex items-start gap-3 border-b border-border px-7 py-5">
-                <div className="min-w-0 flex-1">
-                  <div className="text-xl font-bold leading-snug">{pick(review.citizen_ask, review.citizen_ask_ta) || review.name || "Petition"}</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold", STATUS_CLS[review.status])}>{t(STATUS_TKEY[review.status])}</span>
-                    {review.priority && <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase", PRIORITY_CLS[review.priority])}>{review.priority}</span>}
-                    {review.category && <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{pretty(review.category)}</span>}
-                    {review.ticket_number && <span className="font-mono text-sm text-emerald-600">{review.ticket_number}</span>}
-                  </div>
+              {/* Slim control strip — no title, just status + controls */}
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-3 md:px-6">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold", STATUS_CLS[review.status])}>{t(STATUS_TKEY[review.status])}</span>
+                  {review.ticket_number && <span className="font-mono text-[13px] font-semibold text-emerald-600">{review.ticket_number}</span>}
                 </div>
-                <LangToggle lang={modalLang} onChange={setModalLang} />
-                {review.status === "AWAITING_REVIEW" && (
-                  !editing
-                    ? <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Pencil className="mr-1.5 h-3.5 w-3.5" /> {t("petition.editLabel")}</Button>
-                    : <Button size="sm" variant="outline" onClick={saveEdits} disabled={busy}><Check className="mr-1.5 h-3.5 w-3.5" /> {t("petition.saveLabel")}</Button>
-                )}
-                <button onClick={() => !busy && setReview(null)} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <LangToggle lang={modalLang} onChange={setModalLang} />
+                  {review.status === "AWAITING_REVIEW" && (
+                    editing
+                      ? <>
+                          <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>{t("petition.cancel")}</Button>
+                          <Button size="sm" variant="outline" onClick={saveEdits} disabled={busy}><Check className="mr-1.5 h-3.5 w-3.5" /> {t("petition.saveLabel")}</Button>
+                        </>
+                      : <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Pencil className="mr-1.5 h-3.5 w-3.5" /> {t("petition.editLabel")}</Button>
+                  )}
+                  <button onClick={() => !busy && setReview(null)} aria-label={t("petition.cancel")}
+                    className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+                </div>
               </div>
 
-              <div className="flex-1 space-y-6 overflow-auto p-7">
-                <div className="grid grid-cols-2 gap-x-8 gap-y-5">
-                  <Field label={t("petition.colName")} editing={editing} value={form.name} fallback={review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
-                  {/* Phone stays read-only for petitions — it's the OTP-verified, uniquely-indexed citizen mobile. */}
-                  <Field label={t("petition.colPhone")} editing={editing && review._kind !== "petition"} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} icon={Phone} />
-                  {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}
-                  <SelectField label={t("petition.colCategory")} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
-                  <SelectField label={t("petition.colUrgency")} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} onChange={v => setForm(f => ({ ...f, priority: v }))} />
-                  <SelectField label={t("petition.fMinistry")} editing={editing} value={form.ministry} fallback={review.ministry} options={MINISTRIES} labels={MINISTRY_DISPLAY} onChange={v => setForm(f => ({ ...f, ministry: v }))} />
+              <div className="flex-1 space-y-6 overflow-auto p-5 md:p-7">
+                {/* Hero — the citizen's ask */}
+                {pick(review.citizen_ask, review.citizen_ask_ta)
+                  ? <div className="rounded-xl border border-[#C7D6F5] bg-accent px-4 py-3.5">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-brand">
+                        <HelpCircle className="h-3.5 w-3.5" /> {t("petition.colAsk")}
+                      </div>
+                      <p className="text-lg font-semibold leading-snug text-foreground">{pick(review.citizen_ask, review.citizen_ask_ta)}</p>
+                    </div>
+                  : <div className="text-lg font-semibold text-foreground">{review.name || "Petition"}</div>}
+
+                {/* Document — mobile only (desktop shows it in the left panel) */}
+                <div className="h-72 overflow-auto rounded-xl border border-border bg-muted p-2 md:hidden" onContextMenu={(e) => e.preventDefault()}>
+                  <DocPreview review={review} t={t} />
                 </div>
 
-                <Panel title="Summary">
-                  {editing
-                    ? <textarea className="w-full rounded-lg border border-input px-3 py-2 text-base" rows={4} value={form.summary ?? ""} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} />
-                    : <p className="text-base leading-relaxed text-foreground">{pick(review.summary, review.summary_ta) || "—"}</p>}
-                </Panel>
-
-                {pick(review.citizen_ask, review.citizen_ask_ta) && (
-                  <div className="rounded-r-lg border-l-[3px] border-violet-500 bg-violet-50/50 py-3 pl-4 pr-3">
-                    <div className="mb-1 text-xs font-bold uppercase tracking-[0.16em] text-violet-700">What they're asking for</div>
-                    <p className="text-[15px] font-semibold text-foreground">{pick(review.citizen_ask, review.citizen_ask_ta)}</p>
+                {/* Citizen */}
+                <div>
+                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("petition.grpCitizen")}</div>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+                    <Field label={t("petition.colName")} editing={editing} value={form.name} fallback={review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
+                    {/* Phone stays read-only for petitions — it's the OTP-verified, uniquely-indexed citizen mobile. */}
+                    <Field label={t("petition.colPhone")} editing={editing && review._kind !== "petition"} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} icon={Phone} />
+                    {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}
                   </div>
-                )}
+                </div>
+
+                {/* Classification */}
+                <div className="border-t border-border pt-5">
+                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("petition.grpClassification")}</div>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+                    <SelectField label={t("petition.colCategory")} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
+                    <SelectField label={t("petition.colUrgency")} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} onChange={v => setForm(f => ({ ...f, priority: v }))} />
+                    <SelectField label={t("petition.fMinistry")} editing={editing} value={form.ministry} fallback={review.ministry} options={MINISTRIES} labels={MINISTRY_DISPLAY} onChange={v => setForm(f => ({ ...f, ministry: v }))} />
+                  </div>
+                </div>
+
+                <Panel title={t("petition.colSummary")}>
+                  {editing
+                    ? <textarea className="w-full rounded-xl border border-input bg-card px-3 py-2 text-base" rows={4} value={form.summary ?? ""} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} />
+                    : <p className="text-base leading-relaxed text-foreground/90">{pick(review.summary, review.summary_ta) || "—"}</p>}
+                </Panel>
 
                 {(() => {
                   const list = pick(review.key_details, review.key_details_ta) || [];
                   if (!list.length) return null;
                   return (
-                    <Panel title="Key details">
+                    <Panel title={t("petition.keyDetails")}>
                       <ul className="space-y-1.5">
-                        {list.map((d, i) => <li key={i} className="flex gap-2.5 text-[15px] text-foreground/85"><span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" /><span>{d}</span></li>)}
+                        {list.map((d, i) => <li key={i} className="flex gap-2.5 text-[15px] text-foreground/85"><span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand" /><span>{d}</span></li>)}
                       </ul>
                     </Panel>
                   );
                 })()}
 
                 {review.status === "FAILED" && review.error && (
-                  <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-base text-red-700">
+                  <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-base text-red-700">
                     <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" /><span>{review.error}</span>
                   </div>
                 )}
               </div>
 
-              <div className="border-t border-border px-7 py-5">
+              <div className="shrink-0 border-t border-border px-5 py-4 md:px-7 md:py-5">
                 {review.status === "AWAITING_REVIEW" && (() => {
                   // Ministry drives the action: School → Accept (school department
                   // workflow); any other ministry → Forward (out to that ministry).
                   const isSchool = (review.ministry ?? SCHOOL_MINISTRY) === SCHOOL_MINISTRY;
+                  const ministryLabel = review.ministry ? (MINISTRY_DISPLAY[review.ministry] ?? review.ministry) : "";
                   return (
                     <Button
                       className={cn("w-full text-white", isSchool ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}
@@ -1186,12 +1133,14 @@ export default function AiReviewPage() {
                     >
                       {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         : isSchool ? <Check className="mr-2 h-4 w-4" /> : <Forward className="mr-2 h-4 w-4" />}
-                      {isSchool ? t("petition.acceptCta") : t("petition.forwardCta")}
+                      {isSchool ? t("petition.acceptCta") : `${t("petition.forwardCta")}${ministryLabel ? ` — ${ministryLabel}` : ""}`}
                     </Button>
                   );
                 })()}
                 {review.status === "REVIEWED" && (
-                  <div className="flex items-center justify-center gap-2 text-base font-semibold text-emerald-600"><TicketIcon className="h-4 w-4" /> {t("petition.approvedAs")} {review.ticket_number}</div>
+                  <div className="flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-base font-semibold text-emerald-700">
+                    <TicketIcon className="h-4 w-4" /> {t("petition.approvedAs")} {review.ticket_number}
+                  </div>
                 )}
                 {review.status === "FAILED" && (
                   <Button className="w-full" variant="outline" onClick={() => { retry([review.id]); setReview(null); }}>
@@ -1201,7 +1150,7 @@ export default function AiReviewPage() {
                 {editing && <p className="mt-1.5 text-center text-xs text-muted-foreground">{t("petition.saveBeforeApprove")}</p>}
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
     </>
@@ -1211,27 +1160,6 @@ export default function AiReviewPage() {
 /* ── Local components ─────────────────────────────────────────────────── */
 
 const ALL = "__all__";
-
-function SummaryTile({ icon: Icon, label, value, badge }: {
-  icon: React.ElementType; label: string; value: string; badge?: number;
-}) {
-  return (
-    <div className="flex items-center gap-3 bg-card px-4 py-3.5">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent text-brand">
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</div>
-        <div className="truncate text-sm font-semibold text-foreground">{value}</div>
-      </div>
-      {badge != null && (
-        <span className="grid h-6 min-w-[24px] shrink-0 place-items-center rounded-lg bg-muted px-1.5 text-[13px] font-bold tabular-nums text-muted-foreground">
-          {badge}
-        </span>
-      )}
-    </div>
-  );
-}
 
 function FilterSectionLabel({ label, onReset, resetLabel }: { label: string; onReset?: () => void; resetLabel: string }) {
   return (
@@ -1284,7 +1212,7 @@ function SortHeader({ label, state, onClick }: {
   );
 }
 
-const BAR_PALETTE = ["#7C5CF6", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#35839B"];
+const BAR_PALETTE = ["#1E40AF", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#35839B"];
 
 function CategoryDistributionCard({ bars, lang, activeCategory, onSelect, className }: {
   bars: { key: string; count: number }[];
@@ -1321,7 +1249,7 @@ function CategoryDistributionCard({ bars, lang, activeCategory, onSelect, classN
                   aria-pressed={isActive}
                   className={cn(
                     "w-full rounded-lg px-2 py-1.5 text-left transition-all",
-                    isActive ? "bg-accent ring-1 ring-[#D6C9F5]" : "hover:bg-muted/60",
+                    isActive ? "bg-accent ring-1 ring-[#BBD3FA]" : "hover:bg-muted/60",
                     dimmed && "opacity-45 hover:opacity-100",
                   )}
                 >
@@ -1350,7 +1278,7 @@ function CategoryDistributionCard({ bars, lang, activeCategory, onSelect, classN
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</div>
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{title}</div>
       {children}
     </div>
   );
@@ -1360,9 +1288,9 @@ function Field({ label, value, fallback, editing, onChange, icon: Icon }:
   { label: string; value?: string | null; fallback: string | null; editing: boolean; onChange: (v: string) => void; icon?: React.ElementType }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</div>
       {editing
-        ? <input className="w-full rounded-lg border border-input px-3 py-2 text-base" value={value ?? ""} onChange={e => onChange(e.target.value)} />
+        ? <input className="w-full rounded-xl border border-input bg-card px-3 py-2 text-base" value={value ?? ""} onChange={e => onChange(e.target.value)} />
         : <div className="flex items-center gap-1.5 text-base font-medium leading-relaxed text-foreground">{Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}{fallback || "—"}</div>}
     </div>
   );
@@ -1373,9 +1301,9 @@ function SelectField({ label, value, fallback, editing, options, onChange, label
   const disp = (o: string) => labels?.[o] ?? o.replace(/_/g, " ");
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</div>
       {editing
-        ? <select className="w-full rounded-lg border border-input bg-white px-2 py-2 text-base" value={value ?? ""} onChange={e => onChange(e.target.value)}>
+        ? <select className="w-full rounded-xl border border-input bg-card px-3 py-2 text-base" value={value ?? ""} onChange={e => onChange(e.target.value)}>
             {options.map(o => <option key={o} value={o}>{disp(o)}</option>)}
           </select>
         : <div className="text-base font-medium leading-relaxed text-foreground">{fallback ? disp(fallback) : "—"}</div>}
@@ -1395,4 +1323,28 @@ function LangToggle({ lang, onChange }: { lang: "en" | "ta"; onChange: (l: "en" 
       ))}
     </div>
   );
+}
+
+/** Inline document / attachment preview (download disabled). Shared by the
+ *  desktop left panel and the mobile in-body preview. */
+function DocPreview({ review, t }: { review: Upload; t: (k: string) => string }) {
+  if (review._kind === "petition") {
+    const att = [...(review.attachments ?? [])];
+    if (review.audio_url && !att.some(a => a.type === "AUDIO")) att.push({ name: "Voice recording", url: review.audio_url, type: "AUDIO" });
+    return att.length || review.audio_transcript
+      ? <InlineAttachmentPreview attachments={att} audioTranscript={review.audio_transcript} />
+      : <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
+  }
+  if (review.file_url) {
+    return review.mime_type === "application/pdf"
+      ? <iframe
+          src={`${review.file_url}#toolbar=0&navpanes=0`}
+          className="h-full min-h-[240px] w-full rounded-lg border border-border bg-white"
+          title="document"
+          sandbox="allow-same-origin allow-scripts"
+        />
+      : (// eslint-disable-next-line @next/next/no-img-element
+        <img src={review.file_url} alt="petition" className="mx-auto max-w-full select-none rounded-lg shadow" draggable={false} />);
+  }
+  return <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
 }

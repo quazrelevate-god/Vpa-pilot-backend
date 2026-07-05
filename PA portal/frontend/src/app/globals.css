@@ -16,29 +16,30 @@
     --font-serif: var(--font-fraunces), Georgia, serif;
     --font-mono:  var(--font-plex-mono), ui-monospace, monospace;
 
-    /* Surfaces — pure white canvas to match the cards; cards separate via
-       their hairline border + soft shadow (per mock) */
-    --background: 0 0% 100%;            /* #FFFFFF */
-    --foreground: 231 19% 14%;          /* #1C1E29 */
-    --card: 0 0% 100%;
-    --card-foreground: 231 19% 14%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 231 19% 14%;
+    /* Surfaces — cool white (slight blue undertone) so text renders crisp and
+       the canvas doesn't glare/blur; cards sit a touch brighter than the
+       canvas, separated by their hairline border + soft shadow */
+    --background: 214 32% 96.5%;        /* #EDF0F6 — cool canvas so cards pop */
+    --foreground: 222 24% 13%;          /* #191C24 — cool graphite ink */
+    --card: 210 55% 98.7%;              /* #F3F8FE — cool blue-white card */
+    --card-foreground: 222 24% 13%;
+    --popover: 210 55% 98.7%;
+    --popover-foreground: 222 24% 13%;
 
     /* Primary — graphite (rare system actions) */
     --primary: 231 19% 18%;
     --primary-foreground: 0 0% 100%;
 
-    /* Interactive accent — Aurora violet */
-    --accent-blue: 252 90% 66%;         /* #7C5CF6 */
+    /* Interactive accent — dark royal blue */
+    --accent-blue: 226 71% 40%;         /* #1E40AF */
     --accent-blue-foreground: 0 0% 100%;
 
-    --secondary: 240 29% 97%;           /* #F4F4F9 */
+    --secondary: 214 32% 96.5%;           /* #F4F4F9 */
     --secondary-foreground: 231 19% 14%;
-    --muted: 240 29% 97%;
+    --muted: 214 32% 96.5%;
     --muted-foreground: 231 10% 40%;    /* #5C5E6E — darker for crisp secondary text */
-    --accent: 254 89% 96%;              /* #F1EDFE lavender wash */
-    --accent-foreground: 252 77% 55%;
+    --accent: 224 84% 94%;              /* #E6EFFE lavender wash */
+    --accent-foreground: 226 71% 36%;
 
     --destructive: 358 75% 59%;         /* #E5484D */
     --destructive-foreground: 0 0% 100%;
@@ -52,16 +53,16 @@
     --urgency-medium: 40 84% 45%;       /* #D39412 */
     --urgency-low: 151 51% 42%;         /* mint */
 
-    --border: 240 23% 94%;              /* #ECECF3 */
-    --input: 240 23% 94%;
-    --ring: 252 90% 66%;
+    --border: 214 26% 92.5%;              /* #ECECF3 */
+    --input: 214 26% 92.5%;
+    --ring: 226 71% 40%;
 
     /* Sidebar — white paper with a visible lavender bloom */
     --sidebar: 0 0% 100%;
     --sidebar-foreground: 231 19% 14%;
-    --sidebar-active: 252 90% 66%;
-    --sidebar-hover: 254 60% 97%;       /* #F6F3FD */
-    --sidebar-border: 246 33% 95%;      /* #EFEDF9 */
+    --sidebar-active: 226 71% 40%;
+    --sidebar-hover: 214 70% 96.5%;       /* #EDF3FD */
+    --sidebar-border: 214 33% 93%;      /* #EFEDF9 */
 
     --radius: 0.75rem;                  /* 12px — the mock is rounder */
   }
@@ -109,13 +110,11 @@
 }
 
 /* ── Aurora sidebar — four stacked layers, bottom to top:
-   1 · base: pure white from the vertical midpoint down
-   2 · bloom (top ~35%): peach #F7C39B pinned to the top-left corner, melting
-       diagonally into a lavender #CBB8F2 wash that dissolves into the white;
-       the two hues overlap around the brand block (the blend zone)
-   3 · sparkles: 1–2px white + pale-violet dust, two with faint cross-flares,
-       mostly in the tinted zone, a few below — noticed second, not first
-   4 · separation: tonal only (white sidebar vs #F7F7FB canvas) + a hairline ── */
+   1 · base: cool white from the vertical midpoint down
+   2 · bloom (top ~35%): cool sky #94CCEE pinned to the top-left corner, melting
+       diagonally into a lavender #CBB8F2 wash that dissolves into the white
+   3 · sparkles: 1–2px white + pale-lavender dust, two with faint cross-flares
+   4 · separation: tonal (sidebar vs canvas) + a hairline ─────────────────── */
 .aurora-sidebar {
   background-image:
     /* sparkles — two cross-flares (core + horizontal + vertical glint) */
@@ -131,26 +130,23 @@
     radial-gradient(circle 1px   at 55% 52%, rgba(203,184,242,0.50), transparent 100%),
     radial-gradient(circle 1.2px at 30% 74%, rgba(255,255,255,0.50), transparent 100%),
     radial-gradient(circle 1px   at 78% 88%, rgba(203,184,242,0.40), transparent 100%),
-    /* peach — from the very top down to the Appointments item (~top quarter),
-       glowing strongest at the upper-left corner */
-    radial-gradient(160% 16% at 0% 0%, rgba(247,195,155,0.30), rgba(247,195,155,0.12) 60%, transparent 100%),
+    /* cool sky — from the very top down to ~top quarter, glowing at the corner */
+    radial-gradient(160% 16% at 0% 0%, rgba(148,204,238,0.32), rgba(148,204,238,0.12) 60%, transparent 100%),
     linear-gradient(180deg,
-      rgba(247,195,155,0.24) 0%,
-      rgba(247,195,155,0.18) 14%,
-      rgba(247,195,155,0.08) 22%,
-      rgba(247,195,155,0.00) 30%),
-    /* lavender — takes over where the peach ends and runs to the bottom,
-       melting with the peach around the Appointments item */
+      rgba(148,204,238,0.26) 0%,
+      rgba(148,204,238,0.18) 14%,
+      rgba(148,204,238,0.08) 22%,
+      rgba(148,204,238,0.00) 30%),
+    /* lavender — takes over where the sky ends and runs to the bottom */
     linear-gradient(180deg,
       rgba(203,184,242,0.00) 16%,
-      rgba(203,184,242,0.18) 30%,
-      rgba(203,184,242,0.20) 46%,
-      rgba(203,184,242,0.12) 72%,
-      rgba(203,184,242,0.07) 100%),
-    /* base — softly tinted throughout; never pure white, so white items
-       (cards, pills, the active capsule's highlights) read brighter than it */
-    linear-gradient(180deg, #FFFCFA 0%, #FCFAFF 40%, #FAF8FE 100%);
-  box-shadow: inset -1px 0 0 rgba(28,30,41,0.04);
+      rgba(203,184,242,0.20) 30%,
+      rgba(203,184,242,0.22) 46%,
+      rgba(203,184,242,0.14) 72%,
+      rgba(203,184,242,0.08) 100%),
+    /* base — cool white; white items (cards, pills) read brighter than it */
+    linear-gradient(180deg, #F8FBFF 0%, #F9FAFF 40%, #F7FAFE 100%);
+  box-shadow: inset -1px 0 0 rgba(28,30,41,0.05);
 }
 
 /* Fade masks so overflow in the nav list is perceivable on short screens */
@@ -167,20 +163,21 @@
     color 150ms cubic-bezier(0.25,0.8,0.35,1);
 }
 .aurora-nav-item:hover {
-  background-color: #F6F3FD;
+  background-color: #EDF3FD;
   box-shadow: 0 1px 2px rgba(28,30,41,0.03);
 }
 
-/* ── Active navigation — saturated violet gradient at full density; label and
-   icon in lavender-blush on top. Soft violet float shadow, light sweep. ───── */
+/* ── Active navigation — the ONE place violet returns: a blue→violet/lavender
+   gradient. Label + icon in white on top. Soft blue-violet float shadow. ──── */
 .aurora-nav-active {
   /* positioning is the caller's job (absolute inset-0 behind nav content) */
   overflow: hidden;
-  background-image: linear-gradient(90deg, #8a81fd 0%, #7d52e3 35%, #7864e5f7 75%, #af9af1 100%);
+  background-color: #1E40AF;
+  /* background-image: linear-gradient(100deg, #1E40AF 0%, #3B41C7 36%, #6E4BE6 72%, #A78BFA 100%); */
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.55),
-    0 6px 18px rgba(124,92,246,0.28),
-    0 2px 4px rgba(124,92,246,0.14);
+    0 6px 18px rgba(88,72,214,0.30),
+    0 2px 4px rgba(88,72,214,0.16);
 }
 /* Aurora Light — the sweep travels across the surface each time it lands */
 .aurora-nav-active::before {
@@ -205,8 +202,8 @@
 /* Active tab — flat lavender pill (per reference), shares the sweep */
 .aurora-tab-active {
   overflow: hidden;
-  background: #F1EDFE;
-  border: 1px solid #E4DCFC;
+  background: #E6EFFE;
+  border: 1px solid #CFE0FB;
 }
 .aurora-tab-active::before {
   content: "";
@@ -220,10 +217,10 @@
 
 /* ── Aurora primary button — violet gradient, tactile lift/settle ─────────── */
 .aurora-primary {
-  background-image: linear-gradient(180deg, #8B6CFA 0%, #7C5CF6 100%);
-  border: 1px solid #6D4DF0;
+  background-image: linear-gradient(180deg, #2B5CD6 0%, #1E40AF 100%);
+  border: 1px solid #1B3A9E;
   color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 1px 2px rgba(109,77,240,0.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 1px 2px rgba(37,99,235,0.35);
   transition: transform 160ms cubic-bezier(0.25,0.8,0.35,1),
               box-shadow 160ms cubic-bezier(0.25,0.8,0.35,1),
               filter 160ms cubic-bezier(0.25,0.8,0.35,1);
@@ -231,12 +228,12 @@
 .aurora-primary:hover:not(:disabled) {
   transform: translateY(-1px);
   filter: brightness(1.04);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 3px 8px rgba(124,92,246,0.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 3px 8px rgba(30,64,175,0.35);
 }
 .aurora-primary:active:not(:disabled) {
   transform: translateY(0);
   filter: brightness(0.97);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 0 1px rgba(109,77,240,0.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 0 1px rgba(37,99,235,0.35);
 }
 
 /* ── Aurora Light keyframes + drawer sweep ────────────────────────────────── */
@@ -281,11 +278,11 @@
 /* ── Status pill colours — flat soft tints (per reference) ────────────────── */
 .s-Scheduled   { background: #E3F5EB; color: #2F9E68; }
 .s-Rescheduled { background: #FBF3DC; color: #A8811C; }
-.s-Submitted   { background: #F1EDFE; color: #6D4DF0; }
+.s-Submitted   { background: #E6EFFE; color: #1B3A9E; }
 .s-Closed      { background: #F4F4F9; color: #6E7180; }
 .s-Waiting        { background: #FDEEDD; color: #C46A15; }
-.s-AwaitingReview { background: #F1EDFE; color: #7B54D8; }
-.s-Reviewed       { background: #E7F0FE; color: #2E6BD6; }
+.s-AwaitingReview { background: #E6EFFE; color: #1E40AF; }
+.s-Reviewed       { background: #E7F0FE; color: #1E40AF; }
 .s-CourtesyDone   { background: #E3F2F6; color: #35839B; }
 .s-NotCame        { background: #FDE8E8; color: #D53B41; }
 

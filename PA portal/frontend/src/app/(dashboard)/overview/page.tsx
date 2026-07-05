@@ -268,7 +268,7 @@ export default function OverviewPage() {
               <div className="space-y-1.5">
                 {(data?.channels ?? []).map(c => (
                   <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxChan * 100)}
-                    active={filters.channel === c.key} onClick={() => toggle("channel", c.key)} tone="bg-violet-500" total={k?.received} />
+                    active={filters.channel === c.key} onClick={() => toggle("channel", c.key)} tone="bg-blue-500" total={k?.received} />
                 ))}
                 {data && data.channels.length === 0 && <Empty />}
               </div>
@@ -285,7 +285,7 @@ export default function OverviewPage() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[820px] text-left text-sm">
-                <thead className="bg-[#F8F7FC] text-[11px] uppercase tracking-[0.09em] text-muted-foreground/80">
+                <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.09em] text-muted-foreground/80">
                   <tr>
                     <th className="px-4 py-3">Citizen</th>
                     <th className="px-4 py-3">Mobile</th>
@@ -302,7 +302,7 @@ export default function OverviewPage() {
                   ) : pets.items.length === 0 ? (
                     <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No petitions match the filters.</td></tr>
                   ) : pets.items.map(p => (
-                    <tr key={p.id} onClick={() => openDetail(p.id)} className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#FBFBFD]">
+                    <tr key={p.id} onClick={() => openDetail(p.id)} className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#EFF3FB]">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
                           <InitialsAvatar name={p.name} className="h-8 w-8 rounded-lg text-[10px]" />

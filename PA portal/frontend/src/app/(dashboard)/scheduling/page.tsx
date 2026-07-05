@@ -363,7 +363,7 @@ export default function SchedulingPage() {
                       return (
                         <button key={d.id} onClick={() => setSelectedDate(d.date)}
                           className={cn("flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors",
-                            active ? "border-brand/40 bg-brand/5 ring-1 ring-[#E4DCFC]" : "border-border bg-card hover:bg-muted/50")}>
+                            active ? "border-brand/40 bg-brand/5 ring-1 ring-[#CFE0FB]" : "border-border bg-card hover:bg-muted/50")}>
                           <div className="min-w-0 flex-1">
                             <div className="font-mono text-sm font-semibold text-foreground">{d.date_label}</div>
                             <div className="mt-0.5 text-[12px] text-muted-foreground tabular-nums">

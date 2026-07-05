@@ -171,7 +171,7 @@ const TicketTableRow = memo(function TicketTableRow({
         "group cursor-pointer border-b border-border/60 transition-[background-color,box-shadow] duration-150",
         active
           ? "bg-brand/[0.05] shadow-[inset_3px_0_0_hsl(var(--accent-blue)),inset_0_0_0_1px_hsl(var(--accent-blue)/0.14)]"
-          : "hover:bg-[#FBFAF8] hover:shadow-[inset_3px_0_0_hsl(var(--accent-blue)/0.45)]",
+          : "hover:bg-[#EFF3FB] hover:shadow-[inset_3px_0_0_hsl(var(--accent-blue)/0.45)]",
       )}
     >
       <td className="py-4 pl-4 pr-2">
@@ -552,7 +552,7 @@ export default function TicketsPage() {
                   className={cn(
                     "inline-flex h-[38px] items-center gap-1.5 rounded-xl border px-3.5 text-sm font-semibold transition-colors",
                     dateChip === key
-                      ? "border-[#E4DCFC] bg-accent text-brand"
+                      ? "border-[#CFE0FB] bg-accent text-brand"
                       : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
@@ -588,7 +588,7 @@ export default function TicketsPage() {
                 className={cn(
                   "inline-flex h-[38px] items-center gap-1.5 rounded-xl border px-3.5 text-sm font-semibold transition-colors",
                   showRail || advancedFilterCount > 0
-                    ? "border-[#E4DCFC] bg-accent text-brand"
+                    ? "border-[#CFE0FB] bg-accent text-brand"
                     : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
@@ -894,7 +894,7 @@ function FilterSelect({
   );
 }
 
-const BAR_PALETTE = ["#7C5CF6", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#35839B"];
+const BAR_PALETTE = ["#1E40AF", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#35839B"];
 
 /** Category Distribution — self-fetches the current scope (minus category) so
  *  every bar stays visible while one is selected to filter the table. Backend
@@ -964,7 +964,7 @@ function DistributionCard({ status, scope, lang, mode, activeKey, onSelect, clas
                   aria-pressed={isActive}
                   className={cn(
                     "w-full rounded-lg px-2 py-1.5 text-left transition-all",
-                    isActive ? "bg-accent ring-1 ring-[#D6C9F5]" : "hover:bg-muted/60",
+                    isActive ? "bg-accent ring-1 ring-[#BBD3FA]" : "hover:bg-muted/60",
                     dimmed && "opacity-45 hover:opacity-100",
                   )}
                 >

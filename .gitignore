@@ -241,3 +241,7 @@ backend/eval/results_*.csv
 # (Already-tracked files like CLAUDE.md / DESIGN.md stay tracked; git only
 # applies ignore rules to untracked paths.)
 *.md
+
+# DB backups / dumps (contain production data — never commit)
+*.dump
+backend/railway_v1_backup*

@@ -231,7 +231,7 @@ const AppointmentTableRow = memo(function AppointmentTableRow({
         "transition-[background-color,box-shadow] duration-150 [transition-timing-function:cubic-bezier(0.25,0.8,0.35,1)]",
         active
           ? "bg-brand/[0.05] shadow-[inset_3px_0_0_hsl(var(--accent-blue)),inset_0_0_0_1px_hsl(var(--accent-blue)/0.14)]"
-          : "hover:bg-[#FBFAF8] hover:shadow-[inset_3px_0_0_hsl(var(--accent-blue)/0.45),0_1px_3px_rgba(23,23,28,0.05)]"
+          : "hover:bg-[#EFF3FB] hover:shadow-[inset_3px_0_0_hsl(var(--accent-blue)/0.45),0_1px_3px_rgba(23,23,28,0.05)]"
       )}
     >
       <td className="px-4 py-4">
@@ -692,7 +692,7 @@ function AppointmentsPageInner() {
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition-colors",
                       active
-                        ? "border-[#E4DCFC] bg-accent text-brand"
+                        ? "border-[#CFE0FB] bg-accent text-brand"
                         : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
@@ -1079,7 +1079,7 @@ function SortButton({
 /* ── Right rail ───────────────────────────────────────────────────────── */
 
 // Bar palette — cycled across the category list.
-const DONUT_PALETTE = ["#7C5CF6", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#35839B"];
+const DONUT_PALETTE = ["#1E40AF", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#35839B"];
 
 /** Category Distribution — donut over the CURRENT tab's meeting appointments
  *  only (not tickets/petitions). Rescopes when the tab or filters change. */
@@ -1154,7 +1154,7 @@ function CategoryDistributionCard({
                     title={isActive ? `${b.label} — click to clear filter` : `Filter by ${b.label}`}
                     className={cn(
                       "w-full rounded-lg px-2 py-1.5 text-left transition-all",
-                      isActive ? "bg-accent ring-1 ring-[#D6C9F5]" : "hover:bg-muted/60",
+                      isActive ? "bg-accent ring-1 ring-[#BBD3FA]" : "hover:bg-muted/60",
                       dimmed && "opacity-45 hover:opacity-100",
                     )}
                   >

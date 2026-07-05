@@ -534,7 +534,7 @@ function Field({
   const accentText =
     accent === "brand"   ? "text-brand"   :
     accent === "emerald" ? "text-emerald-600" :
-    accent === "violet"  ? "text-violet-600"  : "text-foreground";
+    accent === "violet"  ? "text-blue-600"  : "text-foreground";
   return (
     <div className="flex flex-col gap-1.5">
       <dt className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
