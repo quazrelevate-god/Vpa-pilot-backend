@@ -8,7 +8,7 @@
 Roadmap for moving off the Google AI Studio Developer API onto Vertex AI, and
 the honest path from there toward operating our own LLM. Captures the current
 state, the three progressive stops, the numbers, and the operational
-constraints so we can pick this back up cold.
+constraints so we can pick this back up cold .
 
 ---
 
