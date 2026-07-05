@@ -1,6 +1,6 @@
 """
 Petition-summariser evaluator — run test images through a model, auto-score
-CATEGORY + DEPARTMENT against gold labels, and emit a results CSV with the
+CATEGORY + MINISTRY against gold labels, and emit a results CSV with the
 predicted urgency + generated summary so a human can mark them right/wrong.
 
 Run from backend/:
@@ -12,7 +12,7 @@ Run from backend/:
     python eval/run_eval.py --model gemini-3.1-pro
 
 Reads eval/cases.csv + eval/cases/. Writes eval/results_<model>_<ts>.csv with:
-    category_match, department_match  → auto (0/1)
+    category_match, ministry_match     → auto (0/1)
     urgency_right, summary_right       → BLANK — human fills 0/1
     summary_notes                      → free text (optional)
 
@@ -116,14 +116,16 @@ def main() -> None:
             mime = mimetypes.guess_type(fn)[0] or "image/jpeg"
             attachments.append((p.read_bytes(), mime, fn))
 
-        pred_cat = pred_dept = pred_urg = headline = summary_en = summary_ta = ""
+        pred_cat = pred_min = pred_urg = citizen_ask = summary_en = summary_ta = ""
+        pred_name_en = pred_name_ta = ""
         tokens_in = tokens_out = 0
         t0 = time.monotonic()
         if not err and attachments:
             try:
                 s = svc.summarise_manual(citizen_name="", constituency="", attachments=attachments)
-                pred_cat, pred_dept, pred_urg = s.category.value, s.department.value, s.urgency.value
-                headline, summary_en, summary_ta = s.headline, s.summary, s.summary_ta
+                pred_cat, pred_min, pred_urg = s.category.value, s.ministry.value, s.urgency.value
+                citizen_ask, summary_en, summary_ta = s.citizen_ask, s.summary, s.summary_ta
+                pred_name_en, pred_name_ta = s.name_en, s.name_ta
             except Exception as e:
                 err = str(e)[:250]
         elif not err:
@@ -132,7 +134,8 @@ def main() -> None:
         errored = bool(err)
 
         gcat = (r.get("gold_category") or "").strip().lower()
-        gdept = (r.get("gold_department") or "").strip().lower()
+        # Accept either `gold_ministry` (new) or `gold_department` (legacy) column headers.
+        gmin = (r.get("gold_ministry") or r.get("gold_department") or "").strip().lower()
         row = {
             "id": cid,
             "language": r.get("language", ""),
@@ -141,12 +144,14 @@ def main() -> None:
             "gold_category":   gcat,
             "pred_category":   pred_cat,
             "category_match":  _match(gcat, pred_cat, errored),
-            "gold_department": gdept,
-            "pred_department": pred_dept,
-            "department_match": _match(gdept, pred_dept, errored),
+            "gold_ministry":   gmin,
+            "pred_ministry":   pred_min,
+            "ministry_match":  _match(gmin, pred_min, errored),
             "pred_urgency":    pred_urg,
             "urgency_right":   "",   # <-- HUMAN fills 1 (right) or 0 (wrong)
-            "headline":        headline,
+            "pred_name_en":    pred_name_en,
+            "pred_name_ta":    pred_name_ta,
+            "citizen_ask":     citizen_ask,
             "summary_en":      summary_en,
             "summary_ta":      summary_ta,
             "summary_right":   "",   # <-- HUMAN fills 1 (right) or 0 (wrong)
@@ -158,7 +163,7 @@ def main() -> None:
         }
         results.append(row)
         mark = lambda m: ("·" if m == "" else ("✓" if m == 1 else "✗"))
-        print(f"[{cid}] dept {mark(row['department_match'])} ({pred_dept or '—'})  "
+        print(f"[{cid}] min {mark(row['ministry_match'])} ({pred_min or '—'})  "
               f"cat {mark(row['category_match'])} ({pred_cat or '—'})  "
               f"urg? ({pred_urg or '—'})  {latency_ms}ms"
               + (f"  ERROR: {err}" if err else ""))

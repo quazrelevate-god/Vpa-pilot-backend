@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 from src.core.utils import utc_iso
 from src.models.appointment_models import Appointment, Citizen
 from src.models.grievance_summary_record import GrievanceSummaryRecord
-from src.models.grievance_summary import CATEGORY_DISPLAY, DEPARTMENT_DISPLAY
+from src.models.grievance_summary import CATEGORY_DISPLAY, MINISTRY_DISPLAY
 from src.models.school_department import department_label as school_department_label
 from src.models.ticket_models import (
     Ticket,
@@ -76,7 +76,7 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         "due_date":        utc_iso(t.due_date),
         "forwarded_to_dept": t.forwarded_to_dept,
         "forwarded_to_dept_label": (
-            DEPARTMENT_DISPLAY.get(t.forwarded_to_dept) if t.forwarded_to_dept else None
+            MINISTRY_DISPLAY.get(t.forwarded_to_dept) if t.forwarded_to_dept else None
         ),
         "reopen_count":    t.reopen_count,
         "created_at":      utc_iso(t.created_at),
@@ -84,11 +84,11 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         # AI-derived fields for the list view
         "category":        summary_rec.category if summary_rec else None,
         "category_label":  CATEGORY_DISPLAY.get(summary_rec.category) if summary_rec else None,
-        "department":      summary_rec.department if summary_rec else None,
-        "department_label": (
-            DEPARTMENT_DISPLAY.get(summary_rec.department) if summary_rec else None
+        "ministry":        summary_rec.ministry if summary_rec else None,
+        "ministry_label": (
+            MINISTRY_DISPLAY.get(summary_rec.ministry) if summary_rec else None
         ),
-        "headline":        summary_rec.headline if summary_rec else None,
+        "citizen_ask":     summary_rec.citizen_ask if summary_rec else None,
     }
 
 
@@ -178,13 +178,12 @@ def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None)
         "description": _decode(appt.encrypted_grievance) if (appt and appt.encrypted_grievance) else None,
         "summary":            summary_rec.summary if summary_rec else None,
         "summary_ta":         summary_rec.summary_ta if summary_rec else None,
-        "headline_ta":        summary_rec.headline_ta if summary_rec else None,
-        "citizen_ask":        summary_rec.citizen_ask if summary_rec else None,
         "citizen_ask_ta":     summary_rec.citizen_ask_ta if summary_rec else None,
         "key_details":        summary_rec.key_details if summary_rec else [],
         "key_details_ta":     summary_rec.key_details_ta if summary_rec else [],
+        "ai_name_en":         summary_rec.name_en if summary_rec else None,
+        "ai_name_ta":         summary_rec.name_ta if summary_rec else None,
         "audio_transcript":   summary_rec.audio_transcript if summary_rec else None,
-        "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
         # Routed school department (Ticket.department) — distinct from the AI
         # ministry above. Drives the drawer's "Assign" control. Once a department
         # accepts (accepted_at set), re-assignment is locked.
@@ -214,7 +213,7 @@ async def list_tickets(
     db: AsyncSession,
     status: Optional[str] = None,
     priority: Optional[str] = None,   # AI-review priority (low|medium|high|critical)
-    department: Optional[str] = None,
+    ministry: Optional[str] = None,
     category: Optional[str] = None,
     assigned_to: Optional[str] = None,
     forwarded_to_dept: Optional[str] = None,
@@ -250,15 +249,15 @@ async def list_tickets(
         )
 
     # AI-derived filters live on GrievanceSummaryRecord — join when needed
-    if priority or department or category:
+    if priority or ministry or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         )
         if priority:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
-        if department:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+        if ministry:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
         if category:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
         clauses.append(Ticket.appointment_id.in_(gsr_sub))
@@ -282,8 +281,8 @@ async def list_tickets(
             haystack = " ".join(filter(None, [
                 row.get("ticket_number"), row.get("token"),
                 row.get("citizen_name"), row.get("citizen_mobile"),
-                row.get("headline"), row.get("category_label"),
-                row.get("department_label"),
+                row.get("citizen_ask"), row.get("category_label"),
+                row.get("ministry_label"),
             ])).lower()
             if q not in haystack:
                 continue
@@ -295,7 +294,7 @@ async def list_tickets(
 async def get_ticket_counts(
     db: AsyncSession,
     priority: Optional[str] = None,   # AI-review priority (low|medium|high|critical)
-    department: Optional[str] = None,
+    ministry: Optional[str] = None,
     category: Optional[str] = None,
     assigned_to: Optional[str] = None,
     forwarded_to_dept: Optional[str] = None,
@@ -319,15 +318,15 @@ async def get_ticket_counts(
             Ticket.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S")
         )
 
-    if priority or department or category:
+    if priority or ministry or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         )
         if priority:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
-        if department:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+        if ministry:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
         if category:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
         clauses.append(Ticket.appointment_id.in_(gsr_sub))
@@ -357,8 +356,8 @@ async def get_ticket_counts(
             haystack = " ".join(filter(None, [
                 row.get("ticket_number"), row.get("token"),
                 row.get("citizen_name"), row.get("citizen_mobile"),
-                row.get("headline"), row.get("category_label"),
-                row.get("department_label"),
+                row.get("citizen_ask"), row.get("category_label"),
+                row.get("ministry_label"),
             ])).lower()
             if q not in haystack:
                 continue

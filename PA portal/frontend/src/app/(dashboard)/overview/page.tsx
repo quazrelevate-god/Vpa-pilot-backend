@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 interface Bar { key: string; label: string; count: number }
 interface Analytics {
   kpis: { received: number; citizens: number; urgent: number; meetings: number; meeting_persons: number; awaiting_review: number; growth_pct: number | null };
-  categories: Bar[]; departments: Bar[]; channels: Bar[];
+  categories: Bar[]; ministries: Bar[]; channels: Bar[];
   priority: { critical: number; high: number; medium: number; low: number };
   trend: { date: string; count: number }[];
 }
@@ -30,7 +30,7 @@ interface Petition {
   category_label: string; priority: string | null; status: string; source: string;
   source_label: string; schedule_meeting: boolean; created_at: string | null;
 }
-type Filters = { category?: string; priority?: string; department?: string; channel?: string };
+type Filters = { category?: string; priority?: string; ministry?: string; channel?: string };
 
 // ── Date presets ────────────────────────────────────────────────────────────────
 type Preset = "today" | "7d" | "30d" | "90d" | "month" | "lastmonth" | "quarter" | "year" | "all";
@@ -126,7 +126,7 @@ export default function OverviewPage() {
   const activeChips = Object.entries(filters).filter(([, v]) => v) as [keyof Filters, string][];
   const chipLabel = (dim: keyof Filters, v: string) => {
     if (dim === "category") return data?.categories.find(c => c.key === v)?.label ?? v;
-    if (dim === "department") return data?.departments.find(c => c.key === v)?.label ?? v;
+    if (dim === "ministry") return data?.ministries.find(c => c.key === v)?.label ?? v;
     if (dim === "channel") return data?.channels.find(c => c.key === v)?.label ?? v;
     return v;
   };
@@ -134,7 +134,7 @@ export default function OverviewPage() {
   const k = data?.kpis;
   const priorityTotal = data ? Object.values(data.priority).reduce((a, b) => a + b, 0) : 0;
   const maxCat = Math.max(1, ...(data?.categories ?? []).map(c => c.count));
-  const maxDept = Math.max(1, ...(data?.departments ?? []).map(c => c.count));
+  const maxMin = Math.max(1, ...(data?.ministries ?? []).map(c => c.count));
   const maxChan = Math.max(1, ...(data?.channels ?? []).map(c => c.count));
 
   return (
@@ -254,11 +254,11 @@ export default function OverviewPage() {
             <Card className="p-4">
               <ChartHead icon={Megaphone} title="Ministries" sub="Where the load falls" />
               <div className="space-y-1.5">
-                {(data?.departments ?? []).slice(0, 6).map(c => (
-                  <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxDept * 100)}
-                    active={filters.department === c.key} onClick={() => toggle("department", c.key)} tone="bg-brand" />
+                {(data?.ministries ?? []).slice(0, 6).map(c => (
+                  <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxMin * 100)}
+                    active={filters.ministry === c.key} onClick={() => toggle("ministry", c.key)} tone="bg-brand" />
                 ))}
-                {data && data.departments.length === 0 && <Empty />}
+                {data && data.ministries.length === 0 && <Empty />}
               </div>
             </Card>
 

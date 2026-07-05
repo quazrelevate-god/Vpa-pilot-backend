@@ -173,7 +173,9 @@ ALTER TABLE attachments ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL D
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════════════════════════════════════════════
--- 12. grievance_summary_records — CREATE (v1 structure)
+-- 12. grievance_summary_records — CREATE
+--     (ministry-routing shape: department→ministry, +name_en/name_ta,
+--      no headline/priority_reason/attachment_notes/secondary_departments)
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS grievance_summary_records (
     id                    BIGSERIAL PRIMARY KEY,
@@ -181,20 +183,15 @@ CREATE TABLE IF NOT EXISTS grievance_summary_records (
     is_latest             BOOLEAN NOT NULL DEFAULT true,
     priority              VARCHAR(20) NOT NULL,
     category              VARCHAR(50) NOT NULL,
-    department            VARCHAR(60) NOT NULL DEFAULT 'other',
-    secondary_departments JSONB NOT NULL DEFAULT '[]',
-    headline              VARCHAR(150) NOT NULL,
+    ministry              VARCHAR(60) NOT NULL DEFAULT 'other',
+    name_en               VARCHAR(200) NOT NULL DEFAULT '',
+    name_ta               VARCHAR(200) NOT NULL DEFAULT '',
     summary               TEXT NOT NULL,
     citizen_ask           TEXT NOT NULL,
-    priority_reason       TEXT,
     key_details           JSONB NOT NULL,
-    attachment_notes      TEXT,
-    headline_ta           VARCHAR(200) NOT NULL,
     summary_ta            TEXT NOT NULL,
     citizen_ask_ta        TEXT NOT NULL,
-    priority_reason_ta    TEXT,
     key_details_ta        JSONB NOT NULL,
-    attachment_notes_ta   TEXT,
     audio_transcript      TEXT,
     audio_stt_latency_ms  INTEGER,
     gemini_model_used     VARCHAR(60) NOT NULL,
@@ -204,7 +201,7 @@ CREATE TABLE IF NOT EXISTS grievance_summary_records (
 CREATE INDEX IF NOT EXISTS ix_gsr_appointment_latest ON grievance_summary_records(appointment_id, is_latest);
 CREATE INDEX IF NOT EXISTS ix_gsr_priority ON grievance_summary_records(priority);
 CREATE INDEX IF NOT EXISTS ix_gsr_category ON grievance_summary_records(category);
-CREATE INDEX IF NOT EXISTS ix_gsr_department ON grievance_summary_records(department);
+CREATE INDEX IF NOT EXISTS ix_gsr_ministry ON grievance_summary_records(ministry);
 CREATE INDEX IF NOT EXISTS ix_gsr_created_at ON grievance_summary_records(created_at);
 
 -- ═══════════════════════════════════════════════════════════════════════════════

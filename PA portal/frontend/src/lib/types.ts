@@ -30,7 +30,7 @@ export interface StatsResponse {
   trend_counts: number[];
   trend_resolved?: number[];
   categories: { label: string; count: number }[];
-  departments: { label: string; count: number }[];
+  ministries: { label: string; count: number }[];
   priority: Partial<Record<Priority, number>>;
   // New political/operational KPIs
   unique_citizens?: number;
@@ -39,7 +39,7 @@ export interface StatsResponse {
   avg_response_hours?: number;
   growth_pct?: number | null;
   sla_buckets?: SlaBucket[];
-  forwarded_departments?: { label: string; count: number }[];
+  forwarded_ministries?: { label: string; count: number }[];
   total_forwarded?: number;
 }
 
@@ -56,8 +56,7 @@ export interface AppointmentRow {
   name_ta?: string | null;
   mobile: string;
   category: string;
-  department?: string | null;     // primary dept — snake_case Department enum key
-  secondary_departments?: string[]; // 0–2 additional depts to loop in
+  ministry?: string | null;     // AI-classified Ministry — snake_case Ministry enum key
   status: AppointmentStatus;
   source?: string | null;    // intake channel: qr_citizen | ai_scan | manual_staff
   created_at: string;        // pre-formatted timestamp
@@ -67,19 +66,19 @@ export interface AppointmentRow {
   appointment_slot_end?: string | null;
   priority?: Priority | null;
   description?: string;
-  headline?: string;
-  headline_ta?: string | null;
   summary?: string;
   summary_ta?: string | null;
   citizen_ask?: string;
   citizen_ask_ta?: string | null;
   key_details?: string[];
   key_details_ta?: string[];
+  ai_name_en?: string | null;
+  ai_name_ta?: string | null;
   audio_transcript?: string | null;
   audio_url?: string | null;            // dedicated form-mic recording
   attachments?: AppointmentAttachment[];
   category_label?: string | null;
-  department_label?: string | null;
+  ministry_label?: string | null;
   num_persons?: number | null;
   // Standalone STT transcript for courtesy submissions (invitation/greetings).
   // Populated by the backend when audio was attached and AI was skipped.
@@ -156,22 +155,21 @@ export interface TicketRow {
   updated_at: string;
   category?: string | null;
   category_label?: string | null;
-  department?: string | null;
-  department_label?: string | null;
-  headline?: string | null;
+  ministry?: string | null;
+  ministry_label?: string | null;
+  citizen_ask?: string | null;
 }
 
 export interface TicketDetail extends TicketRow {
   description?: string | null;
   summary?: string | null;
   summary_ta?: string | null;
-  headline_ta?: string | null;
-  citizen_ask?: string | null;
   citizen_ask_ta?: string | null;
   key_details?: string[];
   key_details_ta?: string[];
+  ai_name_en?: string | null;
+  ai_name_ta?: string | null;
   audio_transcript?: string | null;
-  secondary_departments?: string[];
   // Routed school department (Assign) + acceptance state.
   assigned_department?: string | null;
   assigned_department_label?: string | null;

@@ -28,20 +28,19 @@ import {
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchAppointments } from "@/lib/api";
-import { DEPT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
+import { MINISTRY_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
 import type { AppointmentRow, AppointmentAttachment } from "@/lib/types";
 
 // The default School Education ministry — approve keeps it in the school
 // department workflow ("Accept"); any other ministry is "Forward"ed out.
 const SCHOOL_MINISTRY = "school_education_tamil_dev_info_publicity";
-const MINISTRIES = Object.keys(DEPT_DISPLAY);
+const MINISTRIES = Object.keys(MINISTRY_DISPLAY);
 
 interface Upload {
   id: number; filename: string; mime_type: string; file_url: string | null;
   status: "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED";
   name: string | null; name_ta: string | null; mobile: string | null;
-  category: string | null; priority: string | null; department: string | null;
-  headline: string | null; headline_ta: string | null;
+  category: string | null; priority: string | null; ministry: string | null;
   summary: string | null; summary_ta: string | null;
   citizen_ask: string | null; citizen_ask_ta: string | null;
   key_details: string[]; key_details_ta: string[];
@@ -204,8 +203,7 @@ function mapPetitionToReview(p: AppointmentRow): Upload {
     id: p.id, filename: "Petition", mime_type: "", file_url: null,
     status: petitionStatusKey(p.status),
     name: p.name ?? null, name_ta: p.name_ta ?? null, mobile: p.mobile ?? null,
-    category: p.category ?? null, priority: p.priority ?? null, department: p.department ?? null,
-    headline: p.headline ?? null, headline_ta: p.headline_ta ?? null,
+    category: p.category ?? null, priority: p.priority ?? null, ministry: p.ministry ?? null,
     summary: p.summary ?? null, summary_ta: p.summary_ta ?? null,
     citizen_ask: p.citizen_ask ?? null, citizen_ask_ta: p.citizen_ask_ta ?? null,
     key_details: p.key_details ?? [], key_details_ta: p.key_details_ta ?? [],
@@ -596,12 +594,12 @@ export default function AiReviewPage() {
       const rv = mapPetitionToReview(r.petition);
       setReview(rv);
       // Phone is OTP-verified (kept read-only); everything else is editable.
-      setForm({ name: rv.name, name_ta: rv.name_ta, summary: rv.summary, category: rv.category, priority: rv.priority, department: rv.department });
+      setForm({ name: rv.name, name_ta: rv.name_ta, summary: rv.summary, category: rv.category, priority: rv.priority, ministry: rv.ministry });
       return;
     }
     const u = r.upload!;
     setReview({ ...u, _kind: "upload" });
-    setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, priority: u.priority, department: u.department, summary: u.summary });
+    setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, priority: u.priority, ministry: u.ministry, summary: u.summary });
   }
 
   async function saveEdits() {
@@ -613,7 +611,7 @@ export default function AiReviewPage() {
           method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({
             name: form.name, name_ta: form.name_ta, summary: form.summary,
-            category: form.category, priority: form.priority, department: form.department,
+            category: form.category, priority: form.priority, ministry: form.ministry,
           }),
         });
         if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Save failed"); }
@@ -621,7 +619,7 @@ export default function AiReviewPage() {
         setReview({
           ...review,
           name: form.name ?? review.name, name_ta: form.name_ta ?? review.name_ta, summary: form.summary ?? review.summary,
-          category: form.category ?? review.category, priority: form.priority ?? review.priority, department: form.department ?? review.department,
+          category: form.category ?? review.category, priority: form.priority ?? review.priority, ministry: form.ministry ?? review.ministry,
         });
         load();
       } else {
@@ -1115,7 +1113,7 @@ export default function AiReviewPage() {
             <div className="flex w-full flex-col md:w-[52%]">
               <div className="flex items-start gap-3 border-b border-border px-7 py-5">
                 <div className="min-w-0 flex-1">
-                  <div className="text-xl font-bold leading-snug">{pick(review.headline, review.headline_ta) || review.name || "Petition"}</div>
+                  <div className="text-xl font-bold leading-snug">{pick(review.citizen_ask, review.citizen_ask_ta) || review.name || "Petition"}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold", STATUS_CLS[review.status])}>{t(STATUS_TKEY[review.status])}</span>
                     {review.priority && <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase", PRIORITY_CLS[review.priority])}>{review.priority}</span>}
@@ -1140,7 +1138,7 @@ export default function AiReviewPage() {
                   {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}
                   <SelectField label={t("petition.colCategory")} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
                   <SelectField label={t("petition.colUrgency")} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} onChange={v => setForm(f => ({ ...f, priority: v }))} />
-                  <SelectField label={t("petition.fMinistry")} editing={editing} value={form.department} fallback={review.department} options={MINISTRIES} labels={DEPT_DISPLAY} onChange={v => setForm(f => ({ ...f, department: v }))} />
+                  <SelectField label={t("petition.fMinistry")} editing={editing} value={form.ministry} fallback={review.ministry} options={MINISTRIES} labels={MINISTRY_DISPLAY} onChange={v => setForm(f => ({ ...f, ministry: v }))} />
                 </div>
 
                 <Panel title="Summary">
@@ -1179,7 +1177,7 @@ export default function AiReviewPage() {
                 {review.status === "AWAITING_REVIEW" && (() => {
                   // Ministry drives the action: School → Accept (school department
                   // workflow); any other ministry → Forward (out to that ministry).
-                  const isSchool = (review.department ?? SCHOOL_MINISTRY) === SCHOOL_MINISTRY;
+                  const isSchool = (review.ministry ?? SCHOOL_MINISTRY) === SCHOOL_MINISTRY;
                   return (
                     <Button
                       className={cn("w-full text-white", isSchool ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}

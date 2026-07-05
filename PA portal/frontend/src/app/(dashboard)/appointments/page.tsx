@@ -32,7 +32,7 @@ import {
 import { cn, formatDateTime } from "@/lib/utils";
 import { fetchAppointments, fetchAppointmentCounts, updateAppointmentStatus, type AppointmentListOpts } from "@/lib/api";
 import type { AppointmentRow, AppointmentStatus } from "@/lib/types";
-import { priorityOptions, deptOptions, CATEGORY_DISPLAY_TA, CATEGORY_DISPLAY_EN } from "@/lib/enums";
+import { priorityOptions, ministryOptions, categoryOptions, CATEGORY_DISPLAY_TA, CATEGORY_DISPLAY_EN } from "@/lib/enums";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Appointments is meeting-centric. Direct petitions (Awaiting Review / Reviewed)
@@ -142,7 +142,7 @@ const COURTESY_CATEGORIES = new Set(["invitation", "greetings"]);
  * Rules:
  *  1. Courtesy (invitation/greetings) — show the STT transcript verbatim.
  *  2. Walk-in with no description and no image attachment — show "Walk-in".
- *  3. Everything else — AI ask → headline → citizen's own description.
+ *  3. Everything else — AI citizen_ask → citizen's own description.
  */
 function pickAskText(row: AppointmentRow, lang: string): string {
   const ta = lang === "ta";
@@ -168,8 +168,6 @@ function pickAskText(row: AppointmentRow, lang: string): string {
 
   const ask = ta ? (row.citizen_ask_ta ?? row.citizen_ask) : row.citizen_ask;
   if (ask && ask.trim()) return ask.trim();
-  const head = ta ? (row.headline_ta ?? row.headline) : row.headline;
-  if (head && head.trim()) return head.trim();
   if (desc) return desc;
   return isWalkIn ? "Walk-in" : "";
 }
@@ -433,8 +431,8 @@ function AppointmentsPageInner() {
   const [openRow, setOpenRow] = useState<AppointmentRow | null>(null);
 
   const [priority, setPriority] = useState("");
-  const [department, setDepartment] = useState("");
-  const [category, setCategory] = useState("");   // driven by the distribution chart
+  const [ministry, setMinistry] = useState("");
+  const [category, setCategory] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [apptDateFrom, setApptDateFrom] = useState("");
@@ -460,11 +458,11 @@ function AppointmentsPageInner() {
   }, []);
 
   const advancedFilterCount =
-    (priority ? 1 : 0) + (department ? 1 : 0) + (category ? 1 : 0) +
+    (priority ? 1 : 0) + (ministry ? 1 : 0) + (category ? 1 : 0) +
     (dateFrom || dateTo ? 1 : 0) + (!activeChip && (apptDateFrom || apptDateTo) ? 1 : 0);
 
   const anyFilterActive = Boolean(
-    search || priority || department || category ||
+    search || priority || ministry || category ||
     dateFrom || dateTo || apptDateFrom || apptDateTo || activeChip
   );
 
@@ -472,21 +470,21 @@ function AppointmentsPageInner() {
   const secondary = useMemo(() => ({
     kind: "meeting" as const,
     search: search || undefined,
-    priority: priority || undefined, department: department || undefined, category: category || undefined,
+    priority: priority || undefined, ministry: ministry || undefined, category: category || undefined,
     dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
     apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
     sort: sort || undefined,
-  }), [search, priority, department, category, dateFrom, dateTo, apptDateFrom, apptDateTo, sort]);
+  }), [search, priority, ministry, category, dateFrom, dateTo, apptDateFrom, apptDateTo, sort]);
 
   // Chart scope — same filters WITHOUT category, so the distribution keeps
   // showing every category even while one is selected to filter the table.
   const chartScope = useMemo(() => ({
     kind: "meeting" as const,
     search: search || undefined,
-    priority: priority || undefined, department: department || undefined,
+    priority: priority || undefined, ministry: ministry || undefined,
     dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
     apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
-  }), [search, priority, department, dateFrom, dateTo, apptDateFrom, apptDateTo]);
+  }), [search, priority, ministry, dateFrom, dateTo, apptDateFrom, apptDateTo]);
 
   const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
@@ -571,7 +569,7 @@ function AppointmentsPageInner() {
   }, [activeChip]);
 
   const clearAllFilters = useCallback(() => {
-    setPriority(""); setDepartment(""); setCategory("");
+    setPriority(""); setMinistry(""); setCategory("");
     setDateFrom(""); setDateTo(""); setApptDateFrom(""); setApptDateTo("");
     setActiveChip(null); setSearch(""); setPage(1);
   }, []);
@@ -916,8 +914,8 @@ function AppointmentsPageInner() {
               <div className="-mr-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2">
                 <FilterSelect label={t("label.priority")} value={priority}
                               onChange={(v) => { setPage(1); setPriority(v); }} options={priorityOptions} />
-                <FilterSelect label={t("label.ministry")} value={department}
-                              onChange={(v) => { setPage(1); setDepartment(v); }} options={deptOptions} />
+                <FilterSelect label={t("label.ministry")} value={ministry}
+                              onChange={(v) => { setPage(1); setMinistry(v); }} options={ministryOptions} />
                 <DateRangePill
                   label={t("appts.dateSubmitted")} from={dateFrom} to={dateTo}
                   onFrom={(v) => { setPage(1); setDateFrom(v); }} onTo={(v) => { setPage(1); setDateTo(v); }}

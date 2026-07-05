@@ -19,7 +19,7 @@ from src.models.scheduling_models import AppointmentSlot, MLADailyAvailability
 from src.services.scheduling_service import scheduling_service
 from src.services.notification_service import notify as _notify
 from src.models.grievance_summary_record import GrievanceSummaryRecord
-from src.models.grievance_summary import CATEGORY_DISPLAY, DEPARTMENT_DISPLAY
+from src.models.grievance_summary import CATEGORY_DISPLAY, MINISTRY_DISPLAY
 from src.services.v2_helpers import v2
 
 
@@ -156,17 +156,16 @@ async def get_stats(
     )
     priority = {r[0]: r[1] for r in priority_rows}
 
-    # Primary department breakdown — drives the routing KPI for the Minister.
-    dept_rows = await db.execute(
-        select(GrievanceSummaryRecord.department, func.count(GrievanceSummaryRecord.id))
+    # Ministry breakdown — drives the routing KPI for the Minister.
+    ministry_rows = await db.execute(
+        select(GrievanceSummaryRecord.ministry, func.count(GrievanceSummaryRecord.id))
         .where(*gsr_filter)
-        .group_by(GrievanceSummaryRecord.department)
+        .group_by(GrievanceSummaryRecord.ministry)
         .order_by(func.count(GrievanceSummaryRecord.id).desc())
         .limit(10)
     )
-    from src.models.grievance_summary import DEPARTMENT_DISPLAY
-    departments = [
-        {"label": DEPARTMENT_DISPLAY.get(r[0], r[0]), "count": r[1]} for r in dept_rows
+    ministries = [
+        {"label": MINISTRY_DISPLAY.get(r[0], r[0]), "count": r[1]} for r in ministry_rows
     ]
 
     # Trend — day-by-day within the selected range (or last 14 days)
@@ -281,11 +280,10 @@ async def get_stats(
     if date_to:
         forwarded_q = forwarded_q.where(Ticket.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
     forwarded_rows = await db.execute(forwarded_q)
-    from src.models.grievance_summary import DEPARTMENT_DISPLAY as _DEPT_DISP
-    forwarded_departments = [
-        {"label": _DEPT_DISP.get(r[0], r[0]), "count": r[1]} for r in forwarded_rows
+    forwarded_ministries = [
+        {"label": MINISTRY_DISPLAY.get(r[0], r[0]), "count": r[1]} for r in forwarded_rows
     ]
-    total_forwarded = sum(d["count"] for d in forwarded_departments)
+    total_forwarded = sum(m["count"] for m in forwarded_ministries)
 
     # SLA bucket health by priority (from the AI review) — actionable tickets only.
     sla_targets_days = {"critical": 3, "high": 7, "medium": 14, "low": 28}
@@ -318,7 +316,7 @@ async def get_stats(
         "resolution_rate":   resolution_rate,
         "ai_coverage":       ai_coverage,
         "categories":        categories,
-        "departments":       departments,
+        "ministries":        ministries,
         "priority":           priority,
         "trend_labels":      day_labels,
         "trend_counts":      day_counts,
@@ -330,7 +328,7 @@ async def get_stats(
         "growth_pct":        growth_pct,
         "trend_resolved":    resolved_counts,
         "sla_buckets":       sla_buckets,
-        "forwarded_departments": forwarded_departments,
+        "forwarded_ministries": forwarded_ministries,
         "total_forwarded":   total_forwarded,
     }
 
@@ -344,7 +342,7 @@ async def get_appointments(
     appt_date_from: Optional[str] = None,
     appt_date_to: Optional[str] = None,
     priority: Optional[str] = None,
-    department: Optional[str] = None,
+    ministry: Optional[str] = None,
     category: Optional[str] = None,
     kind: Optional[str] = None,
     sort: Optional[str] = None,
@@ -413,15 +411,15 @@ async def get_appointments(
     # AI-derived filters: priority + department live only on GrievanceSummaryRecord.
     # Category also falls back to Appointment.grievance_category for petitions
     # that haven't been AI-summarised yet (AWAITING_REVIEW with form-selected category).
-    if priority or department or category:
+    if priority or ministry or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         )
         if priority:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
-        if department:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+        if ministry:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
         if category:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
 
@@ -547,7 +545,7 @@ async def get_appointment_counts(
     appt_date_from: Optional[str] = None,
     appt_date_to: Optional[str] = None,
     priority: Optional[str] = None,
-    department: Optional[str] = None,
+    ministry: Optional[str] = None,
     category: Optional[str] = None,
     kind: Optional[str] = None,
 ) -> Dict[str, int]:
@@ -576,15 +574,15 @@ async def get_appointment_counts(
     if appt_date_to:
         base = base.where(Appointment.created_at <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
 
-    if priority or department or category:
+    if priority or ministry or category:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         )
         if priority:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
-        if department:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+        if ministry:
+            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
         if category:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
         if category:
@@ -614,15 +612,15 @@ async def get_appointment_counts(
             stmt = stmt.where(Appointment.created_at >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
         if appt_date_to:
             stmt = stmt.where(Appointment.created_at <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
-        if priority or department or category:
+        if priority or ministry or category:
             gsr_sub = (
                 select(GrievanceSummaryRecord.appointment_id)
                 .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
             )
             if priority:
                 gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
-            if department:
-                gsr_sub = gsr_sub.where(GrievanceSummaryRecord.department == department)
+            if ministry:
+                gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
             if category:
                 gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
             if category:
@@ -709,8 +707,7 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "name_ta": _decode(appt.encrypted_name_ta) if appt.encrypted_name_ta else None,
         "mobile": mobile,
         "category": _category_label(appt.grievance_category),
-        "department": (summary_rec.department if summary_rec else None),
-        "secondary_departments": (summary_rec.secondary_departments if summary_rec else []) or [],
+        "ministry": (summary_rec.ministry if summary_rec else None),
         "status_db": appt.status,
         "status": _resolve_display_status(appt),
         "source": "qr_citizen",  # v2: source column removed; default for now
@@ -728,8 +725,6 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "num_persons": appt.num_persons,
         "description": _decode(appt.encrypted_grievance) if appt.encrypted_grievance else None,
         "audio_url": audio_url,
-        "headline": summary_rec.headline if summary_rec else None,
-        "headline_ta": summary_rec.headline_ta if summary_rec else None,
         "summary": summary_rec.summary if summary_rec else None,
         "summary_ta": summary_rec.summary_ta if summary_rec else None,
         "citizen_ask": summary_rec.citizen_ask if summary_rec else None,
@@ -737,6 +732,8 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "priority": summary_rec.priority if summary_rec else None,
         "key_details": summary_rec.key_details if summary_rec else [],
         "key_details_ta": summary_rec.key_details_ta if summary_rec else [],
+        "ai_name_en": summary_rec.name_en if summary_rec else None,
+        "ai_name_ta": summary_rec.name_ta if summary_rec else None,
         "audio_transcript": summary_rec.audio_transcript if summary_rec else None,
         # Standalone STT transcript populated for courtesy submissions
         # (invitation/greetings) that skip the AI summary pipeline.
@@ -744,7 +741,7 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         # Lets the UI decide whether "Summary is being prepared" is honest.
         "summary_status": appt.summary_status,
         "category_label": _category_label(appt.grievance_category),
-        "department_label": (DEPARTMENT_DISPLAY.get(summary_rec.department, summary_rec.department) if summary_rec and summary_rec.department else None),
+        "ministry_label": (MINISTRY_DISPLAY.get(summary_rec.ministry, summary_rec.ministry) if summary_rec and summary_rec.ministry else None),
         "attachments": attachments_data,
     }
 
@@ -770,7 +767,7 @@ async def update_appointment_derived_fields(
     appointment_id: int,
     priority: Optional[str] = None,
     category: Optional[str] = None,
-    department: Optional[str] = None,
+    ministry: Optional[str] = None,
     name: Optional[str] = None,
     name_ta: Optional[str] = None,
     summary_text: Optional[str] = None,
@@ -779,7 +776,7 @@ async def update_appointment_derived_fields(
     PA override for a petition/appointment from the unified review drawer:
     name + Tamil name (on the Appointment, Fernet-encrypted), the AI summary
     (on GrievanceSummaryRecord), and the classification (category/priority/
-    department). Any field left as None is unchanged.
+    ministry). Any field left as None is unchanged.
 
     Returns:
         {"success": True} on success, {"success": False} if no record found.
@@ -821,12 +818,12 @@ async def update_appointment_derived_fields(
             if old_priority != summary_rec.priority:
                 _log_appt_event(db, appointment_id, "priority_changed",
                                 payload={"from": old_priority, "to": summary_rec.priority})
-        if department is not None:
-            old_dept = summary_rec.department
-            summary_rec.department = department or None
-            if old_dept != summary_rec.department:
-                _log_appt_event(db, appointment_id, "department_changed",
-                                payload={"from": old_dept, "to": summary_rec.department})
+        if ministry is not None:
+            old_ministry = summary_rec.ministry
+            summary_rec.ministry = ministry or None
+            if old_ministry != summary_rec.ministry:
+                _log_appt_event(db, appointment_id, "ministry_changed",
+                                payload={"from": old_ministry, "to": summary_rec.ministry})
         if summary_text is not None:
             summary_rec.summary = summary_text
 
@@ -1018,7 +1015,7 @@ async def approve_petition(db: AsyncSession, appointment_id: int, actor: str = "
     if ticket:
         from src.services import department_service
         forwarded = await department_service.forward_if_non_school(
-            db, ticket.id, summary.department if summary else None, actor)
+            db, ticket.id, summary.ministry if summary else None, actor)
     return {
         "status": result.get("status"),
         "ticket_number": ticket.ticket_number if ticket else None,

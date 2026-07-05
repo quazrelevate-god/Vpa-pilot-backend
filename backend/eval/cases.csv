@@ -1,4 +1,4 @@
-id,files,language,handwritten,gold_category,gold_department,notes
+id,files,language,handwritten,gold_category,gold_ministry,notes
 1,1.jpg,tamil,no,job_requests,school_education_tamil_dev_info_publicity,
 2,2.jpg,tamil,no,job_requests,school_education_tamil_dev_info_publicity,
 3,3.jpg,tamil,yes,job_requests,school_education_tamil_dev_info_publicity,

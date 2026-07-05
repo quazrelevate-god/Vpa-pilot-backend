@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
-import { priorityOptions, deptOptions, categoryOptions, DEPT_DISPLAY, CATEGORY_DISPLAY } from "@/lib/enums";
+import { priorityOptions, ministryOptions, categoryOptions, MINISTRY_DISPLAY, CATEGORY_DISPLAY } from "@/lib/enums";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import RescheduleModal from "@/components/RescheduleModal";
 
@@ -44,9 +44,9 @@ export default function AppointmentDetailDrawer({
   const [tab, setTab] = useState("details");
   const [activity, setActivity] = useState<AppointmentActivityEvent[]>([]);
   // Local overlay so the UI reflects PA admin edits without a refetch.
-  const [overrides, setOverrides] = useState<{ priority?: string | null; category?: string | null; department?: string | null }>({});
+  const [overrides, setOverrides] = useState<{ priority?: string | null; category?: string | null; ministry?: string | null }>({});
   const [editCategory, setEditCategory] = useState(false);
-  const [editDepartment, setEditDepartment] = useState(false);
+  const [editMinistry, setEditMinistry] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
 
   const open = row != null;
@@ -56,7 +56,7 @@ export default function AppointmentDetailDrawer({
   useEffect(() => {
     setOverrides({});
     setEditCategory(false);
-    setEditDepartment(false);
+    setEditMinistry(false);
     setTab("details");
   }, [row?.id]);
 
@@ -68,13 +68,13 @@ export default function AppointmentDetailDrawer({
 
   const currentPriority = overrides.priority !== undefined ? overrides.priority : a?.priority ?? null;
   const currentCategoryKey = overrides.category !== undefined ? overrides.category : null; // null means use AI label
-  const currentDeptKey = overrides.department !== undefined ? overrides.department : null;
+  const currentMinistryKey = overrides.ministry !== undefined ? overrides.ministry : null;
   const categoryLabel = currentCategoryKey
     ? (CATEGORY_DISPLAY[currentCategoryKey] ?? currentCategoryKey)
     : (a?.category_label ?? a?.category ?? null);
-  const departmentLabel = currentDeptKey
-    ? (DEPT_DISPLAY[currentDeptKey] ?? currentDeptKey)
-    : (a?.department_label ?? null);
+  const ministryLabel = currentMinistryKey
+    ? (MINISTRY_DISPLAY[currentMinistryKey] ?? currentMinistryKey)
+    : (a?.ministry_label ?? null);
 
   // Lazy bilingual field accessor.
   const pick = <T,>(en: T | null | undefined, ta: T | null | undefined): T | null | undefined =>
@@ -95,7 +95,7 @@ export default function AppointmentDetailDrawer({
     }
   }
 
-  async function patchDetails(patch: { priority?: string | null; category?: string | null; department?: string | null }) {
+  async function patchDetails(patch: { priority?: string | null; category?: string | null; ministry?: string | null }) {
     if (!a) return;
     setBusy(true);
     try {
@@ -125,7 +125,7 @@ export default function AppointmentDetailDrawer({
             <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">
               <div className="min-w-0 flex-1">
                 <SheetTitle className="text-xl font-bold leading-snug tracking-tight">
-                  {pick(a.headline, a.headline_ta) ?? "Appointment details"}
+                  {pick(a.citizen_ask, a.citizen_ask_ta) ?? "Appointment details"}
                 </SheetTitle>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="font-mono text-base font-semibold text-brand">
@@ -488,7 +488,8 @@ const APPT_EVENT_ICON: Record<string, React.ElementType> = {
   priority_changed: ShieldAlert,
   urgency_changed: ShieldAlert,   // legacy events logged before the rename
   category_changed: Flag,
-  department_changed: ArrowRight,
+  ministry_changed: ArrowRight,
+  department_changed: ArrowRight, // legacy: events logged before dept→ministry rename
   rescheduled: CalendarDays,
   slot_blocked: Clock,
   slot_unblocked: Clock,
@@ -502,7 +503,8 @@ const APPT_PRETTY_EVENT: Record<string, string> = {
   priority_changed: "Priority changed",
   urgency_changed: "Priority changed",   // legacy events logged before the rename
   category_changed: "Category changed",
-  department_changed: "Department changed",
+  ministry_changed: "Ministry changed",
+  department_changed: "Ministry changed",   // legacy events logged before the rename
   rescheduled: "Rescheduled",
   slot_blocked: "Slot blocked",
   slot_unblocked: "Slot unblocked",
@@ -533,7 +535,8 @@ function renderApptEventBody(e: { event_type: string; note?: string | null; payl
 
   if (e.event_type === "status_changed" || e.event_type === "priority_changed" ||
       e.event_type === "urgency_changed" ||
-      e.event_type === "category_changed" || e.event_type === "department_changed") {
+      e.event_type === "category_changed" || e.event_type === "ministry_changed" ||
+      e.event_type === "department_changed") {
     return <ApptChangeArrow from={p.from} to={p.to} />;
   }
 

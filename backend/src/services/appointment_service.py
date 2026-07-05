@@ -1095,7 +1095,6 @@ class AppointmentService:
                 lambda: svc.summarise(
                     citizen_name=citizen_name,
                     constituency=constituency,
-                    grievance_text=grievance_text,
                     attachment_bytes=attachment_bytes,
                     attachment_mime=attachment_mime,
                     attachment_filename=attachment_filename,
@@ -1171,12 +1170,12 @@ class AppointmentService:
                         message=(
                             f"AI summarised — urgency={summary.urgency.value}, "
                             f"category={summary.category.value}, "
-                            f"department={summary.department.value}"
+                            f"ministry={summary.ministry.value}"
                         ),
                         payload={
                             "urgency": summary.urgency.value,
                             "category": summary.category.value,
-                            "department": summary.department.value,
+                            "ministry": summary.ministry.value,
                             "suggested_priority": suggested_priority,
                         },
                     ))
@@ -1191,7 +1190,7 @@ class AppointmentService:
             logger.info(
                 f"[GEMINI OK] appointment_id={appointment_id} | input={input_mode} | "
                 f"urgency={summary.urgency.value} | category={summary.category.value} | "
-                f"department={summary.department.value} | "
+                f"ministry={summary.ministry.value} | "
                 f"latency={elapsed_ms}ms (parallel summarise+STT)"
             )
 

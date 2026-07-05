@@ -11,7 +11,7 @@ type Ticket = {
   id: number; ticket_number: string; status: string;
   department: string | null; department_label: string | null; progress_pct: number;
   citizen_name: string; citizen_mobile: string; token: string | null;
-  headline: string | null; priority: string | null;
+  citizen_ask: string | null; priority: string | null;
   created_at: string; accepted_at: string | null; resolved_at: string | null;
 };
 type Detail = Ticket & {
@@ -127,7 +127,7 @@ export default function DepartmentDashboard() {
                   {t.priority && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${PRIORITY_CLS[t.priority] || ""}`}>{t.priority}</span>}
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{STATUS_LABEL[t.status] || t.status}</span>
                 </div>
-                <div className="mt-1 truncate text-sm font-medium text-slate-900">{t.headline || "Petition"}</div>
+                <div className="mt-1 truncate text-sm font-medium text-slate-900">{t.citizen_ask || "Petition"}</div>
                 <div className="mt-0.5 text-xs text-slate-500">{t.citizen_name} · {t.citizen_mobile}</div>
               </div>
               {t.status === "in_progress" && <div className="text-xs font-semibold text-blue-600">{t.progress_pct}%</div>}
@@ -179,7 +179,7 @@ function DetailDrawer({ detail, depts, onClose, onDone }: {
         <div className="flex items-start gap-3 border-b border-slate-200 p-5">
           <div className="min-w-0 flex-1">
             <div className="font-mono text-xs font-semibold text-indigo-600">{detail.ticket_number}</div>
-            <div className="mt-0.5 text-base font-bold text-slate-900">{detail.headline || "Petition"}</div>
+            <div className="mt-0.5 text-base font-bold text-slate-900">{detail.citizen_ask || "Petition"}</div>
             <div className="mt-1 text-xs text-slate-500">{detail.citizen_name} · {detail.citizen_mobile} · {detail.token}</div>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-slate-100"><X className="h-4 w-4" /></button>

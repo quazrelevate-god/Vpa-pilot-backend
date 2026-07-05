@@ -119,7 +119,7 @@ async def display_today_api(
             time_str = f"{display_hour:02d}:{minute:02d} {ampm}"
 
         summary_rec = next((s for s in (appt.grievance_summary or []) if s.is_latest), None)
-        headline = (summary_rec.headline if summary_rec else None)
+        subject = (summary_rec.citizen_ask if summary_rec else None)
         items.append({
             "id": appt.id,
             "token": f"TKN{appt.token_assigned}",
@@ -130,7 +130,7 @@ async def display_today_api(
             # Raw enum key so the client can detect courtesy items (invitation /
             # greetings) and swap labels/actions without brittle label matching.
             "category_key": appt.grievance_category,
-            "reason": headline or _category_label(appt.grievance_category),
+            "reason": subject or _category_label(appt.grievance_category),
             "status": _resolve_display_status(appt),
             "status_db": appt.status,
             "time": time_str,

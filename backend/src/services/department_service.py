@@ -262,7 +262,7 @@ def _ticket_row(t: Ticket, appt: Optional[Appointment], citizen: Optional[Citize
         "citizen_name": name,
         "citizen_mobile": mobile,
         "token": f"TKN{appt.token_assigned}" if appt else None,
-        "headline": summary.headline if summary else None,
+        "citizen_ask": summary.citizen_ask if summary else None,
         "priority": summary.priority if summary else None,
         "created_at": utc_iso(t.created_at),
         "accepted_at": utc_iso(t.accepted_at) if t.accepted_at else None,

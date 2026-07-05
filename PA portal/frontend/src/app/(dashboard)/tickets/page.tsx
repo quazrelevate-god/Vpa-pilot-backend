@@ -26,7 +26,8 @@ import { fetchTickets, fetchTicketsCounts, type TicketListFilters } from "@/lib/
 import type { TicketRow } from "@/lib/types";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR, PRIORITY_DISPLAY,
-  priorityOptions, deptOptions, DEPT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA,
+  priorityOptions, ministryOptions, categoryOptions, MINISTRY_DISPLAY,
+  CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA,
 } from "@/lib/enums";
 
 const PAGE_SIZE = 25;   // Fixed server page size (backend caps at 25/page).
@@ -190,7 +191,7 @@ const TicketTableRow = memo(function TicketTableRow({
       </td>
       <td className="max-w-md px-4 py-4">
         <div className="line-clamp-2 text-sm leading-snug text-foreground/85">
-          {row.headline ?? <span className="italic text-muted-foreground/60">{t("tickets.colSummary")}</span>}
+          {row.citizen_ask ?? <span className="italic text-muted-foreground/60">{t("tickets.colSummary")}</span>}
         </div>
       </td>
       <td className="px-4 py-4 text-[15px] font-semibold text-foreground">{catLabel(row.category, lang)}</td>
@@ -273,8 +274,8 @@ const TicketCard = memo(function TicketCard({
           </div>
         </div>
       </div>
-      {row.headline && (
-        <div className="mt-2 line-clamp-2 text-sm leading-snug text-foreground/85">{row.headline}</div>
+      {row.citizen_ask && (
+        <div className="mt-2 line-clamp-2 text-sm leading-snug text-foreground/85">{row.citizen_ask}</div>
       )}
       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
         <span>{catLabel(row.category, lang)}</span>
@@ -296,7 +297,7 @@ export default function TicketsPage() {
   // routes a ticket to a department), so it's a normal server-side filter.
   const [status, setStatus] = useState("open");
   const [priority, setPriority] = useState("");
-  const [deptValue, setDeptValue] = useState("");   // routed to department | forwarded_to_dept per tab
+  const [deptValue, setDeptValue] = useState("");   // AI ministry | forwarded_to_dept per tab
   const [category, setCategory] = useState("");   // driven by the distribution chart
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -312,23 +313,23 @@ export default function TicketsPage() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
-  // Ministry filter (deptOptions are ministries, per the rest of the UI).
+  // Ministry filter (ministryOptions, per the rest of the UI).
   //  · All        → rail select filters by the AI-routed ministry
   //  · Forwarded  → NO rail select; the Ministry Distribution chart drives it
   //                 (filters by forwarded-to ministry), so `field` stays set
   //                 while `show` is false
   //  · every other tab → hidden
   const isForwarded = status === "forwarded_to_dept";
-  const deptFilter = useMemo<{ show: boolean; field: "department" | "forwarded_to_dept" | null; label: string }>(() => {
+  const deptFilter = useMemo<{ show: boolean; field: "ministry" | "forwarded_to_dept" | null; label: string }>(() => {
     switch (status) {
-      case "":                  return { show: true,  field: "department",        label: "label.ministry" };
+      case "":                  return { show: true,  field: "ministry",          label: "label.ministry" };
       case "forwarded_to_dept": return { show: false, field: "forwarded_to_dept", label: "label.ministry" };
       default:                  return { show: false, field: null,                label: "label.ministry" };
     }
   }, [status]);
 
   const deptParams = useMemo(() => ({
-    department: deptFilter.field === "department" ? (deptValue || undefined) : undefined,
+    ministry: deptFilter.field === "ministry" ? (deptValue || undefined) : undefined,
     forwardedToDept: deptFilter.field === "forwarded_to_dept" ? (deptValue || undefined) : undefined,
   }), [deptFilter, deptValue]);
 
@@ -479,7 +480,7 @@ export default function TicketsPage() {
   const th = "px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground/80";
 
   const priorityLabel = priority ? (PRIORITY_DISPLAY[priority] ?? priority) : t("tickets.allPriority");
-  const departmentLabel = deptValue ? (deptOptions.find((o) => o.value === deptValue)?.label ?? deptValue) : t("tickets.allMinistries");
+  const departmentLabel = deptValue ? (ministryOptions.find((o) => o.value === deptValue)?.label ?? deptValue) : t("tickets.allMinistries");
   const categoryLabel = category ? catLabel(category, lang) : t("tickets.allCategories");
   const createdLabel = (dateFrom || dateTo) ? dateRangeLabel(dateFrom, dateTo, lang) : t("tickets.dateThisWeek");
 
@@ -787,7 +788,7 @@ export default function TicketsPage() {
                       <div className="flex flex-col gap-2">
                         <FilterSectionLabel label={t(deptFilter.label)} onReset={deptValue ? () => { setPage(1); setDeptValue(""); } : undefined} resetLabel={t("tickets.reset")} />
                         <FilterSelect label={t(deptFilter.label)} value={deptValue}
-                          onChange={(v) => { setPage(1); setDeptValue(v); }} options={deptOptions} />
+                          onChange={(v) => { setPage(1); setDeptValue(v); }} options={ministryOptions} />
                       </div>
                     )}
 
@@ -930,7 +931,7 @@ function DistributionCard({ status, scope, lang, mode, activeKey, onSelect, clas
   }, [status, scope, mode]);
 
   const total = bars.reduce((a, b) => a + b.count, 0);
-  const labelOf = (k: string) => mode === "ministry" ? (DEPT_DISPLAY[k] ?? k.replace(/_/g, " ")) : catLabel(k, lang);
+  const labelOf = (k: string) => mode === "ministry" ? (MINISTRY_DISPLAY[k] ?? k.replace(/_/g, " ")) : catLabel(k, lang);
 
   return (
     <Card className={cn("flex flex-col p-5 shadow-card-md", className)}>

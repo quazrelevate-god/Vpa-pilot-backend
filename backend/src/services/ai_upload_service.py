@@ -258,15 +258,13 @@ class AiUploadService:
             "category": row.grievance_category,
             "forced_category": row.forced_category,
             "priority": row.priority,
-            "headline": sj.get("headline"),
-            "headline_ta": sj.get("headline_ta"),
             "summary": sj.get("summary"),
             "summary_ta": sj.get("summary_ta"),
             "citizen_ask": sj.get("citizen_ask"),
             "citizen_ask_ta": sj.get("citizen_ask_ta"),
             "key_details": sj.get("key_details") or [],
             "key_details_ta": sj.get("key_details_ta") or [],
-            "department": sj.get("department"),
+            "ministry": sj.get("ministry") or sj.get("department"),
             "error": row.error_message,
             "ticket_number": row.ticket_number,
             "appointment_id": row.appointment_id,
@@ -306,12 +304,12 @@ class AiUploadService:
                 val = str(fields[key]).strip()
                 setattr(row, col, val or None)
                 sj[json_key] = val
-        # Ministry (AI `department`) lives only in summary_json, not a column.
-        # Editing it here also decides the approve button (Accept vs Forward).
-        if "department" in fields and fields["department"] is not None:
-            sj["department"] = str(fields["department"]).strip() or None
-        # Free-text narrative edits (summary, headline, citizen_ask + _ta)
-        for k in ("summary", "summary_ta", "headline", "headline_ta", "citizen_ask", "citizen_ask_ta"):
+        # Ministry lives only in summary_json, not a column. Editing it here
+        # also decides the approve button (Accept vs Forward).
+        if "ministry" in fields and fields["ministry"] is not None:
+            sj["ministry"] = str(fields["ministry"]).strip() or None
+        # Free-text narrative edits (summary, citizen_ask + _ta)
+        for k in ("summary", "summary_ta", "citizen_ask", "citizen_ask_ta"):
             if k in fields and fields[k] is not None:
                 sj[k] = str(fields[k])
         row.summary_json = sj
@@ -360,8 +358,17 @@ class AiUploadService:
         row = await db.get(AiUpload, upload_id)
         sj = row.summary_json or {}
         extraction = PetitionExtraction.model_validate(sj)   # enums back, edits included
-        name   = (row.extracted_name or extraction.citizen_name or "Unknown").strip()
+        # Strict extraction: Gemini leaves citizen_name empty when not confident.
+        # PA must fill it via update_fields before approving — no "Unknown"
+        # placeholders reach the citizen record.
+        name   = (row.extracted_name or extraction.citizen_name or "").strip()
         mobile = (row.extracted_mobile or "").strip()
+        if not name:
+            raise ValueError(
+                "Citizen name is empty — the AI extractor was not confident enough "
+                "to read the name from this petition. Please fill in the name in "
+                "the review drawer before approving."
+            )
         now = datetime.utcnow()
 
         # ── 1) Citizen + Appointment (AWAITING_REVIEW) + summary record ─────────
@@ -394,7 +401,8 @@ class AiUploadService:
             # v2: slot_id is a real FK — AI-scan rows never book a slot.
             slot_id=None,
             token_assigned=token_assigned,
-            encrypted_grievance=appointment_service._encrypt_field(extraction.summary or extraction.headline or ""),
+            # main's field priority (citizen_ask first); v2 keeps the name on Citizen only.
+            encrypted_grievance=appointment_service._encrypt_field(extraction.citizen_ask or extraction.summary or ""),
             grievance_category=extraction.category.value,
             status="AWAITING_REVIEW",
             status_id=ai_ids["status_id"],
@@ -447,7 +455,7 @@ class AiUploadService:
         # workflow. School stays OPEN so it can be routed to one of the 10
         # school departments ("Accept"). Shared with the QR/staff petition path.
         from src.services import department_service
-        dept_val = extraction.department.value if extraction.department else None
+        dept_val = extraction.ministry.value if extraction.ministry else None
         forwarded = (
             await department_service.forward_if_non_school(db, ticket.id, dept_val, reviewed_by)
             if ticket else False

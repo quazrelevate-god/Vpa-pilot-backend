@@ -11,7 +11,7 @@ import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { fetchTicket, patchTicket, ticketAction } from "@/lib/api";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR,
-  DEPT_DISPLAY, CATEGORY_DISPLAY, CLOSURE_REASON_DISPLAY,
+  MINISTRY_DISPLAY, CATEGORY_DISPLAY, CLOSURE_REASON_DISPLAY,
   ticketManualStatusOptions, closureReasonOptions,
 } from "@/lib/enums";
 import PriorityBadge from "@/components/PriorityBadge";
@@ -112,7 +112,7 @@ export default function TicketDetailDrawer({
   }
 
   async function routeToDepartment(dept: string) {
-    if (ticketId == null || !dept || dept === t?.department) return;
+    if (ticketId == null || !dept || dept === t?.assigned_department) return;
     setBusy(true);
     try {
       const r = await fetch(`/api/tickets/${ticketId}/route`, {
@@ -164,7 +164,7 @@ export default function TicketDetailDrawer({
         <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">
           <div className="min-w-0 flex-1">
             <SheetTitle className="text-xl font-bold leading-snug tracking-tight">
-              {(t && (pick(t.headline, t.headline_ta) ?? t.headline)) ?? (loading ? "Loading…" : "Ticket")}
+              {(t && (pick(t.citizen_ask, t.citizen_ask_ta) ?? t.citizen_ask)) ?? (loading ? "Loading…" : "Ticket")}
             </SheetTitle>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="font-mono text-base font-semibold text-brand">{t?.ticket_number ?? "…"}</span>
@@ -177,7 +177,7 @@ export default function TicketDetailDrawer({
             </div>
           </div>
           {/* Language toggle */}
-          {t && (t.summary_ta || t.headline_ta || t.citizen_ask_ta) && (
+          {t && (t.summary_ta || t.citizen_ask_ta) && (
             <LangToggle lang={lang} onChange={setLang} />
           )}
           <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
@@ -250,16 +250,16 @@ export default function TicketDetailDrawer({
                       </div>
 
                       {/* Metadata strip — context before content */}
-                      {(t.priority || t.department_label || t.category_label) && (
+                      {(t.priority || t.ministry_label || t.category_label) && (
                         <div className="mb-4 flex flex-wrap gap-1.5">
                           {t.priority && (
                             <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-orange-700">
                               {t.priority} priority
                             </span>
                           )}
-                          {t.department_label && (
+                          {t.ministry_label && (
                             <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">
-                              <Building2 className="h-3 w-3" />{t.department_label}
+                              <Building2 className="h-3 w-3" />{t.ministry_label}
                             </span>
                           )}
                           {t.category_label && (
@@ -386,7 +386,7 @@ export default function TicketDetailDrawer({
                 {t.forwarded_to_dept && (
                   <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
                     <SubHead className="text-cyan-700">Forwarded to Department</SubHead>
-                    <div className="text-sm font-semibold text-cyan-900">{DEPT_DISPLAY[t.forwarded_to_dept] ?? t.forwarded_to_dept}</div>
+                    <div className="text-sm font-semibold text-cyan-900">{MINISTRY_DISPLAY[t.forwarded_to_dept] ?? t.forwarded_to_dept}</div>
                     {t.forwarded_notes && <p className="mt-1 whitespace-pre-wrap text-sm text-cyan-800">{t.forwarded_notes}</p>}
                     <div className="mt-1 text-[11px] text-cyan-600">
                       by {t.forwarded_by ?? "—"} on {formatDateTime(t.forwarded_at)}
@@ -629,13 +629,14 @@ function renderEventBody(e: { event_type: string; note?: string | null; payload?
   if (e.event_type === "ai_summarised") {
     const u = p.urgency as string | undefined;
     const c = p.category as string | undefined;
-    const d = p.department as string | undefined;
+    // New events use `ministry`; keep `department` fallback for legacy events.
+    const m = (p.ministry ?? p.department) as string | undefined;
     const sp = p.suggested_priority as string | undefined;
     return (
       <div className="mt-1.5 flex flex-wrap gap-1.5 rounded-lg bg-muted/60 p-2">
         {u && <Chip label="Priority" value={u} tone="orange" />}
         {c && <Chip label="Category" value={CATEGORY_DISPLAY[c] ?? c.replace(/_/g, " ")} tone="slate" />}
-        {d && <Chip label="Department" value={DEPT_DISPLAY[d] ?? d.replace(/_/g, " ")} tone="indigo" />}
+        {m && <Chip label="Ministry" value={MINISTRY_DISPLAY[m] ?? m.replace(/_/g, " ")} tone="indigo" />}
         {sp && <Chip label="Suggested priority" value={sp} tone="brand" />}
       </div>
     );
@@ -658,14 +659,15 @@ function renderEventBody(e: { event_type: string; note?: string | null; payload?
     );
   }
 
-  // Forwarded — show department label + notes if present.
+  // Forwarded — show ministry label + notes if present.
   if (e.event_type === "forwarded_to_dept" || e.event_type === "forwarded") {
+    const ministry = (p.ministry ?? p.department) as string | undefined;
     return (
       <>
-        {p.department && (
+        {ministry && (
           <div className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[11px] font-semibold text-cyan-700">
             <Building2 className="h-3 w-3" />
-            {DEPT_DISPLAY[String(p.department)] ?? String(p.department)}
+            {MINISTRY_DISPLAY[String(ministry)] ?? String(ministry)}
           </div>
         )}
         {e.note && <p className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/60 p-2 text-sm text-foreground/80">{e.note}</p>}
