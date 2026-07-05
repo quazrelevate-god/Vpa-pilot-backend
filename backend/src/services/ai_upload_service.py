@@ -358,8 +358,17 @@ class AiUploadService:
         row = await db.get(AiUpload, upload_id)
         sj = row.summary_json or {}
         extraction = PetitionExtraction.model_validate(sj)   # enums back, edits included
-        name   = (row.extracted_name or extraction.citizen_name or "Unknown").strip()
+        # Strict extraction: Gemini leaves citizen_name empty when not confident.
+        # PA must fill it via update_fields before approving — no "Unknown"
+        # placeholders reach the citizen record.
+        name   = (row.extracted_name or extraction.citizen_name or "").strip()
         mobile = (row.extracted_mobile or "").strip()
+        if not name:
+            raise ValueError(
+                "Citizen name is empty — the AI extractor was not confident enough "
+                "to read the name from this petition. Please fill in the name in "
+                "the review drawer before approving."
+            )
         now = datetime.utcnow()
 
         # ── 1) Citizen + Appointment (AWAITING_REVIEW) + summary record ─────────
