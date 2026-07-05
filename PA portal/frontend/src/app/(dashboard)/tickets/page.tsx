@@ -2,9 +2,9 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Search, ChevronLeft, ChevronRight, Ticket as TicketIcon, CalendarDays,
+  Search, ChevronLeft, ChevronRight, Ticket as TicketIcon,
   CalendarCheck, CalendarRange, AlarmClockOff, SlidersHorizontal, X, Download,
-  Flag, Building2, FolderOpen, MoreVertical, Eye,
+  MoreVertical, Eye,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -128,15 +128,6 @@ function computeDateChip(chip: DateChip): { from: string; to: string } {
   return { from: toISODate(start), to: toISODate(end) };
 }
 
-function dateRangeLabel(from: string, to: string, lang: string): string {
-  const loc = lang === "ta" ? "ta-IN" : (undefined as unknown as string);
-  const fmt = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString(loc, { day: "numeric", month: "short", year: "numeric" });
-  const fmtShort = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString(loc, { day: "numeric", month: "short" });
-  if (from && to) return from === to ? fmt(from) : `${fmtShort(from)} – ${fmt(to)}`;
-  if (from) return `${fmt(from)} →`;
-  if (to) return `→ ${fmt(to)}`;
-  return "";
-}
 
 /** Numbered pagination — 1 … current−1 current current+1 … last. */
 function pageList(current: number, last: number): (number | "…")[] {
@@ -479,11 +470,6 @@ export default function TicketsPage() {
 
   const th = "px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground/80";
 
-  const priorityLabel = priority ? (PRIORITY_DISPLAY[priority] ?? priority) : t("tickets.allPriority");
-  const departmentLabel = deptValue ? (ministryOptions.find((o) => o.value === deptValue)?.label ?? deptValue) : t("tickets.allMinistries");
-  const categoryLabel = category ? catLabel(category, lang) : t("tickets.allCategories");
-  const createdLabel = (dateFrom || dateTo) ? dateRangeLabel(dateFrom, dateTo, lang) : t("tickets.dateThisWeek");
-
   return (
     <>
       <TopBar
@@ -612,14 +598,6 @@ export default function TicketsPage() {
             showRail ? "xl:grid-cols-[minmax(0,1fr)_360px]" : "xl:grid-cols-1",
           )}>
             <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
-              {/* Scope summary strip */}
-              <Card className="grid shrink-0 grid-cols-2 gap-px overflow-hidden bg-border p-0 sm:grid-cols-4">
-                <SummaryTile icon={Flag} label={t("label.priority")} value={priorityLabel} />
-                <SummaryTile icon={Building2} label={t("label.ministry")} value={departmentLabel} />
-                <SummaryTile icon={FolderOpen} label={t("label.category")} value={categoryLabel} />
-                <SummaryTile icon={CalendarDays} label={t("tickets.dateRange")} value={createdLabel} />
-              </Card>
-
               {/* Desktop table — fills to the bottom of the page; body scrolls */}
               <Card className="hidden overflow-hidden p-0 shadow-card-md md:block xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
                 <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
@@ -846,20 +824,6 @@ export default function TicketsPage() {
 /* ── Local components ─────────────────────────────────────────────────── */
 
 const ALL = "__all__";
-
-function SummaryTile({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-3 bg-card px-4 py-3.5">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent text-brand">
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</div>
-        <div className="truncate text-sm font-semibold text-foreground">{value}</div>
-      </div>
-    </div>
-  );
-}
 
 function FilterSectionLabel({ label, onReset, resetLabel }: { label: string; onReset?: () => void; resetLabel: string }) {
   return (

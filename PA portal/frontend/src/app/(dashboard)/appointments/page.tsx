@@ -648,7 +648,7 @@ function AppointmentsPageInner() {
       <main className="flex-1 overflow-y-auto bg-background xl:overflow-hidden">
         <div className="flex flex-col gap-4 px-4 py-6 animate-in-up xl:h-full">
           {/* Unified toolbar — tabs · quick chips · filters trigger · export */}
-          <Card className="flex shrink-0 flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-1.5">
               {TABS.map((tabItem) => {
                 const active = tabItem === tab;
@@ -712,7 +712,7 @@ function AppointmentsPageInner() {
                 <Download className="h-4 w-4 text-brand" /> {t("action.export")}
               </Button>
             </div>
-          </Card>
+          </div>
 
           {/* Two-column workspace: table (left) · filters + insights rail (right) */}
           <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowRight, MessageSquare, CheckCircle2, Lock, RotateCcw, Send, Building2,
-  Clock, User, Phone, Hash, CalendarDays, X, Languages, Sparkles,
+  Clock, User, Phone, Hash, CalendarDays, X, Sparkles,
   GitBranch, Flag, UserCheck, Paperclip, FileSignature, FileCheck2, Inbox,
   ClipboardList, Landmark, Tag, BarChart3, Image as ImageIcon,
 } from "lucide-react";
@@ -15,10 +15,10 @@ import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { fetchTicket, patchTicket, ticketAction } from "@/lib/api";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR,
-  MINISTRY_DISPLAY, CATEGORY_DISPLAY, CLOSURE_REASON_DISPLAY,
-  ticketManualStatusOptions, closureReasonOptions,
+  MINISTRY_DISPLAY, CATEGORY_DISPLAY, CATEGORY_DISPLAY_TA, CLOSURE_REASON_DISPLAY,
+  closureReasonOptions,
 } from "@/lib/enums";
-import PriorityBadge from "@/components/PriorityBadge";
+import { useLang } from "@/lib/lang-context";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -31,6 +31,18 @@ import { InitialsAvatar } from "@/components/ui/avatar";
 import { cn, formatDate, formatDateTime, toLocalDateTimeInput, fromLocalDateTimeInput } from "@/lib/utils";
 
 type Action = "close" | "reopen";
+
+// Localized labels for priority + ticket status (fall back to English display).
+const PRIORITY_TKEY: Record<string, string> = {
+  low: "petition.urgencyLow", medium: "petition.urgencyMedium",
+  high: "petition.urgencyHigh", critical: "petition.urgencyCritical",
+};
+const STATUS_TKEY: Record<string, string> = {
+  open: "tkt.stOpen", triaged: "tkt.stTriaged", assigned: "tkt.stAssigned",
+  in_progress: "tkt.stInProgress", forwarded_to_dept: "tkt.stForwarded",
+  pending_citizen: "tkt.stPendingCitizen", resolved: "tkt.stResolved",
+  closed: "tkt.stClosed", reopened: "tkt.stReopened",
+};
 
 const EVENT_ICON: Record<string, React.ElementType> = {
   petition_submitted: Inbox,
@@ -73,8 +85,6 @@ function galleryType(mime?: string): GalleryAttachment["type"] {
   return "DOCUMENT";
 }
 
-type Lang = "en" | "ta";
-
 export default function TicketDetailDrawer({
   ticketId, onClose, onMutated,
 }: {
@@ -87,7 +97,7 @@ export default function TicketDetailDrawer({
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("details");
   const [activeAction, setActiveAction] = useState<Action | null>(null);
-  const [lang, setLang] = useState<Lang>("en");
+  const { lang, t: tr } = useLang();
 
   const [commentText, setCommentText] = useState("");
   const [closureReason, setClosureReason] = useState("");
@@ -145,6 +155,16 @@ export default function TicketDetailDrawer({
   const t = data;
   const isClosed = t?.status === "closed";
   const isResolved = t?.status === "resolved";
+  // Assign + SLA are editable only while the ticket is still open.
+  const isOpen = t?.status === "open";
+  const canEdit = Boolean(isOpen) && !busy;
+
+  // Localized value helpers (respect the global language).
+  const statusText = (s?: string | null) => { if (!s) return ""; const k = STATUS_TKEY[s]; return k ? tr(k) : (TICKET_STATUS_DISPLAY[s] ?? s); };
+  const priorityText = (p?: string | null) => { if (!p) return ""; const k = PRIORITY_TKEY[p]; return k ? tr(k) : p; };
+  const categoryText = t?.category
+    ? ((lang === "ta" ? CATEGORY_DISPLAY_TA[t.category] : CATEGORY_DISPLAY[t.category]) ?? t.category_label ?? t.category)
+    : (t?.category_label ?? null);
 
   // Department resolution proofs → gallery shape for the preview pane.
   const resAtt: GalleryAttachment[] = (t?.resolution_attachments ?? []).map((a) => ({
@@ -168,26 +188,22 @@ export default function TicketDetailDrawer({
         <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">
           <div className="min-w-0 flex-1">
             <SheetTitle className="text-xl font-bold leading-snug tracking-tight">
-              {(t && (pick(t.citizen_ask, t.citizen_ask_ta) ?? t.citizen_ask)) ?? (loading ? "Loading…" : "Ticket")}
+              {(t && (pick(t.citizen_ask, t.citizen_ask_ta) ?? t.citizen_ask)) ?? (loading ? tr("tkt.loading") : tr("tkt.ticket"))}
             </SheetTitle>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="font-mono text-base font-semibold text-brand">{t?.ticket_number ?? "…"}</span>
               {t && (
                 <StatusDot
-                  label={TICKET_STATUS_DISPLAY[t.status] ?? t.status}
+                  label={statusText(t.status)}
                   tone={statusTone(TICKET_STATUS_DISPLAY[t.status] ?? t.status)}
                 />
               )}
               {t?.priority && (
-                <StatusDot label={<span className="uppercase tracking-wide">{t.priority}</span>} tone={priorityTone(t.priority)} />
+                <StatusDot label={<span className="uppercase tracking-wide">{priorityText(t.priority)}</span>} tone={priorityTone(t.priority)} />
               )}
-              {t?.category_label && <StatusDot label={t.category_label} tone="slate" />}
+              {categoryText && <StatusDot label={categoryText} tone="slate" />}
             </div>
           </div>
-          {/* Language toggle */}
-          {t && (t.summary_ta || t.citizen_ask_ta) && (
-            <LangToggle lang={lang} onChange={setLang} />
-          )}
           <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
             <X className="h-5 w-5" />
           </SheetClose>
@@ -201,7 +217,7 @@ export default function TicketDetailDrawer({
                 <span className="grid h-6 w-6 place-items-center rounded-md bg-brand/10 text-brand">
                   <ImageIcon className="h-3.5 w-3.5" />
                 </span>
-                Citizen Uploads
+                {tr("petition.citizenUploads")}
                 {(t.attachments?.length ?? 0) > 0 && (
                   <span className="rounded-full bg-brand/10 px-1.5 text-[10px] font-bold text-brand">
                     {t.attachments!.length}
@@ -229,10 +245,18 @@ export default function TicketDetailDrawer({
             <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 min-h-0 flex-1 flex-col">
             {/* Tab bar */}
             <div className="border-b border-border bg-card px-6 pt-3">
-              <TabsList className="bg-muted">
-                <TabsTrigger value="details">Details</TabsTrigger>
-                <TabsTrigger value="activity">
-                  Activity
+              <TabsList className="gap-1 bg-muted p-1">
+                <TabsTrigger
+                  value="details"
+                  className="rounded-md px-3 font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-brand data-[state=active]:shadow-card"
+                >
+                  {tr("tkt.details")}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="activity"
+                  className="rounded-md px-3 font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-brand data-[state=active]:shadow-card"
+                >
+                  {tr("tkt.activity")}
                   {t.events.length > 0 && (
                     <span className="ml-1.5 rounded-full bg-background px-1.5 text-[10px] font-bold text-muted-foreground">
                       {t.events.length}
@@ -245,22 +269,64 @@ export default function TicketDetailDrawer({
             {/* ── Details ─────────────────────────────────────────────── */}
             <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
               <div className="space-y-4 p-6">
-                {/* Overview — the case facts at a glance */}
-                <SectionCard icon={ClipboardList} title="Overview">
+                {/* Assignment & SLA — the only editable fields, pinned to the top;
+                    editable only while the ticket is still open. */}
+                <Panel icon={UserCheck} title={tr("tkt.assignmentSla")}>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {/* Assign — routes to a school department (logs "routed").
+                        Once a department accepts, ownership is locked here. */}
+                    <div className="space-y-1.5">
+                      <Label>{tr("tkt.assign")}</Label>
+                      {t.accepted_at ? (
+                        <div className="flex h-9 items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                            <Building2 className="h-3.5 w-3.5" />
+                            {t.assigned_department_label ?? t.assigned_department}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">{tr("tkt.accepted")}</span>
+                        </div>
+                      ) : (
+                        <Select value={t.assigned_department || undefined} onValueChange={routeToDepartment} disabled={!canEdit}>
+                          <SelectTrigger className="h-9"><SelectValue placeholder={tr("tkt.assignPlaceholder")} /></SelectTrigger>
+                          <SelectContent>
+                            {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>{tr("tkt.dueDate")}</Label>
+                      <Input type="datetime-local" defaultValue={toLocalDateTimeInput(t.due_date)} disabled={!canEdit} className="h-9"
+                        onBlur={(e) => { const v = e.target.value; patch({ due_date: fromLocalDateTimeInput(v) }); }} />
+                    </div>
+                  </div>
+                  {!isOpen && (
+                    <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Lock className="h-3 w-3" /> {tr("tkt.editOnlyOpen")}
+                    </p>
+                  )}
+                </Panel>
+
+                {/* Overview — read-only case facts, incl. status + priority */}
+                <SectionCard icon={ClipboardList} title={tr("petition.grpOverview")}>
                   <OverviewGrid>
-                    <OverviewItem icon={User} label="Name" value={t.citizen_name} />
-                    <OverviewItem icon={Phone} label="Phone" value={t.citizen_mobile} mono />
-                    <OverviewItem icon={Tag} label="Category" value={t.category_label} />
+                    <OverviewItem icon={User} label={tr("petition.colName")} value={t.citizen_name} />
+                    <OverviewItem icon={Phone} label={tr("petition.colPhone")} value={t.citizen_mobile} mono />
+                    <OverviewItem icon={Tag} label={tr("petition.colCategory")} value={categoryText} />
+                    <OverviewItem
+                      icon={GitBranch}
+                      label={tr("petition.colStatus")}
+                      value={<StatusDot label={statusText(t.status)} tone={statusTone(TICKET_STATUS_DISPLAY[t.status] ?? t.status)} />}
+                    />
                     <OverviewItem
                       icon={BarChart3}
-                      label="Priority"
-                      value={t.priority ? <span className="capitalize">{t.priority}</span> : null}
-                      accent={t.priority ? "amber" : undefined}
+                      label={tr("petition.colUrgency")}
+                      value={t.priority ? <StatusDot label={<span className="uppercase tracking-wide">{priorityText(t.priority)}</span>} tone={priorityTone(t.priority)} /> : null}
                     />
                     {t.ministry_label && (
-                      <OverviewItem icon={Landmark} label="Ministry" value={t.ministry_label} />
+                      <OverviewItem icon={Landmark} label={tr("petition.fMinistry")} value={t.ministry_label} />
                     )}
-                    <OverviewItem icon={CalendarDays} label="Created" value={formatDate(t.created_at)} />
+                    <OverviewItem icon={CalendarDays} label={tr("tickets.dateRange")} value={formatDate(t.created_at)} />
                   </OverviewGrid>
                 </SectionCard>
 
@@ -268,7 +334,7 @@ export default function TicketDetailDrawer({
                 {(t.summary || t.description) && (
                   <SectionCard
                     icon={Sparkles}
-                    title="Summary"
+                    title={tr("petition.colSummary")}
                     right={!t.summary ? (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
@@ -292,7 +358,7 @@ export default function TicketDetailDrawer({
                       {pick(t.citizen_ask, t.citizen_ask_ta) && (
                         <div className="mt-5 rounded-r-lg border-l-[3px] border-brand bg-brand/[0.04] py-3 pl-4 pr-3">
                           <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-brand">
-                            What they're asking for
+                            {tr("petition.colAsk")}
                           </div>
                           <p className="text-[14px] font-semibold leading-relaxed text-foreground">
                             {pick(t.citizen_ask, t.citizen_ask_ta)}
@@ -307,7 +373,7 @@ export default function TicketDetailDrawer({
                         return (
                           <div className="mt-5 border-t border-border pt-4">
                             <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                              Key details
+                              {tr("petition.keyDetails")}
                             </div>
                             <ul className="space-y-2">
                               {list.map((d, i) => (
@@ -323,55 +389,6 @@ export default function TicketDetailDrawer({
                     </div>
                   </SectionCard>
                 )}
-
-                {/* Properties */}
-                <Panel icon={User} title="Properties">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Status</Label>
-                      <Select value={t.status} onValueChange={(v) => patch({ status: v })} disabled={busy}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {ticketManualStatusOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {/* Assign — routes to a school department (logs "routed").
-                        Once a department accepts, ownership is locked here. */}
-                    <div className="space-y-1.5">
-                      <Label>Assign</Label>
-                      {t.accepted_at ? (
-                        <div className="flex h-9 items-center gap-2">
-                          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                            <Building2 className="h-3.5 w-3.5" />
-                            {t.assigned_department_label ?? t.assigned_department}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">accepted · locked</span>
-                        </div>
-                      ) : (
-                        <Select value={t.assigned_department || undefined} onValueChange={routeToDepartment} disabled={busy}>
-                          <SelectTrigger className="h-9"><SelectValue placeholder="Assign a department" /></SelectTrigger>
-                          <SelectContent>
-                            {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Priority (from review)</Label>
-                      <div className="flex h-9 items-center">
-                        {t.priority
-                          ? <PriorityBadge priority={t.priority} />
-                          : <span className="text-sm text-muted-foreground">— not yet reviewed —</span>}
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Due date (SLA)</Label>
-                      <Input type="datetime-local" defaultValue={toLocalDateTimeInput(t.due_date)} disabled={busy} className="h-9"
-                        onBlur={(e) => { const v = e.target.value; patch({ due_date: fromLocalDateTimeInput(v) }); }} />
-                    </div>
-                  </div>
-                </Panel>
 
                 {/* Forwarding info */}
                 {t.forwarded_to_dept && (
@@ -491,16 +508,16 @@ export default function TicketDetailDrawer({
                 monitor — the PA only assigns, closes, reopens, and comments. */}
             <div className="flex flex-wrap items-center gap-2 border-t border-border bg-card px-6 py-3">
               {!isClosed && (
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "close" ? null : "close")}>
-                  <Lock className="h-4 w-4" /> Close
+                <Button size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "close" ? null : "close")}>
+                  <Lock className="h-4 w-4" /> {tr("tkt.close")}
                 </Button>
               )}
               {/* Reopen is always available — closed/resolved tickets need this to come back, and even active tickets may need to be reopened after wrong closure. */}
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "reopen" ? null : "reopen")}>
-                <RotateCcw className="h-4 w-4" /> Reopen
+              <Button variant="outline" size="sm" disabled={busy} className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand" onClick={() => setActiveAction(activeAction === "reopen" ? null : "reopen")}>
+                <RotateCcw className="h-4 w-4" /> {tr("tkt.reopen")}
               </Button>
-              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setTab("activity")}>
-                <MessageSquare className="h-4 w-4" /> Comment
+              <Button variant="outline" size="sm" className="ml-auto border-brand/40 text-brand hover:bg-brand/5 hover:text-brand" onClick={() => setTab("activity")}>
+                <MessageSquare className="h-4 w-4" /> {tr("tkt.comment")}
               </Button>
             </div>
           </Tabs>
@@ -682,26 +699,6 @@ function Chip({ label, value, tone }: { label: string; value: string; tone: "ora
       <span className="text-[9px] font-bold uppercase tracking-wider opacity-60">{label}</span>
       {value}
     </span>
-  );
-}
-
-function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
-  return (
-    <div className="flex h-8 shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/60 p-0.5 text-[11px] font-semibold">
-      <Languages className="ml-1 h-3.5 w-3.5 text-muted-foreground" />
-      {(["en", "ta"] as Lang[]).map((l) => (
-        <button
-          key={l}
-          onClick={() => onChange(l)}
-          className={cn(
-            "rounded-md px-2 py-0.5 uppercase tracking-wider transition-colors",
-            lang === l ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {l === "en" ? "EN" : "த"}
-        </button>
-      ))}
-    </div>
   );
 }
 

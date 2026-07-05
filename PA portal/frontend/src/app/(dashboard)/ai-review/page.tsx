@@ -3,10 +3,10 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
-  AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, Languages, ShieldAlert,
+  AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, ShieldAlert,
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
   ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
-  CalendarCheck, CalendarRange, HelpCircle,
+  CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -88,6 +88,13 @@ const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
 const PRIORITY_CLS: Record<string, string> = {
   critical: "bg-red-100 text-red-700", high: "bg-orange-100 text-orange-700",
   medium: "bg-amber-100 text-amber-700", low: "bg-slate-100 text-slate-600",
+};
+const PRIORITY_DOT: Record<string, string> = {
+  critical: "bg-red-500", high: "bg-orange-500", medium: "bg-amber-500", low: "bg-slate-400",
+};
+const PRIORITY_TKEY: Record<string, string> = {
+  low: "petition.urgencyLow", medium: "petition.urgencyMedium",
+  high: "petition.urgencyHigh", critical: "petition.urgencyCritical",
 };
 
 const SOURCE_META: Record<string, { tKey: string; cls: string; icon: typeof QrCode }> = {
@@ -354,7 +361,6 @@ export default function AiReviewPage() {
   const [review, setReview] = useState<Upload | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Upload>>({});
-  const [modalLang, setModalLang] = useState<"en" | "ta">("en");
   const [busy, setBusy] = useState(false);
 
   // Default to Awaiting Review — that's the actionable queue PAs care about on
@@ -545,7 +551,7 @@ export default function AiReviewPage() {
 
   function openRow(r: InboxRow) {
     if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
-    setEditing(false); setModalLang("en");
+    setEditing(false);
     if (r.kind === "petition" && r.petition) {
       const rv = mapPetitionToReview(r.petition);
       setReview(rv);
@@ -649,7 +655,14 @@ export default function AiReviewPage() {
     toast.success(`${filtered.length} ${t("petition.results")}`);
   }
 
-  const pick = <T,>(en: T, ta: T): T => (modalLang === "ta" ? (ta || en) : en);
+  const pick = <T,>(en: T, ta: T): T => (lang === "ta" ? (ta || en) : en);
+
+  // Localized option labels for the Overview selects (respect the global lang).
+  const catLabels = lang === "ta" ? CATEGORY_DISPLAY_TA : CATEGORY_DISPLAY_EN;
+  const priorityLabels: Record<string, string> = {
+    low: t("petition.urgencyLow"), medium: t("petition.urgencyMedium"),
+    high: t("petition.urgencyHigh"), critical: t("petition.urgencyCritical"),
+  };
 
   const th = "px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground/80";
   const lo = total === 0 ? 0 : offset + 1;
@@ -1036,14 +1049,30 @@ export default function AiReviewPage() {
 
             {/* Right — details */}
             <div className="flex w-full flex-col md:w-[52%]">
-              {/* Slim control strip — no title, just status + controls */}
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-3 md:px-6">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold", STATUS_CLS[review.status])}>{t(STATUS_TKEY[review.status])}</span>
-                  {review.ticket_number && <span className="font-mono text-[13px] font-semibold text-emerald-600">{review.ticket_number}</span>}
+              {/* Title (the citizen's ask) + status pills · controls */}
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-5 md:px-7">
+                <div className="min-w-0">
+                  <h2 className="text-2xl font-bold leading-snug text-foreground">
+                    {pick(review.citizen_ask, review.citizen_ask_ta) || review.name || "Petition"}
+                  </h2>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", STATUS_CLS[review.status])}>
+                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" /> {t(STATUS_TKEY[review.status])}
+                    </span>
+                    {review.priority && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold uppercase text-foreground/80">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", PRIORITY_DOT[review.priority] ?? "bg-slate-400")} /> {t(PRIORITY_TKEY[review.priority] ?? review.priority)}
+                      </span>
+                    )}
+                    {review.category && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground/80">
+                        <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {catLabel(review.category, lang)}
+                      </span>
+                    )}
+                    {review.ticket_number && <span className="font-mono text-[13px] font-semibold text-emerald-600">{review.ticket_number}</span>}
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <LangToggle lang={modalLang} onChange={setModalLang} />
                   {review.status === "AWAITING_REVIEW" && (
                     editing
                       ? <>
@@ -1057,69 +1086,64 @@ export default function AiReviewPage() {
                 </div>
               </div>
 
-              <div className="flex-1 space-y-6 overflow-auto p-5 md:p-7">
-                {/* Hero — the citizen's ask */}
-                {pick(review.citizen_ask, review.citizen_ask_ta)
-                  ? <div className="rounded-xl border border-[#C7D6F5] bg-accent px-4 py-3.5">
-                      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-brand">
-                        <HelpCircle className="h-3.5 w-3.5" /> {t("petition.colAsk")}
-                      </div>
-                      <p className="text-lg font-semibold leading-snug text-foreground">{pick(review.citizen_ask, review.citizen_ask_ta)}</p>
-                    </div>
-                  : <div className="text-lg font-semibold text-foreground">{review.name || "Petition"}</div>}
-
+              <div className="flex-1 space-y-5 overflow-auto bg-background/40 p-5 md:p-6">
                 {/* Document — mobile only (desktop shows it in the left panel) */}
-                <div className="h-72 overflow-auto rounded-xl border border-border bg-muted p-2 md:hidden" onContextMenu={(e) => e.preventDefault()}>
+                <div className="h-72 overflow-auto rounded-2xl border border-border bg-card p-2 md:hidden" onContextMenu={(e) => e.preventDefault()}>
                   <DocPreview review={review} t={t} />
                 </div>
 
-                {/* Citizen */}
-                <div>
-                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("petition.grpCitizen")}</div>
+                {/* Overview */}
+                <section className="rounded-2xl border border-border bg-card p-5 shadow-card">
+                  <SectionHeader icon={LayoutGrid} title={t("petition.grpOverview")} />
                   <div className="grid grid-cols-2 gap-x-8 gap-y-5">
-                    <Field label={t("petition.colName")} editing={editing} value={form.name} fallback={review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
+                    <Field label={t("petition.colName")} labelIcon={User} editing={editing} value={form.name} fallback={lang === "ta" && review.name_ta?.trim() ? review.name_ta : review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
                     {/* Phone stays read-only for petitions — it's the OTP-verified, uniquely-indexed citizen mobile. */}
-                    <Field label={t("petition.colPhone")} editing={editing && review._kind !== "petition"} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} icon={Phone} />
+                    <Field label={t("petition.colPhone")} labelIcon={Phone} editing={editing && review._kind !== "petition"} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} />
                     {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}
+                    <SelectField label={t("petition.colCategory")} icon={Tag} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} labels={catLabels} onChange={v => setForm(f => ({ ...f, category: v }))} />
+                    <SelectField label={t("petition.colUrgency")} icon={BarChart3} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} labels={priorityLabels} onChange={v => setForm(f => ({ ...f, priority: v }))} />
+                    <SelectField label={t("petition.fMinistry")} icon={Building2} editing={editing} value={form.ministry} fallback={review.ministry} options={MINISTRIES} labels={MINISTRY_DISPLAY} onChange={v => setForm(f => ({ ...f, ministry: v }))} />
                   </div>
-                </div>
+                </section>
 
-                {/* Classification */}
-                <div className="border-t border-border pt-5">
-                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("petition.grpClassification")}</div>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-5">
-                    <SelectField label={t("petition.colCategory")} editing={editing} value={form.category} fallback={review.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
-                    <SelectField label={t("petition.colUrgency")} editing={editing} value={form.priority} fallback={review.priority} options={PRIORITIES} onChange={v => setForm(f => ({ ...f, priority: v }))} />
-                    <SelectField label={t("petition.fMinistry")} editing={editing} value={form.ministry} fallback={review.ministry} options={MINISTRIES} labels={MINISTRY_DISPLAY} onChange={v => setForm(f => ({ ...f, ministry: v }))} />
-                  </div>
-                </div>
-
-                <Panel title={t("petition.colSummary")}>
+                {/* Summary */}
+                <section className="rounded-2xl border border-border bg-card p-5 shadow-card">
+                  <SectionHeader icon={FileText} title={t("petition.colSummary")} />
                   {editing
                     ? <textarea className="w-full rounded-xl border border-input bg-card px-3 py-2 text-base" rows={4} value={form.summary ?? ""} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} />
-                    : <p className="text-base leading-relaxed text-foreground/90">{pick(review.summary, review.summary_ta) || "—"}</p>}
-                </Panel>
+                    : <p className="text-[15px] leading-relaxed text-foreground/85">{pick(review.summary, review.summary_ta) || "—"}</p>}
 
-                {(() => {
-                  const list = pick(review.key_details, review.key_details_ta) || [];
-                  if (!list.length) return null;
-                  return (
-                    <Panel title={t("petition.keyDetails")}>
-                      <ul className="space-y-1.5">
-                        {list.map((d, i) => <li key={i} className="flex gap-2.5 text-[15px] text-foreground/85"><span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand" /><span>{d}</span></li>)}
-                      </ul>
-                    </Panel>
-                  );
-                })()}
+                  {pick(review.citizen_ask, review.citizen_ask_ta) && (
+                    <div className="mt-4 rounded-r-xl border-l-[3px] border-brand bg-accent/60 py-3 pl-4 pr-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-brand">
+                        <HelpCircle className="h-3.5 w-3.5" /> {t("petition.colAsk")}
+                      </div>
+                      <p className="text-[15px] font-semibold text-foreground">{pick(review.citizen_ask, review.citizen_ask_ta)}</p>
+                    </div>
+                  )}
+
+                  {(() => {
+                    const list = pick(review.key_details, review.key_details_ta) || [];
+                    if (!list.length) return null;
+                    return (
+                      <div className="mt-5">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("petition.keyDetails")}</div>
+                        <ul className="space-y-1.5">
+                          {list.map((d, i) => <li key={i} className="flex gap-2.5 text-[15px] text-foreground/85"><span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand" /><span>{d}</span></li>)}
+                        </ul>
+                      </div>
+                    );
+                  })()}
+                </section>
 
                 {review.status === "FAILED" && review.error && (
-                  <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-base text-red-700">
+                  <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
                     <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" /><span>{review.error}</span>
                   </div>
                 )}
               </div>
 
-              <div className="shrink-0 border-t border-border px-5 py-4 md:px-7 md:py-5">
+              <div className="shrink-0 border-t border-border bg-card px-5 py-4 md:px-7 md:py-5">
                 {review.status === "AWAITING_REVIEW" && (() => {
                   // Ministry drives the action: School → Accept (school department
                   // workflow); any other ministry → Forward (out to that ministry).
@@ -1275,55 +1299,45 @@ function CategoryDistributionCard({ bars, lang, activeCategory, onSelect, classN
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionHeader({ icon: Icon, title }: { icon: React.ElementType; title: string }) {
   return (
-    <div>
-      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{title}</div>
-      {children}
+    <div className="mb-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brand">
+      <Icon className="h-3.5 w-3.5" /> {title}
     </div>
   );
 }
 
-function Field({ label, value, fallback, editing, onChange, icon: Icon }:
-  { label: string; value?: string | null; fallback: string | null; editing: boolean; onChange: (v: string) => void; icon?: React.ElementType }) {
+function Field({ label, value, fallback, editing, onChange, icon: Icon, labelIcon: LabelIcon }:
+  { label: string; value?: string | null; fallback: string | null; editing: boolean; onChange: (v: string) => void; icon?: React.ElementType; labelIcon?: React.ElementType }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</div>
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+        {LabelIcon && <LabelIcon className="h-3.5 w-3.5" />}{label}
+      </div>
       {editing
         ? <input className="w-full rounded-xl border border-input bg-card px-3 py-2 text-base" value={value ?? ""} onChange={e => onChange(e.target.value)} />
-        : <div className="flex items-center gap-1.5 text-base font-medium leading-relaxed text-foreground">{Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}{fallback || "—"}</div>}
+        : <div className="flex items-center gap-1.5 truncate text-lg font-medium leading-relaxed text-foreground">{Icon && <Icon className="h-4 w-4 text-muted-foreground" />}{fallback || "—"}</div>}
     </div>
   );
 }
 
-function SelectField({ label, value, fallback, editing, options, onChange, labels }:
-  { label: string; value?: string | null; fallback: string | null; editing: boolean; options: string[]; onChange: (v: string) => void; labels?: Record<string, string> }) {
+function SelectField({ label, value, fallback, editing, options, onChange, labels, icon: Icon }:
+  { label: string; value?: string | null; fallback: string | null; editing: boolean; options: string[]; onChange: (v: string) => void; labels?: Record<string, string>; icon?: React.ElementType }) {
   const disp = (o: string) => labels?.[o] ?? o.replace(/_/g, " ");
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</div>
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+        {Icon && <Icon className="h-3.5 w-3.5" />}{label}
+      </div>
       {editing
         ? <select className="w-full rounded-xl border border-input bg-card px-3 py-2 text-base" value={value ?? ""} onChange={e => onChange(e.target.value)}>
             {options.map(o => <option key={o} value={o}>{disp(o)}</option>)}
           </select>
-        : <div className="text-base font-medium leading-relaxed text-foreground">{fallback ? disp(fallback) : "—"}</div>}
+        : <div className="truncate text-lg font-medium leading-relaxed text-foreground">{fallback ? disp(fallback) : "—"}</div>}
     </div>
   );
 }
 
-function LangToggle({ lang, onChange }: { lang: "en" | "ta"; onChange: (l: "en" | "ta") => void }) {
-  return (
-    <div className="flex h-8 shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/60 p-0.5 text-[13px] font-semibold">
-      <Languages className="ml-1 h-3.5 w-3.5 text-muted-foreground" />
-      {(["en", "ta"] as const).map(l => (
-        <button key={l} onClick={() => onChange(l)}
-          className={cn("rounded-md px-2 py-0.5 uppercase tracking-wider transition-colors", lang === l ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-          {l === "en" ? "EN" : "த"}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** Inline document / attachment preview (download disabled). Shared by the
  *  desktop left panel and the mobile in-body preview. */

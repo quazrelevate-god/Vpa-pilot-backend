@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Phone, Hash, CalendarDays, X, User, Users, Languages, FileText, Mic, Pencil, Check, ShieldAlert,
+  Phone, Hash, CalendarDays, X, User, Users, FileText, Mic, Pencil, Check, ShieldAlert,
   Clock, GitBranch, Flag, ArrowRight, Activity as ActivityIcon,
   ClipboardList, Landmark, Tag, BarChart3, Sparkles, Image as ImageIcon,
 } from "lucide-react";
@@ -19,11 +19,22 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
-import { priorityOptions, ministryOptions, categoryOptions, MINISTRY_DISPLAY, CATEGORY_DISPLAY } from "@/lib/enums";
+import { priorityOptions, ministryOptions, categoryOptions, MINISTRY_DISPLAY, CATEGORY_DISPLAY, CATEGORY_DISPLAY_TA } from "@/lib/enums";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { useLang } from "@/lib/lang-context";
 import RescheduleModal from "@/components/RescheduleModal";
 
-type Lang = "en" | "ta";
+// Localized labels for priority + appointment status (fall back to English).
+const PRIORITY_TKEY: Record<string, string> = {
+  low: "petition.urgencyLow", medium: "petition.urgencyMedium",
+  high: "petition.urgencyHigh", critical: "petition.urgencyCritical",
+};
+const APPT_STATUS_TKEY: Record<string, string> = {
+  "Scheduled": "appts.statusScheduled", "Waiting": "appts.statusWaiting",
+  "Rescheduled": "appts.statusRescheduled", "Courtesy Done": "appts.statusCourtesyDone",
+  "Not Came": "appts.statusNotCame", "Awaiting Review": "petition.statusAwaitingReview",
+  "Reviewed": "petition.statusReviewed",
+};
 
 interface AppointmentDetailDrawerProps {
   row: AppointmentRow | null;
@@ -43,7 +54,7 @@ const STATUS_COLOR: Record<string, string> = {
 export default function AppointmentDetailDrawer({
   row, onClose, onStatusChange,
 }: AppointmentDetailDrawerProps) {
-  const [lang, setLang] = useState<Lang>("en");
+  const { lang, t } = useLang();
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("details");
   const [activity, setActivity] = useState<AppointmentActivityEvent[]>([]);
@@ -73,9 +84,10 @@ export default function AppointmentDetailDrawer({
   const currentPriority = overrides.priority !== undefined ? overrides.priority : a?.priority ?? null;
   const currentCategoryKey = overrides.category !== undefined ? overrides.category : null; // null means use AI label
   const currentMinistryKey = overrides.ministry !== undefined ? overrides.ministry : null;
+  const catMap = lang === "ta" ? CATEGORY_DISPLAY_TA : CATEGORY_DISPLAY;
   const categoryLabel = currentCategoryKey
-    ? (CATEGORY_DISPLAY[currentCategoryKey] ?? currentCategoryKey)
-    : (a?.category_label ?? a?.category ?? null);
+    ? (catMap[currentCategoryKey] ?? currentCategoryKey)
+    : (a?.category ? (catMap[a.category] ?? a?.category_label ?? a.category) : (a?.category_label ?? null));
   const ministryLabel = currentMinistryKey
     ? (MINISTRY_DISPLAY[currentMinistryKey] ?? currentMinistryKey)
     : (a?.ministry_label ?? null);
@@ -83,6 +95,10 @@ export default function AppointmentDetailDrawer({
   // Lazy bilingual field accessor.
   const pick = <T,>(en: T | null | undefined, ta: T | null | undefined): T | null | undefined =>
     lang === "ta" ? (ta ?? en) : en;
+
+  // Localized value helpers (respect the global language).
+  const statusText = (s?: string | null) => { if (!s) return ""; const k = APPT_STATUS_TKEY[s]; return k ? t(k) : s; };
+  const priorityText = (p?: string | null) => { if (!p) return ""; const k = PRIORITY_TKEY[p]; return k ? t(k) : p; };
 
   async function changeStatus(next: AppointmentStatus) {
     if (!a) return;
@@ -122,29 +138,26 @@ export default function AppointmentDetailDrawer({
         className="aurora-sweep flex w-full flex-col gap-0 p-0 sm:max-w-[95vw]"
       >
         {!a ? (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground">Loading…</div>
+          <div className="flex flex-1 items-center justify-center text-muted-foreground">{t("appt.loading")}</div>
         ) : (
           <>
             {/* Header */}
             <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">
               <div className="min-w-0 flex-1">
                 <SheetTitle className="text-xl font-bold leading-snug tracking-tight">
-                  {pick(a.citizen_ask, a.citizen_ask_ta) ?? "Appointment details"}
+                  {pick(a.citizen_ask, a.citizen_ask_ta) ?? t("appt.detailsTitle")}
                 </SheetTitle>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="font-mono text-base font-semibold text-brand">
                     {String(a.token).startsWith("TKN") ? a.token : `TKN${a.token}`}
                   </span>
-                  <StatusDot label={a.status} tone={statusTone(a.status)} />
+                  <StatusDot label={statusText(a.status)} tone={statusTone(a.status)} />
                   {a.priority && (
-                    <StatusDot label={<span className="uppercase tracking-wide">{a.priority}</span>} tone={priorityTone(a.priority)} />
+                    <StatusDot label={<span className="uppercase tracking-wide">{priorityText(a.priority)}</span>} tone={priorityTone(a.priority)} />
                   )}
                   {categoryLabel && <StatusDot label={categoryLabel} tone="slate" />}
                 </div>
               </div>
-
-              {/* Language toggle */}
-              <LangToggle lang={lang} onChange={setLang} />
 
               <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                 <X className="h-5 w-5" />
@@ -167,20 +180,20 @@ export default function AppointmentDetailDrawer({
               const cfg =
                 s === "Rescheduled" ? {
                   bg: "bg-blue-50/50", tone: "text-blue-700", sub: "text-blue-900/80",
-                  title: "Needs rescheduling",
-                  hint: "Call the citizen — book a new slot, or convert to a petition.",
-                  primary: { kind: "reschedule" as const, label: "Reschedule to new slot" },
+                  title: t("appt.needsReschedule"),
+                  hint: t("appt.needsRescheduleHint"),
+                  primary: { kind: "reschedule" as const, label: t("appt.rescheduleToNew") },
                 }
                 : s === "Waiting" ? {
                   bg: "bg-amber-50/60", tone: "text-amber-700", sub: "text-amber-900/80",
-                  title: "In the waiting queue",
-                  hint: "Book them into a slot when one opens, or convert to a petition.",
-                  primary: { kind: "reschedule" as const, label: "Schedule" },
+                  title: t("appt.inQueue"),
+                  hint: t("appt.inQueueHint"),
+                  primary: { kind: "reschedule" as const, label: t("appt.schedule") },
                 }
                 : s === "Scheduled" ? {
                   bg: "bg-emerald-50/60", tone: "text-emerald-700", sub: "text-emerald-900/80",
-                  title: "Scheduled meeting",
-                  hint: "Convert to a petition if the citizen no longer wants to meet.",
+                  title: t("appt.scheduledMeeting"),
+                  hint: t("appt.scheduledMeetingHint"),
                   primary: null,
                 }
                 : null;
@@ -198,6 +211,7 @@ export default function AppointmentDetailDrawer({
                   <div className="flex shrink-0 gap-2">
                     <Button size="sm" variant="outline"
                       disabled={busy}
+                      className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand"
                       onClick={async () => {
                         if (!a) return;
                         setBusy(true);
@@ -212,7 +226,7 @@ export default function AppointmentDetailDrawer({
                           setBusy(false);
                         }
                       }}>
-                      Convert to petition
+                      {t("appt.convertPetition")}
                     </Button>
                     {cfg.primary && (
                       <Button size="sm" onClick={() => setRescheduleOpen(true)} disabled={busy}>
@@ -232,7 +246,7 @@ export default function AppointmentDetailDrawer({
                   <span className="grid h-6 w-6 place-items-center rounded-md bg-brand/10 text-brand">
                     <ImageIcon className="h-3.5 w-3.5" />
                   </span>
-                  Citizen Uploads
+                  {t("petition.citizenUploads")}
                   {(a.attachments?.length ?? 0) > 0 && (
                     <span className="rounded-full bg-brand/10 px-1.5 text-[10px] font-bold text-brand">
                       {a.attachments!.length}
@@ -252,22 +266,26 @@ export default function AppointmentDetailDrawer({
               <div className="m-0 min-h-0 flex-1 overflow-y-auto">
                 <div className="space-y-4 p-6">
                 {/* Overview — the case facts at a glance */}
-                <SectionCard icon={ClipboardList} title="Overview">
+                <SectionCard icon={ClipboardList} title={t("petition.grpOverview")}>
                   <OverviewGrid>
-                    <OverviewItem icon={User} label="Name" value={a.name} />
-                    <OverviewItem icon={Phone} label="Phone" value={a.mobile} mono />
-                    <OverviewItem icon={Tag} label="Category" value={categoryLabel} />
+                    <OverviewItem icon={User} label={t("petition.colName")} value={a.name} />
+                    <OverviewItem icon={Phone} label={t("petition.colPhone")} value={a.mobile} mono />
+                    <OverviewItem icon={Tag} label={t("petition.colCategory")} value={categoryLabel} />
+                    <OverviewItem
+                      icon={GitBranch}
+                      label={t("petition.colStatus")}
+                      value={<StatusDot label={statusText(a.status)} tone={statusTone(a.status)} />}
+                    />
                     <OverviewItem
                       icon={BarChart3}
-                      label="Priority"
-                      value={currentPriority ? <span className="capitalize">{currentPriority}</span> : null}
-                      accent={currentPriority ? "amber" : undefined}
+                      label={t("petition.colUrgency")}
+                      value={currentPriority ? <StatusDot label={<span className="uppercase tracking-wide">{priorityText(currentPriority)}</span>} tone={priorityTone(currentPriority)} /> : null}
                     />
                     {ministryLabel && (
-                      <OverviewItem icon={Landmark} label="Ministry" value={ministryLabel} />
+                      <OverviewItem icon={Landmark} label={t("petition.fMinistry")} value={ministryLabel} />
                     )}
                     {a.appointment_time && (
-                      <OverviewItem icon={CalendarDays} label="Appointment"
+                      <OverviewItem icon={CalendarDays} label={t("appt.appointment")}
                         value={formatDateTime(a.appointment_time)} accent="emerald" />
                     )}
                   </OverviewGrid>
@@ -277,7 +295,7 @@ export default function AppointmentDetailDrawer({
                      greetings) don't run through the AI summariser, so their
                      voice message is transcribed on its own and shown here. */}
                 {a.transcript && (
-                  <SectionCard icon={Mic} title="Voice message">
+                  <SectionCard icon={Mic} title={t("appt.voiceMessage")}>
                     <p className={cn(
                       "text-[15px] font-medium leading-[1.75] tracking-[-0.005em] text-foreground",
                       lang === "ta" && "font-[Mukta_Malar,_'Noto_Sans_Tamil',_system-ui]",
@@ -306,12 +324,12 @@ export default function AppointmentDetailDrawer({
                 })() && (
                   <SectionCard
                     icon={Sparkles}
-                    title="Summary"
+                    title={t("petition.colSummary")}
                     right={!a.summary && !a.summary_ta
                       && (a.summary_status === "PENDING" || a.summary_status === "PROCESSING") ? (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-                        Generating
+                        {t("appt.generating")}
                       </span>
                     ) : undefined}
                   >
@@ -339,7 +357,7 @@ export default function AppointmentDetailDrawer({
                       {pick(a.citizen_ask, a.citizen_ask_ta) && (
                         <div className="mt-5 rounded-r-lg border-l-[3px] border-brand bg-brand/[0.04] py-3 pl-4 pr-3">
                           <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-brand">
-                            What they're asking for
+                            {t("petition.colAsk")}
                           </div>
                           <p className="text-[14px] font-semibold leading-relaxed text-foreground">
                             {pick(a.citizen_ask, a.citizen_ask_ta)}
@@ -354,7 +372,7 @@ export default function AppointmentDetailDrawer({
                         return (
                           <div className="mt-5 border-t border-border pt-4">
                             <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                              Key details
+                              {t("petition.keyDetails")}
                             </div>
                             <ul className="space-y-2">
                               {list.map((d, i) => (
@@ -430,26 +448,6 @@ function Panel({ title, icon: Icon, children }: { title: string; icon?: React.El
         {Icon && <Icon className="h-3.5 w-3.5" />} {title}
       </div>
       {children}
-    </div>
-  );
-}
-
-function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
-  return (
-    <div className="flex h-8 shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/60 p-0.5 text-[11px] font-semibold">
-      <Languages className="ml-1 h-3.5 w-3.5 text-muted-foreground" />
-      {(["en", "ta"] as Lang[]).map((l) => (
-        <button
-          key={l}
-          onClick={() => onChange(l)}
-          className={cn(
-            "rounded-md px-2 py-0.5 uppercase tracking-wider transition-colors",
-            lang === l ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {l === "en" ? "EN" : "த"}
-        </button>
-      ))}
     </div>
   );
 }
