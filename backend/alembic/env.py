@@ -12,23 +12,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.core.config import settings
 from src.core.database import Base
 
-# Import all models so Alembic can detect them
+# Import all models so Alembic can detect them (v2 schema).
 from src.models.qr_models import QRLog, GatekeeperSession
 from src.models.appointment_models import (
     OTPVerification,
     Citizen,
     Appointment,
     AppointmentAttachment,
-    AppointmentEvent,
 )
 from src.models.grievance_summary_record import GrievanceSummaryRecord
-from src.models.ticket_models import Ticket, TicketEvent
+from src.models.ticket_models import Ticket, TicketAttachment
+from src.models.activity_models import Activity
+from src.models.login_models import Login
+from src.models.department_account import DepartmentAccount
 from src.models.scheduling_models import (
     MLA,
     MLADailyAvailability,
     AppointmentSlot,
-    SlotBooking,
-    RescheduleLog,
 )
 from src.models.referral_models import (
     ReferralAvailability,
@@ -46,8 +46,14 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url with the one from settings
-config.set_main_option('sqlalchemy.url', settings.DATABASE_URL)
+# Override sqlalchemy.url. ALEMBIC_DB_URL wins so we can point at a throwaway
+# reference DB (e.g. building a v1 snapshot) WITHOUT touching Railway. Falls
+# back to the app's configured DATABASE_URL otherwise.
+import os
+config.set_main_option(
+    'sqlalchemy.url',
+    os.getenv('ALEMBIC_DB_URL') or settings.DATABASE_URL,
+)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
