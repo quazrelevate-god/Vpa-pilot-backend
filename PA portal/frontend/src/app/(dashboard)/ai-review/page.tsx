@@ -4,19 +4,31 @@ import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, Languages, ShieldAlert,
-  QrCode, ScanLine, UserCog, SlidersHorizontal, CalendarRange, Forward,
+  QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
+  MoreVertical, Eye, ArrowUpDown, ArrowUp, ArrowDown, Download, Flag, FolderOpen, CalendarDays,
+  CalendarCheck, CalendarRange,
 } from "lucide-react";
 import { toast } from "sonner";
+import { motion } from "framer-motion";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchAppointments } from "@/lib/api";
-import { DEPT_DISPLAY } from "@/lib/enums";
+import { DEPT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
 import type { AppointmentRow, AppointmentAttachment } from "@/lib/types";
 
 // The default School Education ministry — approve keeps it in the school
@@ -48,8 +60,10 @@ interface InboxRow {
   kind: "upload" | "petition";
   id: number;
   name: string | null;
+  name_ta: string | null;
   mobile: string | null;
-  category: string | null;
+  token: string | null;
+  categoryKey: string | null;   // raw category key — drives label + distribution
   priority: string | null;
   statusKey: StatusKey;
   source: string;
@@ -61,6 +75,7 @@ interface InboxRow {
 
 const CATEGORIES = ["action_required","proposals","transfer_requests","pension_requests","school_admission","job_requests","rti","associations_unions","school_upgradation","invitation","greetings","general","other"];
 const PRIORITIES = ["low", "medium", "high", "critical"];
+const PRIORITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 // Note: QUEUED / PROCESSING rows are hidden from the UI entirely — the PA
 // has nothing to do with them until they land in AWAITING_REVIEW. The live
@@ -83,6 +98,7 @@ const SOURCE_META: Record<string, { tKey: string; cls: string; icon: typeof QrCo
   ai_scan:     { tKey: "petition.sourceScanned", cls: "bg-violet-100 text-violet-700", icon: ScanLine },
   manual_staff:{ tKey: "petition.sourceStaff",   cls: "bg-slate-100 text-slate-600",   icon: UserCog },
 };
+const SOURCE_KEYS = Object.keys(SOURCE_META);
 
 const STATUS_TKEY: Record<StatusKey, string> = {
   QUEUED:          "petition.statusQueued",
@@ -115,6 +131,71 @@ function petitionStatusKey(status: string): StatusKey {
   return status === "Reviewed" ? "REVIEWED" : "AWAITING_REVIEW";
 }
 
+/** Category label in the active language (falls back to a prettified key). */
+function catLabel(key: string | null, lang: string): string {
+  if (!key) return "—";
+  const k = key.toLowerCase();
+  return (lang === "ta" ? CATEGORY_DISPLAY_TA[k] : CATEGORY_DISPLAY_EN[k]) ?? pretty(key);
+}
+
+/** Citizen name in the active language — PA-entered Tamil name when set. */
+function nameText(row: Pick<InboxRow, "name" | "name_ta">, lang: string): string {
+  if (lang === "ta" && row.name_ta && row.name_ta.trim()) return row.name_ta.trim();
+  return row.name || "—";
+}
+
+function dateLocale(lang: string): string {
+  return lang === "ta" ? "ta-IN" : (undefined as unknown as string);
+}
+
+/** Split a timestamp into a date line + time line for the Submitted column. */
+function fmtSubmitted(raw: string | null, lang: string): { date: string; time: string } {
+  if (!raw) return { date: "—", time: "" };
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return { date: raw, time: "" };
+  return {
+    date: d.toLocaleDateString(dateLocale(lang), { day: "numeric", month: "short", year: "numeric" }),
+    time: d.toLocaleTimeString(dateLocale(lang), { hour: "2-digit", minute: "2-digit", hour12: true }),
+  };
+}
+
+function toISODate(d: Date) {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+type DateChip = "today" | "yesterday" | "this_week" | "this_month" | "custom";
+
+/** Quick submitted-date presets. */
+function computeDateChip(chip: DateChip): { from: string; to: string } {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  if (chip === "today") { const s = toISODate(now); return { from: s, to: s }; }
+  if (chip === "yesterday") {
+    const y = new Date(now); y.setDate(y.getDate() - 1); const s = toISODate(y);
+    return { from: s, to: s };
+  }
+  if (chip === "this_week") {
+    const day = now.getDay(); const monOffset = day === 0 ? -6 : 1 - day;
+    const start = new Date(now); start.setDate(start.getDate() + monOffset);
+    const end = new Date(start); end.setDate(end.getDate() + 6);
+    return { from: toISODate(start), to: toISODate(end) };
+  }
+  // this_month
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { from: toISODate(start), to: toISODate(end) };
+}
+
+/** Nice "Jul 1 – Jul 7, 2026" label for the submitted-date summary tile. */
+function dateRangeLabel(from: string, to: string, lang: string): string {
+  const fmt = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString(dateLocale(lang), { day: "numeric", month: "short", year: "numeric" });
+  const fmtShort = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString(dateLocale(lang), { day: "numeric", month: "short" });
+  if (from && to) return from === to ? fmt(from) : `${fmtShort(from)} – ${fmt(to)}`;
+  if (from) return `${fmt(from)} →`;
+  if (to) return `→ ${fmt(to)}`;
+  return "";
+}
+
 // Map a QR/staff petition (AppointmentRow) into the unified review-drawer shape
 // so every source renders in the scanned-petition drawer.
 function mapPetitionToReview(p: AppointmentRow): Upload {
@@ -133,57 +214,135 @@ function mapPetitionToReview(p: AppointmentRow): Upload {
   };
 }
 
+/** Numbered pagination — 1 … current−1 current current+1 … last. */
+function pageList(current: number, last: number): (number | "…")[] {
+  if (last <= 7) return Array.from({ length: last }, (_, i) => i + 1);
+  const wanted = [1, current - 1, current, current + 1, last].filter((p) => p >= 1 && p <= last);
+  const sorted = [...new Set(wanted)].sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) out.push("…");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
 const InboxTableRow = memo(function InboxTableRow({
-  row, t, onOpen, onRetry,
+  row, t, lang, active, onOpen, onRetry,
 }: {
   row: InboxRow;
   t: (k: string) => string;
+  lang: string;
+  active: boolean;
   onOpen: (r: InboxRow) => void;
   onRetry: (ids: number[]) => void;
 }) {
   const Icon = STATUS_ICON[row.statusKey];
   const sm = SOURCE_META[row.source] ?? { tKey: "petition.sourceStaff", cls: "bg-muted text-muted-foreground", icon: FileText };
   const SIcon = sm.icon;
-  const clickable = row.statusKey === "AWAITING_REVIEW" || row.statusKey === "REVIEWED" || row.statusKey === "FAILED";
+  const sub = fmtSubmitted(row.created_at, lang);
   return (
     <tr
       onClick={() => onOpen(row)}
-      className={cn("border-t border-border/70", clickable ? "cursor-pointer hover:bg-muted/40" : "opacity-80")}
+      className={cn(
+        "group cursor-pointer border-b border-border/60 transition-[background-color,box-shadow] duration-150",
+        active
+          ? "bg-brand/[0.05] shadow-[inset_3px_0_0_hsl(var(--accent-blue)),inset_0_0_0_1px_hsl(var(--accent-blue)/0.14)]"
+          : "hover:bg-[#FBFAF8] hover:shadow-[inset_3px_0_0_hsl(var(--accent-blue)/0.45)]",
+      )}
     >
-      <td className="px-4 py-3 font-medium text-foreground">{row.name || <span className="text-muted-foreground">—</span>}</td>
-      <td className="px-4 py-3 text-base text-muted-foreground">{row.mobile || "—"}</td>
-      <td className="whitespace-nowrap px-4 py-3">
+      <td className="px-4 py-4">
+        <div className="flex items-center gap-3">
+          <InitialsAvatar name={row.name ?? "—"} className="h-9 w-9 rounded-lg text-xs" />
+          <div className="min-w-0">
+            <div className="type-table-row truncate text-foreground">{nameText(row, lang)}</div>
+            {row.token && <div className="font-mono text-[13px] font-semibold text-brand">{row.token}</div>}
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-4">
+        {row.mobile
+          ? <span className="inline-flex items-center gap-1.5 font-mono text-sm text-foreground/80"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{row.mobile}</span>
+          : <span className="text-muted-foreground/40">—</span>}
+      </td>
+      <td className="whitespace-nowrap px-4 py-4">
         <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[13px] font-semibold", sm.cls)}>
           <SIcon className="h-3.5 w-3.5" /> {t(sm.tKey)}
         </span>
       </td>
-      <td className="px-4 py-3 text-base text-muted-foreground">{row.category ? pretty(row.category) : "—"}</td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-4 text-[15px] font-semibold text-foreground">{catLabel(row.categoryKey, lang)}</td>
+      <td className="px-4 py-4">
         {row.priority
-          ? <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold uppercase", PRIORITY_CLS[row.priority])}>{row.priority}</span>
-          : "—"}
+          ? <span className={cn("rounded-md px-2 py-0.5 text-[12px] font-bold uppercase", PRIORITY_CLS[row.priority])}>{row.priority}</span>
+          : <span className="text-muted-foreground/40">—</span>}
       </td>
-      <td className="whitespace-nowrap px-4 py-3">
-        <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-semibold", STATUS_CLS[row.statusKey])}>
+      <td className="whitespace-nowrap px-4 py-4">
+        <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] font-semibold", STATUS_CLS[row.statusKey])}>
           <Icon className={cn("h-3.5 w-3.5", row.statusKey === "PROCESSING" && "animate-spin")} /> {t(STATUS_TKEY[row.statusKey])}
         </span>
         {row.ticket_number && <span className="ml-1.5 font-mono text-[13px] text-emerald-600">{row.ticket_number}</span>}
       </td>
-      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-        {row.statusKey === "AWAITING_REVIEW" && <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onOpen(row)}>{t("petition.review")}</Button>}
-        {row.statusKey === "REVIEWED" && <span className="inline-flex items-center gap-1 text-sm text-emerald-600"><TicketIcon className="h-3.5 w-3.5" /> {t("petition.done")}</span>}
-        {row.statusKey === "FAILED" && <Button size="sm" variant="outline" onClick={() => onRetry([row.id])}><RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retry")}</Button>}
-        {(row.statusKey === "QUEUED" || row.statusKey === "PROCESSING") && <span className="text-sm text-muted-foreground">…</span>}
+      <td className="whitespace-nowrap px-4 py-4">
+        {row.created_at ? (
+          <div>
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />{sub.date}
+            </div>
+            {sub.time && <div className="mt-0.5 pl-5 text-[13px] text-muted-foreground">{sub.time}</div>}
+          </div>
+        ) : <span className="text-muted-foreground/40">—</span>}
+      </td>
+      <td className="pr-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1">
+          {row.statusKey === "AWAITING_REVIEW" && (
+            <Button size="sm" className="aurora-primary h-8 rounded-lg px-3.5 text-[13px]" onClick={() => onOpen(row)}>{t("petition.review")}</Button>
+          )}
+          {row.statusKey === "REVIEWED" && (
+            <button onClick={() => onOpen(row)} aria-label={t("petition.done")}
+              className="grid h-8 w-8 place-items-center rounded-md text-emerald-600 transition-colors hover:bg-emerald-50">
+              <Eye className="h-4 w-4" />
+            </button>
+          )}
+          {row.statusKey === "FAILED" && (
+            <Button size="sm" variant="outline" className="h-8 rounded-lg px-3" onClick={() => onRetry([row.id])}>
+              <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retry")}
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button aria-label={t("petition.colAction")}
+                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground">
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onSelect={() => onOpen(row)}>
+                <Eye className="h-3.5 w-3.5" /> {row.statusKey === "AWAITING_REVIEW" ? t("petition.review") : t("petition.done")}
+              </DropdownMenuItem>
+              {row.statusKey === "FAILED" && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => onRetry([row.id])}>
+                    <RefreshCw className="h-3.5 w-3.5" /> {t("petition.retry")}
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </td>
     </tr>
   );
 });
 
 const InboxCard = memo(function InboxCard({
-  row, t, onOpen, onRetry,
+  row, t, lang, onOpen, onRetry,
 }: {
   row: InboxRow;
   t: (k: string) => string;
+  lang: string;
   onOpen: (r: InboxRow) => void;
   onRetry: (ids: number[]) => void;
 }) {
@@ -198,40 +357,47 @@ const InboxCard = memo(function InboxCard({
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(row); } }}
       className="w-full cursor-pointer rounded-xl border border-border bg-card p-3.5 text-left shadow-card transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-base font-semibold text-foreground">{row.name || "—"}</div>
-          <div className="text-sm text-muted-foreground">{row.mobile || "—"}</div>
+      <div className="flex items-start gap-2.5">
+        <InitialsAvatar name={row.name ?? "—"} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-base font-semibold text-foreground">{nameText(row, lang)}</div>
+              {row.token
+                ? <div className="font-mono text-[13px] font-semibold text-brand">{row.token}</div>
+                : <div className="text-sm text-muted-foreground">{row.mobile || "—"}</div>}
+            </div>
+            <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] font-semibold", STATUS_CLS[row.statusKey])}>
+              <Icon className={cn("h-3.5 w-3.5", row.statusKey === "PROCESSING" && "animate-spin")} /> {t(STATUS_TKEY[row.statusKey])}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-semibold", sm.cls)}>
+              <SIcon className="h-3.5 w-3.5" /> {t(sm.tKey)}
+            </span>
+            {row.priority && (
+              <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold uppercase", PRIORITY_CLS[row.priority])}>{row.priority}</span>
+            )}
+            {row.categoryKey && (
+              <span className="text-sm text-muted-foreground">{catLabel(row.categoryKey, lang)}</span>
+            )}
+          </div>
+          {row.ticket_number && (
+            <div className="mt-2 font-mono text-sm text-emerald-600">{row.ticket_number}</div>
+          )}
+          {row.statusKey === "FAILED" && (
+            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+              <Button size="sm" variant="outline" onClick={() => onRetry([row.id])}><RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retry")}</Button>
+            </div>
+          )}
         </div>
-        <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] font-semibold", STATUS_CLS[row.statusKey])}>
-          <Icon className={cn("h-3.5 w-3.5", row.statusKey === "PROCESSING" && "animate-spin")} /> {t(STATUS_TKEY[row.statusKey])}
-        </span>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-semibold", sm.cls)}>
-          <SIcon className="h-3.5 w-3.5" /> {t(sm.tKey)}
-        </span>
-        {row.priority && (
-          <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold", PRIORITY_CLS[row.priority])}>{row.priority}</span>
-        )}
-        {row.category && (
-          <span className="text-sm text-muted-foreground">{pretty(row.category)}</span>
-        )}
-      </div>
-      {row.ticket_number && (
-        <div className="mt-2 font-mono text-sm text-emerald-600">{row.ticket_number}</div>
-      )}
-      {row.statusKey === "FAILED" && (
-        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-          <Button size="sm" variant="outline" onClick={() => onRetry([row.id])}><RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retry")}</Button>
-        </div>
-      )}
     </div>
   );
 });
 
 export default function AiReviewPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [petitions, setPetitions] = useState<AppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -242,15 +408,21 @@ export default function AiReviewPage() {
   const [busy, setBusy] = useState(false);
 
   // Default to Awaiting Review — that's the actionable queue PAs care about on
-  // open. They can widen to All via the segments if they want history.
+  // open. They can widen to All via the tabs if they want history.
   const [fStatus, setFStatus] = useState<"" | StatusKey>("AWAITING_REVIEW");
   const [fPriority, setFPriority] = useState("");
   const [fSource, setFSource] = useState("");
+  const [fCategory, setFCategory] = useState("");   // driven by the distribution chart
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [dateChip, setDateChip] = useState<DateChip | null>(null);
   const [q, setQ] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+  const [sort, setSort] = useState<"submitted_desc" | "submitted_asc" | "priority_desc">("submitted_desc");
+  const [showRail, setShowRail] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -298,24 +470,38 @@ export default function AiReviewPage() {
     return () => document.removeEventListener("keydown", onKey);
   }, [review, busy]);
 
+  // Aurora Recall — ⌘K / Ctrl-K focuses the header search from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
   function onSearchChange(v: string) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setQ(v), 300);
+    debounceRef.current = setTimeout(() => { setPage(1); setQ(v); }, 300);
   }
 
   const rows = useMemo<InboxRow[]>(() => {
     const up: InboxRow[] = uploads.map(u => ({
-      kind: "upload", id: u.id, name: u.name, mobile: u.mobile, category: u.category,
+      kind: "upload", id: u.id, name: u.name, name_ta: u.name_ta, mobile: u.mobile,
+      token: u.ticket_number, categoryKey: u.category,
       priority: u.priority, statusKey: u.status, source: "ai_scan",
       created_at: u.created_at, ticket_number: u.ticket_number, upload: u,
     }));
     const pet: InboxRow[] = petitions.map(p => ({
-      kind: "petition", id: p.id, name: p.name, mobile: p.mobile,
-      category: p.category_label ?? p.category, priority: p.priority ?? null,
+      kind: "petition", id: p.id, name: p.name, name_ta: p.name_ta ?? null, mobile: p.mobile,
+      token: p.token != null ? String(p.token) : null,
+      categoryKey: p.category ?? null, priority: p.priority ?? null,
       statusKey: petitionStatusKey(p.status), source: p.source || "qr_citizen",
       created_at: p.created_at, ticket_number: null, petition: p,
     }));
@@ -324,8 +510,7 @@ export default function AiReviewPage() {
   }, [uploads, petitions]);
 
   // Rows the PA can actually act on — QUEUED / PROCESSING are hidden from
-  // the whole surface (feed + counts + segment tabs) so nothing "processing"
-  // shows in the UI.
+  // the whole surface (feed + counts + tabs) so nothing "processing" shows.
   const visibleRows = useMemo(
     () => rows.filter(r => r.statusKey !== "QUEUED" && r.statusKey !== "PROCESSING"),
     [rows],
@@ -337,12 +522,12 @@ export default function AiReviewPage() {
     return c;
   }, [visibleRows]);
 
-  const filtered = useMemo(() => {
+  // Everything except the chart-driven category filter — the table's base
+  // scope and the distribution chart's own scope (so every bar stays visible).
+  const scoped = useMemo(() => {
     const query = q.trim().toLowerCase();
-    // Compare on the ISO date prefix (YYYY-MM-DD) so the range is inclusive
-    // regardless of the exact time-of-day the petition was submitted.
     const fromKey = dateFrom || "";
-    const toKey   = dateTo   || "";
+    const toKey = dateTo || "";
     return visibleRows.filter(r => {
       if (fStatus && r.statusKey !== fStatus) return false;
       if (fPriority && r.priority !== fPriority) return false;
@@ -351,20 +536,58 @@ export default function AiReviewPage() {
         const day = (r.created_at || "").slice(0, 10);
         if (!day) return false;
         if (fromKey && day < fromKey) return false;
-        if (toKey   && day > toKey)   return false;
+        if (toKey && day > toKey) return false;
       }
       if (query) {
-        const inName   = (r.name || "").toLowerCase().includes(query);
+        const inName = (r.name || "").toLowerCase().includes(query);
         const inMobile = (r.mobile || "").includes(query);
-        if (!inName && !inMobile) return false;
+        const inToken = (r.token || "").toLowerCase().includes(query);
+        if (!inName && !inMobile && !inToken) return false;
       }
       return true;
     });
   }, [visibleRows, fStatus, fPriority, fSource, dateFrom, dateTo, q]);
 
+  const filtered = useMemo(() => {
+    const base = fCategory
+      ? scoped.filter(r => (r.categoryKey || "other").toLowerCase() === fCategory)
+      : scoped;
+    const sorted = [...base];
+    sorted.sort((a, b) => {
+      if (sort === "priority_desc") {
+        const d = (PRIORITY_RANK[b.priority || ""] ?? 0) - (PRIORITY_RANK[a.priority || ""] ?? 0);
+        if (d) return d;
+        return (b.created_at || "").localeCompare(a.created_at || "");
+      }
+      const cmp = (a.created_at || "").localeCompare(b.created_at || "");
+      return sort === "submitted_asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [scoped, fCategory, sort]);
+
+  // Category distribution — stable axis (every category seen), counts scoped.
+  const distribution = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of visibleRows) {
+      const k = (r.categoryKey || "other").toLowerCase();
+      if (!counts.has(k)) counts.set(k, 0);
+    }
+    for (const r of scoped) {
+      const k = (r.categoryKey || "other").toLowerCase();
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return Array.from(counts, ([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
+  }, [visibleRows, scoped]);
+
+  const total = filtered.length;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  useEffect(() => { if (page > lastPage) setPage(lastPage); }, [page, lastPage]);
+  const offset = (page - 1) * pageSize;
+  const pageRows = filtered.slice(offset, offset + pageSize);
+
   const failedCount = uploads.filter(u => u.status === "FAILED").length;
-  const advancedFilterCount = (fPriority ? 1 : 0) + (fSource ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
-  const anyFilterActive = Boolean(q || fStatus || fPriority || fSource || dateFrom || dateTo);
+  const advancedFilterCount = (fPriority ? 1 : 0) + (fSource ? 1 : 0) + (fCategory ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
+  const anyFilterActive = Boolean(q || fPriority || fSource || fCategory || dateFrom || dateTo);
 
   function openRow(r: InboxRow) {
     if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
@@ -443,11 +666,45 @@ export default function AiReviewPage() {
     } catch { toast.error("Network error"); }
   }, [load]);
 
+  const applyDateChip = useCallback((chip: DateChip) => {
+    setPage(1);
+    if (chip === "custom") { setDateChip("custom"); return; }
+    if (dateChip === chip) { setDateChip(null); setDateFrom(""); setDateTo(""); return; }
+    const { from, to } = computeDateChip(chip);
+    setDateChip(chip); setDateFrom(from); setDateTo(to);
+  }, [dateChip]);
+
   function clearAllFilters() {
-    setFStatus(""); setFPriority(""); setFSource(""); setDateFrom(""); setDateTo(""); setQ("");
+    setFPriority(""); setFSource(""); setFCategory("");
+    setDateFrom(""); setDateTo(""); setDateChip(null); setQ(""); setPage(1);
+  }
+
+  async function doExport() {
+    const headers = ["Token", "Name", "Phone", "Source", "Category", "Priority", "Status", "Submitted"];
+    const lines = filtered.map((r) => [
+      r.token ?? "", r.name ?? "", r.mobile ?? "",
+      t(SOURCE_META[r.source]?.tKey ?? "petition.sourceStaff"),
+      catLabel(r.categoryKey, "en"), r.priority ?? "",
+      t(STATUS_TKEY[r.statusKey]), r.created_at ?? "",
+    ]);
+    const csv = [headers, ...lines].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+    a.download = `petitions_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    toast.success(`${filtered.length} ${t("petition.results")}`);
   }
 
   const pick = <T,>(en: T, ta: T): T => (modalLang === "ta" ? (ta || en) : en);
+
+  const th = "px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground/80";
+  const lo = total === 0 ? 0 : offset + 1;
+  const hi = Math.min(offset + pageSize, total);
+
+  const sourceLabel = fSource ? t(SOURCE_META[fSource]?.tKey ?? "petition.sourceStaff") : t("petition.allSources");
+  const priorityLabel = fPriority ? pretty(fPriority) : t("petition.allPriority");
+  const submittedLabel = (dateFrom || dateTo) ? dateRangeLabel(dateFrom, dateTo, lang) : t("petition.dateThisWeek");
+  const categoryLabel = fCategory ? catLabel(fCategory, lang) : t("petition.allCategories");
 
   return (
     <>
@@ -455,35 +712,26 @@ export default function AiReviewPage() {
         title={t("petition.title")}
         subtitle={t("petition.subtitle")}
         icon={<ClipboardCheck className="h-5 w-5" />}
-      />
-      <main className="flex-1 overflow-y-auto bg-background">
-        <div className="space-y-4 px-4 py-6 animate-in-up">
-
-          {/* Search (left, wider) · Retry-all + Refresh (right) */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-xl sm:flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                defaultValue={q}
-                onChange={(e) => onSearchChange(e.target.value)}
-                placeholder={t("petition.searchPlaceholder")}
-                className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-base focus:border-violet-500 focus:outline-none"
-              />
-            </div>
-            <div className="flex items-center gap-2 sm:flex-shrink-0">
-              {failedCount > 0 && (
-                <Button size="sm" variant="outline" className="border-red-300 text-red-700" onClick={() => retry(uploads.filter(u => u.status === "FAILED").map(u => u.id))}>
-                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> {t("petition.retryAllFailed")} ({failedCount})
-                </Button>
-              )}
-              <button onClick={() => load()} className="rounded-lg p-2 hover:bg-muted" title={t("petition.refresh")} aria-label={t("petition.refresh")}>
-                <RefreshCw className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </div>
+        searchSlot={
+          <div className="relative w-full">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              defaultValue={q}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder={t("petition.searchPlaceholder")}
+              className="peer h-10 rounded-full border-transparent bg-muted/70 pl-10 pr-14 text-sm transition-all duration-200 focus-visible:border-border focus-visible:bg-card focus-visible:shadow-[0_0_0_3px_hsl(var(--accent-blue)/0.14),0_2px_8px_rgba(28,30,41,0.06)]"
+            />
+            <kbd className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 font-mono text-[11px] font-semibold text-muted-foreground transition-all duration-200 peer-focus-visible:scale-90 peer-focus-visible:opacity-0">
+              ⌘ K
+            </kbd>
           </div>
-
-          {/* Unified toolbar — segments · filters · clear */}
-          <Card className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+        }
+      />
+      <main className="flex-1 overflow-y-auto bg-background xl:overflow-hidden">
+        <div className="flex flex-col gap-4 px-4 py-6 animate-in-up xl:h-full">
+          {/* Tabs (left) · Filters toggle + Export (right) */}
+          <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-1.5">
               {SEGMENTS.map((s) => {
                 const active = fStatus === s.key;
@@ -491,16 +739,23 @@ export default function AiReviewPage() {
                 return (
                   <button
                     key={s.key || "all"}
-                    onClick={() => setFStatus(s.key)}
+                    onClick={() => { setFStatus(s.key); setPage(1); }}
                     className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-1.5 text-base font-medium transition-colors",
-                      active ? "bg-violet-600 text-white shadow-card" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      "relative flex items-center gap-2 rounded-[10px] px-3.5 py-2 text-[15px] font-semibold transition-colors duration-150",
+                      active ? "text-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
-                    {t(s.tKey)}
+                    {active && (
+                      <motion.span
+                        layoutId="petition-tab-pill"
+                        className="aurora-tab-active absolute inset-0 rounded-[10px]"
+                        transition={{ type: "spring", stiffness: 420, damping: 38 }}
+                      />
+                    )}
+                    <span className="relative z-[1]">{t(s.tKey)}</span>
                     <span className={cn(
-                      "min-w-[20px] rounded-full px-1.5 py-0.5 text-[13px] font-bold tabular-nums",
-                      active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                      "relative z-[1] min-w-[22px] rounded-md px-1.5 py-0.5 text-center text-[12px] font-bold tabular-nums",
+                      active ? "bg-white text-brand shadow-card" : "bg-muted text-muted-foreground",
                     )}>
                       {count ?? "·"}
                     </span>
@@ -510,151 +765,314 @@ export default function AiReviewPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {failedCount > 0 && (
+                <Button size="sm" variant="outline" className="h-[38px] rounded-xl border-red-300 text-red-700"
+                  onClick={() => retry(uploads.filter(u => u.status === "FAILED").map(u => u.id))}>
+                  <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retryAllFailed")} ({failedCount})
+                </Button>
+              )}
+              {([
+                ["today", t("petition.dateToday"), CalendarCheck],
+                ["this_week", t("petition.dateThisWeek"), CalendarRange],
+                ["this_month", t("petition.dateThisMonth"), CalendarDays],
+              ] as [DateChip, string, React.ElementType][]).map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  onClick={() => applyDateChip(key)}
+                  className={cn(
+                    "inline-flex h-[38px] items-center gap-1.5 rounded-xl border px-3.5 text-sm font-semibold transition-colors",
+                    dateChip === key
+                      ? "border-[#E4DCFC] bg-accent text-brand"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-4 w-4" /> {label}
+                </button>
+              ))}
               <button
-                onClick={() => setShowFilters((s) => !s)}
+                onClick={() => setShowRail((s) => !s)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-medium transition-colors",
-                  showFilters || advancedFilterCount > 0
-                    ? "border-violet-500 bg-violet-50 text-violet-700"
-                    : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+                  "inline-flex h-[38px] items-center gap-1.5 rounded-xl border px-3.5 text-sm font-semibold transition-colors",
+                  showRail || advancedFilterCount > 0
+                    ? "border-[#E4DCFC] bg-accent text-brand"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <SlidersHorizontal className="h-4 w-4" />
                 {t("petition.filters")}
                 {advancedFilterCount > 0 && (
-                  <span className="ml-0.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-violet-600 px-1 text-xs font-bold text-white">
+                  <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-brand-foreground">
                     {advancedFilterCount}
                   </span>
                 )}
               </button>
-              {anyFilterActive && (
-                <button
-                  onClick={clearAllFilters}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-red-600"
-                >
-                  <X className="h-3.5 w-3.5" /> {t("petition.clearAll")}
-                </button>
-              )}
+              <button onClick={() => load()} title={t("petition.refresh")} aria-label={t("petition.refresh")}
+                className="grid h-[38px] w-[38px] place-items-center rounded-xl border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                <RefreshCw className="h-4 w-4" />
+              </button>
+              <Button variant="outline" onClick={doExport} className="h-[38px] rounded-xl">
+                <Download className="h-4 w-4 text-brand" /> {t("petition.export")}
+              </Button>
             </div>
-          </Card>
-
-          {/* Advanced filters — collapsible */}
-          {showFilters && (
-            <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{t("petition.colSource")}</label>
-                <select value={fSource} onChange={(e) => setFSource(e.target.value)}
-                  className="h-9 rounded-lg border border-input bg-card px-3 text-base focus:border-violet-500 focus:outline-none">
-                  <option value="">{`All ${t("petition.colSource").toLowerCase()}`}</option>
-                  {Object.entries(SOURCE_META).map(([k, m]) => <option key={k} value={k}>{t(m.tKey)}</option>)}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{t("petition.colUrgency")}</label>
-                <select value={fPriority} onChange={(e) => setFPriority(e.target.value)}
-                  className="h-9 rounded-lg border border-input bg-card px-3 text-base focus:border-violet-500 focus:outline-none">
-                  <option value="">{`All ${t("petition.colUrgency").toLowerCase()}`}</option>
-                  {PRIORITIES.map(u => <option key={u} value={u}>{pretty(u)}</option>)}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">{t("appts.dateSubmitted")}</label>
-                <div className="flex h-9 items-center gap-1.5 rounded-lg border border-input bg-card px-2.5">
-                  <CalendarRange className="h-3.5 w-3.5 text-muted-foreground" />
-                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm outline-none focus:ring-0"
-                    aria-label={`${t("appts.dateSubmitted")} from`} />
-                  <span className="text-sm text-muted-foreground">→</span>
-                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                    className="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm outline-none focus:ring-0"
-                    aria-label={`${t("appts.dateSubmitted")} to`} />
-                  {(dateFrom || dateTo) && (
-                    <button onClick={() => { setDateFrom(""); setDateTo(""); }}
-                      className="grid h-5 w-5 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                      aria-label={`Clear ${t("appts.dateSubmitted")}`}>
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Desktop table */}
-          <Card className="hidden overflow-hidden p-0 md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed text-left text-base">
-                <thead className="bg-muted/50 text-[13px] uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    <th className="w-[18%] px-4 py-3">{t("petition.colName")}</th>
-                    <th className="w-[12%] px-4 py-3">{t("petition.colPhone")}</th>
-                    <th className="w-[14%] px-4 py-3">{t("petition.colSource")}</th>
-                    <th className="w-[18%] px-4 py-3">{t("petition.colCategory")}</th>
-                    <th className="w-[9%] px-4 py-3">{t("petition.colUrgency")}</th>
-                    <th className="w-[17%] px-4 py-3">{t("petition.colStatus")}</th>
-                    <th className="w-[12%] px-4 py-3 text-right">{t("petition.colAction")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                      <tr key={i} className="border-t border-border/60">
-                        <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-5 w-24 rounded-full" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-5 w-12 rounded" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-5 w-24 rounded-full" /></td>
-                        <td className="px-4 py-3"><Skeleton className="ml-auto h-8 w-20 rounded-md" /></td>
-                      </tr>
-                    ))
-                  ) : filtered.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-16 text-center">
-                      <ClipboardCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
-                      <div className="text-base font-medium text-foreground">{rows.length === 0 ? t("petition.noResults") : t("petition.noResults")}</div>
-                      {anyFilterActive ? (
-                        <>
-                          <div className="text-sm text-muted-foreground">{t("petition.noResultsFiltered")}</div>
-                          <button
-                            onClick={clearAllFilters}
-                            className="mt-3 inline-flex items-center gap-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                          >
-                            <X className="h-3.5 w-3.5" /> {t("petition.clearAllFilters")}
-                          </button>
-                        </>
-                      ) : null}
-                    </td></tr>
-                  ) : filtered.map(r => (
-                    <InboxTableRow key={`${r.kind}-${r.id}`} row={r} t={t} onOpen={openRow} onRetry={retry} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-
-          {/* Mobile cards */}
-          <div className="space-y-2.5 md:hidden">
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="p-3.5"><Skeleton className="h-24 w-full" /></Card>
-              ))
-            ) : filtered.length === 0 ? (
-              <Card className="p-8 text-center">
-                <ClipboardCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
-                <div className="text-base font-medium text-foreground">{t("petition.noResults")}</div>
-                {anyFilterActive && (
-                  <button
-                    onClick={clearAllFilters}
-                    className="mt-3 inline-flex items-center gap-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                  >
-                    <X className="h-3.5 w-3.5" /> {t("petition.clearAllFilters")}
-                  </button>
-                )}
-              </Card>
-            ) : (
-              filtered.map(r => <InboxCard key={`${r.kind}-${r.id}`} row={r} t={t} onOpen={openRow} onRetry={retry} />)
-            )}
           </div>
+
+          {/* Two-column workspace: table (left) · filters + insights rail (right) */}
+          <div className={cn(
+            "grid gap-4 xl:min-h-0 xl:flex-1",
+            showRail ? "xl:grid-cols-[minmax(0,1fr)_360px]" : "xl:grid-cols-1",
+          )}>
+            <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
+              {/* Scope summary strip */}
+              <Card className="grid shrink-0 grid-cols-2 gap-px overflow-hidden bg-border p-0 sm:grid-cols-4">
+                <SummaryTile icon={QrCode} label={t("petition.colSource")} value={sourceLabel} badge={total} />
+                <SummaryTile icon={Flag} label={t("petition.colUrgency")} value={priorityLabel} />
+                <SummaryTile icon={CalendarDays} label={t("appts.dateSubmitted")} value={submittedLabel} />
+                <SummaryTile icon={FolderOpen} label={t("petition.colCategory")} value={categoryLabel} />
+              </Card>
+
+              {/* Desktop table — fills to the bottom of the page; body scrolls */}
+              <Card className="hidden overflow-hidden p-0 shadow-card-md md:block xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+                <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                  <table className="w-full min-w-[900px] text-base">
+                    <thead className="sticky top-0 z-10 bg-card">
+                      <tr className="border-b border-border">
+                        <th className={th}>{t("petition.colName")}</th>
+                        <th className={cn(th, "w-36")}>{t("petition.colPhone")}</th>
+                        <th className={cn(th, "w-36")}>{t("petition.colSource")}</th>
+                        <th className={cn(th, "w-44")}>{t("petition.colCategory")}</th>
+                        <th className={cn(th, "w-28")}>
+                          <SortHeader label={t("petition.colUrgency")} state={sort === "priority_desc" ? "desc" : null}
+                            onClick={() => { setPage(1); setSort((s) => s === "priority_desc" ? "submitted_desc" : "priority_desc"); }} />
+                        </th>
+                        <th className={cn(th, "w-36")}>{t("petition.colStatus")}</th>
+                        <th className={cn(th, "w-40")}>
+                          <SortHeader label={t("petition.colSubmitted")}
+                            state={sort === "submitted_asc" ? "asc" : sort === "submitted_desc" ? "desc" : null}
+                            onClick={() => { setPage(1); setSort((s) => s === "submitted_desc" ? "submitted_asc" : "submitted_desc"); }} />
+                        </th>
+                        <th className={cn(th, "w-32 text-right")}>{t("petition.colAction")}</th>
+                      </tr>
+                    </thead>
+                    <tbody key={`${fStatus}-${page}-${sort}`}>
+                      {loading ? (
+                        Array.from({ length: 4 }).map((_, i) => (
+                          <tr key={i} className="border-b border-border/60">
+                            <td className="px-4 py-4"><div className="flex items-center gap-2.5"><Skeleton className="h-9 w-9 rounded-lg" /><div className="space-y-1.5"><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3 w-20" /></div></div></td>
+                            <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
+                            <td className="px-4 py-4"><Skeleton className="h-5 w-24 rounded-full" /></td>
+                            <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
+                            <td className="px-4 py-4"><Skeleton className="h-5 w-12 rounded" /></td>
+                            <td className="px-4 py-4"><Skeleton className="h-6 w-24 rounded-lg" /></td>
+                            <td className="px-4 py-4"><Skeleton className="h-4 w-20" /></td>
+                            <td className="px-4 py-4"><Skeleton className="ml-auto h-8 w-20 rounded-lg" /></td>
+                          </tr>
+                        ))
+                      ) : pageRows.length === 0 ? (
+                        <tr><td colSpan={8} className="px-4 py-16 text-center">
+                          <ClipboardCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+                          <div className="text-base font-semibold text-foreground">{t("petition.noResults")}</div>
+                          {anyFilterActive && (
+                            <>
+                              <div className="text-sm text-muted-foreground">{t("petition.noResultsFiltered")}</div>
+                              <button
+                                onClick={clearAllFilters}
+                                className="mt-3 inline-flex items-center gap-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                              >
+                                <X className="h-3.5 w-3.5" /> {t("petition.clearAllFilters")}
+                              </button>
+                            </>
+                          )}
+                        </td></tr>
+                      ) : pageRows.map(r => (
+                        <InboxTableRow key={`${r.kind}-${r.id}`} row={r} t={t} lang={lang}
+                          active={review?.id === r.id && review?._kind === r.kind} onOpen={openRow} onRetry={retry} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm">
+                  <span className="text-muted-foreground">
+                    {total > 0
+                      ? `${t("petition.showing")} ${lo} ${t("petition.to")} ${hi} ${t("petition.of")} ${total} ${t("petition.results")}`
+                      : t("petition.noResults")}
+                  </span>
+                  {lastPage > 1 && (
+                    <div className="flex items-center gap-1">
+                      <button disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label={t("petition.prev")}
+                        className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40">
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      {pageList(page, lastPage).map((p, i) =>
+                        p === "…" ? (
+                          <span key={`e${i}`} className="px-1.5 text-muted-foreground">…</span>
+                        ) : (
+                          <button key={p} onClick={() => setPage(p)}
+                            className={cn(
+                              "grid h-9 min-w-9 place-items-center rounded-lg px-1 text-sm font-semibold tabular-nums transition-colors",
+                              p === page ? "aurora-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                            )}>
+                            {p}
+                          </button>
+                        )
+                      )}
+                      <button disabled={page >= lastPage} onClick={() => setPage(page + 1)} aria-label={t("petition.next")}
+                        className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40">
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    {t("petition.rowsPerPage")}
+                    <Select value={String(pageSize)} onValueChange={(v) => { setPage(1); setPageSize(Number(v)); }}>
+                      <SelectTrigger className="h-9 w-[76px] rounded-lg text-sm font-semibold text-foreground">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[10, 25, 50].map((n) => (
+                          <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Mobile cards */}
+              <div className="space-y-2.5 md:hidden">
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <Card key={i} className="p-3.5"><Skeleton className="h-24 w-full" /></Card>
+                  ))
+                ) : pageRows.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <ClipboardCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+                    <div className="text-base font-semibold text-foreground">{t("petition.noResults")}</div>
+                    {anyFilterActive && (
+                      <button
+                        onClick={clearAllFilters}
+                        className="mt-3 inline-flex items-center gap-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                      >
+                        <X className="h-3.5 w-3.5" /> {t("petition.clearAllFilters")}
+                      </button>
+                    )}
+                  </Card>
+                ) : (
+                  <>
+                    {pageRows.map(r => <InboxCard key={`${r.kind}-${r.id}`} row={r} t={t} lang={lang} onOpen={openRow} onRetry={retry} />)}
+                    {lastPage > 1 && (
+                      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2 text-base">
+                        <span className="text-muted-foreground">{lo}–{hi} {t("petition.of")} {total}</span>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                          <span className="text-sm tabular-nums">{page} / {lastPage}</span>
+                          <Button variant="outline" size="sm" disabled={page >= lastPage} onClick={() => setPage(page + 1)}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>{/* left column */}
+
+            {/* Right rail — Filters + Category Distribution */}
+            {showRail && (
+              <aside className="flex flex-col gap-4 xl:min-h-0">
+                {/* Filters */}
+                <Card className="flex flex-col p-5 shadow-card-md xl:min-h-0 xl:flex-1">
+                  <div className="mb-4 flex shrink-0 items-center justify-between">
+                    <h3 className="type-card-heading flex items-center gap-2 text-foreground">
+                      <button onClick={() => setShowRail(false)} aria-label={t("petition.filters")}
+                        className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      {t("petition.filters")}
+                      {advancedFilterCount > 0 && (
+                        <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-brand-foreground">
+                          {advancedFilterCount}
+                        </span>
+                      )}
+                    </h3>
+                    {anyFilterActive && (
+                      <button onClick={clearAllFilters}
+                        className="inline-flex items-center gap-1 text-[13px] font-semibold text-muted-foreground transition-colors hover:text-destructive">
+                        <X className="h-3.5 w-3.5" /> {t("petition.clearAll")}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="-mr-2 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pr-2">
+                    {/* Source */}
+                    <div className="flex flex-col gap-2">
+                      <FilterSectionLabel label={t("petition.colSource")} onReset={fSource ? () => { setPage(1); setFSource(""); } : undefined} resetLabel={t("petition.reset")} />
+                      <div className="flex flex-col gap-1.5">
+                        {SOURCE_KEYS.map((key) => {
+                          const m = SOURCE_META[key]; const SIcon = m.icon;
+                          const selected = fSource === key;
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => { setPage(1); setFSource((s) => (s === key ? "" : key)); }}
+                              aria-pressed={selected}
+                              className={cn(
+                                "flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                                selected ? "border-brand/40 bg-brand/5" : "border-border bg-card hover:bg-muted/50",
+                              )}
+                            >
+                              <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg", m.cls)}>
+                                <SIcon className="h-3.5 w-3.5" />
+                              </span>
+                              <span className={cn("min-w-0 flex-1 truncate text-sm font-medium", selected ? "text-brand" : "text-foreground")}>{t(m.tKey)}</span>
+                              <span className={cn(
+                                "grid h-4 w-4 shrink-0 place-items-center rounded-full border-2",
+                                selected ? "border-brand" : "border-muted-foreground/40",
+                              )}>
+                                {selected && <span className="h-2 w-2 rounded-full bg-brand" />}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Priority */}
+                    <div className="flex flex-col gap-2">
+                      <FilterSectionLabel label={t("petition.colUrgency")} onReset={fPriority ? () => { setPage(1); setFPriority(""); } : undefined} resetLabel={t("petition.reset")} />
+                      <FilterSelect label={t("petition.colUrgency")} value={fPriority}
+                        onChange={(v) => { setPage(1); setFPriority(v); }} options={priorityOptions} />
+                    </div>
+
+                    {/* Submitted date — picker only (Today / This week / This month
+                        live in the top toolbar). */}
+                    <div className="flex flex-col gap-2.5">
+                      <FilterSectionLabel label={t("appts.dateSubmitted")}
+                        onReset={(dateFrom || dateTo || dateChip) ? () => { setPage(1); setDateFrom(""); setDateTo(""); setDateChip(null); } : undefined}
+                        resetLabel={t("petition.reset")} />
+                      <div className="flex h-11 w-full items-center gap-1.5 rounded-xl border border-border bg-card px-3">
+                        <Input type="date" value={dateFrom}
+                          onChange={(e) => { setPage(1); setDateFrom(e.target.value); setDateChip("custom"); }}
+                          className="h-7 min-w-0 flex-1 border-0 p-0 text-sm shadow-none focus-visible:ring-0" aria-label={`${t("appts.dateSubmitted")} from`} />
+                        <span className="shrink-0 px-0.5 text-sm text-muted-foreground">→</span>
+                        <Input type="date" value={dateTo}
+                          onChange={(e) => { setPage(1); setDateTo(e.target.value); setDateChip("custom"); }}
+                          className="h-7 min-w-0 flex-1 border-0 p-0 text-sm shadow-none focus-visible:ring-0" aria-label={`${t("appts.dateSubmitted")} to`} />
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Category Distribution — click a bar to filter the table */}
+                <CategoryDistributionCard
+                  bars={distribution}
+                  lang={lang}
+                  activeCategory={fCategory}
+                  onSelect={(key) => { setPage(1); setFCategory((c) => (c === key ? "" : key)); }}
+                  className="xl:min-h-0 xl:flex-1"
+                />
+              </aside>
+            )}
+          </div>{/* two-column grid */}
         </div>
       </main>
 
@@ -789,6 +1207,145 @@ export default function AiReviewPage() {
         </div>
       )}
     </>
+  );
+}
+
+/* ── Local components ─────────────────────────────────────────────────── */
+
+const ALL = "__all__";
+
+function SummaryTile({ icon: Icon, label, value, badge }: {
+  icon: React.ElementType; label: string; value: string; badge?: number;
+}) {
+  return (
+    <div className="flex items-center gap-3 bg-card px-4 py-3.5">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent text-brand">
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</div>
+        <div className="truncate text-sm font-semibold text-foreground">{value}</div>
+      </div>
+      {badge != null && (
+        <span className="grid h-6 min-w-[24px] shrink-0 place-items-center rounded-lg bg-muted px-1.5 text-[13px] font-bold tabular-nums text-muted-foreground">
+          {badge}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FilterSectionLabel({ label, onReset, resetLabel }: { label: string; onReset?: () => void; resetLabel: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</span>
+      {onReset && (
+        <button onClick={onReset} className="text-[12px] font-semibold text-brand transition-colors hover:underline">{resetLabel}</button>
+      )}
+    </div>
+  );
+}
+
+/** Single-select pill used inside the filters card. */
+function FilterSelect({ label, value, onChange, options }: {
+  label: string; value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <Select value={value === "" ? ALL : value} onValueChange={(v) => onChange(v === ALL ? "" : v)}>
+      <SelectTrigger className={cn("h-11 rounded-xl text-sm", value && "border-brand/40 bg-brand/5 font-semibold text-brand")}>
+        <SelectValue placeholder={`All ${label.toLowerCase()}`} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ALL}>All {label.toLowerCase()}</SelectItem>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function SortHeader({ label, state, onClick }: {
+  label: string; state: "asc" | "desc" | null; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1 font-semibold uppercase tracking-[0.09em] transition-colors hover:text-foreground",
+        state ? "text-brand" : "text-muted-foreground/80",
+      )}
+    >
+      {label}
+      {state === "asc" && <ArrowUp className="h-3.5 w-3.5" />}
+      {state === "desc" && <ArrowDown className="h-3.5 w-3.5" />}
+      {!state && <ArrowUpDown className="h-3.5 w-3.5 opacity-60" />}
+    </button>
+  );
+}
+
+const BAR_PALETTE = ["#7C5CF6", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#35839B"];
+
+function CategoryDistributionCard({ bars, lang, activeCategory, onSelect, className }: {
+  bars: { key: string; count: number }[];
+  lang: string;
+  activeCategory: string;
+  onSelect: (key: string) => void;
+  className?: string;
+}) {
+  const { t } = useLang();
+  const total = bars.reduce((a, b) => a + b.count, 0);
+  const max = Math.max(1, ...bars.map((b) => b.count));
+
+  return (
+    <Card className={cn("flex flex-col p-5 shadow-card-md", className)}>
+      <div className="mb-4 flex shrink-0 items-center justify-between">
+        <h3 className="type-card-heading text-foreground">{t("petition.categoryDistribution")}</h3>
+        <span className="text-[13px] text-muted-foreground">
+          {t("petition.total")}: <span className="font-semibold tabular-nums text-foreground">{total}</span>
+        </span>
+      </div>
+      {bars.length === 0 ? (
+        <div className="grid flex-1 place-items-center text-center text-sm text-muted-foreground">{t("petition.noData")}</div>
+      ) : (
+        <>
+          <div className="-mr-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-2">
+            {bars.map((b, i) => {
+              const share = total ? Math.round((b.count / total) * 100) : 0;
+              const isActive = activeCategory === b.key;
+              const dimmed = Boolean(activeCategory) && !isActive;
+              return (
+                <button
+                  key={b.key}
+                  onClick={() => onSelect(b.key)}
+                  aria-pressed={isActive}
+                  className={cn(
+                    "w-full rounded-lg px-2 py-1.5 text-left transition-all",
+                    isActive ? "bg-accent ring-1 ring-[#D6C9F5]" : "hover:bg-muted/60",
+                    dimmed && "opacity-45 hover:opacity-100",
+                  )}
+                >
+                  <div className="flex items-center gap-2 text-[13px]">
+                    <span className="w-4 shrink-0 text-right font-semibold tabular-nums text-foreground">{b.count}</span>
+                    <span className={cn("w-28 shrink-0 truncate", isActive ? "font-semibold text-brand" : "text-foreground")}>{catLabel(b.key, lang)}</span>
+                    <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                      <span className="block h-full rounded-full transition-all"
+                        style={{ width: `${(b.count / max) * 100}%`, backgroundColor: BAR_PALETTE[i % BAR_PALETTE.length] }} />
+                    </span>
+                    <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">({share}%)</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex shrink-0 items-center gap-1.5 border-t border-border pt-3 text-[12px] text-muted-foreground">
+            <SlidersHorizontal className="h-3.5 w-3.5" /> {t("petition.clickCategoryHint")}
+          </div>
+        </>
+      )}
+    </Card>
   );
 }
 

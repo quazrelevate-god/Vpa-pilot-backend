@@ -3,65 +3,67 @@
 @tailwind utilities;
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Institutional Modern — design tokens (see /DESIGN.md)
-   Pine Ink primary, turmeric accent (used sparingly), warm neutrals,
-   functional urgency scale. shadcn/ui reads these HSL variables.
-   Fonts injected via next/font in layout.tsx (--font-catamaran, etc).
+   Aurora OS 2.3 "Lavender" — matched to the approved reference mock:
+   cool white canvas, white paper surfaces, violet interactive accent,
+   visible lavender ambient in the sidebar, soft flat tint pills, roomy rows.
+   shadcn/ui reads these HSL variables. Fonts injected via next/font.
    ────────────────────────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    /* Font stacks */
-    --font-sans:  var(--font-catamaran), system-ui, sans-serif;
-    --font-serif: var(--font-fraunces), var(--font-noto-tamil), Georgia, serif;
+    /* Font stacks (Aurora type spec) — Jakarta for Latin UI, Noto Sans Tamil
+       for Tamil at matching sizes, Fraunces for display/page titles only */
+    --font-sans:  var(--font-jakarta), var(--font-noto-tamil), system-ui, sans-serif;
+    --font-serif: var(--font-fraunces), Georgia, serif;
     --font-mono:  var(--font-plex-mono), ui-monospace, monospace;
 
-    /* Surfaces — cool paper */
-    --background: 216 26% 96%;          /* #F3F5F8 */
-    --foreground: 222 25% 10%;          /* #131720 ink */
+    /* Surfaces — pure white canvas to match the cards; cards separate via
+       their hairline border + soft shadow (per mock) */
+    --background: 0 0% 100%;            /* #FFFFFF */
+    --foreground: 231 19% 14%;          /* #1C1E29 */
     --card: 0 0% 100%;
-    --card-foreground: 222 25% 10%;
+    --card-foreground: 231 19% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 25% 10%;
+    --popover-foreground: 231 19% 14%;
 
-    /* Brand — Slate Indigo (default/system actions) */
-    --primary: 215 47% 24%;             /* #21395B */
+    /* Primary — graphite (rare system actions) */
+    --primary: 231 19% 18%;
     --primary-foreground: 0 0% 100%;
 
-    /* Interactive accent — Signal Blue (the one primary action + focus) */
-    --accent-blue: 220 84% 56%;         /* #2F6FED */
+    /* Interactive accent — Aurora violet */
+    --accent-blue: 252 90% 66%;         /* #7C5CF6 */
     --accent-blue-foreground: 0 0% 100%;
 
-    --secondary: 213 27% 94%;           /* #EAEEF3 */
-    --secondary-foreground: 222 25% 10%;
-    --muted: 213 27% 94%;
-    --muted-foreground: 215 12% 40%;    /* #5A6472 */
-    --accent: 216 45% 94%;              /* light blue tint for hovers */
-    --accent-foreground: 215 47% 24%;
+    --secondary: 240 29% 97%;           /* #F4F4F9 */
+    --secondary-foreground: 231 19% 14%;
+    --muted: 240 29% 97%;
+    --muted-foreground: 231 10% 40%;    /* #5C5E6E — darker for crisp secondary text */
+    --accent: 254 89% 96%;              /* #F1EDFE lavender wash */
+    --accent-foreground: 252 77% 55%;
 
-    --destructive: 5 60% 44%;           /* #B2372D critical/error */
+    --destructive: 358 75% 59%;         /* #E5484D */
     --destructive-foreground: 0 0% 100%;
-    --success: 154 46% 34%;             /* #2E7D5B */
-    --warning: 46 68% 47%;              /* #C9A227 */
-    --info: 189 47% 33%;                /* #2C6E7A */
+    --success: 151 51% 42%;             /* #34A26C mint */
+    --warning: 33 63% 48%;              /* #C9822E amber */
+    --info: 230 8% 47%;
 
-    /* Urgency scale — semantic, drives triage */
-    --urgency-critical: 5 60% 44%;      /* #B2372D */
-    --urgency-high: 26 74% 46%;         /* #CC6A1F */
-    --urgency-medium: 46 68% 47%;       /* #C9A227 */
-    --urgency-low: 132 27% 43%;         /* #4F8A5B */
+    /* Urgency scale — soft semantic hues (dot + word, tint pills) */
+    --urgency-critical: 358 75% 59%;
+    --urgency-high: 24 84% 53%;         /* #EE7327 */
+    --urgency-medium: 40 84% 45%;       /* #D39412 */
+    --urgency-low: 151 51% 42%;         /* mint */
 
-    --border: 216 20% 90%;              /* #E1E5EB */
-    --input: 216 20% 90%;
-    --ring: 220 84% 56%;                /* Signal Blue focus ring */
+    --border: 240 23% 94%;              /* #ECECF3 */
+    --input: 240 23% 94%;
+    --ring: 252 90% 66%;
 
-    /* Sidebar — deep slate chrome */
-    --sidebar: 214 47% 19%;             /* #1A2E49 */
-    --sidebar-foreground: 217 37% 93%;  /* #E7ECF4 */
-    --sidebar-active: 220 84% 56%;      /* #2F6FED signal */
-    --sidebar-hover: 214 46% 25%;       /* #223B5C */
-    --sidebar-border: 215 41% 34%;      /* #33507A */
+    /* Sidebar — white paper with a visible lavender bloom */
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 231 19% 14%;
+    --sidebar-active: 252 90% 66%;
+    --sidebar-hover: 254 60% 97%;       /* #F6F3FD */
+    --sidebar-border: 246 33% 95%;      /* #EFEDF9 */
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;                  /* 12px — the mock is rounder */
   }
 }
 
@@ -71,82 +73,233 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
+    /* no forced antialiasing — default subpixel rendering keeps text sharp */
     text-rendering: optimizeLegibility;
   }
-  /* Serif for headlines and long-form reading (Fraunces + Noto Serif Tamil) */
-  h1, h2, .font-display { font-family: var(--font-serif); }
 
-  /* Numbers: tabular figures render in IBM Plex Mono. Numeric UI already
-     carries `tabular-nums`; map it to the mono family so counts, tokens,
-     dates and amounts read crisp and column-aligned. `.num` is an explicit
-     helper for values not already tagged. An explicit font-* utility still
-     wins over these. (see /DESIGN.md) */
   .tabular-nums,
   .num { font-family: var(--font-mono); }
   .num { font-variant-numeric: tabular-nums; }
 }
 
-/* ── Elevation utilities — soft, layered government-product shadows ───────── */
+/* ── Aurora type scale (spec) ─────────────────────────────────────────────
+   Display 36/600 Fraunces · Page Title 32/600 Fraunces · Section 22/600 ·
+   Card Heading 18/600 · Body Large 16/500 · Body 14/400 · Navigation 14/500 ·
+   Table Row 15/500 · Table Header 11/600 · Caption 11/500 · Badge 12/600.
+   Tamil renders from Noto Sans Tamil at matching sizes automatically. ────── */
+@layer components {
+  .type-display      { font-family: var(--font-serif); font-size: 36px; font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; }
+  .type-page-title   { font-family: var(--font-serif); font-size: 32px; font-weight: 600; line-height: 1.2;  letter-spacing: -0.01em; }
+  .type-section      { font-size: 22px; font-weight: 600; line-height: 1.3; }
+  .type-card-heading { font-size: 18px; font-weight: 600; line-height: 1.35; }
+  .type-body-lg      { font-size: 16px; font-weight: 500; line-height: 1.55; }
+  .type-body         { font-size: 14px; font-weight: 400; line-height: 1.6; }
+  .type-nav          { font-size: 14px; font-weight: 500; line-height: 1.4; }
+  .type-table-row    { font-size: 15px; font-weight: 500; line-height: 1.45; }
+  .type-table-header { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; }
+  .type-caption      { font-size: 11px; font-weight: 500; line-height: 1.4; }
+  .type-badge        { font-size: 12px; font-weight: 600; line-height: 1; }
+}
+
+/* ── Elevation — hairline-first; shadows whisper ─────────────────────────── */
 @layer utilities {
-  .shadow-card     { box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06); }
-  .shadow-card-md  { box-shadow: 0 2px 4px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.06); }
-  .shadow-card-lg  { box-shadow: 0 8px 24px rgba(16,24,40,0.08), 0 2px 6px rgba(16,24,40,0.04); }
-  .shadow-glow     { box-shadow: 0 0 0 4px hsl(var(--accent-blue) / 0.12); }
-
-  .text-balance { text-wrap: balance; }
-  .bg-grid {
-    background-image:
-      linear-gradient(to right, rgba(15,23,42,0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15,23,42,0.04) 1px, transparent 1px);
-    background-size: 28px 28px;
-  }
+  .shadow-card     { box-shadow: 0 1px 2px rgba(28,30,41,0.04); }
+  .shadow-card-md  { box-shadow: 0 2px 4px rgba(28,30,41,0.04), 0 4px 12px rgba(28,30,41,0.05); }
+  .shadow-card-lg  { box-shadow: 0 12px 32px rgba(28,30,41,0.10), 0 2px 6px rgba(28,30,41,0.04); }
 }
 
-/* ── Sidebar scrollbar polish ────────────────────────────────────────────── */
+/* ── Aurora sidebar — four stacked layers, bottom to top:
+   1 · base: pure white from the vertical midpoint down
+   2 · bloom (top ~35%): peach #F7C39B pinned to the top-left corner, melting
+       diagonally into a lavender #CBB8F2 wash that dissolves into the white;
+       the two hues overlap around the brand block (the blend zone)
+   3 · sparkles: 1–2px white + pale-violet dust, two with faint cross-flares,
+       mostly in the tinted zone, a few below — noticed second, not first
+   4 · separation: tonal only (white sidebar vs #F7F7FB canvas) + a hairline ── */
+.aurora-sidebar {
+  background-image:
+    /* sparkles — two cross-flares (core + horizontal + vertical glint) */
+    radial-gradient(ellipse 7px 1px at 24% 8%,  rgba(255,255,255,0.70), transparent 100%),
+    radial-gradient(ellipse 1px 7px at 24% 8%,  rgba(255,255,255,0.70), transparent 100%),
+    radial-gradient(circle 1.5px  at 24% 8%,  rgba(255,255,255,0.95), transparent 100%),
+    radial-gradient(ellipse 6px 1px at 70% 38%, rgba(203,184,242,0.55), transparent 100%),
+    radial-gradient(ellipse 1px 6px at 70% 38%, rgba(203,184,242,0.55), transparent 100%),
+    radial-gradient(circle 1.2px  at 70% 38%, rgba(203,184,242,0.85), transparent 100%),
+    /* sparkles — dust */
+    radial-gradient(circle 1px   at 44% 13%, rgba(255,255,255,0.80), transparent 100%),
+    radial-gradient(circle 1.2px at 12% 30%, rgba(255,255,255,0.60), transparent 100%),
+    radial-gradient(circle 1px   at 55% 52%, rgba(203,184,242,0.50), transparent 100%),
+    radial-gradient(circle 1.2px at 30% 74%, rgba(255,255,255,0.50), transparent 100%),
+    radial-gradient(circle 1px   at 78% 88%, rgba(203,184,242,0.40), transparent 100%),
+    /* peach — from the very top down to the Appointments item (~top quarter),
+       glowing strongest at the upper-left corner */
+    radial-gradient(160% 16% at 0% 0%, rgba(247,195,155,0.30), rgba(247,195,155,0.12) 60%, transparent 100%),
+    linear-gradient(180deg,
+      rgba(247,195,155,0.24) 0%,
+      rgba(247,195,155,0.18) 14%,
+      rgba(247,195,155,0.08) 22%,
+      rgba(247,195,155,0.00) 30%),
+    /* lavender — takes over where the peach ends and runs to the bottom,
+       melting with the peach around the Appointments item */
+    linear-gradient(180deg,
+      rgba(203,184,242,0.00) 16%,
+      rgba(203,184,242,0.18) 30%,
+      rgba(203,184,242,0.20) 46%,
+      rgba(203,184,242,0.12) 72%,
+      rgba(203,184,242,0.07) 100%),
+    /* base — softly tinted throughout; never pure white, so white items
+       (cards, pills, the active capsule's highlights) read brighter than it */
+    linear-gradient(180deg, #FFFCFA 0%, #FCFAFF 40%, #FAF8FE 100%);
+  box-shadow: inset -1px 0 0 rgba(28,30,41,0.04);
+}
+
+/* Fade masks so overflow in the nav list is perceivable on short screens */
+.nav-scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+
+/* Inactive navigation — hover is a soft lavender lift */
+.aurora-nav-item {
+  transition:
+    background-color 150ms cubic-bezier(0.25,0.8,0.35,1),
+    box-shadow 150ms cubic-bezier(0.25,0.8,0.35,1),
+    color 150ms cubic-bezier(0.25,0.8,0.35,1);
+}
+.aurora-nav-item:hover {
+  background-color: #F6F3FD;
+  box-shadow: 0 1px 2px rgba(28,30,41,0.03);
+}
+
+/* ── Active navigation — saturated violet gradient at full density; label and
+   icon in lavender-blush on top. Soft violet float shadow, light sweep. ───── */
+.aurora-nav-active {
+  /* positioning is the caller's job (absolute inset-0 behind nav content) */
+  overflow: hidden;
+  background-image: linear-gradient(90deg, #8a81fd 0%, #7d52e3 35%, #7864e5f7 75%, #af9af1 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.55),
+    0 6px 18px rgba(124,92,246,0.28),
+    0 2px 4px rgba(124,92,246,0.14);
+}
+/* Aurora Light — the sweep travels across the surface each time it lands */
+.aurora-nav-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 55%;
+  background: linear-gradient(100deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0) 100%);
+  animation: aurora-sweep 420ms cubic-bezier(0.45,0,0.25,1) 60ms 1 both;
+  pointer-events: none;
+}
+.aurora-nav-active::after {
+  content: "";
+  position: absolute;
+  inset: 1px 1px auto 1px;
+  height: 46%;
+  border-radius: 11px 11px 2px 2px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.38), rgba(255,255,255,0));
+  pointer-events: none;
+}
+
+/* Active tab — flat lavender pill (per reference), shares the sweep */
+.aurora-tab-active {
+  overflow: hidden;
+  background: #F1EDFE;
+  border: 1px solid #E4DCFC;
+}
+.aurora-tab-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 55%;
+  background: linear-gradient(100deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0) 100%);
+  animation: aurora-sweep 420ms cubic-bezier(0.45,0,0.25,1) 60ms 1 both;
+  pointer-events: none;
+}
+
+/* ── Aurora primary button — violet gradient, tactile lift/settle ─────────── */
+.aurora-primary {
+  background-image: linear-gradient(180deg, #8B6CFA 0%, #7C5CF6 100%);
+  border: 1px solid #6D4DF0;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 1px 2px rgba(109,77,240,0.35);
+  transition: transform 160ms cubic-bezier(0.25,0.8,0.35,1),
+              box-shadow 160ms cubic-bezier(0.25,0.8,0.35,1),
+              filter 160ms cubic-bezier(0.25,0.8,0.35,1);
+}
+.aurora-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 3px 8px rgba(124,92,246,0.35);
+}
+.aurora-primary:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.97);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 0 1px rgba(109,77,240,0.35);
+}
+
+/* ── Aurora Light keyframes + drawer sweep ────────────────────────────────── */
+@keyframes aurora-sweep {
+  from { transform: translateX(-70%); opacity: 0; }
+  12%  { opacity: 1; }
+  to   { transform: translateX(160%); opacity: 0; }
+}
+.aurora-sweep { overflow: hidden; }
+.aurora-sweep::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 45%;
+  background: linear-gradient(100deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0) 100%);
+  animation: aurora-sweep 420ms cubic-bezier(0.45,0,0.25,1) 80ms 1 both;
+  pointer-events: none;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aurora-sweep::before,
+  .aurora-nav-active::before,
+  .aurora-tab-active::before { animation: none; opacity: 0; }
+}
+
+/* ── Sidebar scrollbar polish ─────────────────────────────────────────────── */
 .sidebar-scroll::-webkit-scrollbar { width: 4px; }
-.sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.18); border-radius: 4px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background-color: rgba(28,30,41,0.12); border-radius: 4px; }
 
-/* ── Skeleton shimmer ────────────────────────────────────────────────────── */
+/* ── Skeleton — slow sheen on cool bones ──────────────────────────────────── */
 .skeleton {
-  background: linear-gradient(90deg, hsl(210 40% 95%) 25%, hsl(210 30% 90%) 50%, hsl(210 40% 95%) 75%);
-  background-size: 400px 100%;
-  animation: shimmer 1.3s ease-in-out infinite;
-  border-radius: var(--radius);
+  background: linear-gradient(100deg, #F1F1F6 38%, #F8F8FC 50%, #F1F1F6 62%);
+  background-size: 320% 100%;
+  animation: sheen 2.4s cubic-bezier(0.45,0,0.25,1) infinite;
+  border-radius: calc(var(--radius) - 4px);
 }
-@keyframes shimmer {
-  0%   { background-position: -400px 0; }
-  100% { background-position:  400px 0; }
+@keyframes sheen {
+  0%   { background-position: 110% 0; }
+  100% { background-position: -110% 0; }
 }
 
-/* ── Status pill colours (appointments <select>) ─────────────────────────── */
-.status-select {
-  appearance: none;
-  padding: 5px 30px 5px 14px;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  transition: all 0.18s ease;
-}
-.status-select:focus { outline: none; box-shadow: 0 0 0 3px hsl(var(--accent-blue) / 0.18); }
-.s-Scheduled   { background: #dcfce7; color: #15803d; }
-.s-Rescheduled { background: #fef9c3; color: #854d0e; }
-.s-Submitted   { background: #dbeafe; color: #1d4ed8; }
-.s-Closed      { background: #f1f5f9; color: #475569; }
-.s-Waiting        { background: #ffedd5; color: #c2410c; }
-.s-AwaitingReview { background: #fae8ff; color: #86198f; }
-.s-Reviewed       { background: #dbeafe; color: #1d4ed8; }
-.s-CourtesyDone   { background: #cffafe; color: #0e7490; }
-.s-NotCame        { background: #fee2e2; color: #b91c1c; }
+/* ── Status pill colours — flat soft tints (per reference) ────────────────── */
+.s-Scheduled   { background: #E3F5EB; color: #2F9E68; }
+.s-Rescheduled { background: #FBF3DC; color: #A8811C; }
+.s-Submitted   { background: #F1EDFE; color: #6D4DF0; }
+.s-Closed      { background: #F4F4F9; color: #6E7180; }
+.s-Waiting        { background: #FDEEDD; color: #C46A15; }
+.s-AwaitingReview { background: #F1EDFE; color: #7B54D8; }
+.s-Reviewed       { background: #E7F0FE; color: #2E6BD6; }
+.s-CourtesyDone   { background: #E3F2F6; color: #35839B; }
+.s-NotCame        { background: #FDE8E8; color: #D53B41; }
 
-/* ── Fade/slide entrance for content ─────────────────────────────────────── */
+/* ── Fade/slide entrance for content ──────────────────────────────────────── */
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-in-up { animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-in-up { animation: fade-in-up 0.32s cubic-bezier(0.25, 0.8, 0.35, 1) both; }
+
+/* ── One-time settle for badge count changes ─────────────────────────────── */
+@keyframes badge-in {
+  0%   { transform: scale(0.86); }
+  60%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+.aurora-badge-in { animation: badge-in 320ms cubic-bezier(0.25,0.8,0.35,1) 1 both; }

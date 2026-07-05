@@ -4,7 +4,7 @@ import "@/components/charts/chartSetup";
 import { Bar } from "react-chartjs-2";
 
 const PALETTE = [
-  "#0f62fe", "#10b981", "#f97316", "#8b5cf6",
+  "#5B5BD6", "#10b981", "#f97316", "#8b5cf6",
   "#ef4444", "#06b6d4", "#eab308", "#ec4899",
   "#14b8a6", "#6366f1",
 ];

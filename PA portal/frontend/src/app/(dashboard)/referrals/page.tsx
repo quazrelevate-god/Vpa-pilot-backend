@@ -2,16 +2,20 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  UserPlus, RefreshCw, Plus, QrCode, Lock, Unlock, Users, Calendar, ExternalLink,
+  UserPlus, RefreshCw, Plus, QrCode, Lock, Unlock, Users, CalendarDays,
+  ExternalLink, ChevronRight, Download, CalendarPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
 } from "@/components/ui/dialog";
+import { useLang } from "@/lib/lang-context";
 import { cn, formatDateTime } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -29,31 +33,48 @@ interface OpenDate { id: number; date: string; date_label: string; total_capacit
 interface Booking {
   id: number; token: string; name: string; mobile: string | null;
   num_persons: number; referred_by: string; reason: string;
-  slot: string; booked_at: string | null;
+  slot: string; booked_at: string | null; status?: string;
 }
 interface QrData { qr_url: string; date: string; date_label: string; }
+
+const PERSON_OPTIONS = [2, 4, 6, 8, 10, 12, 15, 20];
 
 function todayIso() { return new Date().toISOString().split("T")[0]; }
 
 // admin-closed = FULL but seats remain
 function isAdminClosed(s: Slot) { return s.status === "FULL" && s.booked_count < s.max_capacity; }
 
+/** Container tint for a slot card, keyed on its live state. */
 function slotColor(s: Slot): string {
-  if (s.status === "BLOCKED") return "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 cursor-pointer";
-  if (s.status === "FULL")    return "border-red-400 bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer";
-  if (s.booked_count === 0)   return "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 cursor-pointer";
-  if (s.remaining === 0)      return "border-red-400 bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer";
-  return "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 cursor-pointer";
+  if (s.status === "BLOCKED") return "border-slate-200 bg-slate-50 hover:border-slate-300";
+  if (s.status === "FULL" || s.remaining === 0) return "border-red-200 bg-red-50/50 hover:border-red-300";
+  if (s.booked_count === 0) return "border-emerald-200 bg-emerald-50/40 hover:border-emerald-300";
+  return "border-amber-200 bg-amber-50/50 hover:border-amber-300";
 }
-function slotBadge(s: Slot): { label: string; cls: string } {
-  if (s.status === "BLOCKED") return { label: "Blocked", cls: "bg-slate-200 text-slate-500" };
-  if (isAdminClosed(s))       return { label: "Closed",  cls: "bg-red-100 text-red-700 ring-1 ring-red-300" };
-  if (s.remaining === 0)      return { label: "Full",    cls: "bg-red-100 text-red-600" };
-  if (s.booked_count > 0)     return { label: `${s.remaining} left`, cls: "bg-amber-100 text-amber-700" };
-  return                             { label: "Open",    cls: "bg-emerald-100 text-emerald-700" };
+function slotBadge(s: Slot, t: (k: string) => string): { label: string; cls: string } {
+  if (s.status === "BLOCKED") return { label: t("ref.slotBlocked"), cls: "text-slate-500" };
+  if (isAdminClosed(s))       return { label: t("ref.slotClosed"),  cls: "text-red-600" };
+  if (s.remaining === 0)      return { label: t("ref.slotFull"),    cls: "text-red-600" };
+  if (s.booked_count > 0)     return { label: `${s.remaining} ${t("ref.slotLeft")}`, cls: "text-amber-600" };
+  return                             { label: t("ref.slotOpen"),    cls: "text-emerald-600" };
+}
+function barColor(s: Slot): string {
+  if (s.status === "BLOCKED") return "bg-slate-400";
+  if (s.status === "FULL" || s.remaining === 0) return "bg-red-500";
+  if (s.booked_count > 0) return "bg-amber-500";
+  return "bg-emerald-500";
+}
+
+function bookingStatus(status: string | undefined, t: (k: string) => string): { label: string; cls: string } {
+  switch ((status || "").toUpperCase()) {
+    case "CAME":     return { label: t("ref.stCame"),    cls: "bg-emerald-100 text-emerald-700" };
+    case "NOT_CAME": return { label: t("ref.stNotCame"), cls: "bg-red-100 text-red-700" };
+    default:         return { label: t("ref.stPending"), cls: "bg-slate-100 text-slate-600" };
+  }
 }
 
 export default function ReferralsPage() {
+  const { t, lang } = useLang();
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [grid, setGrid]         = useState<SlotGrid | null>(null);
   const [openDates, setOpenDates] = useState<OpenDate[]>([]);
@@ -66,6 +87,7 @@ export default function ReferralsPage() {
   const [busyId, setBusyId]     = useState<number | null>(null);
 
   const qrBoxRef = useRef<HTMLDivElement | null>(null);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
   const loadGrid = useCallback(async (d: string) => {
@@ -98,7 +120,7 @@ export default function ReferralsPage() {
       // @ts-expect-error — global from CDN script
       if (window.QRCode) {
         // @ts-expect-error — global
-        new window.QRCode(box, { text: qr.qr_url, width: 200, height: 200, correctLevel: window.QRCode.CorrectLevel.M });
+        new window.QRCode(box, { text: qr.qr_url, width: 160, height: 160, correctLevel: window.QRCode.CorrectLevel.M });
       }
     };
     // @ts-expect-error — global
@@ -136,223 +158,271 @@ export default function ReferralsPage() {
     finally { setBusyId(null); }
   }
 
+  function focusOpenDate() {
+    dateInputRef.current?.focus();
+    dateInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function exportBookings() {
+    if (!bookings.length) { toast.error("No bookings to export."); return; }
+    const headers = ["Token", "Name", "Mobile", "Persons", "Referred by", "Reason", "Slot", "Booked at", "Status"];
+    const lines = bookings.map((b) => [
+      b.token, b.name, b.mobile ?? "", b.num_persons, b.referred_by, b.reason, b.slot,
+      b.booked_at ?? "", bookingStatus(b.status, t).label,
+    ]);
+    const csv = [headers, ...lines].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+    a.download = `referral_bookings_${selectedDate}.csv`;
+    a.click();
+  }
+
   function getDialog(slot: Slot) {
     const lbl = `${slot.start} – ${slot.end}`;
     const counts = `${slot.booked_count}/${slot.max_capacity} booked`;
+    const block = { key: "ref.actBlock", action: "block" as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" };
     if (slot.status === "BLOCKED") return {
-      title: "Blocked Slot", desc: `${lbl} is blocked (${counts}). Unblock to allow bookings.`,
-      actions: [{ label: "Unblock", action: "unblock" as const, cls: "bg-emerald-600 hover:bg-emerald-700 text-white" }],
+      titleKey: "ref.dlgBlocked", desc: `${lbl} is blocked (${counts}). Unblock to allow bookings.`,
+      actions: [{ key: "ref.actUnblock", action: "unblock" as const, cls: "bg-emerald-600 hover:bg-emerald-700 text-white" }],
     };
     if (slot.status === "FULL" && slot.booked_count < slot.max_capacity) return {
-      title: "Closed Slot", desc: `${lbl} was closed early (${counts}). Reopen or block it.`,
-      actions: [
-        { label: "Reopen", action: "reopen" as const, cls: "bg-emerald-600 hover:bg-emerald-700 text-white" },
-        { label: "Block",  action: "block"  as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" },
-      ],
+      titleKey: "ref.dlgClosed", desc: `${lbl} was closed early (${counts}). Reopen or block it.`,
+      actions: [{ key: "ref.actReopen", action: "reopen" as const, cls: "bg-emerald-600 hover:bg-emerald-700 text-white" }, block],
     };
     if (slot.status === "FULL" || slot.booked_count >= slot.max_capacity) return {
-      title: "Full Slot", desc: `${lbl} is full (${counts}). Block it to prevent rebooking.`,
-      actions: [{ label: "Block", action: "block" as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" }],
+      titleKey: "ref.dlgFull", desc: `${lbl} is full (${counts}). Block it to prevent rebooking.`,
+      actions: [block],
     };
     if (slot.booked_count > 0) return {
-      title: "Partially Booked", desc: `${lbl} has ${counts}. Close it (stop new bookings) or block it.`,
-      actions: [
-        { label: "Close", action: "close" as const, cls: "bg-orange-500 hover:bg-orange-600 text-white" },
-        { label: "Block", action: "block" as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" },
-      ],
+      titleKey: "ref.dlgPartial", desc: `${lbl} has ${counts}. Close it (stop new bookings) or block it.`,
+      actions: [{ key: "ref.actClose", action: "close" as const, cls: "bg-orange-500 hover:bg-orange-600 text-white" }, block],
     };
     return {
-      title: "Block Slot?", desc: `${lbl} has no bookings. Block it from citizens.`,
-      actions: [{ label: "Block", action: "block" as const, cls: "bg-slate-700 hover:bg-slate-800 text-white" }],
+      titleKey: "ref.dlgBlock", desc: `${lbl} has no bookings. Block it from citizens.`,
+      actions: [block],
     };
   }
 
   const dlg = confirmSlot ? getDialog(confirmSlot) : null;
+  const dateLabel = grid?.date_label ?? selectedDate;
 
   return (
     <>
-      <TopBar />
-      <main className="flex-1 overflow-y-auto bg-background">
-        <div className="mx-auto max-w-[1200px] space-y-6 p-6 animate-in-up">
-          {/* Header */}
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
-              <UserPlus className="h-6 w-6 text-teal-600" /> Referrals
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Daily QR + slot booking (11 AM – 1 PM). Separate from petitions.
-            </p>
-          </div>
+      <TopBar
+        title={t("ref.title")}
+        subtitle={t("ref.topSubtitle")}
+        icon={<UserPlus className="h-5 w-5" />}
+      />
+      <main className="flex-1 overflow-y-auto bg-background xl:overflow-hidden">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-6 animate-in-up xl:h-full">
+          <p className="shrink-0 text-sm text-muted-foreground">{t("ref.subtitle")}</p>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Top row — QR · Open a date · Open dates */}
+          <div className="grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-3">
             {/* QR card */}
-            <Card className="p-5">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                <QrCode className="h-4 w-4" /> Today's Referral QR
-              </h2>
-              <div className="flex flex-col items-center gap-3">
-                <div ref={qrBoxRef} className="grid h-[200px] w-[200px] place-items-center rounded-lg border border-border bg-white p-2">
+            <Card className="flex flex-col p-5 shadow-card-md">
+              <CardHead icon={QrCode} title={t("ref.qrTitle")} sub={t("ref.qrSubtitle")} />
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 pt-4">
+                <div ref={qrBoxRef} className="grid h-[160px] w-[160px] place-items-center rounded-xl border border-border bg-white p-2 shadow-card">
                   {!qr && <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />}
                 </div>
                 <div className="text-center">
-                  <div className="text-sm font-bold">{qr?.date_label ?? "—"}</div>
-                  <div className="text-[11px] text-muted-foreground">Resets every day. Share with referred persons.</div>
+                  <div className="font-mono text-sm font-bold text-foreground">{qr?.date_label ?? "—"}</div>
+                  <div className="mt-0.5 text-[12px] text-muted-foreground">{t("ref.qrResets")}</div>
                 </div>
                 {qr?.qr_url && (
                   <a href={qr.qr_url} target="_blank" rel="noreferrer"
-                     className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:underline">
-                    <ExternalLink className="h-3 w-3" /> Open referral form
+                     className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-[13px] font-semibold text-brand transition-colors hover:bg-accent/60">
+                    <ExternalLink className="h-3.5 w-3.5" /> {t("ref.openForm")}
                   </a>
                 )}
               </div>
             </Card>
 
-            {/* Open date controls */}
-            <Card className="space-y-3 p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Open a Date</h2>
-              <input type="date" value={selectedDate} min={todayIso()}
-                onChange={e => setSelectedDate(e.target.value)}
-                className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20" />
-              <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Persons per Slot</label>
-                <input type="number" min={1} max={100} value={maxCapacity}
-                  onChange={e => setMaxCapacity(Math.max(1, Math.min(100, Number(e.target.value))))}
-                  className="w-full rounded-lg border border-input bg-card px-3 py-1.5 text-sm focus:border-teal-500 focus:outline-none" />
+            {/* Open a date */}
+            <Card className="flex flex-col p-5 shadow-card-md">
+              <CardHead icon={CalendarDays} title={t("ref.openDate")} sub={t("ref.openDateSub")} />
+              <div className="flex flex-1 flex-col gap-4 pt-4">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("ref.date")}</label>
+                  <Input ref={dateInputRef} type="date" value={selectedDate} min={todayIso()}
+                    onChange={e => setSelectedDate(e.target.value)} className="h-11 rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("ref.personsPerSlot")}</label>
+                  <Select value={String(maxCapacity)} onValueChange={(v) => setMaxCapacity(Number(v))}>
+                    <SelectTrigger className="h-11 rounded-xl text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {PERSON_OPTIONS.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="aurora-primary mt-auto h-11 w-full rounded-xl" onClick={handleOpenDate} disabled={opening || !selectedDate}>
+                  <Plus className="mr-1.5 h-4 w-4" /> {opening ? t("ref.opening") : t("ref.openThisDate")}
+                </Button>
               </div>
-              <Button className="w-full bg-teal-600 hover:bg-teal-700 text-white" onClick={handleOpenDate} disabled={opening || !selectedDate}>
-                <Plus className="mr-2 h-4 w-4" /> {opening ? "Opening…" : "Open This Date"}
-              </Button>
             </Card>
 
             {/* Open dates list */}
-            <Card className="p-5">
-              <h2 className="mb-3 flex items-center gap-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                <Calendar className="h-4 w-4" /> Open Dates
-              </h2>
-              {openDates.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No upcoming open dates.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {openDates.map(d => (
-                    <li key={d.id}>
-                      <button onClick={() => setSelectedDate(d.date)}
-                        className={cn("w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                          selectedDate === d.date ? "border-teal-500 bg-teal-50 font-semibold text-teal-700" : "border-slate-200 hover:border-teal-300 hover:bg-slate-50")}>
-                        <div className="font-medium">{d.date_label}</div>
-                        <div className="text-[11px] text-muted-foreground">{d.booked}/{d.total_capacity} booked · {d.remaining} left</div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <Card className="flex flex-col p-5 shadow-card-md">
+              <div className="mb-1 flex items-center justify-between">
+                <CardHead icon={CalendarDays} title={t("ref.openDates")} />
+                {openDates.length > 0 && (
+                  <span className="text-[13px] font-semibold text-muted-foreground tabular-nums">{openDates.length}</span>
+                )}
+              </div>
+              <div className="flex flex-1 flex-col gap-2 pt-3">
+                {openDates.map((d) => {
+                  const active = selectedDate === d.date;
+                  return (
+                    <button key={d.id} onClick={() => setSelectedDate(d.date)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors",
+                        active ? "border-emerald-300 bg-emerald-50/60 ring-1 ring-emerald-200" : "border-border bg-card hover:bg-muted/50",
+                      )}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-semibold text-foreground">{d.date_label}</span>
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{t("ref.openBadge")}</span>
+                        </div>
+                        <div className="mt-0.5 text-[12px] text-muted-foreground tabular-nums">
+                          {d.booked}/{d.total_capacity} {t("ref.booked")} · {d.remaining} {t("ref.slotsLeft")}
+                        </div>
+                      </div>
+                      <ChevronRight className={cn("h-4 w-4 shrink-0", active ? "text-emerald-600" : "text-muted-foreground/50")} />
+                    </button>
+                  );
+                })}
+                <button onClick={focusOpenDate}
+                  className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-5 text-center transition-colors hover:border-brand/40 hover:bg-accent/40">
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-brand"><CalendarPlus className="h-4 w-4" /></span>
+                  <span className="text-[13px] font-semibold text-foreground">{t("ref.noMoreDates")}</span>
+                  <span className="text-[12px] text-muted-foreground">{t("ref.openNewDate")}</span>
+                </button>
+              </div>
             </Card>
           </div>
 
           {/* Slot grid */}
-          <Card className="p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold">{grid?.date_label ?? selectedDate}</h2>
-                {grid?.has_availability ? (
-                  <p className="text-xs text-muted-foreground">
-                    {grid.booked_total ?? 0}/{grid.total_capacity ?? 0} booked · {grid.blocked_slots ?? 0} blocked · {grid.remaining_total ?? 0} remaining
-                  </p>
-                ) : (
-                  <p className="text-xs text-amber-600">{loadingGrid ? "Loading…" : "Date not open — open it above."}</p>
+          <Card className="shrink-0 p-5 shadow-card-md">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <h2 className="type-card-heading text-foreground">{t("ref.slotsFor")} {dateLabel}</h2>
+                {grid?.has_availability && (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{t("ref.openBadge")}</span>
                 )}
               </div>
-              <button onClick={() => loadGrid(selectedDate)} className="rounded-lg p-2 hover:bg-muted" title="Refresh">
-                <RefreshCw className={cn("h-4 w-4 text-muted-foreground", loadingGrid && "animate-spin")} />
+              <button onClick={() => loadGrid(selectedDate)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                <RefreshCw className={cn("h-3.5 w-3.5", loadingGrid && "animate-spin")} /> {t("ref.refresh")}
               </button>
             </div>
 
-            <div className="mb-4 flex flex-wrap gap-3 text-[11px]">
+            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px]">
               {[
-                { cls: "bg-emerald-100 border border-emerald-300", label: "Available" },
-                { cls: "bg-amber-100 border border-amber-300", label: "Partially booked" },
-                { cls: "bg-red-100 border border-red-400", label: "Full / Closed" },
-                { cls: "bg-slate-100 border border-slate-300", label: "Blocked" },
-              ].map(l => (
-                <span key={l.label} className="flex items-center gap-1">
-                  <span className={cn("inline-block h-3 w-3 rounded-sm", l.cls)} /> {l.label}
+                { cls: "bg-emerald-500", label: t("ref.legendAvailable") },
+                { cls: "bg-amber-500",   label: t("ref.legendPartial") },
+                { cls: "bg-red-500",     label: t("ref.legendFull") },
+                { cls: "bg-slate-400",   label: t("ref.legendBlocked") },
+              ].map((l) => (
+                <span key={l.label} className="flex items-center gap-1.5 text-muted-foreground">
+                  <span className={cn("inline-block h-2.5 w-2.5 rounded-full", l.cls)} /> {l.label}
                 </span>
               ))}
-              <span className="ml-2 text-muted-foreground">Click any slot to manage</span>
+              <span className="text-muted-foreground/70">· {t("ref.clickSlot")}</span>
             </div>
 
             {!grid?.has_availability ? (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {["11:00", "11:30", "12:00", "12:30"].map(t => (
-                  <div key={t} className="flex h-16 items-center justify-center rounded-lg border border-dashed border-slate-200 text-xs text-slate-300">{t}</div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {["11:00 – 11:30", "11:30 – 12:00", "12:00 – 12:30", "12:30 – 01:00"].map((tm) => (
+                  <div key={tm} className="flex h-24 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center text-[12px] text-muted-foreground/50">
+                    <span className="font-semibold">{tm}</span>
+                    <span>{loadingGrid ? t("ref.loading") : t("ref.notOpen")}</span>
+                  </div>
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {(grid.slots ?? []).map(slot => {
-                  const badge = slotBadge(slot);
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {(grid.slots ?? []).map((slot) => {
+                  const badge = slotBadge(slot, t);
                   const loading = busyId === slot.id;
                   return (
-                    <div key={slot.id} onClick={() => setConfirmSlot(slot)}
-                      className={cn("relative flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 transition-all", slotColor(slot), loading && "pointer-events-none opacity-60")}>
+                    <button key={slot.id} onClick={() => setConfirmSlot(slot)}
+                      className={cn("relative flex flex-col gap-2 rounded-xl border p-3.5 text-left transition-all", slotColor(slot), loading && "pointer-events-none opacity-60")}>
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold">{slot.start} – {slot.end}</span>
-                        {slot.status === "BLOCKED" ? <Lock className="h-3 w-3 opacity-60" />
-                          : isAdminClosed(slot) ? <Lock className="h-3 w-3 text-red-500 opacity-80" />
-                          : <Unlock className="h-3 w-3 opacity-30" />}
+                        <span className="text-sm font-semibold text-foreground">{slot.start} – {slot.end}</span>
+                        {slot.status === "BLOCKED" ? <Lock className="h-3.5 w-3.5 text-slate-400" />
+                          : isAdminClosed(slot) ? <Lock className="h-3.5 w-3.5 text-red-500" />
+                          : <Unlock className="h-3.5 w-3.5 text-muted-foreground/30" />}
                       </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/10">
-                        <div className={cn("h-full rounded-full",
-                          slot.status === "FULL" || slot.remaining === 0 ? "bg-red-500" : slot.booked_count > 0 ? "bg-amber-500" : "bg-emerald-500")}
-                          style={{ width: `${(slot.booked_count / slot.max_capacity) * 100}%` }} />
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.07]">
+                        <div className={cn("h-full rounded-full transition-all", barColor(slot))}
+                          style={{ width: `${Math.min(100, (slot.booked_count / Math.max(1, slot.max_capacity)) * 100)}%` }} />
                       </div>
-                      <span className={cn("mt-0.5 self-start rounded px-1.5 py-0.5 text-[10px] font-semibold", badge.cls)}>{badge.label}</span>
-                      <div className="text-[10px] opacity-70">{slot.booked_count}/{slot.max_capacity} bookings</div>
-                      {loading && <div className="absolute inset-0 grid place-items-center rounded-lg bg-white/60"><RefreshCw className="h-4 w-4 animate-spin text-teal-600" /></div>}
-                    </div>
+                      <div className="flex items-baseline justify-between">
+                        <span className={cn("text-[13px] font-semibold", badge.cls)}>{badge.label}</span>
+                        <span className="text-[12px] tabular-nums text-muted-foreground">{slot.booked_count} / {slot.max_capacity} {t("ref.bookingsWord")}</span>
+                      </div>
+                      {loading && <div className="absolute inset-0 grid place-items-center rounded-xl bg-white/60"><RefreshCw className="h-4 w-4 animate-spin text-brand" /></div>}
+                    </button>
                   );
                 })}
               </div>
             )}
           </Card>
 
-          {/* Bookings table */}
-          <Card className="p-0 overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-border p-4">
-              <Users className="h-4 w-4 text-teal-600" />
-              <h2 className="text-sm font-bold">Bookings — {grid?.date_label ?? selectedDate}</h2>
-              <span className="ml-auto text-xs text-muted-foreground">{bookings.length} booking(s)</span>
+          {/* Bookings table — fills the remaining height; body scrolls */}
+          <Card className="overflow-hidden p-0 shadow-card-md xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+            <div className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-4">
+              <Users className="h-4 w-4 text-brand" />
+              <h2 className="type-card-heading text-foreground">{t("ref.bookingsFor")} — {dateLabel}</h2>
+              <span className="ml-auto text-[13px] text-muted-foreground tabular-nums">{bookings.length} {t("ref.bookingCount")}</span>
+              <Button variant="outline" onClick={exportBookings} disabled={!bookings.length} className="h-9 rounded-xl">
+                <Download className="h-4 w-4 text-brand" /> {t("ref.export")}
+              </Button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead className="sticky top-0 z-10 bg-card text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground/80">
                   <tr>
-                    <th className="px-4 py-2.5">Token</th>
-                    <th className="px-4 py-2.5">Name</th>
-                    <th className="px-4 py-2.5">Mobile</th>
-                    <th className="px-4 py-2.5 text-center">Persons</th>
-                    <th className="px-4 py-2.5">Referred By</th>
-                    <th className="px-4 py-2.5">Reason</th>
-                    <th className="px-4 py-2.5">Slot</th>
-                    <th className="px-4 py-2.5">Booked At</th>
+                    <th className="px-4 py-3">{t("ref.colToken")}</th>
+                    <th className="px-4 py-3">{t("ref.colName")}</th>
+                    <th className="px-4 py-3">{t("ref.colMobile")}</th>
+                    <th className="px-4 py-3 text-center">{t("ref.colPersons")}</th>
+                    <th className="px-4 py-3">{t("ref.colReferredBy")}</th>
+                    <th className="px-4 py-3">{t("ref.colReason")}</th>
+                    <th className="px-4 py-3">{t("ref.colSlot")}</th>
+                    <th className="px-4 py-3">{t("ref.colBookedAt")}</th>
+                    <th className="px-4 py-3">{t("ref.colStatus")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {bookings.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No referral bookings for this date.</td></tr>
-                  ) : bookings.map(b => (
-                    <tr key={b.id} className="border-t border-border/70 hover:bg-muted/30">
-                      <td className="px-4 py-2.5 font-mono text-xs text-teal-600">{b.token}</td>
-                      <td className="px-4 py-2.5 font-medium text-foreground">{b.name}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{b.mobile ?? "—"}</td>
-                      <td className="px-4 py-2.5 text-center font-semibold">{b.num_persons}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{b.referred_by}</td>
-                      <td className="px-4 py-2.5 max-w-[200px]">
-                        <span className="block truncate text-muted-foreground" title={b.reason}>{b.reason}</span>
-                      </td>
-                      <td className="px-4 py-2.5">{b.slot}</td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{b.booked_at ? formatDateTime(b.booked_at) : "—"}</td>
-                    </tr>
-                  ))}
+                    <tr><td colSpan={9} className="px-4 py-12 text-center">
+                      <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-accent/60"><Users className="h-6 w-6 text-brand/50" /></div>
+                      <div className="text-base font-semibold text-foreground">{t("ref.noBookings")}</div>
+                      <div className="mt-0.5 text-sm text-muted-foreground">{t("ref.noBookingsSub")}</div>
+                    </td></tr>
+                  ) : bookings.map((b) => {
+                    const st = bookingStatus(b.status, t);
+                    return (
+                      <tr key={b.id} className="border-t border-border/60 transition-colors hover:bg-muted/30">
+                        <td className="px-4 py-3 font-mono text-[13px] font-semibold text-brand">{b.token}</td>
+                        <td className="px-4 py-3 font-medium text-foreground">{b.name}</td>
+                        <td className="px-4 py-3 font-mono text-[13px] text-muted-foreground">{b.mobile ?? "—"}</td>
+                        <td className="px-4 py-3 text-center font-semibold tabular-nums">{b.num_persons}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{b.referred_by}</td>
+                        <td className="max-w-[220px] px-4 py-3">
+                          <span className="block truncate text-muted-foreground" title={b.reason}>{b.reason}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 tabular-nums">{b.slot}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-[13px] text-muted-foreground">{b.booked_at ? formatDateTime(b.booked_at) : "—"}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn("rounded-full px-2.5 py-1 text-[12px] font-semibold", st.cls)}>{st.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -364,17 +434,33 @@ export default function ReferralsPage() {
       <Dialog open={confirmSlot !== null} onOpenChange={(o) => { if (!o) setConfirmSlot(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{dlg?.title}</DialogTitle>
+            <DialogTitle>{dlg ? t(dlg.titleKey) : ""}</DialogTitle>
             <DialogDescription>{dlg?.desc}</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-col gap-2 sm:flex-row">
-            <DialogClose asChild><Button variant="outline" size="sm" className="w-full sm:w-auto">Cancel</Button></DialogClose>
-            {dlg?.actions.map(a => (
-              <Button key={a.action} size="sm" className={cn("w-full sm:w-auto", a.cls)} onClick={() => dispatchAction(a.action)}>{a.label}</Button>
+            <DialogClose asChild><Button variant="outline" size="sm" className="w-full sm:w-auto">{t("ref.dlgCancel")}</Button></DialogClose>
+            {dlg?.actions.map((a) => (
+              <Button key={a.action} size="sm" className={cn("w-full sm:w-auto", a.cls)} onClick={() => dispatchAction(a.action)}>{t(a.key)}</Button>
             ))}
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/* ── Local components ─────────────────────────────────────────────────── */
+
+function CardHead({ icon: Icon, title, sub }: { icon: React.ElementType; title: string; sub?: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent text-brand">
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <div className="type-card-heading leading-tight text-foreground">{title}</div>
+        {sub && <div className="text-[12px] text-muted-foreground">{sub}</div>}
+      </div>
+    </div>
   );
 }

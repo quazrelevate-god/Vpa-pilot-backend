@@ -115,7 +115,7 @@ export default function AppointmentDetailDrawer({
       <SheetContent
         side="right"
         hideClose
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-[95vw]"
+        className="aurora-sweep flex w-full flex-col gap-0 p-0 sm:max-w-[95vw]"
       >
         {!a ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground">Loading…</div>

@@ -1,28 +1,28 @@
 import type { Metadata } from "next";
-import { Catamaran, Fraunces, Noto_Serif_Tamil, IBM_Plex_Mono } from "next/font/google";
+import { Fraunces, IBM_Plex_Mono, Noto_Sans_Tamil, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import SentryInit from "@/components/SentryInit";
 
-// UI / body — warm humanist, covers Latin + Tamil in one family
-const catamaran = Catamaran({
-  subsets: ["latin", "tamil"],
+// UI / body (Latin) — crisp geometric sans (Aurora type spec)
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-catamaran",
+  variable: "--font-jakarta",
   display: "swap",
 });
-// Headlines + long-form reading — elegant serif (Latin)
+// Tamil — matches Latin sizes, weights 400–600 (Aurora type spec)
+const notoTamil = Noto_Sans_Tamil({
+  subsets: ["tamil"],
+  weight: ["400", "500", "600"],
+  variable: "--font-noto-tamil",
+  display: "swap",
+});
+// Display + page titles only (Aurora type spec: 36/600, 32/600)
 const fraunces = Fraunces({
   subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  weight: ["600"],
   variable: "--font-fraunces",
-  display: "swap",
-});
-// Headlines + long-form reading — elegant serif (Tamil)
-const notoSerifTamil = Noto_Serif_Tamil({
-  subsets: ["tamil"],
-  weight: ["400", "600", "700"],
-  variable: "--font-noto-tamil",
   display: "swap",
 });
 // IDs, tokens, tabular numbers
@@ -33,7 +33,7 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-const fontVars = `${catamaran.variable} ${fraunces.variable} ${notoSerifTamil.variable} ${plexMono.variable}`;
+const fontVars = `${jakarta.variable} ${notoTamil.variable} ${fraunces.variable} ${plexMono.variable}`;
 
 export const metadata: Metadata = {
   title: "Petition Management — Staff Portal",
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={fontVars}>
-      <body className="bg-background text-foreground antialiased">
+      <body className="bg-background text-foreground">
         <SentryInit />
         {children}
         <Toaster />

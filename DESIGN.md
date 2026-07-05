@@ -261,6 +261,7 @@ colors: {
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-05 | **Aurora OS 2.1 tokens adopted in the PA portal** (warm porcelain canvas `#F7F5F2`, white paper surfaces, graphite ink `#21222C`, indigo interactive accent `#5B5BD6`, lavender ambient, desaturated urgency/status hues). Type stack, spacing, icons, and all UX unchanged. | User-directed visual update; full spec in `design_principles/07-aurora-os-2-visual-language.md` + `08-craftsmanship-pass.md`. The Color section below describes the superseded Civic Slate values; `globals.css` is the implementation source of truth until this file's token tables are rewritten. |
 | 2026-07-03 | Locked direction: **Civic Slate** | `/design-consultation`. North star "efficient and serious". Chosen over Institutional Modern and Monograph after comparing all three on the live portal. |
 | 2026-07-03 | Primary Slate Indigo `#21395B` + Signal Blue `#2F6FED` accent | Cool, systematic digital-government feel. Signal blue for the one key action. Non-partisan. |
 | 2026-07-03 | Type: Fraunces + Noto Serif Tamil (headlines/reading) over Catamaran (UI/body) | Elegant serif for beautiful reading, humanist sans for efficient dense work. Kept when switching to Civic Slate (originally spec'd IBM Plex Sans) to preserve the elegant-reading goal. |
