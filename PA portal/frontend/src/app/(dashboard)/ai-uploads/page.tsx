@@ -3,32 +3,59 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
-  Sparkles, UploadCloud, Loader2, ArrowRight, ClipboardCheck, FolderUp, Files,
-  Check, X, Clock, AlertTriangle,
+  Sparkles, UploadCloud, Loader2, FolderUp, Files, Check, CheckCircle2,
+  AlertTriangle, MoreVertical, Layers, Tag, ClipboardCheck, FileText,
+  FileCheck2, Flag, ArrowRight, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
+import { CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA } from "@/lib/enums";
 
 interface Row {
   id: number; batch_id: string; filename: string; status: string;
   name: string | null; created_at: string | null; forced_category: string | null;
 }
 
+interface Batch { id: string; items: Row[]; created: string; name: string }
+
 const CATEGORIES = ["action_required","proposals","transfer_requests","pension_requests","school_admission","job_requests","rti","associations_unions","school_upgradation","invitation","greetings","general","other"];
 const ACCEPT = /\.(pdf|jpe?g|png|webp|heic|heif|gif|bmp)$/i;
+const AUTO = "__auto__";
+
+const FEATURES = [
+  { icon: Sparkles,       tTitle: "uploads.feat1Title", tDesc: "uploads.feat1Desc" },
+  { icon: Layers,         tTitle: "uploads.feat2Title", tDesc: "uploads.feat2Desc" },
+  { icon: Tag,            tTitle: "uploads.feat3Title", tDesc: "uploads.feat3Desc" },
+  { icon: ClipboardCheck, tTitle: "uploads.feat4Title", tDesc: "uploads.feat4Desc" },
+];
+
+const GUIDES = ["uploads.guide1", "uploads.guide2", "uploads.guide3", "uploads.guide4"];
 
 export default function AiUploadsPage() {
+  const { t, lang } = useLang();
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [category, setCategory] = useState("");          // "" = Auto
+  const [category, setCategory] = useState("");            // "" = Auto
+  const [dupMode, setDupMode] = useState<"skip" | "allow">("skip");
   const [rows, setRows] = useState<Row[]>([]);
+  const [showAll, setShowAll] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const folderRef = useRef<HTMLInputElement | null>(null);
+
+  const catLabel = useCallback(
+    (c: string) => (lang === "ta" ? CATEGORY_DISPLAY_TA : CATEGORY_DISPLAY_EN)[c] ?? c.replace(/_/g, " "),
+    [lang],
+  );
 
   const load = useCallback(async () => {
     try {
@@ -54,12 +81,41 @@ export default function AiUploadsPage() {
     }
   }, []);
 
+  const retry = useCallback(async (ids: number[]) => {
+    if (!ids.length) return;
+    try {
+      const r = await fetch("/api/ai-uploads/retry", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ ids }),
+      });
+      if (r.ok) { toast.success(`${ids.length} re-queued`); load(); }
+      else toast.error("Retry failed");
+    } catch { toast.error("Network error"); }
+  }, [load]);
+
   // Upload in small chunks (concurrency-limited) under one shared batch id, so a
   // folder of hundreds of files streams in as many small requests instead of one
   // huge body that would blow memory / time out.
   async function handleFiles(fileList: FileList | File[]) {
-    const arr = Array.from(fileList).filter(f => ACCEPT.test(f.name));
+    let arr = Array.from(fileList).filter(f => ACCEPT.test(f.name));
     if (!arr.length) { toast.error("No PDF/image files found"); return; }
+
+    // Client-side duplicate handling — the backend has no dedup, so "Skip
+    // duplicates" drops files whose name already exists (uploaded earlier or
+    // repeated within this drop).
+    if (dupMode === "skip") {
+      const existing = new Set(rows.map(r => r.filename.toLowerCase()));
+      const seen = new Set<string>();
+      const before = arr.length;
+      arr = arr.filter(f => {
+        const k = f.name.toLowerCase();
+        if (existing.has(k) || seen.has(k)) return false;
+        seen.add(k); return true;
+      });
+      const skipped = before - arr.length;
+      if (skipped) toast.info(`${skipped} duplicate file(s) skipped`);
+      if (!arr.length) { toast.error("All files were duplicates — nothing to upload"); return; }
+    }
 
     const batchId = (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`);
     const CHUNK = 6, CONCURRENCY = 2;
@@ -88,7 +144,7 @@ export default function AiUploadsPage() {
     try {
       await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
       if (bad) toast.error(`${bad} file(s) failed to upload`, { description: ok ? `${ok} queued.` : undefined });
-      else toast.success(`${ok} file(s) queued`, { description: "Processing one by one — watch the batch below." });
+      else toast.success(`${ok} file(s) queued`, { description: "Processing one by one — watch the batches below." });
     } finally {
       setUploading(false); setProgress(null);
       if (fileRef.current) fileRef.current.value = "";
@@ -97,147 +153,309 @@ export default function AiUploadsPage() {
     }
   }
 
-  // group rows into batches, newest first
-  const batches = useMemo(() => {
+  // Group rows into batches with a friendly per-day sequential name.
+  const batches = useMemo<Batch[]>(() => {
     const map = new Map<string, Row[]>();
-    rows.forEach(u => { (map.get(u.batch_id) ?? map.set(u.batch_id, []).get(u.batch_id)!).push(u); });
-    return [...map.values()]
-      .map(items => ({ items, created: items[0]?.created_at ?? "" }))
-      .sort((a, b) => (b.created || "").localeCompare(a.created || ""))
-      .slice(0, 8);
+    for (const u of rows) {
+      if (!map.has(u.batch_id)) map.set(u.batch_id, []);
+      map.get(u.batch_id)!.push(u);
+    }
+    const list = [...map.entries()].map(([id, items]) => ({
+      id, items,
+      created: items.reduce<string>((min, r) => (r.created_at && (!min || r.created_at < min) ? r.created_at : min), ""),
+    }));
+    const asc = [...list].sort((a, b) => (a.created || "").localeCompare(b.created || ""));
+    const perDay: Record<string, number> = {};
+    const nameById: Record<string, string> = {};
+    for (const b of asc) {
+      const day = (b.created || "").slice(0, 10) || "batch";
+      perDay[day] = (perDay[day] ?? 0) + 1;
+      nameById[b.id] = `Batch_${day.replace(/-/g, "_")}_${String(perDay[day]).padStart(3, "0")}`;
+    }
+    return list
+      .map(b => ({ ...b, name: nameById[b.id] }))
+      .sort((a, b) => (b.created || "").localeCompare(a.created || ""));
   }, [rows]);
 
+  const stats = useMemo(() => ({
+    totalBatches: new Set(rows.map(r => r.batch_id)).size,
+    totalFiles: rows.length,
+    extracted: rows.filter(r => r.status === "AWAITING_REVIEW" || r.status === "REVIEWED").length,
+    flagged: rows.filter(r => r.status === "FAILED").length,
+  }), [rows]);
+
   const totalAwaiting = rows.filter(u => u.status === "AWAITING_REVIEW").length;
+  const shownBatches = showAll ? batches : batches.slice(0, 4);
 
   return (
     <>
-      <TopBar />
+      <TopBar
+        title={t("uploads.title")}
+        subtitle={t("uploads.topSubtitle")}
+        icon={<Sparkles className="h-5 w-5" />}
+      />
       <main className="flex-1 overflow-y-auto bg-background">
-        <div className="mx-auto max-w-[860px] space-y-6 p-6 animate-in-up">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
-              <Sparkles className="h-6 w-6 text-violet-600" /> AI Uploads
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Drop a batch (or a whole folder) of scanned petitions — Gemini reads each one and queues it for review.
-            </p>
-          </div>
+        <div className="grid gap-4 px-4 py-6 animate-in-up lg:grid-cols-[minmax(0,1fr)_360px]">
+          {/* Left — features · dropzone · batches */}
+          <div className="flex min-w-0 flex-col gap-4">
+            <p className="text-sm text-muted-foreground">{t("uploads.subtitle")}</p>
 
-          {/* Category override */}
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="text-sm font-semibold">Category for this batch</label>
-            <select value={category} onChange={e => setCategory(e.target.value)}
-              className="rounded-lg border border-input bg-card px-3 py-2 text-sm focus:border-violet-500 focus:outline-none">
-              <option value="">Auto — let AI decide</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
-            </select>
-            <span className="text-xs text-muted-foreground">
-              {category ? "Overrides the AI category for every file in this upload." : "AI detects the category per file."}
-            </span>
-          </div>
+            {/* Feature strip */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {FEATURES.map((f) => (
+                <Card key={f.tTitle} className="flex flex-col gap-2 p-4 shadow-card">
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-brand">
+                    <f.icon className="h-4 w-4" />
+                  </span>
+                  <div className="text-sm font-semibold text-foreground">{t(f.tTitle)}</div>
+                  <div className="text-[13px] leading-snug text-muted-foreground">{t(f.tDesc)}</div>
+                </Card>
+              ))}
+            </div>
 
-          {/* Dropzone */}
-          <Card
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
-            className={cn(
-              "flex flex-col items-center justify-center gap-3 border-2 border-dashed p-10 text-center transition-colors",
-              dragOver ? "border-violet-500 bg-violet-50" : "border-border"
-            )}
-          >
-            <input ref={fileRef} type="file" multiple accept=".pdf,image/*" className="hidden"
-              onChange={e => e.target.files && handleFiles(e.target.files)} />
-            <input ref={folderRef} type="file" multiple className="hidden"
-              onChange={e => e.target.files && handleFiles(e.target.files)} />
-            <div className="grid h-14 w-14 place-items-center rounded-2xl bg-violet-100">
-              {uploading ? <Loader2 className="h-7 w-7 animate-spin text-violet-600" /> : <UploadCloud className="h-7 w-7 text-violet-600" />}
-            </div>
-            <div className="text-base font-semibold">
-              {uploading
-                ? (progress ? `Uploading ${progress.done}/${progress.total}…` : "Uploading…")
-                : "Drag files here, or choose below"}
-            </div>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                <Files className="mr-1.5 h-4 w-4" /> Select files
-              </Button>
-              <Button variant="outline" onClick={() => folderRef.current?.click()} disabled={uploading}>
-                <FolderUp className="mr-1.5 h-4 w-4" /> Select folder
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">PDF, JPG, PNG, HEIC · processed one by one</div>
-          </Card>
-
-          {/* Live batch cards */}
-          {batches.length > 0 && (
-            <div className="space-y-3">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Recent batches</div>
-              {batches.map((b, i) => <BatchCard key={i} items={b.items} />)}
-            </div>
-          )}
-
-          {/* Review CTA */}
-          <Link href="/ai-review">
-            <Card className="flex items-center gap-4 p-5 transition-colors hover:border-violet-300 hover:bg-violet-50/40 cursor-pointer">
-              <div className="grid h-11 w-11 place-items-center rounded-xl bg-amber-100">
-                <ClipboardCheck className="h-5 w-5 text-amber-700" />
+            {/* Dropzone */}
+            <Card
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
+              className={cn(
+                "flex flex-col items-center justify-center gap-3 border-2 border-dashed p-10 text-center transition-colors",
+                dragOver ? "border-brand bg-accent/60" : "border-[#D9D2F0]",
+              )}
+            >
+              <input ref={fileRef} type="file" multiple accept=".pdf,image/*" className="hidden"
+                onChange={e => e.target.files && handleFiles(e.target.files)} />
+              <input ref={folderRef} type="file" multiple className="hidden"
+                onChange={e => e.target.files && handleFiles(e.target.files)} />
+              <div className="grid h-16 w-16 place-items-center rounded-2xl bg-accent">
+                {uploading ? <Loader2 className="h-7 w-7 animate-spin text-brand" /> : <UploadCloud className="h-7 w-7 text-brand" />}
               </div>
-              <div className="flex-1">
-                <div className="font-semibold">Review extracted petitions</div>
-                <div className="text-sm text-muted-foreground">
-                  {totalAwaiting > 0 ? `${totalAwaiting} petition(s) awaiting your review` : "Open the review queue to verify & approve into tickets"}
-                </div>
+              <div className="text-lg font-semibold text-foreground">
+                {uploading
+                  ? (progress ? `${t("uploads.uploading")} ${progress.done}/${progress.total}…` : `${t("uploads.uploading")}…`)
+                  : t("uploads.dropHere")}
               </div>
-              {totalAwaiting > 0 && <span className="grid h-7 min-w-7 place-items-center rounded-full bg-amber-500 px-2 text-sm font-bold text-white">{totalAwaiting}</span>}
-              <ArrowRight className="h-5 w-5 text-muted-foreground" />
+              {!uploading && <div className="text-sm text-muted-foreground">{t("uploads.or")}</div>}
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button variant="outline" className="rounded-xl" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                  <Files className="mr-1.5 h-4 w-4 text-brand" /> {t("uploads.selectFiles")}
+                </Button>
+                <Button variant="outline" className="rounded-xl" onClick={() => folderRef.current?.click()} disabled={uploading}>
+                  <FolderUp className="mr-1.5 h-4 w-4 text-brand" /> {t("uploads.selectFolder")}
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">{t("uploads.formats")}</div>
             </Card>
-          </Link>
+
+            {/* Recent batches */}
+            <Card className="p-5 shadow-card-md">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="type-card-heading text-foreground">{t("uploads.recentBatches")}</h3>
+                <Link href="/ai-review" className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand hover:underline">
+                  {t("uploads.reviewQueue")}
+                  {totalAwaiting > 0 && (
+                    <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-brand-foreground">{totalAwaiting}</span>
+                  )}
+                </Link>
+              </div>
+
+              {batches.length === 0 ? (
+                <div className="grid place-items-center gap-2 py-10 text-center text-sm text-muted-foreground">
+                  <UploadCloud className="h-9 w-9 text-muted-foreground/30" />
+                  {t("uploads.noBatches")}
+                </div>
+              ) : (
+                <div className="flex flex-col divide-y divide-border">
+                  {shownBatches.map((b) => (
+                    <BatchRow key={b.id} batch={b} t={t} lang={lang} onRetry={retry} />
+                  ))}
+                </div>
+              )}
+
+              {batches.length > 4 && (
+                <button
+                  onClick={() => setShowAll((s) => !s)}
+                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-semibold text-brand transition-colors hover:bg-accent/60"
+                >
+                  {showAll ? t("uploads.showLess") : t("uploads.viewAll")}
+                  <ArrowRight className={cn("h-3.5 w-3.5 transition-transform", showAll && "rotate-90")} />
+                </button>
+              )}
+            </Card>
+          </div>
+
+          {/* Right rail — settings · summary · guidelines */}
+          <aside className="flex flex-col gap-4">
+            {/* Upload settings */}
+            <Card className="p-5 shadow-card-md">
+              <h3 className="type-card-heading mb-4 flex items-center gap-2 text-foreground">
+                <Sparkles className="h-4 w-4 text-brand" /> {t("uploads.settings")}
+              </h3>
+
+              <label className="mb-1.5 block text-sm font-semibold text-foreground">{t("uploads.categoryLabel")}</label>
+              <Select value={category === "" ? AUTO : category} onValueChange={(v) => setCategory(v === AUTO ? "" : v)}>
+                <SelectTrigger className={cn("h-11 rounded-xl text-sm", category && "border-brand/40 bg-brand/5 font-semibold text-brand")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AUTO}>{t("uploads.categoryAuto")}</SelectItem>
+                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{catLabel(c)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="mt-1.5 text-[13px] text-muted-foreground">
+                {category ? t("uploads.categoryHelpForced") : t("uploads.categoryHelp")}
+              </p>
+
+              <label className="mb-1.5 mt-5 block text-sm font-semibold text-foreground">{t("uploads.dupLabel")}</label>
+              <Select value={dupMode} onValueChange={(v) => setDupMode(v as "skip" | "allow")}>
+                <SelectTrigger className="h-11 rounded-xl text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="skip">{t("uploads.dupSkip")}</SelectItem>
+                  <SelectItem value="allow">{t("uploads.dupAllow")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1.5 text-[13px] text-muted-foreground">
+                {dupMode === "skip" ? t("uploads.dupHelp") : t("uploads.dupHelpAllow")}
+              </p>
+
+              <div className="mt-4 flex items-start gap-2 rounded-xl bg-accent/60 p-3 text-[13px] text-brand">
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{t("uploads.tip")}</span>
+              </div>
+            </Card>
+
+            {/* Batch summary */}
+            <Card className="p-5 shadow-card-md">
+              <h3 className="type-card-heading mb-4 flex items-center gap-2 text-foreground">
+                <Layers className="h-4 w-4 text-brand" /> {t("uploads.summary")}
+              </h3>
+              <div className="flex flex-col gap-2.5">
+                <SummaryRow icon={Layers}     tint="bg-accent text-brand"          label={t("uploads.totalBatches")}   value={stats.totalBatches} />
+                <SummaryRow icon={FileText}   tint="bg-sky-100 text-sky-700"       label={t("uploads.totalFiles")}     value={stats.totalFiles} />
+                <SummaryRow icon={FileCheck2} tint="bg-emerald-100 text-emerald-700" label={t("uploads.totalExtracted")} value={stats.extracted} />
+                <SummaryRow icon={Flag}       tint="bg-amber-100 text-amber-700"   label={t("uploads.totalFlagged")}   value={stats.flagged} />
+              </div>
+            </Card>
+
+            {/* Processing guidelines */}
+            <Card className="p-5 shadow-card-md">
+              <h3 className="type-card-heading mb-4 text-foreground">{t("uploads.guidelines")}</h3>
+              <ul className="flex flex-col gap-2.5">
+                {GUIDES.map((g) => (
+                  <li key={g} className="flex items-start gap-2.5 text-sm text-foreground/85">
+                    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+                      <Check className="h-3 w-3" />
+                    </span>
+                    {t(g)}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </aside>
         </div>
       </main>
     </>
   );
 }
 
-function BatchCard({ items }: { items: Row[] }) {
+/* ── Local components ─────────────────────────────────────────────────── */
+
+function BatchRow({ batch, t, lang, onRetry }: {
+  batch: Batch; t: (k: string) => string; lang: string; onRetry: (ids: number[]) => void;
+}) {
+  const items = batch.items;
   const total = items.length;
   const c = items.reduce((a, u) => { a[u.status] = (a[u.status] || 0) + 1; return a; }, {} as Record<string, number>);
-  const done = (c.AWAITING_REVIEW || 0) + (c.REVIEWED || 0);
-  const failed = c.FAILED || 0;
+  const extracted = (c.AWAITING_REVIEW || 0) + (c.REVIEWED || 0);
+  const flagged = c.FAILED || 0;
   const active = (c.QUEUED || 0) + (c.PROCESSING || 0);
-  const pct = Math.round(((done + failed) / total) * 100);
-  const when = items[0]?.created_at ? new Date(items[0].created_at).toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : "";
-  const forced = items[0]?.forced_category;
+  const processed = extracted + flagged;
+  const pct = total ? Math.round((processed / total) * 100) : 0;
+
+  const state: "processing" | "issues" | "completed" =
+    active > 0 ? "processing" : flagged > 0 ? "issues" : "completed";
+  const when = batch.created
+    ? new Date(batch.created).toLocaleString(lang === "ta" ? "ta-IN" : undefined, {
+        day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+      })
+    : "";
+  const failedIds = items.filter(u => u.status === "FAILED").map(u => u.id);
+
+  const badge = {
+    processing: { label: t("uploads.stProcessing"), cls: "bg-blue-100 text-blue-700", Icon: Loader2,      iconTint: "bg-blue-100 text-blue-600" },
+    issues:     { label: t("uploads.stIssues"),     cls: "bg-amber-100 text-amber-700", Icon: AlertTriangle, iconTint: "bg-amber-100 text-amber-600" },
+    completed:  { label: t("uploads.stCompleted"),  cls: "bg-emerald-100 text-emerald-700", Icon: CheckCircle2, iconTint: "bg-emerald-100 text-emerald-600" },
+  }[state];
 
   return (
-    <Card className="p-4">
-      <div className="mb-2 flex items-center justify-between text-sm">
-        <div className="flex items-center gap-2 font-semibold">
-          {active > 0 ? <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> : <Check className="h-4 w-4 text-emerald-600" />}
-          {total} file{total > 1 ? "s" : ""}
-          {forced && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">{forced.replace(/_/g, " ")}</span>}
+    <div className="flex items-center gap-3 py-3.5">
+      <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", badge.iconTint)}>
+        <badge.Icon className={cn("h-5 w-5", state === "processing" && "animate-spin")} />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate font-mono text-sm font-semibold text-foreground">{batch.name}</span>
+          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", badge.cls)}>{badge.label}</span>
         </div>
-        <span className="text-xs text-muted-foreground">{when}</span>
+        <div className="mt-0.5 text-[13px] text-muted-foreground">{t("uploads.uploadedOn")} {when}</div>
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className={cn("h-full rounded-full transition-all",
+            state === "processing" ? "bg-blue-500" : state === "issues" ? "bg-amber-500" : "bg-emerald-500")}
+            style={{ width: `${pct}%` }} />
+        </div>
+        <div className="mt-1 text-[12px] tabular-nums text-muted-foreground">
+          {processed} / {total} {t("uploads.filesProcessed")}
+        </div>
       </div>
-      <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-        <div className={cn("h-full rounded-full transition-all", failed && !active ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${pct}%` }} />
+
+      <div className="hidden shrink-0 items-center gap-5 sm:flex">
+        <BatchStat icon={FileCheck2} value={extracted} label={t("uploads.extracted")} cls="text-emerald-600" />
+        <BatchStat icon={Flag}       value={flagged}   label={t("uploads.flagged")}   cls={flagged ? "text-amber-600" : "text-muted-foreground"} />
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium">
-        <Stat icon={Clock}        n={c.QUEUED || 0}          label="Queued"   cls="text-slate-500" />
-        <Stat icon={Loader2}      n={c.PROCESSING || 0}      label="Processing" cls="text-blue-600" spin />
-        <Stat icon={AlertTriangle} n={c.AWAITING_REVIEW || 0} label="Ready"    cls="text-amber-600" />
-        <Stat icon={Check}        n={c.REVIEWED || 0}        label="Reviewed" cls="text-emerald-600" />
-        <Stat icon={X}            n={failed}                 label="Failed"   cls="text-red-600" />
-      </div>
-    </Card>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button aria-label={batch.name}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground">
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          {failedIds.length > 0 && (
+            <DropdownMenuItem onSelect={() => onRetry(failedIds)}>
+              <RefreshCw className="h-3.5 w-3.5" /> {t("uploads.retryFailed")} ({failedIds.length})
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem asChild>
+            <Link href="/ai-review"><ClipboardCheck className="h-3.5 w-3.5" /> {t("uploads.openReview")}</Link>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
-function Stat({ icon: Icon, n, label, cls, spin }: { icon: React.ElementType; n: number; label: string; cls: string; spin?: boolean }) {
-  if (!n) return null;
+function BatchStat({ icon: Icon, value, label, cls }: { icon: React.ElementType; value: number; label: string; cls: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-1", cls)}>
-      <Icon className={cn("h-3 w-3", spin && "animate-spin")} /> {n} {label}
-    </span>
+    <div className="flex items-center gap-2">
+      <Icon className={cn("h-4 w-4", cls)} />
+      <div className="leading-tight">
+        <div className={cn("text-sm font-bold tabular-nums", cls)}>{value}</div>
+        <div className="text-[11px] text-muted-foreground">{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({ icon: Icon, tint, label, value }: { icon: React.ElementType; tint: string; label: string; value: number }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", tint)}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="flex-1 text-sm text-muted-foreground">{label}</span>
+      <span className="font-mono text-lg font-bold tabular-nums text-foreground">{value.toLocaleString()}</span>
+    </div>
   );
 }

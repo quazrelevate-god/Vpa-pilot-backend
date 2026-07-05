@@ -17,6 +17,7 @@ from src.core.database import get_db
 from src.core.utils import generate_device_fingerprint
 from src.core.config import settings
 from src.models.qr_models import GatekeeperSession
+from src.services.admin_lookup import admin
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -113,6 +114,13 @@ async def display_form(
                 status_code=302,
             )
         
+        # Categories from admin lookup cache — reflect any admin-table changes
+        # without redeploying. Tamil labels stay in the template JS dictionary;
+        # unknown keys fall back to the English name.
+        if not admin.is_loaded:
+            await admin.load(db)
+        category_keys = admin.names_for("category")
+
         # Render HTML form from template
         response = templates.TemplateResponse(
             "form.jinja2",
@@ -123,6 +131,7 @@ async def display_form(
                 "audio_max_seconds": settings.AUDIO_MAX_DURATION_SECONDS,
                 "max_file_size_mb": settings.MAX_FILE_SIZE_MB,
                 "allowed_file_extensions": settings.ALLOWED_FILE_EXTENSIONS,
+                "category_keys": category_keys,
             },
         )
         # Prevent browser from caching the form page — so back-button

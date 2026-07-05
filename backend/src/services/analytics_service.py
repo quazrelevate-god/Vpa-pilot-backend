@@ -59,7 +59,8 @@ def _conditions(f: Filters, exclude: Optional[str] = None) -> Tuple[list, list]:
         if f.date_from: appt.append(Appointment.created_at >= f.date_from)
         if f.date_to:   appt.append(Appointment.created_at <= f.date_to)
     if exclude != "category" and f.category:   appt.append(Appointment.grievance_category == f.category)
-    if exclude != "channel"  and f.channel:    appt.append(Appointment.source == f.channel)
+    # v2: source column removed — channel filter is a no-op until source
+    # is reintroduced (or derived from a different signal).
     if exclude != "status"   and f.status:     appt.append(Appointment.status == f.status)
     if exclude != "priority" and f.priority: gsr.append(GSR.priority == f.priority)
     if exclude != "ministry" and f.ministry: gsr.append(GSR.ministry == f.ministry)
@@ -103,7 +104,8 @@ class AnalyticsService:
         # Charts — each excludes its own dimension for cross-filtering
         categories = await self._group(db, f, Appointment.grievance_category, exclude="category", labels=CATEGORY_DISPLAY_EN)
         ministries = await self._group(db, f, GSR.ministry, exclude="ministry", labels=MINISTRY_DISPLAY, force_gsr=True, limit=8)
-        channels = await self._group(db, f, Appointment.source, exclude="channel", labels=CHANNEL_LABELS)
+        # v2: source column removed — channels dimension returns empty for now.
+        channels: List[Dict[str, Any]] = []
         priority = await self._priority(db, f)
         trend = await self._trend(db, f)
 
@@ -169,10 +171,12 @@ class AnalyticsService:
         }.get(sort, Appointment.created_at)
         order = sort_col.asc() if direction == "asc" else sort_col.desc()
 
+        # v2: encrypted_name, source, schedule_meeting columns removed on Appointment.
+        # Name comes from citizen; meeting flag derived from slot_id.
         stmt = _scoped(
             select(
-                Appointment.id, Appointment.token_assigned, Appointment.encrypted_name,
-                Appointment.grievance_category, Appointment.status, Appointment.source,
+                Appointment.id, Appointment.token_assigned,
+                Appointment.grievance_category, Appointment.status,
                 Appointment.schedule_meeting, Appointment.created_at,
                 Citizen.encrypted_name.label("c_name"), Citizen.encrypted_mobile.label("c_mobile"),
                 GSR.priority, GSR.citizen_ask,
@@ -184,7 +188,7 @@ class AnalyticsService:
         rows = (await db.execute(stmt)).all()
         items = []
         for r in rows:
-            name = _decode(r.encrypted_name) if r.encrypted_name else (_decode(r.c_name) if r.c_name else "—")
+            name = _decode(r.c_name) if r.c_name else "—"
             mobile = _decode(r.c_mobile) if r.c_mobile else "—"
             items.append({
                 "id": r.id,
@@ -195,8 +199,8 @@ class AnalyticsService:
                 "category_label": CATEGORY_DISPLAY_EN.get(r.grievance_category, (r.grievance_category or "—").replace("_", " ").title()),
                 "priority": r.priority,
                 "status": r.status,
-                "source": r.source,
-                "source_label": CHANNEL_LABELS.get(r.source, r.source),
+                "source": None,          # v2: column removed
+                "source_label": "—",     # v2: column removed
                 "citizen_ask": r.citizen_ask,
                 "schedule_meeting": r.schedule_meeting,
                 "created_at": r.created_at.isoformat() if r.created_at else None,

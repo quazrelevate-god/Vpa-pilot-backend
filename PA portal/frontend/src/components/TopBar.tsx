@@ -6,63 +6,67 @@ import { cn } from "@/lib/utils";
 
 interface TopBarProps {
   rightSlot?: React.ReactNode;
+  /** Page search field, rendered in the header per the Aurora reference. */
+  searchSlot?: React.ReactNode;
   /** Page-specific title shown in the header. Falls back to "topbar.title". */
   title?: string;
   /** Page-specific subtitle shown above the title. Falls back to "topbar.subtitle". */
   subtitle?: string;
   /** Page-specific icon. Defaults to the brand shield. */
   icon?: React.ReactNode;
+  /** Signed-in user — retained for callers; not shown in the header. */
+  user?: string;
 }
 
-export default function TopBar({ rightSlot, title, subtitle, icon }: TopBarProps) {
+export default function TopBar({ rightSlot, searchSlot, title, subtitle, icon }: TopBarProps) {
   const { lang, setLang, t } = useLang();
   const headerTitle = title ?? t("topbar.title");
   const headerSubtitle = subtitle ?? t("topbar.subtitle");
   const headerIcon = icon ?? <ShieldCheck className="h-4 w-4" />;
 
   return (
-    <header className="sticky top-0 z-30 h-16 flex-shrink-0 border-b border-border bg-card/80 backdrop-blur-md">
-      <div className="flex h-full items-center justify-between px-6">
+    <header className="sticky top-0 z-30 h-20 flex-shrink-0 border-b border-border bg-card">
+      <div className="flex h-full items-center gap-4 px-6">
         {/* Left — page identity */}
-        <div className="flex items-center gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-md bg-primary/5 text-primary ring-1 ring-primary/10">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl border border-border bg-card text-brand shadow-card">
             {headerIcon}
           </div>
-          <div className="leading-tight">
-            <div className="text-lg font-bold tracking-tight text-sidebar">
+          <div className="min-w-0 leading-tight">
+            <div className="type-page-title truncate text-foreground">
               {headerTitle}
             </div>
-            <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="mt-0.5 truncate text-[12px] font-medium text-muted-foreground">
               {headerSubtitle}
             </div>
           </div>
         </div>
 
-        {/* Right — lang toggle + page slot */}
-        <div className="flex items-center gap-3">
-          {/* EN / த pill toggle */}
-          <div className="flex items-center rounded-full border border-border bg-muted/50 p-0.5 text-xs font-bold">
-            <button
-              onClick={() => setLang("en")}
-              className={cn(
-                "rounded-full px-3 py-1 transition-all",
-                lang === "en"
-                  ? "bg-[#0f62fe] text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              EN
-            </button>
+        {/* Center-right — page search (Aurora Recall) */}
+        {searchSlot != null && (
+          <div className="ml-auto hidden w-full max-w-md md:block">{searchSlot}</div>
+        )}
+
+        {/* Right — language toggle */}
+        <div className={cn("flex flex-shrink-0 items-center gap-2.5", searchSlot == null && "ml-auto")}>
+          <div className="flex items-center rounded-full border border-border bg-card p-0.5 text-xs font-bold shadow-card">
             <button
               onClick={() => setLang("ta")}
               className={cn(
-                "rounded-full px-3 py-1 transition-all",
-                lang === "ta"
-                  ? "bg-[#0f62fe] text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                "rounded-full px-3.5 py-1.5 transition-all",
+                lang === "ta" ? "bg-foreground text-card shadow-card" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              த
+              தமிழ்
+            </button>
+            <button
+              onClick={() => setLang("en")}
+              className={cn(
+                "rounded-full px-3.5 py-1.5 transition-all",
+                lang === "en" ? "bg-foreground text-card shadow-card" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              English
             </button>
           </div>
 

@@ -1,32 +1,37 @@
 """
-Scheduling service — 30-minute fixed slots, 6 citizens max per slot.
+Scheduling service — 30-minute fixed slots, up to MAX_CAPACITY citizens each.
 
-Booking is concurrency-safe via SELECT ... FOR UPDATE: if two citizens
-try to book the 6th seat simultaneously, the second transaction sees
-booked_count == max_capacity after waiting for the lock and gets a
-"Slot full" error with no double-booking.
+v2 schema notes:
+- appointment.slot_id is the sole booking link (SlotBooking junction removed).
+- Reschedule + waiting-queue events log to `activity` (Activity model), not
+  the removed AppointmentEvent / RescheduleLog tables.
+- Scheduled date/time are derived from slot + availability on read, not
+  stored on appointment.
+- availability.is_open (bool) replaces the ACTIVE/CANCELLED string status.
+
+Booking stays concurrency-safe via SELECT ... FOR UPDATE on the slot row.
 """
-import base64
 from datetime import datetime, date, time, timedelta
 from typing import Optional, Dict, List
 
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+from src.services.v2_helpers import v2
 
 from src.models.scheduling_models import (
     MLA,
     MLADailyAvailability,
     AppointmentSlot,
-    SlotBooking,
-    RescheduleLog,
     FIXED_START_TIME,
     FIXED_END_TIME,
     SLOT_DURATION,
     MAX_CAPACITY,
     TOTAL_SLOTS,
 )
-from src.models.appointment_models import Appointment, Citizen, AppointmentEvent
+from src.models.appointment_models import Appointment, Citizen
+from src.models.activity_models import Activity
 from src.core.utils import utc_iso
 
 
@@ -66,15 +71,8 @@ class SchedulingService:
     ) -> Dict:
         """
         Open target_date for bookings.
-
-        - Creates MLADailyAvailability + 20 AppointmentSlot rows.
-        - Slots within [available_from, available_to) are AVAILABLE;
-          all others are BLOCKED. Default window: 14:00–16:00.
-        - max_capacity overrides the global MAX_CAPACITY per slot.
-        - If the date is already open with zero bookings, it is reset.
-        - If any booking exists, raises ValueError.
+        Creates MLADailyAvailability (is_open=True) + 20 AppointmentSlot rows.
         """
-        # Default window: 2 PM – 4 PM
         if available_from is None:
             available_from = time(14, 0)
         if available_to is None:
@@ -87,7 +85,6 @@ class SchedulingService:
                 "Only today or future dates are allowed."
             )
 
-        # Use SELECT ... FOR UPDATE to prevent race condition between concurrent workers
         existing_result = await db.execute(
             select(MLADailyAvailability)
             .where(MLADailyAvailability.mla_id == mla_id)
@@ -105,30 +102,20 @@ class SchedulingService:
                     f"{target_date.strftime('%d %b %Y')} already has {total_booked} booking(s). "
                     "Cancel existing bookings before resetting this date."
                 )
-            # No bookings — safe to recreate
-            await db.execute(
-                delete(AppointmentSlot)
-                .where(AppointmentSlot.availability_id == existing.id)
-            )
+            # No bookings — safe to recreate (cascade drops slots)
             await db.delete(existing)
             await db.flush()
 
         avail = MLADailyAvailability(
-            mla_id     = mla_id,
-            date       = target_date,
-            start_time = FIXED_START_TIME,
-            end_time   = FIXED_END_TIME,
-            status     = "ACTIVE",
-            created_by = created_by,
+            mla_id  = mla_id,
+            date    = target_date,
+            is_open = True,
         )
         db.add(avail)
         await db.flush()
 
         available_slots_count = 0
         for slot_num, start, end in _slot_times():
-            # Slot is AVAILABLE only if its start is within the availability window.
-            # All other slots are BLOCKED by default so the PA doesn't have to
-            # manually block each one.
             in_window = available_from <= start < available_to
             slot_status = "AVAILABLE" if in_window else "BLOCKED"
             if in_window:
@@ -171,17 +158,13 @@ class SchedulingService:
         db: AsyncSession,
         target_date: Optional[date] = None,
     ) -> Dict:
-        """
-        Return all 20 slots for target_date with per-slot availability.
-        Used by the citizen form slot picker.
-        """
         if target_date is None:
             target_date = date.today()
 
         avail = await db.scalar(
             select(MLADailyAvailability)
-            .where(MLADailyAvailability.date   == target_date)
-            .where(MLADailyAvailability.status == "ACTIVE")
+            .where(MLADailyAvailability.date    == target_date)
+            .where(MLADailyAvailability.is_open == True)  # noqa: E712
         )
         if not avail:
             return {
@@ -202,8 +185,6 @@ class SchedulingService:
         slot_list = []
         any_available = False
         for s in slots:
-            # Citizen form only shows slots the PA has made available.
-            # BLOCKED slots are hidden entirely.
             if s.status == "BLOCKED":
                 continue
             remaining   = s.max_capacity - s.booked_count
@@ -224,24 +205,20 @@ class SchedulingService:
             })
 
         return {
-            "available":      any_available,          # at least one bookable slot
-            "has_open_slots": len(slot_list) > 0,     # any non-blocked slot exists
+            "available":      any_available,
+            "has_open_slots": len(slot_list) > 0,
             "date":           target_date.isoformat(),
             "date_label":     target_date.strftime("%d %b %Y"),
             "slots":          slot_list,
         }
 
-    # ── Citizen: list open dates (public, no auth) ───────────────────────────
+    # ── Citizen: list open dates ─────────────────────────────────────────────
 
     async def list_open_dates_public(self, db: AsyncSession) -> List[Dict]:
-        """
-        Return future dates that are open AND have at least one non-blocked slot.
-        Used by the citizen form date picker so it only offers real dates.
-        """
         result = await db.execute(
             select(MLADailyAvailability)
-            .where(MLADailyAvailability.status == "ACTIVE")
-            .where(MLADailyAvailability.date   >= date.today())
+            .where(MLADailyAvailability.is_open == True)  # noqa: E712
+            .where(MLADailyAvailability.date    >= date.today())
             .order_by(MLADailyAvailability.date)
         )
         dates: List[Dict] = []
@@ -259,14 +236,6 @@ class SchedulingService:
         return dates
 
     async def has_meeting_availability(self, db: AsyncSession) -> Dict:
-        """
-        Returns whether ANY bookable meeting slot exists across all open future
-        dates (status AVAILABLE and remaining capacity > 0). Used by the citizen
-        form to decide whether to offer the 'Meet the Minister' button at all.
-        Single efficient query — no per-date loop. Excludes today's slots whose
-        start time has already passed (IST), so the option never shows when only
-        past slots remain.
-        """
         from sqlalchemy import and_, or_
         now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
         today   = now_ist.date()
@@ -274,8 +243,8 @@ class SchedulingService:
         count = await db.scalar(
             select(func.count(AppointmentSlot.id))
             .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
-            .where(MLADailyAvailability.status == "ACTIVE")
-            .where(MLADailyAvailability.date   >= today)
+            .where(MLADailyAvailability.is_open == True)  # noqa: E712
+            .where(MLADailyAvailability.date    >= today)
             .where(AppointmentSlot.status      == "AVAILABLE")
             .where(AppointmentSlot.booked_count < AppointmentSlot.max_capacity)
             .where(or_(
@@ -296,10 +265,7 @@ class SchedulingService:
     ) -> Dict:
         """
         Book citizen into slot_id using SELECT ... FOR UPDATE.
-
-        If two citizens race for the last seat:
-        - First one locks the row, increments booked_count, commits.
-        - Second one waits, sees booked_count == max_capacity, raises ValueError.
+        v2: appointment.slot_id is set directly (no SlotBooking junction).
         """
         slot = await db.scalar(
             select(AppointmentSlot)
@@ -313,28 +279,22 @@ class SchedulingService:
         if slot.booked_count >= slot.max_capacity:
             raise ValueError("Slot full, kindly select another slot.")
 
-        # Personal sub-slot: interval = floor(slot_duration / max_capacity)
-        # e.g. 6 persons → 30/6 = 5 min each;  12 persons → 30/12 = 2 min each
-        sub_index        = slot.booked_count  # 0-based, before increment
+        sub_index        = slot.booked_count
         interval_minutes = max(1, SLOT_DURATION // slot.max_capacity)
         assigned_time    = (
             datetime.combine(date.min, slot.start_time)
             + timedelta(minutes=sub_index * interval_minutes)
         ).time()
 
-        # Reserve the seat
         slot.booked_count += 1
         if slot.booked_count >= slot.max_capacity:
             slot.status = "FULL"
 
-        db.add(SlotBooking(slot_id=slot.id, appointment_id=appointment.id))
-
         avail = await db.get(MLADailyAvailability, slot.availability_id)
-        appointment.status               = "SCHEDULED"
-        appointment.scheduled_date       = avail.date
-        appointment.scheduled_start_time = assigned_time
-        appointment.scheduled_end_time   = slot.end_time
-        appointment.appointment_slot_id  = slot.id
+        appointment.status           = "SCHEDULED"
+        appointment.status_id        = v2.appointment_status_id("SCHEDULED")
+        appointment.slot_id          = slot.id
+        appointment.schedule_meeting = True  # persistent intent
 
         if commit:
             await db.commit()
@@ -358,25 +318,17 @@ class SchedulingService:
         appointment: Appointment,
         commit: bool = True,
     ) -> None:
-        """Remove the citizen's SlotBooking and decrement slot.booked_count."""
-        if not appointment.appointment_slot_id:
+        """Clear appointment.slot_id and decrement slot.booked_count."""
+        if not appointment.slot_id:
             return
 
-        await db.execute(
-            delete(SlotBooking)
-            .where(SlotBooking.appointment_id == appointment.id)
-        )
-
-        slot = await db.get(AppointmentSlot, appointment.appointment_slot_id)
+        slot = await db.get(AppointmentSlot, appointment.slot_id)
         if slot:
             slot.booked_count = max(0, slot.booked_count - 1)
             if slot.status == "FULL" and slot.booked_count < slot.max_capacity:
                 slot.status = "AVAILABLE"
 
-        appointment.appointment_slot_id  = None
-        appointment.scheduled_date       = None
-        appointment.scheduled_start_time = None
-        appointment.scheduled_end_time   = None
+        appointment.slot_id = None
 
         if commit:
             await db.commit()
@@ -397,39 +349,31 @@ class SchedulingService:
             return {"slot_id": slot_id, "status": "BLOCKED"}
 
         booked_count = slot.booked_count
+        relocated = 0
+        moved_to_waiting = 0
+        is_today = False
         # Rows that need a citizen SMS after the transaction commits — we
         # collect ids inside the loop and fire outside so a notification hiccup
         # can't unwind the block.
         _cascade_appointment_ids: list[int] = []
 
-        # If the slot has bookings, relocate each appointment before blocking.
         if booked_count > 0:
-            # Fetch all appointments booked into this slot.
-            booking_rows = await db.execute(
-                select(SlotBooking)
-                .where(SlotBooking.slot_id == slot_id)
-                .order_by(SlotBooking.id)
+            # Fetch appointments booked into this slot (v2: appointment.slot_id)
+            booked_appts_result = await db.execute(
+                select(Appointment)
+                .where(Appointment.slot_id == slot_id)
+                .order_by(Appointment.id)
             )
-            bookings = booking_rows.scalars().all()
+            bookings = list(booked_appts_result.scalars().all())
 
-            # Find the availability for this slot to get the date.
             avail = await db.get(MLADailyAvailability, slot.availability_id)
             slot_date = avail.date if avail else date.today()
-
-            # Only attempt relocation on the same date — future dates keep
-            # their bookings intact (PA is blocking a future slot in advance).
             is_today = (slot_date == date.today())
 
-            relocated = 0
-            moved_to_waiting = 0
-
             if is_today:
-                # Use IST (UTC+5:30) for slot time comparison — slot times are local.
                 now = datetime.utcnow() + timedelta(hours=5, minutes=30)
                 current_time = now.time()
 
-                # Find other available slots on the same date with capacity,
-                # whose start time is after the current time.
                 other_slots = await db.execute(
                     select(AppointmentSlot)
                     .where(AppointmentSlot.availability_id == slot.availability_id)
@@ -441,19 +385,13 @@ class SchedulingService:
                 )
                 candidate_slots = other_slots.scalars().all()
 
-                for booking in bookings:
-                    appt = await db.get(Appointment, booking.appointment_id)
-                    if appt is None:
-                        continue
-
+                for appt in bookings:
                     relocated_ok = False
                     for cand in candidate_slots:
                         if cand.booked_count >= cand.max_capacity:
                             continue
                         try:
-                            # Release from old slot first (without committing).
                             await self.release_slot(db, appt, commit=False)
-                            # Book into the candidate slot.
                             await self.book_slot(db, appt, cand.id, commit=False)
                             relocated_ok = True
                             relocated += 1
@@ -469,13 +407,13 @@ class SchedulingService:
                         # different.)
                         await self.release_slot(db, appt, commit=False)
                         appt.status = "RESCHEDULED"
+                        appt.status_id = v2.appointment_status_id("RESCHEDULED")
                         appt.schedule_meeting = True
-                        appt.pre_floor_status = None
-                        db.add(AppointmentEvent(
+                        db.add(Activity(
                             appointment_id=appt.id,
-                            event_type="rescheduled",
-                            actor="pa_admin",
-                            note="SLOT_BLOCKED_CASCADE",
+                            user="pa_admin",
+                            action_type="rescheduled",
+                            message="SLOT_BLOCKED_CASCADE",
                             payload={"from_status": "SCHEDULED",
                                      "to_status": "RESCHEDULED",
                                      "reason": "slot_blocked",
@@ -485,20 +423,18 @@ class SchedulingService:
                         moved_to_waiting += 1
             else:
                 # Future date — flip all bookings to RESCHEDULED so the PA can
-                # rebook them onto a live day.
-                for booking in bookings:
-                    appt = await db.get(Appointment, booking.appointment_id)
-                    if appt is None:
-                        continue
+                # rebook them onto a live day. (v2: bookings ARE the
+                # appointments — no SlotBooking junction.)
+                for appt in bookings:
                     await self.release_slot(db, appt, commit=False)
                     appt.status = "RESCHEDULED"
+                    appt.status_id = v2.appointment_status_id("RESCHEDULED")
                     appt.schedule_meeting = True
-                    appt.pre_floor_status = None
-                    db.add(AppointmentEvent(
+                    db.add(Activity(
                         appointment_id=appt.id,
-                        event_type="rescheduled",
-                        actor="pa_admin",
-                        note="SLOT_BLOCKED_CASCADE",
+                        user="pa_admin",
+                        action_type="rescheduled",
+                        message="SLOT_BLOCKED_CASCADE",
                         payload={"from_status": "SCHEDULED",
                                  "to_status": "RESCHEDULED",
                                  "reason": "slot_blocked",
@@ -539,18 +475,12 @@ class SchedulingService:
         slot = await db.get(AppointmentSlot, slot_id)
         if slot is None:
             raise ValueError("Slot not found.")
-        # If booked_count already fills the slot, don't reopen — mark FULL instead.
         new_status = "FULL" if slot.booked_count >= slot.max_capacity else "AVAILABLE"
         slot.status = new_status
         await db.commit()
         return {"slot_id": slot_id, "status": new_status}
 
     async def close_slot(self, db: AsyncSession, slot_id: int) -> Dict:
-        """
-        Manually mark a slot as FULL to stop new bookings.
-        Existing bookings are kept. Does NOT relocate citizens.
-        Used when the PA wants to close a partially-booked slot early.
-        """
         slot = await db.get(AppointmentSlot, slot_id)
         if slot is None:
             raise ValueError("Slot not found.")
@@ -566,11 +496,6 @@ class SchedulingService:
         }
 
     async def reopen_slot(self, db: AsyncSession, slot_id: int) -> Dict:
-        """
-        Reopen a manually-closed (FULL) slot for new bookings.
-        Only works if booked_count < max_capacity (slots that are
-        naturally full cannot be reopened — cancel a booking first).
-        """
         slot = await db.get(AppointmentSlot, slot_id)
         if slot is None:
             raise ValueError("Slot not found.")
@@ -595,13 +520,12 @@ class SchedulingService:
     async def get_open_dates(self, db: AsyncSession) -> List[Dict]:
         result = await db.execute(
             select(MLADailyAvailability)
-            .where(MLADailyAvailability.status == "ACTIVE")
-            .where(MLADailyAvailability.date   >= date.today())
+            .where(MLADailyAvailability.is_open == True)  # noqa: E712
+            .where(MLADailyAvailability.date    >= date.today())
             .order_by(MLADailyAvailability.date)
         )
         rows = []
         for a in result.scalars().all():
-            # Compute live booking totals
             booked = await db.scalar(
                 select(func.sum(AppointmentSlot.booked_count))
                 .where(AppointmentSlot.availability_id == a.id)
@@ -629,8 +553,8 @@ class SchedulingService:
     async def get_slots_for_date(self, db: AsyncSession, target_date: date) -> Dict:
         avail = await db.scalar(
             select(MLADailyAvailability)
-            .where(MLADailyAvailability.date   == target_date)
-            .where(MLADailyAvailability.status == "ACTIVE")
+            .where(MLADailyAvailability.date    == target_date)
+            .where(MLADailyAvailability.is_open == True)  # noqa: E712
         )
         if not avail:
             return {"has_availability": False, "date": target_date.isoformat(), "slots": []}
@@ -680,15 +604,6 @@ class SchedulingService:
         appointment_id: int,
         new_datetime: str,
     ) -> Dict:
-        """
-        Reschedule an appointment to a new date/time.
-
-        - Parses the datetime string (YYYY-MM-DDTHH:MM).
-        - Opens the target date if not already open.
-        - Finds the 30-minute slot that contains the requested time.
-        - Releases the old booking and books the new slot.
-        """
-        # Parse the datetime string
         try:
             dt = datetime.fromisoformat(new_datetime)
         except ValueError:
@@ -697,31 +612,27 @@ class SchedulingService:
         target_date = dt.date()
         requested_time = dt.time()
 
-        # Ensure target date is not in the past
         if target_date < date.today():
             raise ValueError("Cannot reschedule to a past date.")
 
-        # Find or create availability for the target date
         avail = await db.scalar(
             select(MLADailyAvailability)
-            .where(MLADailyAvailability.date == target_date)
-            .where(MLADailyAvailability.status == "ACTIVE")
+            .where(MLADailyAvailability.date    == target_date)
+            .where(MLADailyAvailability.is_open == True)  # noqa: E712
         )
 
         if not avail:
-            # Open the date — this creates 20 slots
             await self.set_mla_availability(
                 db, mla_id=1, target_date=target_date
             )
             avail = await db.scalar(
                 select(MLADailyAvailability)
-                .where(MLADailyAvailability.date == target_date)
-                .where(MLADailyAvailability.status == "ACTIVE")
+                .where(MLADailyAvailability.date    == target_date)
+                .where(MLADailyAvailability.is_open == True)  # noqa: E712
             )
             if not avail:
                 raise ValueError("Failed to open target date for booking.")
 
-        # Find the slot whose 30-min window contains the requested time
         slot = await db.scalar(
             select(AppointmentSlot)
             .where(AppointmentSlot.availability_id == avail.id)
@@ -731,7 +642,6 @@ class SchedulingService:
         )
 
         if not slot:
-            # Fallback: find the first available slot on that date
             slot = await db.scalar(
                 select(AppointmentSlot)
                 .where(AppointmentSlot.availability_id == avail.id)
@@ -754,27 +664,22 @@ class SchedulingService:
         if not appt:
             raise ValueError(f"Appointment {appointment_id} not found.")
 
-        old_slot_id = appt.appointment_slot_id
-        old_date = appt.scheduled_date
+        old_slot_id = appt.slot_id
         old_status = appt.status
         await self.release_slot(db, appt, commit=False)
         result = await self.book_slot(db, appt, slot.id, commit=False)
         # A successful rebook lands the row on the Scheduled tab, not the
         # Rescheduled tab. Rescheduled is where a row waits until it's rebooked
         # or converted to a petition — coming out of it means "back to normal".
-        appt.status = "SCHEDULED"
-        appt.schedule_meeting = True
-        # Clear any stale floor-toggle bookkeeping so a future 'reset' from the
-        # floor doesn't jump to a status from a previous booking.
-        appt.pre_floor_status = None
-        db.add(AppointmentEvent(
+        # (book_slot already set status/status_id=SCHEDULED + schedule_meeting.)
+        db.add(Activity(
             appointment_id=appt.id,
-            event_type="rescheduled",
-            actor="pa_admin",
+            user="pa_admin",
+            action_type="rescheduled",
+            message=f"Rebooked to {result['scheduled_date']} {result['scheduled_time']}",
             payload={"from_status": old_status,
                      "to_status": "SCHEDULED",
                      "old_slot_id": old_slot_id,
-                     "old_scheduled_date": str(old_date) if old_date else None,
                      "new_slot_id": slot.id,
                      "scheduled_date": str(result["scheduled_date"]),
                      "scheduled_time": str(result["scheduled_time"])},
@@ -816,23 +721,25 @@ class SchedulingService:
         reason: str,
         commit: bool = True,
     ) -> Dict:
-        appointment.status = "WAITING"
+        appointment.status        = "WAITING"
+        appointment.status_id     = v2.appointment_status_id("WAITING")
         appointment.waiting_since = datetime.utcnow()
 
+        # v2: schedule_meeting column removed — a "meeting" appointment is
+        # one that had a slot_id (now cleared as it enters the queue) OR was
+        # explicitly waiting. Use status alone to count queue length.
         queue_count = await db.scalar(
             select(func.count(Appointment.id))
-            .where(Appointment.status         == "WAITING")
-            .where(Appointment.schedule_meeting == True)
+            .where(Appointment.status == "WAITING")
         )
         appointment.queue_position = (queue_count or 0) + 1
-        appointment.priority_score = 0
 
-        db.add(AppointmentEvent(
+        db.add(Activity(
             appointment_id=appointment.id,
-            event_type="moved_to_waiting",
-            actor="system",
-            note=reason,
-            payload={"queue_position": appointment.queue_position},
+            user="system",
+            action_type="moved_to_waiting",
+            message=reason,
+            payload={"queue_position": appointment.queue_position, "reason": reason},
         ))
 
         if commit:
@@ -850,12 +757,8 @@ class SchedulingService:
         result = await db.execute(
             select(Appointment)
             .options(selectinload(Appointment.citizen))
-            .where(Appointment.status          == "WAITING")
-            .where(Appointment.schedule_meeting == True)
-            .order_by(
-                Appointment.priority_score.desc(),
-                Appointment.created_at.asc(),
-            )
+            .where(Appointment.status == "WAITING")
+            .order_by(Appointment.created_at.asc())
             .limit(limit)
         )
         rows = []
@@ -864,12 +767,11 @@ class SchedulingService:
             rows.append({
                 "id":             appt.id,
                 "token":          appt.token_assigned,
-                "name":           _decrypt(appt.encrypted_name) if appt.encrypted_name else (_decrypt(citizen.encrypted_name) if citizen else "Unknown"),
+                "name":           _decrypt(citizen.encrypted_name) if citizen else "Unknown",
                 "mobile":         _decrypt(citizen.encrypted_mobile) if citizen else "Unknown",
                 "category":       appt.grievance_category,
                 "queue_position": appt.queue_position,
                 "waiting_since":  utc_iso(appt.waiting_since),
-                "priority_score": appt.priority_score,
                 "created_at":     utc_iso(appt.created_at),
             })
         return rows
@@ -877,27 +779,19 @@ class SchedulingService:
     # ── Auto-allocate waiting queue to today's available slots ──────────────
 
     async def auto_allocate_waiting_queue(self, db: AsyncSession) -> Dict:
-        """
-        Assign all WAITING appointments to available slots today,
-        starting from the current time. Appointments are assigned in
-        priority order (priority_score desc, then created_at asc).
-        """
         today = date.today()
 
-        # Get today's availability
         avail = await db.scalar(
             select(MLADailyAvailability)
-            .where(MLADailyAvailability.date == today)
-            .where(MLADailyAvailability.status == "ACTIVE")
+            .where(MLADailyAvailability.date    == today)
+            .where(MLADailyAvailability.is_open == True)  # noqa: E712
         )
         if not avail:
             raise ValueError("No availability opened for today.")
 
-        # Use IST (UTC+5:30) for slot time comparison
         now = datetime.utcnow() + timedelta(hours=5, minutes=30)
         current_time = now.time()
 
-        # Get available slots from current time onwards
         slot_result = await db.execute(
             select(AppointmentSlot)
             .where(AppointmentSlot.availability_id == avail.id)
@@ -911,15 +805,10 @@ class SchedulingService:
         if not candidate_slots:
             raise ValueError("No available slots remaining today from current time.")
 
-        # Get waiting queue appointments in priority order
         appt_result = await db.execute(
             select(Appointment)
             .where(Appointment.status == "WAITING")
-            .where(Appointment.schedule_meeting == True)
-            .order_by(
-                Appointment.priority_score.desc(),
-                Appointment.created_at.asc(),
-            )
+            .order_by(Appointment.created_at.asc())
         )
         waiting_appts = list(appt_result.scalars().all())
 
@@ -936,10 +825,11 @@ class SchedulingService:
                     continue
                 try:
                     await self.book_slot(db, appt, slot.id, commit=False)
-                    db.add(AppointmentEvent(
+                    db.add(Activity(
                         appointment_id=appt.id,
-                        event_type="auto_allocated",
-                        actor="system",
+                        user="system",
+                        action_type="auto_allocated",
+                        message=f"Slot {slot.id} @ {slot.start_time}",
                         payload={"slot_id": slot.id, "slot_time": str(slot.start_time)},
                     ))
                     placed = True
@@ -958,20 +848,19 @@ class SchedulingService:
             "total_waiting": len(waiting_appts),
         }
 
-    # ── Emergency: cancel all today's scheduled appointments ─────────────────
+    # ── Emergency: cancel today's scheduled appointments ─────────────────────
 
     async def cancel_all_scheduled(self, db: AsyncSession) -> Dict:
-        """
-        Move today's SCHEDULED appointments back to waiting queue,
-        release their SlotBookings, and cancel today's availability.
-        """
         today = date.today()
 
+        # v2: derive today's scheduled appointments via slot → availability join
         appt_result = await db.execute(
             select(Appointment)
+            .join(AppointmentSlot, AppointmentSlot.id == Appointment.slot_id)
+            .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
             .where(Appointment.status.in_(["SCHEDULED", "RESCHEDULED"]))
-            .where(Appointment.scheduled_date == today)
-            .order_by(Appointment.scheduled_start_time)
+            .where(MLADailyAvailability.date == today)
+            .order_by(AppointmentSlot.start_time)
         )
         appointments = appt_result.scalars().all()
 
@@ -979,8 +868,8 @@ class SchedulingService:
         for appt in appointments:
             await self.release_slot(db, appt, commit=False)
             appt.status        = "WAITING"
+            appt.status_id     = v2.appointment_status_id("WAITING")
             appt.waiting_since = datetime.utcnow()
-            appt.priority_score = 0
             queue_count = await db.scalar(
                 select(func.count(Appointment.id))
                 .where(Appointment.status == "WAITING")
@@ -990,12 +879,12 @@ class SchedulingService:
 
         avail_result = await db.execute(
             select(MLADailyAvailability)
-            .where(MLADailyAvailability.date   == today)
-            .where(MLADailyAvailability.status == "ACTIVE")
+            .where(MLADailyAvailability.date    == today)
+            .where(MLADailyAvailability.is_open == True)  # noqa: E712
         )
         cancelled_dates = 0
         for avail in avail_result.scalars().all():
-            avail.status = "CANCELLED"
+            avail.is_open = False
             cancelled_dates += 1
 
         await db.commit()
@@ -1013,27 +902,30 @@ class SchedulingService:
     async def get_statistics(self, db: AsyncSession) -> Dict:
         waiting_count = await db.scalar(
             select(func.count(Appointment.id))
-            .where(Appointment.status          == "WAITING")
-            .where(Appointment.schedule_meeting == True)
+            .where(Appointment.status == "WAITING")
         ) or 0
 
         today = date.today()
+        # Scheduled today = appointment.slot_id → slot → availability with date=today
         scheduled_today = await db.scalar(
             select(func.count(Appointment.id))
-            .where(Appointment.scheduled_date == today)
-            .where(Appointment.status         == "SCHEDULED")
+            .join(AppointmentSlot, AppointmentSlot.id == Appointment.slot_id)
+            .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
+            .where(Appointment.status == "SCHEDULED")
+            .where(MLADailyAvailability.date == today)
         ) or 0
 
         rescheduled_today = await db.scalar(
             select(func.count(Appointment.id))
-            .where(Appointment.scheduled_date == today)
-            .where(Appointment.status         == "RESCHEDULED")
+            .join(AppointmentSlot, AppointmentSlot.id == Appointment.slot_id)
+            .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
+            .where(Appointment.status == "RESCHEDULED")
+            .where(MLADailyAvailability.date == today)
         ) or 0
 
         oldest_waiting = await db.scalar(
             select(Appointment.waiting_since)
-            .where(Appointment.status          == "WAITING")
-            .where(Appointment.schedule_meeting == True)
+            .where(Appointment.status == "WAITING")
             .order_by(Appointment.waiting_since.asc())
             .limit(1)
         )

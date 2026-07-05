@@ -24,11 +24,11 @@ async def cleanup_expired(retention_hours: int = RETENTION_HOURS) -> dict:
     cutoff = datetime.utcnow() - timedelta(hours=retention_hours)
     async with AsyncSessionLocal() as db:
         otp = await db.execute(
-            text("DELETE FROM otp_verifications WHERE expires_at < :cutoff"),
+            text("DELETE FROM otp_verification WHERE expires_at < :cutoff"),
             {"cutoff": cutoff},
         )
         sessions = await db.execute(
-            text("DELETE FROM gatekeeper_sessions WHERE expires_at < :cutoff"),
+            text("DELETE FROM gatekeeper WHERE expires_at < :cutoff"),
             {"cutoff": cutoff},
         )
         await db.commit()

@@ -19,9 +19,25 @@ from sqlalchemy.orm import selectinload
 from src.core import crypto
 from src.models.appointment_models import Appointment, Citizen
 from src.models.ticket_models import (
-    Ticket, TicketEvent, TicketAttachment, TicketStatus, TicketEventType,
+    Ticket, TicketAttachment, TicketStatus,
 )
+from src.models.activity_models import Activity
 from src.models.grievance_summary_record import GrievanceSummaryRecord
+from enum import Enum
+
+
+# v2: TicketEventType Enum removed from the model layer — kept here so this
+# service's `_event_type.X.value` call pattern keeps working. Written to the
+# unified `activity` table (Activity.action_type) instead of ticket_events.
+class TicketEventType(str, Enum):
+    ROUTED_TO_DEPARTMENT = "routed_to_department"
+    FORWARDED_TO_DEPT    = "forwarded_to_dept"
+    CLOSED               = "closed"
+    REOPENED             = "reopened"
+    DEPARTMENT_ACCEPTED  = "department_accepted"
+    DEPARTMENT_FORWARDED = "department_forwarded"
+    PROGRESS_UPDATE      = "progress_update"
+    RESOLVED             = "resolved"
 from src.models.school_department import SchoolDepartment, department_label
 from src.core.utils import utc_iso
 
@@ -37,9 +53,13 @@ async def _get(db: AsyncSession, ticket_id: int) -> Ticket:
 
 def _event(db: AsyncSession, ticket_id: int, event_type: str, actor: str,
            note: Optional[str] = None, payload: Optional[dict] = None) -> None:
-    db.add(TicketEvent(
-        ticket_id=ticket_id, event_type=event_type, actor=actor,
-        note=note, payload=payload,
+    """v2: Activity row keeps structured payload for the PA timeline."""
+    db.add(Activity(
+        ticket_id=ticket_id,
+        user=actor,
+        action_type=event_type,
+        message=note,
+        payload=payload,
     ))
 
 
@@ -229,8 +249,8 @@ def _decode(v):
 
 def _ticket_row(t: Ticket, appt: Optional[Appointment], citizen: Optional[Citizen],
                 summary: Optional[GrievanceSummaryRecord]) -> dict:
-    name = _decode(appt.encrypted_name) if (appt and appt.encrypted_name) else \
-        (_decode(citizen.encrypted_name) if citizen else "—")
+    # v2: name lives on the Citizen record only.
+    name = _decode(citizen.encrypted_name) if citizen else "—"
     mobile = _decode(citizen.encrypted_mobile) if citizen else "—"
     return {
         "id": t.id,
@@ -285,13 +305,20 @@ async def get_detail(db: AsyncSession, ticket_id: int,
     If `department` is given, verify ownership (department view)."""
     t = (await db.execute(
         select(Ticket)
-        .options(selectinload(Ticket.events), selectinload(Ticket.attachments))
+        .options(selectinload(Ticket.attachments))
         .where(Ticket.id == ticket_id)
     )).scalar_one_or_none()
     if t is None:
         raise HTTPException(status_code=404, detail="Ticket not found.")
     if department is not None and t.department != department:
         raise HTTPException(status_code=403, detail="Not assigned to your department.")
+
+    # v2: events come from the unified activity table (Activity.ticket_id).
+    ticket_events = list((await db.execute(
+        select(Activity)
+        .where(Activity.ticket_id == ticket_id)
+        .order_by(Activity.created_at.asc())
+    )).scalars().all())
 
     appt = (await db.execute(
         select(Appointment).options(selectinload(Appointment.citizen)).where(Appointment.id == t.appointment_id)
@@ -314,9 +341,9 @@ async def get_detail(db: AsyncSession, ticket_id: int,
         "resolution_notes": t.resolution_notes,
         "forwarded_notes": t.forwarded_notes,
         "events": [
-            {"type": e.event_type, "actor": e.actor, "note": e.note,
+            {"type": e.action_type, "actor": e.user, "note": e.message,
              "payload": e.payload, "at": utc_iso(e.created_at)}
-            for e in sorted(t.events, key=lambda x: x.created_at)
+            for e in ticket_events
         ],
         "attachments": [
             {"url": get_file_url(a.storage_url), "mime": a.mime_type,

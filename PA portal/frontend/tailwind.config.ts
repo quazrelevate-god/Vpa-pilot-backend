@@ -47,6 +47,14 @@ const config: Config = {
         },
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
+        info: "hsl(var(--info))",
+        // Triage urgency scale (semantic, brand-independent)
+        urgency: {
+          critical: "hsl(var(--urgency-critical))",
+          high: "hsl(var(--urgency-high))",
+          medium: "hsl(var(--urgency-medium))",
+          low: "hsl(var(--urgency-low))",
+        },
         // Brand / interactive accent (refined royal blue)
         brand: {
           DEFAULT: "hsl(var(--accent-blue))",
@@ -69,7 +77,9 @@ const config: Config = {
         "2xl": "calc(var(--radius) + 8px)",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)"],
+        serif: ["var(--font-serif)"],
+        mono: ["var(--font-mono)"],
       },
       keyframes: {
         shimmer: {

@@ -22,12 +22,12 @@ const TONE: Record<
   NonNullable<MetricTileProps["tone"]>,
   { icon: string; ring: string; glow: string }
 > = {
-  brand:   { icon: "text-brand bg-brand/10",         ring: "ring-brand/15",         glow: "from-brand/10" },
-  emerald: { icon: "text-emerald-600 bg-emerald-50", ring: "ring-emerald-200/40",   glow: "from-emerald-100/60" },
-  amber:   { icon: "text-amber-600 bg-amber-50",     ring: "ring-amber-200/40",     glow: "from-amber-100/60" },
-  violet:  { icon: "text-violet-600 bg-violet-50",   ring: "ring-violet-200/40",    glow: "from-violet-100/60" },
-  rose:    { icon: "text-rose-600 bg-rose-50",       ring: "ring-rose-200/40",      glow: "from-rose-100/60" },
-  slate:   { icon: "text-slate-700 bg-slate-100",    ring: "ring-slate-200/40",     glow: "from-slate-100/60" },
+  brand:   { icon: "text-brand bg-brand/10",                                                    ring: "ring-brand/15",       glow: "from-brand/10" },
+  emerald: { icon: "text-emerald-600 bg-emerald-50", ring: "ring-emerald-200/40", glow: "from-emerald-100/60" },
+  amber:   { icon: "text-amber-600 bg-amber-50",         ring: "ring-amber-200/40",     glow: "from-amber-100/60" },
+  violet:  { icon: "text-blue-600 bg-blue-50",     ring: "ring-blue-200/40",   glow: "from-blue-100/60" },
+  rose:    { icon: "text-rose-600 bg-rose-50",             ring: "ring-rose-200/40",       glow: "from-rose-100/60" },
+  slate:   { icon: "text-slate-700 bg-slate-100",        ring: "ring-slate-200/40",     glow: "from-slate-100/60" },
 };
 
 export default function MetricTile({

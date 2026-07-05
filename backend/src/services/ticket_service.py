@@ -23,10 +23,25 @@ from src.models.grievance_summary import CATEGORY_DISPLAY, MINISTRY_DISPLAY
 from src.models.school_department import department_label as school_department_label
 from src.models.ticket_models import (
     Ticket,
-    TicketEvent,
-    TicketEventType,
     TicketStatus,
 )
+from src.models.activity_models import Activity
+from src.services.v2_helpers import v2
+
+
+# v2: TicketEventType enum removed — action_type strings are now free-form
+# on Activity. Keep the constants here so callers keep working.
+class _EventType:
+    STATUS_CHANGED    = "status_changed"
+    PRIORITY_CHANGED  = "priority_changed"
+    ASSIGNED          = "assigned"
+    UNASSIGNED        = "unassigned"
+    DUE_DATE_SET      = "due_date_set"
+    COMMENT_ADDED     = "comment_added"
+    FORWARDED_TO_DEPT = "forwarded_to_dept"
+    RESOLVED          = "resolved"
+    CLOSED            = "closed"
+    REOPENED          = "reopened"
 
 
 def _decode(value: Optional[str]) -> Optional[str]:
@@ -44,7 +59,7 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
     summary_rec: Optional[GrievanceSummaryRecord] = next(
         (s for s in (appt.grievance_summary if appt else []) if s.is_latest), None
     )
-    name = _decode(appt.encrypted_name) if appt and appt.encrypted_name else (_decode(citizen.encrypted_name) if citizen else None)
+    name = _decode(citizen.encrypted_name) if citizen else None
     mobile = _decode(citizen.encrypted_mobile) if citizen else None
 
     return {
@@ -77,19 +92,25 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
     }
 
 
-def _serialize_event(e: TicketEvent) -> Dict[str, Any]:
+def _serialize_event(e: Activity) -> Dict[str, Any]:
+    """v2: Activity row replaces TicketEvent. Shape kept for the timeline UI."""
     return {
         "id":         e.id,
-        "event_type": e.event_type,
-        "actor":      e.actor,
-        "note":       e.note,
+        "event_type": e.action_type,
+        "actor":      e.user,
+        "note":       e.message,
         "payload":    e.payload,
         "created_at": utc_iso(e.created_at),
     }
 
 
-def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
-    """Full detail shape for the modal — includes events + summary + attachments."""
+def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None) -> Dict[str, Any]:
+    """Full detail shape for the modal — includes events + summary + attachments.
+
+    `events` is the list of Activity rows for this ticket, fetched by the
+    caller (v2: no Ticket.events relationship). Falls back to empty.
+    """
+    db_events = events or []
     row = _serialize_ticket_row(t)
     appt = t.appointment
     summary_rec: Optional[GrievanceSummaryRecord] = next(
@@ -108,8 +129,12 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
                 "mime": a.mime_type,
                 "name": Path(a.storage_url).name if a.storage_url else "",
             })
-        if appt.audio_recording_url:
-            audio_url = get_file_url(appt.audio_recording_url)
+        # v2: audio lives in attachments (type='AUDIO')
+        audio_url = next(
+            (get_file_url(a.storage_url) for a in appt.attachments
+             if a.attachment_type == "AUDIO"),
+            None,
+        )
 
     # Resolution proofs uploaded by the department when they close out the ticket
     # (separate from the citizen's own petition uploads above).
@@ -127,9 +152,8 @@ def _serialize_ticket_detail(t: Ticket) -> Dict[str, Any]:
 
     # Timeline: real DB events + two synthetic anchors so every ticket shows the
     # full lifecycle — when the citizen submitted, and when the ticket was opened.
-    # Rendered newest-first (matches the events relationship, created_at desc);
-    # the two synthetic anchors sink to the bottom as the oldest entries.
-    events = [_serialize_event(e) for e in t.events]
+    # v2: events come from the `activity` table, loaded by the caller.
+    events = [_serialize_event(e) for e in db_events]
     if appt and appt.created_at:
         events.append({
             "id":         f"submitted-{t.id}",
@@ -370,7 +394,6 @@ async def get_ticket(db: AsyncSession, ticket_id: int) -> Optional[Dict[str, Any
             selectinload(Ticket.appointment).selectinload(Appointment.citizen),
             selectinload(Ticket.appointment).selectinload(Appointment.attachments),
             selectinload(Ticket.appointment).selectinload(Appointment.grievance_summary),
-            selectinload(Ticket.events),
             selectinload(Ticket.attachments),
         )
         .where(Ticket.id == ticket_id)
@@ -378,25 +401,33 @@ async def get_ticket(db: AsyncSession, ticket_id: int) -> Optional[Dict[str, Any
     t = result.scalar_one_or_none()
     if t is None:
         return None
-    return _serialize_ticket_detail(t)
+    # v2: events come from the unified activity table
+    events_res = await db.execute(
+        select(Activity)
+        .where(Activity.ticket_id == ticket_id)
+        .order_by(Activity.created_at.desc())
+    )
+    events = list(events_res.scalars().all())
+    return _serialize_ticket_detail(t, events=events)
 
 
 # ── Mutations (always log an event) ───────────────────────────────────────────
 
 async def _load(db: AsyncSession, ticket_id: int) -> Optional[Ticket]:
     res = await db.execute(
-        select(Ticket).options(selectinload(Ticket.events)).where(Ticket.id == ticket_id)
+        select(Ticket).where(Ticket.id == ticket_id)
     )
     return res.scalar_one_or_none()
 
 
 def _log(db: AsyncSession, ticket_id: int, event_type: str, actor: str,
          note: Optional[str] = None, payload: Optional[dict] = None) -> None:
-    db.add(TicketEvent(
+    """v2: Activity row keeps structured payload for the PA portal timeline."""
+    db.add(Activity(
         ticket_id=ticket_id,
-        event_type=event_type,
-        actor=actor,
-        note=note,
+        user=actor,
+        action_type=event_type,
+        message=note,
         payload=payload,
     ))
 
@@ -421,29 +452,31 @@ async def update_ticket_fields(
             TicketStatus(status)  # validate enum membership
         except ValueError:
             raise ValueError(f"Invalid ticket status: {status!r}")
-        _log(db, t.id, TicketEventType.STATUS_CHANGED.value, actor,
+        _log(db, t.id, _EventType.STATUS_CHANGED, actor,
              payload={"from": t.status, "to": status})
         t.status = status
+        t.status_id = v2.ticket_status_id(status)
 
     if priority is not None and priority != t.priority:
-        _log(db, t.id, TicketEventType.PRIORITY_CHANGED.value, actor,
+        _log(db, t.id, _EventType.PRIORITY_CHANGED, actor,
              payload={"from": t.priority, "to": priority})
         t.priority = priority
+        t.priority_id = v2.priority_id_or_none(priority)
 
     if assigned_to_pa is not None and assigned_to_pa != t.assigned_to_pa:
         if assigned_to_pa == "":
-            _log(db, t.id, TicketEventType.UNASSIGNED.value, actor,
+            _log(db, t.id, _EventType.UNASSIGNED, actor,
                  payload={"from": t.assigned_to_pa})
             t.assigned_to_pa = None
         else:
-            _log(db, t.id, TicketEventType.ASSIGNED.value, actor,
+            _log(db, t.id, _EventType.ASSIGNED, actor,
                  payload={"from": t.assigned_to_pa, "to": assigned_to_pa})
             t.assigned_to_pa = assigned_to_pa
 
     if due_date is not None:
         dd = datetime.fromisoformat(due_date) if due_date else None
         if dd != t.due_date:
-            _log(db, t.id, TicketEventType.DUE_DATE_SET.value, actor,
+            _log(db, t.id, _EventType.DUE_DATE_SET, actor,
                  payload={"due_date": dd.isoformat() if dd else None})
             t.due_date = dd
 
@@ -464,11 +497,12 @@ async def forward_to_dept(
         return None
     now = datetime.utcnow()
     t.status = TicketStatus.FORWARDED_TO_DEPT.value
+    t.status_id = v2.ticket_status_id(TicketStatus.FORWARDED_TO_DEPT.value)
     t.forwarded_to_dept = department
     t.forwarded_at = now
     t.forwarded_by = actor
     t.forwarded_notes = notes
-    _log(db, t.id, TicketEventType.FORWARDED_TO_DEPT.value, actor,
+    _log(db, t.id, _EventType.FORWARDED_TO_DEPT, actor,
          note=notes,
          payload={"department": department})
     await db.commit()
@@ -487,7 +521,7 @@ async def add_comment(
     t = await _load(db, ticket_id)
     if t is None:
         return None
-    _log(db, t.id, TicketEventType.COMMENT_ADDED.value, actor, note=text.strip())
+    _log(db, t.id, _EventType.COMMENT_ADDED, actor, note=text.strip())
     await db.commit()
     return await get_ticket(db, ticket_id)
 
@@ -506,9 +540,10 @@ async def mark_resolved(
         return None
     now = datetime.utcnow()
     t.status = TicketStatus.RESOLVED.value
+    t.status_id = v2.ticket_status_id(TicketStatus.RESOLVED.value)
     t.resolution_notes = resolution_notes.strip()
     t.resolved_at = now
-    _log(db, t.id, TicketEventType.RESOLVED.value, actor, note=resolution_notes.strip())
+    _log(db, t.id, _EventType.RESOLVED, actor, note=resolution_notes.strip())
     await db.commit()
     return await get_ticket(db, ticket_id)
 
@@ -526,11 +561,12 @@ async def mark_closed(
         return None
     now = datetime.utcnow()
     t.status = TicketStatus.CLOSED.value
+    t.status_id = v2.ticket_status_id(TicketStatus.CLOSED.value)
     t.closure_reason = closure_reason
     t.closed_at = now
     if notes:
         t.resolution_notes = ((t.resolution_notes or "") + "\n" + notes).strip()
-    _log(db, t.id, TicketEventType.CLOSED.value, actor,
+    _log(db, t.id, _EventType.CLOSED, actor,
          note=notes, payload={"closure_reason": closure_reason})
     await db.commit()
     return await get_ticket(db, ticket_id)
@@ -548,11 +584,12 @@ async def reopen(
         return None
     now = datetime.utcnow()
     t.status = TicketStatus.REOPENED.value
+    t.status_id = v2.ticket_status_id(TicketStatus.REOPENED.value)
     t.reopened_at = now
     t.reopen_count = (t.reopen_count or 0) + 1
     t.closed_at = None
     t.closure_reason = None
-    _log(db, t.id, TicketEventType.REOPENED.value, actor,
+    _log(db, t.id, _EventType.REOPENED, actor,
          note=reason, payload={"reopen_count": t.reopen_count})
     await db.commit()
     return await get_ticket(db, ticket_id)

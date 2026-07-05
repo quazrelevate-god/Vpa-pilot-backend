@@ -4,7 +4,7 @@ import "@/components/charts/chartSetup";
 import { Line } from "react-chartjs-2";
 import type { ScriptableContext } from "chart.js";
 
-const BRAND = "#0f62fe";
+const BRAND = "#5B5BD6";
 const RESOLVED = "#10b981";
 
 interface DualTrendProps {

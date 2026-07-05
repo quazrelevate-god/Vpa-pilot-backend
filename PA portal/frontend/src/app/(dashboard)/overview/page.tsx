@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Users, Megaphone, Flame, Handshake, ClipboardList, RefreshCw, Download, X,
-  ChevronLeft, ChevronRight, ArrowUpDown, Radio,
+  ChevronLeft, ChevronRight, ArrowUpDown, Radio, AudioLines,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
 import MetricTile from "@/components/MetricTile";
+import PriorityBadge from "@/components/PriorityBadge";
+import { InitialsAvatar } from "@/components/ui/avatar";
 import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,7 +53,16 @@ function presetDates(p: Preset): { from?: string; to?: string } {
   return { from: iso(f), to: iso(now) };
 }
 
-const PRIORITY_TONE: Record<string, string> = { critical: "bg-rose-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-emerald-500" };
+const PRIORITY_TONE: Record<string, string> = { critical: "bg-[#E5484D]", high: "bg-[#EE7327]", medium: "bg-[#D39412]", low: "bg-[#34A26C]" };
+const STATUS_PILL: Record<string, { cls: string; label: string }> = {
+  SCHEDULED:       { cls: "s-Scheduled",      label: "Scheduled" },
+  WAITING:         { cls: "s-Waiting",        label: "Waiting" },
+  RESCHEDULED:     { cls: "s-Rescheduled",    label: "Rescheduled" },
+  AWAITING_REVIEW: { cls: "s-AwaitingReview", label: "Awaiting Review" },
+  REVIEWED:        { cls: "s-Reviewed",       label: "Reviewed" },
+  NOT_CAME:        { cls: "s-NotCame",        label: "Not Came" },
+  COURTESY_DONE:   { cls: "s-CourtesyDone",   label: "Courtesy Done" },
+};
 const fmt = (v: number | undefined | null) => (v == null ? "—" : v.toLocaleString());
 
 export default function OverviewPage() {
@@ -60,6 +71,7 @@ export default function OverviewPage() {
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   // table
   const [pets, setPets] = useState<{ items: Petition[]; total: number; page: number; pages: number } | null>(null);
@@ -89,6 +101,7 @@ export default function OverviewPage() {
       const r = await fetch(`/api/analytics?${qs()}`, { credentials: "include" });
       if (!r.ok) { setError(`Analytics request failed (HTTP ${r.status}). If this is a fresh deploy, run "alembic upgrade head".`); return; }
       setError(null); setData(await r.json());
+      setLastUpdated(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
     } catch (e) { setError(`Could not reach the analytics API: ${(e as Error).message}`); }
     finally { setLoading(false); }
   }, [qs]);
@@ -126,21 +139,33 @@ export default function OverviewPage() {
 
   return (
     <>
-      <TopBar />
+      <TopBar
+        title="Voice of the People"
+        subtitle="Overview Dashboard"
+        icon={<AudioLines className="h-5 w-5" />}
+      />
       <main className="flex-1 overflow-y-auto bg-background">
         <div className="space-y-3 px-3 py-4 animate-in-up">
-          {/* Header */}
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h1 className="text-[22px] font-extrabold tracking-tight">Voice of the People</h1>
-              <p className="text-[12.5px] text-muted-foreground">Live petition analytics · click any chart to filter the whole page</p>
+          {/* Live system · period · refresh (per reference) */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-[13px]">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-[#34A26C] opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#34A26C]" />
+                </span>
+                Live System
+              </span>
+              {lastUpdated && (
+                <span className="text-muted-foreground">Last updated: {lastUpdated}</span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <select value={preset} onChange={e => setPreset(e.target.value as Preset)}
-                className="rounded-lg border border-input bg-card px-3 py-1.5 text-xs font-semibold focus:border-brand focus:outline-none">
+                className="h-9 rounded-xl border border-input bg-card px-3 text-xs font-semibold shadow-card focus:border-brand focus:outline-none">
                 {PRESETS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
               </select>
-              <Button variant="outline" size="sm" onClick={() => { loadAnalytics(); loadPetitions(); }} disabled={loading}>
+              <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => { loadAnalytics(); loadPetitions(); }} disabled={loading}>
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               </Button>
             </div>
@@ -231,7 +256,7 @@ export default function OverviewPage() {
               <div className="space-y-1.5">
                 {(data?.ministries ?? []).slice(0, 6).map(c => (
                   <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxMin * 100)}
-                    active={filters.ministry === c.key} onClick={() => toggle("ministry", c.key)} tone="bg-cyan-500" />
+                    active={filters.ministry === c.key} onClick={() => toggle("ministry", c.key)} tone="bg-brand" />
                 ))}
                 {data && data.ministries.length === 0 && <Empty />}
               </div>
@@ -243,7 +268,7 @@ export default function OverviewPage() {
               <div className="space-y-1.5">
                 {(data?.channels ?? []).map(c => (
                   <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxChan * 100)}
-                    active={filters.channel === c.key} onClick={() => toggle("channel", c.key)} tone="bg-violet-500" total={k?.received} />
+                    active={filters.channel === c.key} onClick={() => toggle("channel", c.key)} tone="bg-blue-500" total={k?.received} />
                 ))}
                 {data && data.channels.length === 0 && <Empty />}
               </div>
@@ -253,17 +278,17 @@ export default function OverviewPage() {
           {/* Full petitions table */}
           <Card className="overflow-hidden p-0">
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
-              <h2 className="text-sm font-bold">All petitions {pets && <span className="text-muted-foreground">· {pets.total.toLocaleString()}</span>}</h2>
+              <h2 className="type-card-heading">All petitions {pets && <span className="text-muted-foreground">· {pets.total.toLocaleString()}</span>}</h2>
               <a href={`/api/analytics/export?${qs()}`} className="ml-auto">
                 <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV</Button>
               </a>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[820px] text-left text-sm">
-                <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.09em] text-muted-foreground/80">
                   <tr>
-                    <th className="px-4 py-2.5">Name</th>
-                    <th className="px-4 py-2.5">Mobile</th>
+                    <th className="px-4 py-3">Citizen</th>
+                    <th className="px-4 py-3">Mobile</th>
                     <Th label="Category" col="category" sort={sort} onSort={setSort} />
                     <th className="px-4 py-2.5">Priority</th>
                     <Th label="Status" col="status" sort={sort} onSort={setSort} />
@@ -277,14 +302,30 @@ export default function OverviewPage() {
                   ) : pets.items.length === 0 ? (
                     <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No petitions match the filters.</td></tr>
                   ) : pets.items.map(p => (
-                    <tr key={p.id} onClick={() => openDetail(p.id)} className="cursor-pointer border-t border-border/70 hover:bg-muted/30">
-                      <td className="px-4 py-2.5 font-medium">{p.name}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{p.mobile}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{p.category_label}</td>
-                      <td className="px-4 py-2.5">{p.priority ? <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold capitalize text-white", PRIORITY_TONE[p.priority])}>{p.priority}</span> : "—"}</td>
-                      <td className="px-4 py-2.5 text-[12px]">{p.status.replace(/_/g, " ").toLowerCase()}</td>
-                      <td className="px-4 py-2.5 text-[12px] text-muted-foreground">{p.source_label}</td>
-                      <td className="px-4 py-2.5 text-[12px] text-muted-foreground">{p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}</td>
+                    <tr key={p.id} onClick={() => openDetail(p.id)} className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#EFF3FB]">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <InitialsAvatar name={p.name} className="h-8 w-8 rounded-lg text-[10px]" />
+                          <div className="min-w-0 leading-tight">
+                            <div className="type-table-row truncate text-foreground">{p.name}</div>
+                            <div className="font-mono text-[11px] font-semibold text-brand">{p.token}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground tabular-nums">{p.mobile}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{p.category_label}</td>
+                      <td className="px-4 py-3"><PriorityBadge priority={p.priority} /></td>
+                      <td className="px-4 py-3">
+                        {STATUS_PILL[p.status] ? (
+                          <span className={cn("inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-semibold", STATUS_PILL[p.status].cls)}>
+                            {STATUS_PILL[p.status].label}
+                          </span>
+                        ) : (
+                          <span className="text-[12px] capitalize">{p.status.replace(/_/g, " ").toLowerCase()}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-muted-foreground">{p.source_label}</td>
+                      <td className="px-4 py-3 text-[12px] text-muted-foreground">{p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -317,8 +358,8 @@ export default function OverviewPage() {
 function ChartHead({ icon: Icon, title, sub }: { icon: any; title: string; sub: string }) {
   return (
     <div className="mb-3">
-      <div className="inline-flex items-center gap-1.5 text-[13px] font-bold"><Icon className="h-3.5 w-3.5 text-brand" /> {title}</div>
-      <div className="text-[11px] text-muted-foreground">{sub}</div>
+      <div className="type-card-heading inline-flex items-center gap-2"><Icon className="h-4 w-4 text-brand" /> {title}</div>
+      <div className="type-caption text-muted-foreground">{sub}</div>
     </div>
   );
 }

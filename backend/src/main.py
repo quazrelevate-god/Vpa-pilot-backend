@@ -25,7 +25,9 @@ import src.models.scheduling_models  # noqa: F401
 import src.models.referral_models  # noqa: F401
 import src.models.ai_upload_models  # noqa: F401
 import src.models.ticket_models  # noqa: F401
-import src.models.department_account  # noqa: F401
+import src.models.login_models  # noqa: F401  — ticket.assigned_to → login.id
+import src.models.activity_models  # noqa: F401  — unified audit log
+import src.models.department_account  # noqa: F401  — ticket routing/accept
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':
@@ -114,6 +116,18 @@ app.include_router(ai_uploads.router)
 from src.api.v1 import ticketing  # noqa: E402
 app.include_router(ticketing.dept_router)
 app.include_router(ticketing.pa_router)
+
+
+@app.on_event("startup")
+async def _load_admin_lookup():
+    """Pre-warm the admin lookup cache so every service can resolve FK ids."""
+    from src.core.database import AsyncSessionLocal
+    from src.services.v2_helpers import v2
+    try:
+        async with AsyncSessionLocal() as db:
+            await v2.init(db)
+    except Exception as e:
+        logging.getLogger("startup").warning("admin lookup load skipped: %s", e)
 
 
 @app.on_event("startup")

@@ -47,7 +47,7 @@ class GrievanceSummaryRecord(Base):
     # ── Foreign key ────────────────────────────────────────────────────────────
     appointment_id = Column(
         Integer,
-        ForeignKey("appointments.id", ondelete="CASCADE"),
+        ForeignKey("appointment.id", ondelete="CASCADE"),
         nullable=False,
         comment="The appointment this summary belongs to",
     )

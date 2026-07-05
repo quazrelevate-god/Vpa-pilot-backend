@@ -47,7 +47,7 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-in fade-in-0"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 animate-in fade-in-0"
       onClick={onClose}
     >
       {/* Header */}
@@ -90,7 +90,7 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
       {hasPrev && (
         <button
           onClick={(e) => { e.stopPropagation(); setIndex((i) => i - 1); setScale(1); }}
-          className="absolute left-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
+          className="absolute left-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
           aria-label="Previous"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -99,7 +99,7 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
       {hasNext && (
         <button
           onClick={(e) => { e.stopPropagation(); setIndex((i) => i + 1); setScale(1); }}
-          className="absolute right-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
+          className="absolute right-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
           aria-label="Next"
         >
           <ChevronRight className="h-5 w-5" />

@@ -308,21 +308,21 @@ async def api_appointment_activity(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    """Return the activity timeline for an appointment."""
-    from src.models.appointment_models import AppointmentEvent
+    """Return the activity timeline for an appointment (v2: unified activity table)."""
+    from src.models.activity_models import Activity
     result = await db.execute(
-        select(AppointmentEvent)
-        .where(AppointmentEvent.appointment_id == appointment_id)
-        .order_by(AppointmentEvent.created_at.desc())
+        select(Activity)
+        .where(Activity.appointment_id == appointment_id)
+        .order_by(Activity.created_at.desc())
     )
     events = result.scalars().all()
     return JSONResponse({
         "items": [
             {
                 "id": e.id,
-                "event_type": e.event_type,
-                "actor": e.actor,
-                "note": e.note,
+                "event_type": e.action_type,
+                "actor": e.user,
+                "note": e.message,
                 "payload": e.payload,
                 "created_at": e.created_at.isoformat() + "Z" if e.created_at else None,
             }
