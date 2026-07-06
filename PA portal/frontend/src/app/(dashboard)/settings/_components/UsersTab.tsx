@@ -39,6 +39,100 @@ const ROLE_TONE: Record<Role, Parameters<typeof StatusDot>[0]["tone"]> = {
   auditor:      "slate",
 };
 
+// Human-friendly "what does this role actually do" — shown live under the
+// Role select when the admin is picking a role. Kept short and concrete —
+// this is the moment where a wrong click grants too much access.
+const ROLE_CAPABILITIES: Record<Role, {
+  can: string[];
+  cannot: string[];
+  scope: string;
+}> = {
+  super_admin: {
+    scope: "Full platform access.",
+    can: [
+      "Everything a PA officer can do",
+      "Access the Settings page",
+      "Create, edit, disable staff users + assign roles",
+      "Add / rename / disable departments and set their emails",
+      "Set the contact email for every Ministry",
+      "Rotate / delete department shared login passwords",
+    ],
+    cannot: [
+      "Delete their own account (safety guard)",
+    ],
+  },
+  pa: {
+    scope: "Daily case work in the PA portal.",
+    can: [
+      "See and edit appointments, tickets, petitions, referrals",
+      "Run petition review + AI review",
+      "Manage scheduling + slots",
+      "Read the crowd QR + display board",
+    ],
+    cannot: [
+      "Access Settings",
+      "Create or edit other users",
+      "Change department / ministry configuration",
+    ],
+  },
+  dept_officer: {
+    scope: "Department workspace only.",
+    can: [
+      "Log in to the department dashboard (separate URL)",
+      "Accept, progress, resolve tickets routed to this department",
+      "Forward tickets to another department",
+      "Upload resolution proofs",
+    ],
+    cannot: [
+      "Access the PA portal or Settings",
+      "See petitions routed to other departments",
+      "Change classifications the AI made",
+    ],
+  },
+  auditor: {
+    scope: "Read-only visibility across the PA portal.",
+    can: [
+      "View appointments, tickets, activity timelines, reports",
+      "Export petition / ticket lists",
+    ],
+    cannot: [
+      "Create, edit or delete anything",
+      "Access Settings",
+      "Trigger status changes or notifications",
+    ],
+  },
+};
+
+function RolePreview({ role }: { role: Role }) {
+  const info = ROLE_CAPABILITIES[role];
+  return (
+    <div className="rounded-xl border border-border bg-muted/40 p-3">
+      <div className="mb-1.5 flex items-center gap-2">
+        <StatusDot label={ROLE_LABELS[role]} tone={ROLE_TONE[role]} />
+        <span className="text-[12px] font-medium text-muted-foreground">{info.scope}</span>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Can do</div>
+          <ul className="mt-1 space-y-0.5 text-[12px] text-foreground/85">
+            {info.can.map((c) => (
+              <li key={c} className="flex gap-1.5"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-emerald-500" /><span>{c}</span></li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Can't do</div>
+          <ul className="mt-1 space-y-0.5 text-[12px] text-muted-foreground">
+            {info.cannot.map((c) => (
+              <li key={c} className="flex gap-1.5"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-slate-400" /><span>{c}</span></li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function UsersTab({ currentUserId }: { currentUserId: number }) {
   const [rows, setRows] = useState<UserRow[] | null>(null);
   const [editing, setEditing] = useState<UserRow | null>(null);
@@ -234,6 +328,9 @@ function UserFormDialog({
             type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             placeholder={isEdit ? "•••••• (unchanged)" : "min 6 characters"}
           />
+        </div>
+        <div className="sm:col-span-2">
+          <RolePreview role={role} />
         </div>
       </div>
       <DialogFooter>

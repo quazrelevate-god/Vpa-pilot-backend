@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { KeyRound, Copy, Check, RefreshCw, Plus, Building2 } from "lucide-react";
+import { KeyRound, Copy, Check, RefreshCw, Plus, Building2, Trash2 } from "lucide-react";
 
 import { SectionCard, StatusDot } from "@/components/ui/detail-primitives";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import {
   listDeptAccounts, listDepartments, createDeptAccount, resetDeptPassword,
+  deleteDeptAccount,
   type DeptAccountRow, type DepartmentRow,
 } from "../_lib/adminApi";
 
@@ -26,6 +27,7 @@ export default function DeptAccountsTab() {
   const [depts, setDepts]       = useState<DepartmentRow[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [reveal, setReveal]     = useState<null | { username: string; password: string; department: string }>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DeptAccountRow | null>(null);
 
   const load = async () => {
     try {
@@ -89,24 +91,68 @@ export default function DeptAccountsTab() {
                   {r.display_name && <span>· {r.display_name}</span>}
                 </div>
               </div>
-              <Button
-                size="sm" variant="outline"
-                onClick={async () => {
-                  try {
-                    const out = await resetDeptPassword(r.department);
-                    setReveal({ username: out.username, password: out.password, department: r.department });
-                    toast.success("Password reset");
-                  } catch (e) {
-                    toast.error("Reset failed", { description: (e as Error).message });
-                  }
-                }}
-              >
-                <RefreshCw className="mr-1 h-3.5 w-3.5" /> Reset password
-              </Button>
+              <div className="flex flex-shrink-0 items-center gap-1.5">
+                <Button
+                  size="sm" variant="outline"
+                  onClick={async () => {
+                    try {
+                      const out = await resetDeptPassword(r.department);
+                      setReveal({ username: out.username, password: out.password, department: r.department });
+                      toast.success("Password reset");
+                    } catch (e) {
+                      toast.error("Reset failed", { description: (e as Error).message });
+                    }
+                  }}
+                >
+                  <RefreshCw className="mr-1 h-3.5 w-3.5" /> Reset password
+                </Button>
+                <Button
+                  size="sm" variant="outline"
+                  className="text-red-700 hover:bg-red-50 hover:text-red-700 border-red-200"
+                  title="Delete this shared login"
+                  onClick={() => setConfirmDelete(r)}
+                >
+                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+                </Button>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Delete confirmation */}
+      <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        {confirmDelete && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete {deptLabel(confirmDelete.department)} login?</DialogTitle>
+              <DialogDescription>
+                The department team will no longer be able to sign in. Historical tickets
+                already accepted by this account remain in the system. You can re-create
+                the account any time with a new username.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+              <Button
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={async () => {
+                  try {
+                    await deleteDeptAccount(confirmDelete.id);
+                    toast.success("Account deleted");
+                    setConfirmDelete(null);
+                    load();
+                  } catch (e) {
+                    toast.error("Delete failed", { description: (e as Error).message });
+                  }
+                }}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
       {/* Create dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>

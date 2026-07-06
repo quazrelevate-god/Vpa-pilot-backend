@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
-  Building2, Plus, Check, X, MailIcon, Pencil, Save, Star,
+  Building2, Plus, Check, X, MailIcon, Pencil, Save, Star, Trash2, Power, PowerOff,
 } from "lucide-react";
 
 import { SectionCard, StatusDot } from "@/components/ui/detail-primitives";
@@ -11,18 +11,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
-  listDepartments, createDepartment, updateDepartment, type DepartmentRow,
+  listDepartments, createDepartment, updateDepartment, deleteDepartment,
+  type DepartmentRow,
 } from "../_lib/adminApi";
 
 export default function DepartmentsTab() {
   const [rows, setRows] = useState<DepartmentRow[] | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const [editing, setEditing] = useState<DepartmentRow | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DepartmentRow | null>(null);
 
   const load = async () => {
     try { setRows(await listDepartments()); }
@@ -85,13 +87,76 @@ export default function DepartmentsTab() {
                   )}
                 </div>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setEditing(d)}>
-                <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
-              </Button>
+              <div className="flex flex-shrink-0 items-center gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => setEditing(d)}>
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                </Button>
+                {d.is_builtin ? (
+                  <Button
+                    size="sm" variant="outline"
+                    title={d.is_active ? "Disable this department" : "Re-enable this department"}
+                    onClick={async () => {
+                      try {
+                        await updateDepartment(d.id, { is_active: !d.is_active });
+                        toast.success(d.is_active ? "Disabled" : "Enabled");
+                        load();
+                      } catch (e) {
+                        toast.error("Update failed", { description: (e as Error).message });
+                      }
+                    }}
+                  >
+                    {d.is_active
+                      ? <><PowerOff className="mr-1 h-3.5 w-3.5" /> Disable</>
+                      : <><Power className="mr-1 h-3.5 w-3.5" /> Enable</>}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm" variant="outline"
+                    className="text-red-700 hover:bg-red-50 hover:text-red-700 border-red-200"
+                    onClick={() => setConfirmDelete(d)}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Delete confirmation — only for non-builtin. Server also blocks. */}
+      <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        {confirmDelete && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete {confirmDelete.display_en}?</DialogTitle>
+              <DialogDescription>
+                This removes the custom department along with its shared login account.
+                Historical tickets already routed to this department will keep the key
+                stored but the label will fall back to the raw identifier. This can't be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+              <Button
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={async () => {
+                  try {
+                    await deleteDepartment(confirmDelete.id);
+                    toast.success("Department deleted");
+                    setConfirmDelete(null);
+                    load();
+                  } catch (e) {
+                    toast.error("Delete failed", { description: (e as Error).message });
+                  }
+                }}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         {editing && (

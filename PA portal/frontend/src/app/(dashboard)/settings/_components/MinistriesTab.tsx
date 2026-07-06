@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Landmark, Check, MailIcon, Pencil, Search } from "lucide-react";
+import { Landmark, Check, MailIcon, Pencil, Search, Power, PowerOff } from "lucide-react";
 
 import { SectionCard, StatusDot } from "@/components/ui/detail-primitives";
 import { Button } from "@/components/ui/button";
@@ -78,7 +78,10 @@ export default function MinistriesTab() {
                 <Landmark className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-foreground">{m.display_en}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">{m.display_en}</span>
+                  {!m.is_active && <StatusDot label="Inactive" tone="slate" />}
+                </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
                   <span className="font-mono">{m.key}</span>
                   {m.email ? (
@@ -91,9 +94,28 @@ export default function MinistriesTab() {
                   {m.display_ta && <span>· {m.display_ta}</span>}
                 </div>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setEditing(m)}>
-                <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
-              </Button>
+              <div className="flex flex-shrink-0 items-center gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => setEditing(m)}>
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                </Button>
+                <Button
+                  size="sm" variant="outline"
+                  title={m.is_active ? "Hide from AI routing" : "Bring back into AI routing"}
+                  onClick={async () => {
+                    try {
+                      await updateMinistry(m.id, { is_active: !m.is_active });
+                      toast.success(m.is_active ? "Disabled" : "Enabled");
+                      load();
+                    } catch (e) {
+                      toast.error("Update failed", { description: (e as Error).message });
+                    }
+                  }}
+                >
+                  {m.is_active
+                    ? <><PowerOff className="mr-1 h-3.5 w-3.5" /> Disable</>
+                    : <><Power className="mr-1 h-3.5 w-3.5" /> Enable</>}
+                </Button>
+              </div>
             </div>
           ))}
         </div>

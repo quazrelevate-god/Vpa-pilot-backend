@@ -297,6 +297,34 @@ async def update_department(
     return DepartmentRow.model_validate(row, from_attributes=True)
 
 
+@router.delete("/departments/{dept_id}", status_code=204)
+async def delete_department(
+    dept_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Hard-delete a custom department. Built-in (seeded) departments cannot be
+    deleted — deactivate them via PATCH is_active=false instead, so historical
+    tickets that reference the key still resolve their label.
+    """
+    row = await db.get(DepartmentRegistry, dept_id)
+    if not row:
+        raise HTTPException(404, "Department not found.")
+    if row.is_builtin:
+        raise HTTPException(
+            409, "Built-in departments can't be deleted. Deactivate them instead.",
+        )
+    # Also delete any dept_account tied to this department key so we don't
+    # leave an orphaned login pointing at a non-existent department.
+    await db.execute(
+        DepartmentAccount.__table__.delete().where(
+            DepartmentAccount.department == row.key,
+        )
+    )
+    await db.delete(row)
+    await db.commit()
+
+
 # ── Ministries — edit-only ───────────────────────────────────────────────────
 
 @router.get("/ministries", response_model=list[MinistryRow])
@@ -364,6 +392,22 @@ async def create_dept_account(
     # retrievable later.
     return {**DeptAccountRow.model_validate(row, from_attributes=True).model_dump(),
             "initial_password": initial}
+
+
+@router.delete("/dept-accounts/{account_id}", status_code=204)
+async def delete_dept_account(
+    account_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Remove a department shared login. Use when a department is closed or the
+    account needs to be recreated with a different username.
+    """
+    row = await db.get(DepartmentAccount, account_id)
+    if not row:
+        raise HTTPException(404, "Account not found.")
+    await db.delete(row)
+    await db.commit()
 
 
 @router.post("/dept-accounts/{dept_key}/reset-password")

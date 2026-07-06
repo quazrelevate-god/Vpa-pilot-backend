@@ -133,6 +133,13 @@ export async function updateDepartment(id: number, patch: {
   return r.json();
 }
 
+export async function deleteDepartment(id: number): Promise<void> {
+  const r = await fetch(`/api/v1/admin/departments/${id}`, {
+    method: "DELETE", credentials: "include",
+  });
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+}
+
 // ── Ministries ─────────────────────────────────────────────────────────────
 export async function listMinistries(): Promise<MinistryRow[]> {
   const r = await fetch("/api/v1/admin/ministries", { credentials: "include", cache: "no-store" });
@@ -169,6 +176,13 @@ export async function createDeptAccount(body: {
   });
   if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
   return r.json();
+}
+
+export async function deleteDeptAccount(id: number): Promise<void> {
+  const r = await fetch(`/api/v1/admin/dept-accounts/${id}`, {
+    method: "DELETE", credentials: "include",
+  });
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
 }
 
 export async function resetDeptPassword(deptKey: string, password?: string): Promise<{
