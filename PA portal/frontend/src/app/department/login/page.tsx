@@ -2,18 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Loader2 } from "lucide-react";
+import { AlertCircle, Building2, Loader2, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function DepartmentLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true); setError("");
+    setBusy(true); setError(null);
     try {
       const body = new URLSearchParams();
       body.set("username", username.trim());
@@ -27,47 +30,74 @@ export default function DepartmentLoginPage() {
       if (r.ok) {
         router.push("/department");
         router.refresh();
-      } else {
-        const d = await r.json().catch(() => ({}));
-        setError(d.error || "Invalid username or password.");
+        return;
       }
+      const d = await r.json().catch(() => ({}));
+      setError(d.error ?? "Invalid username or password.");
     } catch {
-      setError("Network error. Please try again.");
+      setError("Could not reach the server.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-slate-50 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-xl bg-indigo-100 text-indigo-600">
-            <Building2 className="h-6 w-6" />
-          </span>
-          <h1 className="mt-3 text-lg font-bold text-slate-900">Department Workspace</h1>
-          <p className="mt-1 text-sm text-slate-500">Sign in to manage tickets assigned to your department.</p>
+    <div className="grid min-h-screen place-items-center bg-background px-6 py-12">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex items-center gap-3">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl border border-[#CFE0FB] bg-gradient-to-br from-white to-[#EAF1FE] text-[#1E40AF] shadow-[0_2px_8px_rgba(47,111,237,0.12)]">
+            <Building2 className="h-5 w-5" />
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-bold text-foreground">Department Workspace</div>
+            <div className="text-[11px] font-medium text-muted-foreground">
+              Petition Management · Staff portal
+            </div>
+          </div>
         </div>
-        <form onSubmit={submit} className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Department username</label>
-            <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus
-              placeholder="e.g. scert"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+
+        <div className="mb-7">
+          <h1 className="type-page-title text-foreground">Welcome</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sign in with your shared department credentials.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-5 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        )}
+
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Username</Label>
+            <Input
+              value={username} onChange={(e) => { setUsername(e.target.value); setError(null); }}
+              autoFocus placeholder="e.g. scert_team"
+            />
           </div>
-          {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-          <button type="submit" disabled={busy || !username || !password}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50">
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Sign In
-          </button>
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Password</Label>
+            <Input
+              type="password"
+              value={password} onChange={(e) => { setPassword(e.target.value); setError(null); }}
+              placeholder="••••••••"
+            />
+          </div>
+          <Button
+            type="submit" disabled={busy || !username || !password}
+            className="aurora-primary mt-2 w-full text-white"
+          >
+            {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            Sign in
+          </Button>
         </form>
-        <p className="mt-4 text-center text-[11px] text-slate-400">School Education — authorised department staff only</p>
+
+        <div className="mt-8 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <ShieldCheck className="h-3 w-3" />
+          Authorised department personnel only
+        </div>
       </div>
     </div>
   );
