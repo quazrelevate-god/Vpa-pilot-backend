@@ -14,7 +14,7 @@ interface Props {
 export default function DeptTopBar({ label, onRefresh, refreshing, onSignOut }: Props) {
   const { lang, setLang, t } = useDeptLang();
   return (
-    <header className="sticky top-0 z-30 h-20 flex-shrink-0 border-b border-border bg-card">
+    <header className="aurora-header sticky top-0 z-30 h-20 flex-shrink-0 border-b border-border">
       <div className="flex h-full items-center gap-4 px-6">
         {/* Left — dept identity */}
         <div className="flex min-w-0 items-center gap-3">

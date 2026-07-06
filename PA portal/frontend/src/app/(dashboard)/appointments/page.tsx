@@ -6,7 +6,7 @@ import {
   Download, Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron,
   CalendarClock, CalendarDays, CalendarRange, X, ArrowUpDown, ArrowDownNarrowWide,
   ArrowDownAZ, ArrowUpAZ, SlidersHorizontal, MoreVertical, Clock,
-  CalendarCheck, RotateCw, Users, Eye,
+  CalendarCheck, RotateCw,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -110,6 +110,35 @@ function dateLocale(lang: string): string {
   return lang === "ta" ? "ta-IN" : undefined as unknown as string;
 }
 
+/**
+ * The appointment's time as a 30-minute WINDOW in 12-hour format
+ * ("10:00 AM – 10:30 AM"), never the exact minute and never 24-hour. Derives
+ * from the exact appointment time; falls back to the start time parsed out of
+ * the slot-window text so we never surface a raw 24-hour range.
+ */
+function timeWindowText(
+  row: Pick<AppointmentRow, "slot_window" | "appointment_time">,
+  lang: string,
+): string | null {
+  const fmt = (d: Date) =>
+    d.toLocaleTimeString(dateLocale(lang), { hour: "numeric", minute: "2-digit", hour12: true });
+  const windowFrom = (start: Date) => `${fmt(start)} – ${fmt(new Date(start.getTime() + 30 * 60 * 1000))}`;
+
+  if (row.appointment_time) {
+    const start = new Date(row.appointment_time);
+    if (!isNaN(start.getTime())) return windowFrom(start);
+  }
+  // Fallback — pull the start "HH:MM" out of the slot-window text (which may be
+  // stored 24-hour) and re-render it as a 12-hour 30-minute window.
+  const m = (row.slot_window ?? "").match(/(\d{1,2}):(\d{2})/);
+  if (m) {
+    const start = new Date();
+    start.setHours(parseInt(m[1], 10), parseInt(m[2], 10), 0, 0);
+    return windowFrom(start);
+  }
+  return null;
+}
+
 /** Maps an AppointmentStatus enum value to its translation key. */
 const STATUS_LABEL_KEY: Record<string, string> = {
   Scheduled: "appts.statusScheduled",
@@ -187,15 +216,15 @@ function nameText(row: Pick<AppointmentRow, "name" | "name_ta">, lang: string): 
 
 /** Memoized row — re-renders only when its own row payload changes. */
 const AppointmentTableRow = memo(function AppointmentTableRow({
-  row, index, active, onOpen, onStatusChange,
+  row, index, active, onOpen,
 }: {
   row: AppointmentRow;
   index: number;
   active: boolean;
   onOpen: (row: AppointmentRow) => void;
-  onStatusChange: (row: AppointmentRow, next: AppointmentStatus) => void;
 }) {
   const { lang, t } = useLang();
+  const ask = pickAskText(row, lang);
 
   const apptDateLabel = useMemo(() => {
     if (!row.scheduled_date) return null;
@@ -203,22 +232,10 @@ const AppointmentTableRow = memo(function AppointmentTableRow({
       day: "numeric", month: "short", year: "numeric",
     });
   }, [row.scheduled_date, lang]);
-  const apptTimeLabel = useMemo(() => {
-    if (!row.appointment_time) return null;
-    return new Date(row.appointment_time).toLocaleTimeString(dateLocale(lang), {
-      hour: "2-digit", minute: "2-digit", hour12: true,
-    });
-  }, [row.appointment_time, lang]);
-
-  // Slot duration chip, e.g. "30m" — derived from the slot window text.
-  const durationLabel = useMemo(() => {
-    const m = (row.slot_window ?? "").match(/(\d{1,2}):(\d{2})\s*[–—-]\s*(\d{1,2}):(\d{2})/);
-    if (!m) return null;
-    let mins = parseInt(m[3]) * 60 + parseInt(m[4]) - (parseInt(m[1]) * 60 + parseInt(m[2]));
-    if (mins <= 0) mins += 12 * 60;
-    if (mins <= 0 || mins > 12 * 60) return null;
-    return mins >= 60 ? `${Math.floor(mins / 60)}h${mins % 60 ? ` ${mins % 60}m` : ""}` : `${mins}m`;
-  }, [row.slot_window]);
+  const timeWindowLabel = useMemo(
+    () => timeWindowText(row, lang),
+    [row.slot_window, row.appointment_time, lang],
+  );
 
   return (
     <motion.tr
@@ -244,75 +261,29 @@ const AppointmentTableRow = memo(function AppointmentTableRow({
         </div>
       </td>
       <td className="px-4 py-4 text-[15px] font-semibold text-foreground">{categoryText(row, lang)}</td>
+      <td className="max-w-[280px] px-4 py-4">
+        {ask
+          ? <div className="line-clamp-2 text-sm leading-snug text-foreground/85">{ask}</div>
+          : <span className="text-muted-foreground/40">—</span>}
+      </td>
       <td className="px-4 py-4">
         {apptDateLabel ? (
-          <div>
-            <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-              <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
-              {apptDateLabel}
-            </div>
-            {(row.slot_window || apptTimeLabel) && (
-              <div className="mt-1 flex items-center gap-1.5 pl-5 text-[13px] text-muted-foreground">
-                <span>
-                  {row.slot_window}
-                  {apptTimeLabel && <> · {apptTimeLabel}</>}
-                </span>
-                {durationLabel && (
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                    {durationLabel}
-                  </span>
-                )}
-              </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-semibold text-foreground">{apptDateLabel}</span>
+            {timeWindowLabel && (
+              <span className="inline-flex w-fit items-center rounded-md bg-accent px-2 py-0.5 font-mono text-[12px] font-semibold text-brand">
+                {timeWindowLabel}
+              </span>
             )}
           </div>
         ) : <span className="text-muted-foreground/40">—</span>}
       </td>
       <td className="px-4 py-4">
         {row.num_persons != null ? (
-          <div className="flex items-center justify-center gap-1.5 text-[15px] font-medium tabular-nums text-foreground">
-            <Users className="h-4 w-4 text-muted-foreground" />
+          <div className="text-center text-[15px] font-medium tabular-nums text-foreground">
             {row.num_persons}
           </div>
         ) : <div className="text-center text-muted-foreground/40">—</div>}
-      </td>
-      <td className="px-4 py-4"><StatusPill status={row.status} t={t} /></td>
-      <td className="pr-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-1">
-          <button
-            onClick={() => onOpen(row)}
-            aria-label={t("appts.openDetails")}
-            className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-accent hover:text-brand"
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              aria-label={t("label.actions")}
-              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel className="text-[13px] uppercase tracking-wider text-muted-foreground">
-              {t("appts.changeStatus")}
-            </DropdownMenuLabel>
-            {STATUS_OPTIONS.filter((s) => s !== row.status).map((s) => (
-              <DropdownMenuItem key={s} onSelect={() => onStatusChange(row, s)}>
-                {s === "Scheduled" && <CalendarCheck className="h-3.5 w-3.5 text-brand" />}
-                {s === "Waiting" && <Clock className="h-3.5 w-3.5 text-amber-500" />}
-                {s === "Rescheduled" && <RotateCw className="h-3.5 w-3.5 text-blue-500" />}
-                {t("appts.markAs")} {t(STATUS_LABEL_KEY[s] ?? s)}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => onOpen(row)}>
-              <RowChevron className="h-3.5 w-3.5" /> {t("appts.openDetails")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        </div>
       </td>
     </motion.tr>
   );
@@ -334,11 +305,7 @@ const AppointmentCard = memo(function AppointmentCard({
         day: "numeric", month: "short", year: "numeric",
       })
     : null;
-  const apptTimeLabel = row.appointment_time
-    ? new Date(row.appointment_time).toLocaleTimeString(dateLocale(lang), {
-        hour: "2-digit", minute: "2-digit", hour12: true,
-      })
-    : null;
+  const timeWindowLabel = timeWindowText(row, lang);
 
   return (
     <div
@@ -388,13 +355,11 @@ const AppointmentCard = memo(function AppointmentCard({
             <div className="mt-1.5 line-clamp-2 text-sm leading-snug text-foreground/80">{askText}</div>
           )}
           {apptDateLabel && (
-            <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground">
               {apptDateLabel}
-              {(row.slot_window || apptTimeLabel) && (
-                <span className="text-muted-foreground">
-                  · {row.slot_window}
-                  {apptTimeLabel && <> · {apptTimeLabel}</>}
+              {timeWindowLabel && (
+                <span className="rounded-md bg-accent px-2 py-0.5 font-mono text-[12px] font-semibold text-brand">
+                  {timeWindowLabel}
                 </span>
               )}
             </div>
@@ -719,16 +684,13 @@ function AppointmentsPageInner() {
           <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
           {/* Desktop table — fills to the bottom of the page; body scrolls */}
           <Card className="hidden overflow-hidden p-0 shadow-card-md md:block xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
-            {/* In-card header — title */}
-            <div className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-4">
-              <h2 className="type-card-heading text-foreground">{t("appts.tableTitle")}</h2>
-            </div>
             <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
               <table className="w-full min-w-[720px] text-base">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr className="border-b border-border">
-                    <th className={th}>{t("appts.colName")}</th>
+                    <th className={cn(th, "w-[190px]")}>{t("appts.colName")}</th>
                     <th className={cn(th, "w-40")}>{t("appts.colCategory")}</th>
+                    <th className={th}>{t("appts.colAsk")}</th>
                     <th className={cn(th, "w-48")}>
                       <SortButton
                         active={sort === "appt_date_asc" || sort === "appt_date_desc"}
@@ -738,8 +700,6 @@ function AppointmentsPageInner() {
                       />
                     </th>
                     <th className={cn(th, "w-24 text-center")}>{t("appts.colPeople")}</th>
-                    <th className={cn(th, "w-[130px]")}>{t("appts.colStatus")}</th>
-                    <th className={cn(th, "w-24 text-right")}>{t("appts.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody key={`${tab}-${page}`}>
@@ -748,14 +708,14 @@ function AppointmentsPageInner() {
                       <tr key={i} className="border-b border-border/60">
                         <td className="px-4 py-3"><div className="flex items-center gap-2.5"><Skeleton className="h-9 w-9 rounded-lg" /><div className="space-y-1.5"><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3 w-20" /></div></div></td>
                         <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                        <td className="px-4 py-3"><div className="space-y-1.5"><Skeleton className="h-3.5 w-full max-w-[220px]" /><Skeleton className="h-3.5 w-3/4 max-w-[160px]" /></div></td>
                         <td className="px-4 py-3"><div className="space-y-1.5"><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3 w-20" /></div></td>
                         <td className="px-4 py-3"><Skeleton className="mx-auto h-4 w-6" /></td>
                         <td className="px-4 py-3"><Skeleton className="h-6 w-20 rounded-lg" /></td>
-                        <td className="px-4 py-3"><Skeleton className="ml-auto h-6 w-14 rounded-lg" /></td>
                       </tr>
                     ))
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-16 text-center">
+                    <tr><td colSpan={5} className="px-4 py-16 text-center">
                       <CalendarClock className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
                       <div className="text-base font-semibold text-foreground">{t("appts.noAppts")}</div>
                       {anyFilterActive ? (
@@ -779,7 +739,6 @@ function AppointmentsPageInner() {
                       index={i}
                       active={openRow?.id === row.id}
                       onOpen={setOpenRow}
-                      onStatusChange={onStatusChange}
                     />
                   ))}
                 </tbody>

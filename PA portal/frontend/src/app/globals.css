@@ -149,6 +149,41 @@
   box-shadow: inset -1px 0 0 rgba(28,30,41,0.05);
 }
 
+/* Horizontal sibling of .aurora-sidebar — the same sky→lavender wash running
+   LEFT→RIGHT, for wide bars like the department header. */
+.aurora-header {
+  background-image:
+    /* sparkles — two cross-flares (core + horizontal + vertical glint) */
+    radial-gradient(ellipse 7px 1px at 8% 30%,  rgba(255,255,255,0.70), transparent 100%),
+    radial-gradient(ellipse 1px 7px at 8% 30%,  rgba(255,255,255,0.70), transparent 100%),
+    radial-gradient(circle 1.5px  at 8% 30%,  rgba(255,255,255,0.95), transparent 100%),
+    radial-gradient(ellipse 6px 1px at 38% 62%, rgba(203,184,242,0.55), transparent 100%),
+    radial-gradient(ellipse 1px 6px at 38% 62%, rgba(203,184,242,0.55), transparent 100%),
+    radial-gradient(circle 1.2px  at 38% 62%, rgba(203,184,242,0.85), transparent 100%),
+    /* sparkles — dust */
+    radial-gradient(circle 1px   at 13% 60%, rgba(255,255,255,0.80), transparent 100%),
+    radial-gradient(circle 1.2px at 30% 25%, rgba(255,255,255,0.60), transparent 100%),
+    radial-gradient(circle 1px   at 52% 45%, rgba(203,184,242,0.50), transparent 100%),
+    radial-gradient(circle 1.2px at 74% 68%, rgba(255,255,255,0.50), transparent 100%),
+    radial-gradient(circle 1px   at 88% 40%, rgba(203,184,242,0.40), transparent 100%),
+    /* cool sky — from the very left across to ~first quarter, glowing at the corner */
+    radial-gradient(16% 160% at 0% 0%, rgba(148,204,238,0.32), rgba(148,204,238,0.12) 60%, transparent 100%),
+    linear-gradient(90deg,
+      rgba(148,204,238,0.26) 0%,
+      rgba(148,204,238,0.18) 14%,
+      rgba(148,204,238,0.08) 22%,
+      rgba(148,204,238,0.00) 30%),
+    /* lavender — takes over where the sky ends and runs to the right */
+    linear-gradient(90deg,
+      rgba(203,184,242,0.00) 16%,
+      rgba(203,184,242,0.20) 30%,
+      rgba(203,184,242,0.22) 46%,
+      rgba(203,184,242,0.14) 72%,
+      rgba(203,184,242,0.08) 100%),
+    /* base — cool white; white items (cards, pills) read brighter than it */
+    linear-gradient(90deg, #F8FBFF 0%, #F9FAFF 40%, #F7FAFE 100%);
+}
+
 /* Fade masks so overflow in the nav list is perceivable on short screens */
 .nav-scroll-fade {
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);

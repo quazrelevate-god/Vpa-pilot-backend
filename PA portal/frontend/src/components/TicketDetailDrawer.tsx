@@ -426,7 +426,7 @@ export default function TicketDetailDrawer({
                   <Textarea
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="Add a comment or internal note…"
+                    placeholder={tr("evt.commentPlaceholder")}
                     rows={3}
                     className="border-0 p-1 shadow-none focus-visible:ring-0"
                   />
@@ -439,13 +439,13 @@ export default function TicketDetailDrawer({
 
                 {/* Timeline */}
                 {t.events.length === 0 ? (
-                  <div className="py-10 text-center text-sm italic text-muted-foreground">No activity yet.</div>
+                  <div className="py-10 text-center text-sm italic text-muted-foreground">{tr("evt.noActivity")}</div>
                 ) : (
                   <ol className="space-y-1">
                     {t.events.map((e, idx) => {
                       const Icon = EVENT_ICON[e.event_type] ?? Clock;
                       const last = idx === t.events.length - 1;
-                      const title = formatEventTitle(e.event_type);
+                      const title = eventTitle(e.event_type, tr);
                       const renderedBody = renderEventBody(e);
                       return (
                         <li key={e.id} className="flex gap-3">
@@ -597,6 +597,14 @@ const PRETTY_EVENT: Record<string, string> = {
 
 function formatEventTitle(eventType: string): string {
   return PRETTY_EVENT[eventType] ?? eventType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Localized event title — uses the shared `evt.*` keys so the timeline switches
+// with the global language; falls back to the English pretty-print.
+function eventTitle(eventType: string, tr: (k: string) => string): string {
+  const key = `evt.${eventType}`;
+  const localized = tr(key);
+  return localized === key ? formatEventTitle(eventType) : localized;
 }
 
 function ChangeArrow({ from, to, format }: { from: unknown; to: unknown; format?: (v: unknown) => string }) {

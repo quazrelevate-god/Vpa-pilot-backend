@@ -35,15 +35,18 @@ export default function KpiHero({ counts, allTickets, onJump, activeSeg }: Props
     return s?.breached ?? false;
   }).length;
 
+  const total = allTickets.length || 0;
+  const pct = (v: number) => (total ? Math.round((v / total) * 100) : 0);
+
   const items = [
-    { key: "assigned",            label: t("kpi.toAccept"),     value: toAccept,        tone: "amber",   icon: Clock },
-    { key: "in_progress",         label: t("kpi.inProgress"),   value: inProgress,      tone: "blue",    icon: RefreshCw },
-    { key: "resolved",            label: t("kpi.resolvedWeek"), value: resolvedThisWeek, tone: "emerald", icon: CheckCircle2 },
-    { key: "__breached",          label: t("kpi.overdue"),      value: breached,        tone: "red",     icon: AlertTriangle },
+    { key: "assigned",    label: t("kpi.toAccept"),     value: toAccept,         tone: "amber",   icon: Clock },
+    { key: "in_progress", label: t("kpi.inProgress"),   value: inProgress,       tone: "blue",    icon: RefreshCw },
+    { key: "resolved",    label: t("kpi.resolvedWeek"), value: resolvedThisWeek, tone: "emerald", icon: CheckCircle2 },
+    { key: "__breached",  label: t("kpi.overdue"),      value: breached,         tone: "red",     icon: AlertTriangle },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
       {items.map((it) => {
         const active = activeSeg === it.key;
         return (
@@ -51,26 +54,32 @@ export default function KpiHero({ counts, allTickets, onJump, activeSeg }: Props
             key={it.key}
             onClick={() => onJump(it.key)}
             className={cn(
-              "group relative overflow-hidden rounded-2xl border p-4 text-left shadow-card transition-all",
+              "group relative overflow-hidden rounded-lg border p-3.5 text-left shadow-card transition-all",
               "bg-gradient-to-br", CARD_TONES[it.tone],
               active
                 ? "border-brand ring-2 ring-brand/25"
                 : "border-border hover:-translate-y-0.5 hover:shadow-card-md",
             )}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-foreground/60">
-                  {it.label}
-                </div>
-                <div className="mt-1.5 font-mono text-3xl font-black leading-none tracking-tight text-foreground">
-                  {it.value}
-                </div>
+            {/* Faint watermark icon, bottom-right */}
+            <it.icon className="pointer-events-none absolute -bottom-3 -right-3 h-20 w-20 opacity-[0.06]" style={{ color: "var(--icon-fg)" }} />
+
+            <div className="relative flex items-center justify-between gap-3">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-foreground/60">
+                {it.label}
               </div>
               <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg" style={{ background: "var(--icon-bg)", color: "var(--icon-fg)" }}>
                 <it.icon className="h-4 w-4" />
               </div>
             </div>
+
+            <div className="relative mt-1.5 font-mono text-2xl font-black leading-none tracking-tight text-foreground">
+              {it.value}
+            </div>
+            <div className="relative mt-1 text-[11px] font-medium text-muted-foreground">
+              {pct(it.value)}% {t("kpi.ofTotal")}
+            </div>
+
             {it.tone === "red" && it.value > 0 && (
               <div className="absolute inset-x-0 bottom-0 h-1 bg-red-500 opacity-80" />
             )}

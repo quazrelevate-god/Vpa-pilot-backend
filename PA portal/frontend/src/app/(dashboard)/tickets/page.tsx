@@ -4,7 +4,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, ChevronLeft, ChevronRight, Ticket as TicketIcon,
   CalendarCheck, CalendarRange, AlarmClockOff, SlidersHorizontal, X, Download,
-  MoreVertical, Eye,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -18,9 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { fetchTickets, fetchTicketsCounts, type TicketListFilters } from "@/lib/api";
 import type { TicketRow } from "@/lib/types";
@@ -66,6 +62,28 @@ function catLabel(key: string | null | undefined, lang: string): string {
   if (!key) return "—";
   const k = key.toLowerCase();
   return (lang === "ta" ? CATEGORY_DISPLAY_TA[k] : CATEGORY_DISPLAY_EN[k]) ?? key.replace(/_/g, " ");
+}
+
+// Localized status + priority — reuse the same translation keys the detail
+// drawer uses so the whole app switches together. Falls back to the English
+// display map for any unmapped value.
+const STATUS_TKEY: Record<string, string> = {
+  open: "tkt.stOpen", triaged: "tkt.stTriaged", assigned: "tkt.stAssigned",
+  in_progress: "tkt.stInProgress", forwarded_to_dept: "tkt.stForwarded",
+  pending_citizen: "tkt.stPendingCitizen", resolved: "tkt.stResolved",
+  closed: "tkt.stClosed", reopened: "tkt.stReopened",
+};
+const PRIORITY_TKEY: Record<string, string> = {
+  low: "petition.urgencyLow", medium: "petition.urgencyMedium",
+  high: "petition.urgencyHigh", critical: "petition.urgencyCritical",
+};
+function statusText(s: string, t: (k: string) => string): string {
+  const k = STATUS_TKEY[s];
+  return k ? t(k) : (TICKET_STATUS_DISPLAY[s] ?? s);
+}
+function priorityText(p: string, t: (k: string) => string): string {
+  const k = PRIORITY_TKEY[p];
+  return k ? t(k) : (PRIORITY_DISPLAY[p] ?? p);
 }
 
 /** Who a ticket is assigned to — the PA who owns it (not the forwarded dept). */
@@ -188,7 +206,7 @@ const TicketTableRow = memo(function TicketTableRow({
       <td className="px-4 py-4 text-[15px] font-semibold text-foreground">{catLabel(row.category, lang)}</td>
       <td className="px-4 py-4">
         {row.priority
-          ? <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide", PRIORITY_PILL[row.priority] ?? "bg-muted text-muted-foreground")}>{PRIORITY_DISPLAY[row.priority] ?? row.priority}</span>
+          ? <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide", PRIORITY_PILL[row.priority] ?? "bg-muted text-muted-foreground")}>{priorityText(row.priority, t)}</span>
           : <span className="text-muted-foreground/40">—</span>}
       </td>
       <td className="px-4 py-4">
@@ -203,21 +221,6 @@ const TicketTableRow = memo(function TicketTableRow({
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground/60">
           {slaLabel(row.priority)}
         </div>
-      </td>
-      <td className="pr-3" onClick={(e) => e.stopPropagation()}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button aria-label={t("tickets.colTicket")}
-              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground">
-              <MoreVertical className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onSelect={() => onOpen(row.id)}>
-              <Eye className="h-3.5 w-3.5" /> {t("tickets.colTicket")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </td>
     </tr>
   );
@@ -244,10 +247,10 @@ const TicketCard = memo(function TicketCard({
         <span className={cn("h-7 w-1 rounded-full", PRIORITY_RAIL[row.priority ?? ""] ?? "bg-transparent")} />
         <span className="font-mono text-sm font-semibold text-brand">{row.ticket_number}</span>
         {row.priority && (
-          <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide", PRIORITY_PILL[row.priority] ?? "bg-muted text-muted-foreground")}>{PRIORITY_DISPLAY[row.priority] ?? row.priority}</span>
+          <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide", PRIORITY_PILL[row.priority] ?? "bg-muted text-muted-foreground")}>{priorityText(row.priority, t)}</span>
         )}
         <span className={cn("ml-auto rounded-full border px-2.5 py-1 text-[13px] font-semibold", TICKET_STATUS_COLOR[row.status])}>
-          {TICKET_STATUS_DISPLAY[row.status] ?? row.status}
+          {statusText(row.status, t)}
         </span>
       </div>
       <div className="mt-3 flex items-center gap-2.5">
@@ -611,7 +614,6 @@ export default function TicketsPage() {
                         <th className={cn(th, "w-24")}>{t("tickets.colPriority")}</th>
                         <th className={cn(th, "w-40")}>{t("tickets.colAssigned")}</th>
                         <th className={cn(th, "w-32 text-right")}>{t("tickets.colOpenFor")}</th>
-                        <th className="w-12" />
                       </tr>
                     </thead>
                     <tbody key={`${status}-${page}`}>
@@ -629,7 +631,7 @@ export default function TicketsPage() {
                           </tr>
                         ))
                       ) : displayRows.length === 0 ? (
-                        <tr><td colSpan={8} className="px-4 py-16 text-center">
+                        <tr><td colSpan={7} className="px-4 py-16 text-center">
                           <TicketIcon className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
                           <div className="text-base font-semibold text-foreground">{t("tickets.noTickets")}</div>
                           {anyFilterActive ? (

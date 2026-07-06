@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 import DeptTopBar from "./_components/DeptTopBar";
 import KpiHero from "./_components/KpiHero";
+import CategoryCard from "./_components/CategoryCard";
 import TicketList from "./_components/TicketList";
 import TicketDetail from "./_components/TicketDetail";
 import {
@@ -144,26 +145,34 @@ export default function DepartmentPage() {
         onSignOut={doLogout}
       />
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl space-y-5 px-6 py-6 sm:px-10 sm:py-8">
-          <KpiHero
-            counts={counts}
-            allTickets={allTickets}
-            onJump={jumpFromKpi}
-            activeSeg={seg}
-          />
-          <TicketList
-            rows={sorted}
-            loading={loading}
-            segment={seg}
-            counts={counts}
-            onOpen={open}
-            onSegmentChange={(s) => { setSeg(s); setPriority(""); setQuery(""); }}
-            query={query}
-            onQuery={setQuery}
-            priority={priority}
-            onPriority={setPriority}
-          />
+      <main className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex h-full flex-col gap-4 px-5 py-4 sm:px-6">
+          {/* Ticket list (left, scrolls) + KPI cards & category breakdown (right) */}
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+            <div className="min-h-0 min-w-0">
+              <TicketList
+                rows={sorted}
+                loading={loading}
+                segment={seg}
+                counts={counts}
+                onOpen={open}
+                onSegmentChange={(s) => { setSeg(s); setPriority(""); setQuery(""); }}
+                query={query}
+                onQuery={setQuery}
+                priority={priority}
+                onPriority={setPriority}
+              />
+            </div>
+            <aside className="min-h-0 space-y-3 overflow-auto">
+              <KpiHero
+                counts={counts}
+                allTickets={allTickets}
+                onJump={jumpFromKpi}
+                activeSeg={seg}
+              />
+              <CategoryCard allTickets={allTickets} />
+            </aside>
+          </div>
         </div>
       </main>
 

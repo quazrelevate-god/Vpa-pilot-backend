@@ -1,28 +1,32 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
-  X, Hash, User, Phone, Flag, Building2, Landmark, ShieldCheck, Clock, CalendarClock,
+  X, Hash, User, Phone, Flag, Building2, Landmark, ShieldCheck, CalendarClock,
   Check, Forward, Send, Loader2, Paperclip, CheckCircle2, MessageSquare, UserCheck,
-  GitBranch, Sparkles, FileSignature, Inbox, ArrowRight, RotateCcw, Image as ImageIcon,
-  FileText, AlertTriangle, Music, Film, ExternalLink, Download,
+  GitBranch, Sparkles, FileSignature, Inbox, ArrowRight, RotateCcw,
+  Image as ImageIcon, FileCheck2, ClipboardList, Tag, BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  SectionCard, OverviewGrid, OverviewItem, StatusDot, statusTone, priorityTone,
+} from "@/components/ui/detail-primitives";
+import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useDeptLang } from "../_lib/i18n";
 import {
   acceptTicket, forwardTicket, progressTicket, resolveTicket,
   slaFor, formatRemaining,
   type DeptTicketDetail, type DeptOption,
 } from "../_lib/api";
-import { PriorityPill, StatusPill, SlaPill, DrawerCard, KV } from "./parts";
 
 interface Props {
   detail: DeptTicketDetail;
@@ -32,115 +36,169 @@ interface Props {
   onDone: () => void;
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  assigned: "To accept", awaiting_department: "To accept", in_progress: "In progress",
+  resolved: "Resolved", closed: "Closed", reopened: "Reopened", forwarded_to_dept: "Forwarded",
+};
+
+function galleryType(mime?: string): GalleryAttachment["type"] {
+  if (mime?.startsWith("image/")) return "IMAGE";
+  if (mime?.startsWith("video/")) return "VIDEO";
+  if (mime?.startsWith("audio/")) return "AUDIO";
+  return "DOCUMENT";
+}
+
 export default function TicketDetail({ detail, departments, myDept, onClose, onDone }: Props) {
   const { t, lang } = useDeptLang();
-  const [showTa, setShowTa] = useState(lang === "ta");
+  const [tab, setTab] = useState("details");
+
+  const toGallery = (a: DeptTicketDetail["attachments"][number]): GalleryAttachment => ({
+    name: a.name || "attachment", url: a.url, type: galleryType(a.mime),
+  });
+  const petitionAtt = detail.attachments.filter((a) => a.kind !== "resolution").map(toGallery);
+  const resAtt      = detail.attachments.filter((a) => a.kind === "resolution").map(toGallery);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex h-full w-full max-w-[720px] flex-col bg-background shadow-card-lg"
+        className="flex h-full w-full max-w-[1500px] flex-col bg-background shadow-card-lg sm:max-w-[97vw] lg:max-w-[1500px]"
       >
         {/* Header */}
         <div className="flex items-start gap-3 border-b border-border bg-card px-6 py-4">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs font-bold text-brand">{detail.ticket_number}</span>
-              {detail.priority && <PriorityPill p={detail.priority} />}
-              <StatusPill s={detail.status} />
-              <SlaPill created_at={detail.created_at} priority={detail.priority} />
-            </div>
-            <h2 className="mt-2 text-lg font-bold leading-tight text-foreground">
+            <h2 className="text-xl font-bold leading-snug tracking-tight text-foreground">
               {detail.citizen_ask || "Petition"}
             </h2>
-            <div className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-base font-semibold text-brand">{detail.ticket_number}</span>
+              <StatusDot label={STATUS_LABEL[detail.status] ?? detail.status} tone={statusTone(detail.status)} />
+              {detail.priority && (
+                <StatusDot label={<span className="uppercase tracking-wide">{detail.priority}</span>} tone={priorityTone(detail.priority)} />
+              )}
+              {detail.category_label && <StatusDot label={detail.category_label} tone="slate" />}
+            </div>
+            <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
               <User className="h-3 w-3" />
               <span className="font-semibold text-foreground/70">{detail.citizen_name}</span>
               <span>·</span>
               <span className="font-mono">{detail.citizen_mobile}</span>
-              {detail.token && (
-                <>
-                  <span>·</span>
-                  <span className="font-mono">{detail.token}</span>
-                </>
-              )}
+              {detail.token && (<><span>·</span><span className="font-mono">{detail.token}</span></>)}
             </div>
           </div>
 
-          <div className="flex flex-shrink-0 items-center gap-1.5">
-            <button
-              onClick={() => setShowTa((v) => !v)}
-              className={cn(
-                "rounded-md border border-border bg-card px-2.5 py-1 text-[11px] font-semibold shadow-card transition-colors",
-                showTa ? "bg-brand text-white" : "text-muted-foreground hover:bg-muted",
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body — two-pane: uploads preview (left) + tabs (right) */}
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          {/* Preview pane */}
+          <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[54%] lg:border-b-0 lg:border-r">
+            <div className="mb-3 flex flex-shrink-0 items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span className="grid h-6 w-6 place-items-center rounded-md bg-brand/10 text-brand">
+                <ImageIcon className="h-3.5 w-3.5" />
+              </span>
+              {t("detail.attachments")}
+              {petitionAtt.length > 0 && (
+                <span className="rounded-full bg-brand/10 px-1.5 text-[10px] font-bold text-brand">{petitionAtt.length}</span>
               )}
-              title={showTa ? t("detail.showEn") : t("detail.showTa")}
-            >
-              {showTa ? "தமிழ்" : "EN"}
-            </button>
-            <button
-              onClick={onClose}
-              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <InlineAttachmentPreview attachments={petitionAtt} />
+            </div>
+
+            {resAtt.length > 0 && (
+              <div className="mt-4 flex-shrink-0 border-t border-border pt-4">
+                <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600">
+                  <FileCheck2 className="h-3.5 w-3.5" /> {t("detail.proofs")}
+                  <span className="rounded-full bg-emerald-100 px-1.5 text-[10px] font-bold text-emerald-700">{resAtt.length}</span>
+                </div>
+                <InlineAttachmentPreview attachments={resAtt} />
+              </div>
+            )}
+          </aside>
+
+          {/* Right — tabs + action bar */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+              <div className="border-b border-border bg-card px-6 pt-3">
+                <TabsList className="gap-1 bg-muted p-1">
+                  <TabsTrigger
+                    value="details"
+                    className="rounded-md px-3 font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-brand data-[state=active]:shadow-card"
+                  >
+                    {t("detail.overview")}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="activity"
+                    className="rounded-md px-3 font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-brand data-[state=active]:shadow-card"
+                  >
+                    {t("detail.timeline")}
+                    {detail.events.length > 0 && (
+                      <span className="ml-1.5 rounded-full bg-background px-1.5 text-[10px] font-bold text-muted-foreground">{detail.events.length}</span>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              {/* Details */}
+              <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
+                <div className="space-y-4 p-6">
+                  <OverviewSection detail={detail} />
+                  <SummarySection detail={detail} showTa={lang === "ta"} />
+                  {detail.resolution_notes && (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">{t("detail.proofs")}</div>
+                      <p className="whitespace-pre-wrap text-sm text-emerald-900">{detail.resolution_notes}</p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* Activity */}
+              <TabsContent value="activity" className="m-0 min-h-0 flex-1 overflow-y-auto">
+                <div className="p-6">
+                  <Timeline detail={detail} />
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            {/* Action bar */}
+            <ActionBar detail={detail} departments={departments} myDept={myDept} onDone={onDone} />
           </div>
         </div>
-
-        {/* Body — scrollable */}
-        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-          <OverviewCard detail={detail} />
-          <SummaryCard detail={detail} showTa={showTa} />
-          {detail.attachments.filter((a) => a.kind !== "resolution").length > 0 && (
-            <AttachmentsCard title={t("detail.attachments")} attachments={detail.attachments.filter((a) => a.kind !== "resolution")} />
-          )}
-          {detail.attachments.filter((a) => a.kind === "resolution").length > 0 && (
-            <AttachmentsCard title={t("detail.proofs")} attachments={detail.attachments.filter((a) => a.kind === "resolution")} icon={CheckCircle2} />
-          )}
-          <TimelineCard detail={detail} />
-        </div>
-
-        {/* Action bar */}
-        <ActionBar
-          detail={detail}
-          departments={departments}
-          myDept={myDept}
-          onDone={onDone}
-        />
       </div>
     </div>
   );
 }
 
 // ── Overview ────────────────────────────────────────────────────────────────
-function OverviewCard({ detail }: { detail: DeptTicketDetail }) {
+function OverviewSection({ detail }: { detail: DeptTicketDetail }) {
   const { t } = useDeptLang();
   return (
-    <DrawerCard icon={Hash} title={t("detail.overview")}>
-      <dl className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
-        <KV icon={Hash}     label={t("field.ticket")}   value={<span className="font-mono">{detail.ticket_number}</span>} />
-        <KV icon={User}     label={t("field.citizen")}  value={detail.citizen_name} />
-        <KV icon={Phone}    label={t("field.mobile")}   value={<span className="font-mono">{detail.citizen_mobile}</span>} />
-        <KV icon={Flag}     label={t("field.priority")} value={detail.priority ? <PriorityPill p={detail.priority} /> : null} />
-        {detail.category_label && (
-          <KV icon={Building2} label={t("field.category")} value={detail.category_label} />
-        )}
+    <SectionCard icon={ClipboardList} title={t("detail.overview")}>
+      <OverviewGrid>
+        <OverviewItem icon={Hash}  label={t("field.ticket")}   value={detail.ticket_number} mono />
+        <OverviewItem icon={User}  label={t("field.citizen")}  value={detail.citizen_name} />
+        <OverviewItem icon={Phone} label={t("field.mobile")}   value={detail.citizen_mobile} mono />
+        <OverviewItem icon={Tag}   label={t("field.category")} value={detail.category_label} />
+        <OverviewItem
+          icon={BarChart3}
+          label={t("field.priority")}
+          value={detail.priority ? <StatusDot label={<span className="uppercase tracking-wide">{detail.priority}</span>} tone={priorityTone(detail.priority)} /> : null}
+        />
         {detail.ministry_label && (
-          <KV icon={Landmark}  label={t("field.ministry")}  value={detail.ministry_label} />
+          <OverviewItem icon={Landmark} label={t("field.ministry")} value={detail.ministry_label} />
         )}
-        <KV
-          icon={ShieldCheck}
-          label={t("field.sla")}
-          value={<SlaBar created_at={detail.created_at} priority={detail.priority} />}
-        />
-        <KV
-          icon={CalendarClock}
-          label={t("field.created")}
-          value={new Date(detail.created_at).toLocaleString()}
-        />
-      </dl>
-    </DrawerCard>
+        <OverviewItem icon={ShieldCheck} label={t("field.sla")} value={<SlaBar created_at={detail.created_at} priority={detail.priority} />} />
+        <OverviewItem icon={CalendarClock} label={t("field.created")} value={new Date(detail.created_at).toLocaleString()} />
+      </OverviewGrid>
+    </SectionCard>
   );
 }
 
@@ -148,15 +206,11 @@ function SlaBar({ created_at, priority }: { created_at: string; priority: string
   const sla = slaFor(created_at, priority);
   if (!sla) return <span className="text-muted-foreground">No SLA</span>;
   const clamped = Math.min(100, sla.pct_used);
-  const barColor =
-    sla.breached ? "bg-red-500" :
-    sla.pct_used > 75 ? "bg-amber-500" : "bg-emerald-500";
+  const barColor = sla.breached ? "bg-red-500" : sla.pct_used > 75 ? "bg-amber-500" : "bg-emerald-500";
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-[11px] font-semibold">
-        <span className={cn(sla.breached ? "text-red-700" : "text-foreground/80")}>
-          {formatRemaining(sla.remaining_hours)}
-        </span>
+        <span className={cn(sla.breached ? "text-red-700" : "text-foreground/80")}>{formatRemaining(sla.remaining_hours)}</span>
         <span className="font-mono text-muted-foreground">{Math.round(sla.pct_used)}%</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -166,43 +220,29 @@ function SlaBar({ created_at, priority }: { created_at: string; priority: string
   );
 }
 
-// ── Summary card ────────────────────────────────────────────────────────────
-function SummaryCard({ detail, showTa }: { detail: DeptTicketDetail; showTa: boolean }) {
+// ── Summary ─────────────────────────────────────────────────────────────────
+function SummarySection({ detail, showTa }: { detail: DeptTicketDetail; showTa: boolean }) {
   const { t } = useDeptLang();
   const summary = showTa ? (detail.summary_ta ?? detail.summary) : detail.summary;
   const ask     = showTa ? (detail.citizen_ask_ta ?? detail.citizen_ask) : detail.citizen_ask;
   const details = showTa ? (detail.key_details_ta ?? detail.key_details) : detail.key_details;
 
-  if (!summary && !ask && (!details || details.length === 0)) {
-    return (
-      <DrawerCard icon={Sparkles} title={t("detail.summary")}>
-        <p className="text-sm italic text-muted-foreground">Summary is being prepared…</p>
-      </DrawerCard>
-    );
-  }
-
   return (
-    <DrawerCard icon={Sparkles} title={t("detail.summary")}>
+    <SectionCard icon={Sparkles} title={t("detail.summary")}>
       {ask && (
-        <div className="mb-4 rounded-r-lg border-l-[3px] border-brand bg-brand/5 py-3 pl-4 pr-3">
-          <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-brand">
-            {t("detail.ask")}
-          </div>
+        <div className="mb-4 rounded-r-lg border-l-[3px] border-brand bg-brand/[0.04] py-3 pl-4 pr-3">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-brand">{t("detail.ask")}</div>
           <p className="text-[15px] font-semibold leading-relaxed text-foreground">{ask}</p>
         </div>
       )}
-
-      {summary && (
-        <div className="mb-4 whitespace-pre-wrap text-[14px] leading-relaxed text-foreground/85">
-          {summary}
-        </div>
+      {summary ? (
+        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground/85">{summary}</div>
+      ) : (
+        <p className="text-sm italic text-muted-foreground">Summary is being prepared…</p>
       )}
-
       {details && details.length > 0 && (
-        <div>
-          <div className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-foreground/70">
-            {t("detail.details")}
-          </div>
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-foreground/70">{t("detail.details")}</div>
           <ul className="space-y-1.5">
             {details.map((d, i) => (
               <li key={i} className="flex gap-2.5 text-[14px] text-foreground/85">
@@ -213,197 +253,63 @@ function SummaryCard({ detail, showTa }: { detail: DeptTicketDetail; showTa: boo
           </ul>
         </div>
       )}
-    </DrawerCard>
-  );
-}
-
-// ── Attachments ─────────────────────────────────────────────────────────────
-function AttachmentsCard({
-  title, attachments, icon,
-}: {
-  title: string;
-  attachments: DeptTicketDetail["attachments"];
-  icon?: React.ElementType;
-}) {
-  // Split by media type so we can render each properly. Images get a tile grid
-  // (click-to-open in new tab, hover reveals filename). Audio/video get inline
-  // players so the dept can review the citizen's own words without a download.
-  // PDFs and everything else get a file card with an "Open" link.
-  const images = attachments.filter((a) => a.mime?.startsWith("image/"));
-  const audios = attachments.filter((a) => a.mime?.startsWith("audio/"));
-  const videos = attachments.filter((a) => a.mime?.startsWith("video/"));
-  const others = attachments.filter(
-    (a) => !a.mime?.startsWith("image/") &&
-           !a.mime?.startsWith("audio/") &&
-           !a.mime?.startsWith("video/"),
-  );
-
-  return (
-    <DrawerCard icon={icon ?? Paperclip} title={title}>
-      <div className="space-y-4">
-        {images.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {images.map((a, i) => (
-              <a
-                key={`img-${i}`}
-                href={a.url}
-                target="_blank"
-                rel="noreferrer"
-                className="group relative overflow-hidden rounded-xl border border-border bg-muted/30 transition-colors hover:border-brand/40"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={a.url} alt={a.name ?? ""} className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-[1.02]" />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-slate-900/70 to-transparent px-2.5 py-2 opacity-0 transition-opacity group-hover:opacity-100">
-                  <ImageIcon className="h-3 w-3 text-white/80" />
-                  <div className="truncate text-[11px] font-semibold text-white">{a.name ?? "Image"}</div>
-                  <ExternalLink className="ml-auto h-3 w-3 text-white/70" />
-                </div>
-              </a>
-            ))}
-          </div>
-        )}
-
-        {audios.map((a, i) => (
-          <div key={`aud-${i}`} className="rounded-xl border border-border bg-card p-3 shadow-card">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand/10 text-brand">
-                <Music className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold text-foreground">{a.name ?? "Audio message"}</div>
-                <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">{a.mime}</div>
-              </div>
-              <a
-                href={a.url}
-                download={a.name ?? undefined}
-                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                title="Download"
-              >
-                <Download className="h-3.5 w-3.5" />
-              </a>
-            </div>
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <audio src={a.url} controls preload="metadata" className="w-full" />
-          </div>
-        ))}
-
-        {videos.map((a, i) => (
-          <div key={`vid-${i}`} className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
-            <div className="flex items-center gap-2 border-b border-border bg-card p-3">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand/10 text-brand">
-                <Film className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold text-foreground">{a.name ?? "Video"}</div>
-                <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">{a.mime}</div>
-              </div>
-            </div>
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video src={a.url} controls preload="metadata" className="aspect-video w-full bg-black" />
-          </div>
-        ))}
-
-        {others.length > 0 && (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {others.map((a, i) => (
-              <a
-                key={`other-${i}`}
-                href={a.url}
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-card transition-colors hover:border-brand/40 hover:bg-brand/[0.04]"
-              >
-                <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
-                  <FileText className="h-5 w-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold text-foreground">{a.name ?? "File"}</div>
-                  <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">{a.mime}</div>
-                </div>
-                <ExternalLink className="h-4 w-4 flex-shrink-0 text-muted-foreground transition-colors group-hover:text-brand" />
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-    </DrawerCard>
+    </SectionCard>
   );
 }
 
 // ── Timeline ────────────────────────────────────────────────────────────────
 const EVENT_ICON: Record<string, React.ElementType> = {
-  created:              FileSignature,
-  petition_submitted:   Inbox,
-  ai_summarised:        Sparkles,
-  routed_to_department: Building2,
-  department_accepted:  UserCheck,
-  department_forwarded: ArrowRight,
-  progress_update:      Send,
-  resolved:             CheckCircle2,
-  closed:               ShieldCheck,
-  reopened:             RotateCcw,
-  forwarded_to_dept:    ArrowRight,
-  status_changed:       GitBranch,
-  comment_added:        MessageSquare,
+  created: FileSignature, petition_submitted: Inbox, ai_summarised: Sparkles,
+  routed_to_department: Building2, department_accepted: UserCheck,
+  department_forwarded: ArrowRight, progress_update: Send, resolved: CheckCircle2,
+  closed: ShieldCheck, reopened: RotateCcw, forwarded_to_dept: ArrowRight,
+  status_changed: GitBranch, comment_added: MessageSquare,
 };
 const EVENT_LABEL: Record<string, string> = {
-  created:              "Ticket created",
-  petition_submitted:   "Petition submitted",
-  ai_summarised:        "AI summarised",
-  routed_to_department: "Routed to department",
-  department_accepted:  "Accepted by department",
-  department_forwarded: "Forwarded to another department",
-  progress_update:      "Progress update",
-  resolved:             "Resolved",
-  closed:               "Closed",
-  reopened:             "Reopened",
-  forwarded_to_dept:    "Forwarded out",
-  status_changed:       "Status changed",
-  comment_added:        "Comment",
+  created: "Ticket created", petition_submitted: "Petition submitted", ai_summarised: "AI summarised",
+  routed_to_department: "Routed to department", department_accepted: "Accepted by department",
+  department_forwarded: "Forwarded to another department", progress_update: "Progress update",
+  resolved: "Resolved", closed: "Closed", reopened: "Reopened", forwarded_to_dept: "Forwarded out",
+  status_changed: "Status changed", comment_added: "Comment",
 };
 
-function TimelineCard({ detail }: { detail: DeptTicketDetail }) {
+function Timeline({ detail }: { detail: DeptTicketDetail }) {
   const { t } = useDeptLang();
   if (!detail.events || detail.events.length === 0) {
-    return (
-      <DrawerCard icon={GitBranch} title={t("detail.timeline")}>
-        <p className="text-sm italic text-muted-foreground">{t("detail.noEvents")}</p>
-      </DrawerCard>
-    );
+    return <div className="py-10 text-center text-sm italic text-muted-foreground">{t("detail.noEvents")}</div>;
   }
   return (
-    <DrawerCard icon={GitBranch} title={t("detail.timeline")}>
-      <ol className="relative space-y-4 pl-6">
-        <span className="absolute inset-y-1 left-2 w-px bg-border" />
-        {detail.events.map((e, i) => {
-          const Icon = EVENT_ICON[e.type] ?? GitBranch;
-          const label = EVENT_LABEL[e.type] ?? e.type.replace(/_/g, " ");
-          return (
-            <li key={i} className="relative">
-              <span className="absolute -left-[22px] top-0.5 grid h-4 w-4 place-items-center rounded-full border border-border bg-card">
-                <Icon className="h-2.5 w-2.5 text-brand" />
+    <ol className="space-y-1">
+      {detail.events.map((e, idx) => {
+        const Icon = EVENT_ICON[e.type] ?? GitBranch;
+        const last = idx === detail.events.length - 1;
+        const label = EVENT_LABEL[e.type] ?? e.type.replace(/_/g, " ");
+        return (
+          <li key={idx} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand/10 text-brand ring-1 ring-brand/15">
+                <Icon className="h-3.5 w-3.5" />
               </span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[13px] font-semibold text-foreground">{label}</span>
-                <span className="text-[11.5px] text-muted-foreground">
-                  · {e.actor} · {new Date(e.at).toLocaleString()}
-                </span>
+              {!last && <span className="my-1 w-px flex-1 bg-border" />}
+            </div>
+            <div className="min-w-0 flex-1 pb-4">
+              <div className="text-sm font-medium text-foreground">{label}</div>
+              <div className="text-[11px] text-muted-foreground">
+                by <b className="font-semibold text-foreground/80">{e.actor}</b> · {new Date(e.at).toLocaleString()}
               </div>
               {e.note && (
-                <div className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/60 p-2 text-[13px] text-foreground/80">
-                  {e.note}
-                </div>
+                <p className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/60 p-2 text-[13px] text-foreground/80">{e.note}</p>
               )}
-              {e.payload?.to && typeof e.payload.to === "string" && (
+              {typeof e.payload?.to === "string" && (
                 <div className="mt-1 inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[11px] font-semibold text-cyan-700">
                   <ArrowRight className="h-3 w-3" /> {String(e.payload.to).replace(/_/g, " ")}
                 </div>
               )}
-            </li>
-          );
-        })}
-      </ol>
-    </DrawerCard>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -420,24 +326,16 @@ function ActionBar({
   const [busy, setBusy] = useState(false);
 
   const s = detail.status;
-  // Ticket has moved on to another dept (Forwarded-tab view). We shouldn't
-  // let this dept take actions — the backend would 403, and even for
-  // `assigned` state showing Accept would be misleading.
   const ownedByOther = detail.department !== myDept;
 
   if (ownedByOther) {
-    const currentDept =
-      departments.find((d) => d.key === detail.department)?.label
-      ?? detail.department
-      ?? "another department";
+    const currentDept = departments.find((d) => d.key === detail.department)?.label ?? detail.department ?? "another department";
     return (
       <div className="border-t border-border bg-card px-6 py-4">
         <div className="flex items-start gap-3 rounded-xl border border-dashed border-border bg-muted/30 p-4">
           <ArrowRight className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
           <div className="text-sm text-muted-foreground">
-            You forwarded this ticket to{" "}
-            <b className="text-foreground">{currentDept}</b>. It is theirs to
-            act on now — this view is read-only for your audit trail.
+            You forwarded this ticket to <b className="text-foreground">{currentDept}</b>. It is theirs to act on now — this view is read-only for your audit trail.
           </div>
         </div>
       </div>
@@ -463,11 +361,7 @@ function ActionBar({
         <>
           {(s === "assigned" || s === "awaiting_department") && (
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                className="aurora-primary flex-1 text-white"
-                disabled={busy}
-                onClick={() => run(() => acceptTicket(detail.id), "Accepted")}
-              >
+              <Button className="aurora-primary flex-1 text-white" disabled={busy} onClick={() => run(() => acceptTicket(detail.id), "Accepted")}>
                 {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Check className="mr-1.5 h-4 w-4" />}
                 {t("action.accept")}
               </Button>
@@ -485,10 +379,7 @@ function ActionBar({
               <Button variant="outline" onClick={() => setMode("forward")}>
                 <Forward className="mr-1.5 h-4 w-4" /> {t("action.forward")}
               </Button>
-              <Button
-                className="aurora-primary flex-1 text-white"
-                onClick={() => setMode("resolve")}
-              >
+              <Button className="aurora-primary flex-1 text-white" onClick={() => setMode("resolve")}>
                 <CheckCircle2 className="mr-1.5 h-4 w-4" /> {t("action.resolve")}
               </Button>
             </div>
@@ -508,9 +399,7 @@ function ActionBar({
           currentDept={detail.department}
           busy={busy}
           onCancel={() => setMode("")}
-          onSubmit={(to, reason) =>
-            run(() => forwardTicket(detail.id, to, reason), "Forwarded")
-          }
+          onSubmit={(to, reason) => run(() => forwardTicket(detail.id, to, reason), "Forwarded")}
         />
       )}
 
@@ -519,9 +408,7 @@ function ActionBar({
           initialPct={detail.progress_pct}
           busy={busy}
           onCancel={() => setMode("")}
-          onSubmit={(note, pct) =>
-            run(() => progressTicket(detail.id, note, pct), "Progress posted")
-          }
+          onSubmit={(note, pct) => run(() => progressTicket(detail.id, note, pct), "Progress posted")}
         />
       )}
 
@@ -529,9 +416,7 @@ function ActionBar({
         <ResolveForm
           busy={busy}
           onCancel={() => setMode("")}
-          onSubmit={(remarks, files) =>
-            run(() => resolveTicket(detail.id, remarks, files), "Resolved")
-          }
+          onSubmit={(remarks, files) => run(() => resolveTicket(detail.id, remarks, files), "Resolved")}
         />
       )}
     </div>
@@ -542,11 +427,8 @@ function ActionBar({
 function ForwardForm({
   departments, currentDept, busy, onCancel, onSubmit,
 }: {
-  departments: DeptOption[];
-  currentDept: string | null;
-  busy: boolean;
-  onCancel: () => void;
-  onSubmit: (to: string, reason: string) => void;
+  departments: DeptOption[]; currentDept: string | null; busy: boolean;
+  onCancel: () => void; onSubmit: (to: string, reason: string) => void;
 }) {
   const { t } = useDeptLang();
   const [to, setTo] = useState("");
@@ -569,11 +451,7 @@ function ForwardForm({
       </div>
       <div className="flex gap-2">
         <Button variant="outline" onClick={onCancel}>{t("action.cancel")}</Button>
-        <Button
-          className="aurora-primary flex-1 text-white"
-          disabled={busy || !to || !reason.trim()}
-          onClick={() => onSubmit(to, reason.trim())}
-        >
+        <Button className="aurora-primary flex-1 text-white" disabled={busy || !to || !reason.trim()} onClick={() => onSubmit(to, reason.trim())}>
           {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Forward className="mr-1.5 h-4 w-4" />}
           {t("action.forwardWith")}
         </Button>
@@ -586,8 +464,7 @@ function ProgressForm({
   initialPct, busy, onCancel, onSubmit,
 }: {
   initialPct: number; busy: boolean;
-  onCancel: () => void;
-  onSubmit: (note: string, pct: number) => void;
+  onCancel: () => void; onSubmit: (note: string, pct: number) => void;
 }) {
   const { t } = useDeptLang();
   const [note, setNote] = useState("");
@@ -603,19 +480,11 @@ function ProgressForm({
           <Label>{t("form.progress")}</Label>
           <span className="font-mono text-sm font-bold text-brand">{pct}%</span>
         </div>
-        <input
-          type="range" min={0} max={99} value={pct}
-          onChange={(e) => setPct(Number(e.target.value))}
-          className="w-full accent-brand"
-        />
+        <input type="range" min={0} max={99} value={pct} onChange={(e) => setPct(Number(e.target.value))} className="w-full accent-brand" />
       </div>
       <div className="flex gap-2">
         <Button variant="outline" onClick={onCancel}>{t("action.cancel")}</Button>
-        <Button
-          className="aurora-primary flex-1 text-white"
-          disabled={busy || !note.trim()}
-          onClick={() => onSubmit(note.trim(), pct)}
-        >
+        <Button className="aurora-primary flex-1 text-white" disabled={busy || !note.trim()} onClick={() => onSubmit(note.trim(), pct)}>
           {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
           {t("action.post")}
         </Button>
@@ -627,8 +496,7 @@ function ProgressForm({
 function ResolveForm({
   busy, onCancel, onSubmit,
 }: {
-  busy: boolean; onCancel: () => void;
-  onSubmit: (remarks: string, files: File[]) => void;
+  busy: boolean; onCancel: () => void; onSubmit: (remarks: string, files: File[]) => void;
 }) {
   const { t } = useDeptLang();
   const [remarks, setRemarks] = useState("");
@@ -643,23 +511,13 @@ function ResolveForm({
       <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground hover:bg-muted/60">
         <Paperclip className="h-4 w-4" />
         <span className="flex-1">
-          {files.length > 0
-            ? `${files.length} ${t("form.filesSelected")}`
-            : t("form.attachProof")}
+          {files.length > 0 ? `${files.length} ${t("form.filesSelected")}` : t("form.attachProof")}
         </span>
-        <input
-          type="file" multiple accept="image/*,application/pdf"
-          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-          className="hidden"
-        />
+        <input type="file" multiple accept="image/*,application/pdf" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} className="hidden" />
       </label>
       <div className="flex gap-2">
         <Button variant="outline" onClick={onCancel}>{t("action.cancel")}</Button>
-        <Button
-          className="aurora-primary flex-1 text-white"
-          disabled={busy || !canSubmit}
-          onClick={() => onSubmit(remarks.trim(), files)}
-        >
+        <Button className="aurora-primary flex-1 text-white" disabled={busy || !canSubmit} onClick={() => onSubmit(remarks.trim(), files)}>
           {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
           {t("action.resolve")}
         </Button>

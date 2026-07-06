@@ -50,10 +50,13 @@ if config.config_file_name is not None:
 # reference DB (e.g. building a v1 snapshot) WITHOUT touching Railway. Falls
 # back to the app's configured DATABASE_URL otherwise.
 import os
-config.set_main_option(
-    'sqlalchemy.url',
-    os.getenv('ALEMBIC_DB_URL') or settings.DATABASE_URL,
-)
+# Alembic runs migrations synchronously, so it needs a SYNC driver. The app
+# uses the async psycopg driver (postgresql+psycopg_async://), which raises
+# MissingGreenlet when used from Alembic's sync engine. Normalize it to the
+# sync psycopg driver (psycopg3 supports both).
+_db_url = os.getenv('ALEMBIC_DB_URL') or settings.DATABASE_URL
+_db_url = _db_url.replace('+psycopg_async', '+psycopg').replace('+asyncpg', '+psycopg')
+config.set_main_option('sqlalchemy.url', _db_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

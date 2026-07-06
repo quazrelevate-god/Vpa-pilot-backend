@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
-import { ChevronRight, Search, Ticket } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Search, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDeptLang } from "../_lib/i18n";
 import { PriorityPill, StatusPill, SlaPill, EmptyState } from "./parts";
-import { type DeptTicket, slaFor } from "../_lib/api";
+import { type DeptTicket } from "../_lib/api";
 
 interface Props {
   rows: DeptTicket[];
@@ -23,10 +23,7 @@ interface Props {
 }
 
 // Order matches the department workflow: Accept (new arrivals) →
-// In Progress (working on) → Forwarded (audit trail of what we sent on) →
-// Resolved (finished). Default is In Progress since that's the desk's
-// live work. Closed is intentionally omitted — closure is a PA action
-// and doesn't need a dedicated column in the department view.
+// In Progress (working on) → Forwarded (audit trail) → Resolved (finished).
 const SEGMENTS = ["assigned", "in_progress", "forwarded_out", "resolved"] as const;
 const SEG_KEY: Record<string, string> = {
   assigned:      "seg.toAccept",
@@ -50,11 +47,19 @@ const PRIORITY_RAIL: Record<string, string> = {
   low:      "bg-slate-300",
 };
 
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
 export default function TicketList({
   rows, loading, segment, counts, onOpen, onSegmentChange,
   query, onQuery, priority, onPriority,
 }: Props) {
   const { t } = useDeptLang();
+
+  const PAGE_SIZE = 8;
+  const [page, setPage] = useState(1);
 
   // Client-side filter — search + priority.
   const filtered = useMemo(() => {
@@ -70,39 +75,22 @@ export default function TicketList({
     });
   }, [rows, query, priority]);
 
-  return (
-    <div className="space-y-4">
-      {/* Segmented tabs — Aurora style */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card p-1.5 shadow-card">
-        {SEGMENTS.map((s) => {
-          const active = segment === s;
-          const n = counts[s] ?? 0;
-          return (
-            <button
-              key={s}
-              onClick={() => onSegmentChange(s)}
-              className={cn(
-                "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors",
-                active
-                  ? "bg-brand text-white shadow-[0_2px_6px_rgba(30,64,175,0.25)]"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-            >
-              {t(SEG_KEY[s])}
-              <span className={cn(
-                "min-w-[22px] rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold tabular-nums",
-                active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground",
-              )}>
-                {n}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+  // Reset to page 1 whenever the filtered set changes shape.
+  useEffect(() => { setPage(1); }, [query, priority, segment]);
 
-      {/* Toolbar: search + priority */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-1 items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-card">
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const rangeStart = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(safePage * PAGE_SIZE, filtered.length);
+
+  const th = "whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground";
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      {/* Filter bar — search + status + priority, single row */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-card">
           <Search className="h-4 w-4 text-muted-foreground" />
           <input
             value={query}
@@ -111,16 +99,40 @@ export default function TicketList({
             className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
-        <div className="flex gap-1 rounded-xl border border-border bg-card p-1 shadow-card">
+
+        <div className="flex gap-1 rounded-lg border border-border bg-card p-1 shadow-card">
+          {SEGMENTS.map((s) => {
+            const active = segment === s;
+            const n = counts[s] ?? 0;
+            return (
+              <button
+                key={s}
+                onClick={() => onSegmentChange(s)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-semibold transition-colors",
+                  active ? "bg-brand text-white" : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {t(SEG_KEY[s])}
+                <span className={cn(
+                  "min-w-[18px] rounded-full px-1 text-center text-[10.5px] font-bold tabular-nums",
+                  active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground",
+                )}>
+                  {n}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex gap-1 rounded-lg border border-border bg-card p-1 shadow-card">
           {PRIORITY_KEYS.map(({ k, tKey }) => (
             <button
               key={k || "all"}
               onClick={() => onPriority(k)}
               className={cn(
-                "rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors",
-                priority === k
-                  ? "bg-brand text-white"
-                  : "text-muted-foreground hover:bg-muted",
+                "rounded-md px-2.5 py-1.5 text-[12.5px] font-semibold transition-colors",
+                priority === k ? "bg-brand text-white" : "text-muted-foreground hover:bg-muted",
               )}
             >
               {t(tKey)}
@@ -129,70 +141,151 @@ export default function TicketList({
         </div>
       </div>
 
-      {/* Rows */}
-      {loading && rows.length === 0 ? (
-        <div className="space-y-2">
-          {[1, 2, 3, 4].map((k) => <Skeleton key={k} className="h-20 w-full rounded-2xl" />)}
+      {/* Table card — header + internally scrolling body */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-card">
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
+          <span className="text-sm font-bold text-foreground">{t("tickets.title")}</span>
+          <span className="font-mono text-sm font-semibold text-muted-foreground">({filtered.length})</span>
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={Ticket} title={t("empty")} sub={rows.length ? "Nothing matches these filters." : undefined} />
-      ) : (
-        <div className="space-y-2">
-          {filtered.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => onOpen(r.id)}
-              className="group flex w-full items-center gap-3.5 rounded-2xl border border-border bg-card p-4 text-left shadow-card transition-all hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-card-md"
-            >
-              {/* Priority rail */}
-              <span className={cn(
-                "h-14 w-1 flex-shrink-0 rounded-full",
-                PRIORITY_RAIL[(r.priority ?? "").toLowerCase()] ?? "bg-transparent",
-              )} />
 
-              <InitialsAvatar name={r.citizen_name} />
+        <div className="min-h-0 flex-1 overflow-auto">
+          {loading && rows.length === 0 ? (
+            <div className="space-y-2 p-4">
+              {[1, 2, 3, 4, 5].map((k) => <Skeleton key={k} className="h-12 w-full rounded-lg" />)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-4">
+              <EmptyState icon={Ticket} title={t("empty")} sub={rows.length ? "Nothing matches these filters." : undefined} />
+            </div>
+          ) : (
+            <table className="w-full border-collapse">
+              <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur">
+                <tr className="border-b border-border">
+                  <th className={th}>{t("col.ticket")}</th>
+                  <th className={th}>{t("col.subject")}</th>
+                  <th className={th}>{t("col.citizen")}</th>
+                  <th className={th}>{t("col.category")}</th>
+                  <th className={th}>{t("col.priority")}</th>
+                  <th className={th}>{t("col.status")}</th>
+                  <th className={th}>{t("col.sla")}</th>
+                  <th className={th}>{t("col.updated")}</th>
+                  <th className={cn(th, "text-right")}>{t("col.progress")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paged.map((r) => {
+                  const updated = r.resolved_at ?? r.accepted_at ?? r.created_at;
+                  return (
+                    <tr
+                      key={r.id}
+                      onClick={() => onOpen(r.id)}
+                      className="cursor-pointer border-b border-border/60 transition-colors hover:bg-brand/[0.04]"
+                    >
+                      {/* Ticket ID + created + priority rail */}
+                      <td className="relative whitespace-nowrap py-3 pl-4 pr-3">
+                        <span className={cn(
+                          "absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full",
+                          PRIORITY_RAIL[(r.priority ?? "").toLowerCase()] ?? "bg-transparent",
+                        )} />
+                        <div className="font-mono text-[12.5px] font-bold text-brand">{r.ticket_number}</div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                          {t("col.createdOn")} {fmtDate(r.created_at)}
+                        </div>
+                      </td>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-[11.5px] font-bold text-brand">{r.ticket_number}</span>
-                  {r.priority && <PriorityPill p={r.priority} />}
-                  <StatusPill s={r.status} />
-                  <SlaPill created_at={r.created_at} priority={r.priority} />
-                </div>
-                <div className="mt-1.5 line-clamp-1 text-[14px] font-semibold text-foreground">
-                  {r.citizen_ask ?? "Petition"}
-                </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-                  <span className="font-semibold text-foreground/70">{r.citizen_name}</span>
-                  <span>·</span>
-                  <span className="font-mono">{r.citizen_mobile}</span>
-                  {r.category_label && (
-                    <>
-                      <span>·</span>
-                      <span>{r.category_label}</span>
-                    </>
-                  )}
-                </div>
-              </div>
+                      {/* Subject */}
+                      <td className="px-3 py-3">
+                        <div className="max-w-[220px] truncate text-[13px] font-semibold text-foreground">
+                          {r.citizen_ask ?? "Petition"}
+                        </div>
+                      </td>
 
-              {r.status === "in_progress" && (
-                <div className="hidden flex-col items-end sm:flex">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Progress</div>
-                  <div className="mt-1 w-24 rounded-full bg-muted">
-                    <div
-                      className="h-1.5 rounded-full bg-brand transition-[width]"
-                      style={{ width: `${Math.min(100, r.progress_pct)}%` }}
-                    />
-                  </div>
-                  <div className="mt-0.5 font-mono text-[11px] font-bold text-brand">{r.progress_pct}%</div>
-                </div>
-              )}
+                      {/* Citizen */}
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <InitialsAvatar name={r.citizen_name} />
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-semibold text-foreground">{r.citizen_name}</div>
+                            <div className="font-mono text-[11px] text-muted-foreground">{r.citizen_mobile}</div>
+                          </div>
+                        </div>
+                      </td>
 
-              <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground/40 transition-colors group-hover:text-brand" />
-            </button>
-          ))}
+                      {/* Category */}
+                      <td className="px-3 py-3">
+                        {r.category_label ? (
+                          <span className="inline-block max-w-[150px] truncate rounded-md bg-brand/10 px-2 py-1 align-middle text-[12px] font-medium text-brand">
+                            {r.category_label}
+                          </span>
+                        ) : <span className="text-muted-foreground/50">—</span>}
+                      </td>
+
+                      {/* Priority */}
+                      <td className="px-3 py-3">
+                        {r.priority ? <PriorityPill p={r.priority} /> : <span className="text-muted-foreground/50">—</span>}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-3 py-3"><StatusPill s={r.status} /></td>
+
+                      {/* SLA */}
+                      <td className="px-3 py-3"><SlaPill created_at={r.created_at} priority={r.priority} /></td>
+
+                      {/* Updated */}
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <div className="text-[12.5px] font-medium text-foreground">{fmtDate(updated)}</div>
+                        <div className="text-[11px] text-muted-foreground">{fmtTime(updated)}</div>
+                      </td>
+
+                      {/* Progress */}
+                      <td className="whitespace-nowrap px-3 py-3 pr-4">
+                        {r.status === "in_progress" ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+                              <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(100, r.progress_pct)}%` }} />
+                            </div>
+                            <span className="font-mono text-[11px] font-bold text-brand">{r.progress_pct}%</span>
+                          </div>
+                        ) : (
+                          <div className="text-right text-muted-foreground/50">—</div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
-      )}
+
+        {/* Pagination footer */}
+        {filtered.length > 0 && (
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-2.5">
+            <div className="text-[12px] text-muted-foreground">
+              <span className="font-mono font-semibold text-foreground">{rangeStart}–{rangeEnd}</span> / <span className="font-mono">{filtered.length}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="grid h-7 w-7 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="px-2 font-mono text-[12px] font-semibold tabular-nums text-foreground">
+                {safePage} / {pageCount}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={safePage >= pageCount}
+                className="grid h-7 w-7 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
