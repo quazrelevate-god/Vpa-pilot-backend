@@ -370,6 +370,20 @@ async def get_detail(db: AsyncSession, ticket_id: int,
     )).scalar_one_or_none()
 
     from src.services.storage_service import get_file_url
+
+    def _dept_file_url(storage_path: str) -> str:
+        """Rewrite the shared /api/files/... URL onto the dept-guarded route.
+
+        get_file_url returns a PA-side URL (/api/files/...), which is gated by
+        the dash_session cookie. Dept staff carry dept_session instead, so we
+        route them through /department/api/files/... which mirrors the same
+        file backend but with require_department auth.
+        """
+        u = get_file_url(storage_path)
+        if u.startswith("/api/files/"):
+            return "/department" + u
+        return u
+
     row = _ticket_row(t, appt, appt.citizen if appt else None, summary)
     row.update({
         "description": _decode(appt.encrypted_grievance) if (appt and appt.encrypted_grievance) else None,
@@ -394,7 +408,7 @@ async def get_detail(db: AsyncSession, ticket_id: int,
         "attachments": (
             [
                 {
-                    "url": get_file_url(a.storage_url),
+                    "url": _dept_file_url(a.storage_url),
                     "mime": a.mime_type,
                     "name": Path(a.storage_url).name if a.storage_url else "petition",
                     "kind": "petition",
@@ -404,7 +418,7 @@ async def get_detail(db: AsyncSession, ticket_id: int,
                 for a in (appt.attachments if appt else [])
             ] + [
                 {
-                    "url": get_file_url(a.storage_url),
+                    "url": _dept_file_url(a.storage_url),
                     "mime": a.mime_type,
                     "name": a.original_filename,
                     "kind": a.kind,

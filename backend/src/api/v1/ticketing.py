@@ -9,12 +9,16 @@ endpoints require the staff cookie (require_auth). Existing ticket close/reopen
 in dashboard.py are reused for the PA side.
 """
 import asyncio
+import mimetypes
+from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Depends, Form, File, UploadFile, Request, Body
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
+
+from src.core.config import settings
 
 from src.core.database import get_db
 from src.core.dash_auth import require_auth
@@ -36,6 +40,47 @@ _MAX_BYTES = 15 * 1024 * 1024
 @dept_router.get("/api/departments")
 async def list_departments():
     return JSONResponse([{"key": d.value, "label": department_label(d.value)} for d in SchoolDepartment])
+
+
+# ── Authenticated file serving for department users ────────────────────────────
+# Mirrors dashboard.py's /dashboard/api/files/... endpoint but gates on the
+# dept_session cookie instead of dash_session. Every attachment URL surfaced
+# in the dept workspace (both petition media and resolution proofs) is
+# rewritten in department_service.get_detail from /api/files/... to
+# /department/api/files/... so it hits this route.
+#
+# We use storage_service.get_file_bytes rather than reading files directly so
+# BOTH storage backends (local disk in dev, MinIO in prod) are transparent,
+# and so the read path always matches the write path (avoiding CWD-vs-package
+# root drift that would otherwise 404 anything just uploaded).
+
+
+@dept_router.get("/api/files/{file_path:path}")
+async def dept_serve_upload(
+    file_path: str,
+    department: str = Depends(require_department),
+):
+    """Serve an uploaded file scoped by the dept session cookie."""
+    from src.services.storage_service import get_file_bytes
+
+    filename = PurePosixPath(file_path).name or "file"
+    mime, _ = mimetypes.guess_type(filename)
+
+    # storage_service.get_file_url strips the leading `uploads/` when
+    # generating the URL, so the incoming file_path is bucket-relative. On
+    # local-disk mode get_file_bytes reads via Path(storage_path) — that's
+    # CWD-relative, so we prepend `uploads/` back on. In MinIO mode
+    # get_file_bytes already strips the prefix again, so this is safe either
+    # way.
+    key = file_path if file_path.startswith("uploads/") else f"uploads/{file_path}"
+    data = get_file_bytes(key)
+    if data is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return Response(
+        content=data,
+        media_type=mime or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 # ── Department auth ────────────────────────────────────────────────────────────

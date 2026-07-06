@@ -565,7 +565,10 @@ async def api_ticket_reopen(
     return JSONResponse(data)
 
 
-_UPLOADS_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "uploads"
+# save_file in storage_service writes CWD-relative to "uploads/". Point the
+# read side at the same directory so serve and save always agree, regardless
+# of which uvicorn --app-dir the deployment used.
+_UPLOADS_ROOT = (Path.cwd() / "uploads").resolve()
 
 
 @router.get("/api/files/{file_path:path}")
