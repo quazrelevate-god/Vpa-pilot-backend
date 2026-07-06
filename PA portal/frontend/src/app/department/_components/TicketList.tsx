@@ -22,13 +22,17 @@ interface Props {
   onPriority: (p: string) => void;
 }
 
-const SEGMENTS = ["assigned", "in_progress", "resolved", "closed", ""] as const;
+// Order matches the department workflow: Accept (new arrivals) →
+// In Progress (working on) → Forwarded (audit trail of what we sent on) →
+// Resolved (finished). Default is In Progress since that's the desk's
+// live work. Closed is intentionally omitted — closure is a PA action
+// and doesn't need a dedicated column in the department view.
+const SEGMENTS = ["assigned", "in_progress", "forwarded_out", "resolved"] as const;
 const SEG_KEY: Record<string, string> = {
-  assigned:    "seg.toAccept",
-  in_progress: "seg.inProgress",
-  resolved:    "seg.resolved",
-  closed:      "seg.closed",
-  "":          "seg.all",
+  assigned:      "seg.toAccept",
+  in_progress:   "seg.inProgress",
+  forwarded_out: "seg.forwarded",
+  resolved:      "seg.resolved",
 };
 
 const PRIORITY_KEYS = [
@@ -66,18 +70,16 @@ export default function TicketList({
     });
   }, [rows, query, priority]);
 
-  const totalOpen = Object.values(counts).reduce((a, b) => a + b, 0);
-
   return (
     <div className="space-y-4">
       {/* Segmented tabs — Aurora style */}
       <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card p-1.5 shadow-card">
         {SEGMENTS.map((s) => {
           const active = segment === s;
-          const n = s ? counts[s] ?? 0 : totalOpen;
+          const n = counts[s] ?? 0;
           return (
             <button
-              key={s || "all"}
+              key={s}
               onClick={() => onSegmentChange(s)}
               className={cn(
                 "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors",

@@ -272,13 +272,34 @@ def _ticket_row(t: Ticket, appt: Optional[Appointment], citizen: Optional[Citize
 
 async def list_for_department(db: AsyncSession, department: str,
                               status_filter: Optional[str] = None) -> List[dict]:
-    stmt = (
-        select(Ticket)
-        .where(Ticket.department == department)
-        .order_by(Ticket.created_at.desc())
-    )
-    if status_filter:
-        stmt = stmt.where(Ticket.status == status_filter)
+    # Special view: tickets THIS dept forwarded out to another department.
+    # These tickets no longer live under `Ticket.department == me`; we
+    # reconstruct the list from the activity log so the dept can still audit
+    # what they sent on and where.
+    if status_filter == "forwarded_out":
+        # Distinct ticket ids this dept ever forwarded, then pull the tickets.
+        # Two-step avoids Postgres's DISTINCT-vs-ORDER-BY constraint.
+        forwarded_ids = (
+            select(Activity.ticket_id)
+            .where(
+                Activity.user == department,
+                Activity.action_type == TicketEventType.DEPARTMENT_FORWARDED.value,
+            )
+            .distinct()
+        )
+        stmt = (
+            select(Ticket)
+            .where(Ticket.id.in_(forwarded_ids))
+            .order_by(Ticket.created_at.desc())
+        )
+    else:
+        stmt = (
+            select(Ticket)
+            .where(Ticket.department == department)
+            .order_by(Ticket.created_at.desc())
+        )
+        if status_filter:
+            stmt = stmt.where(Ticket.status == status_filter)
     tickets = (await db.execute(stmt)).scalars().all()
     if not tickets:
         return []
@@ -311,7 +332,19 @@ async def get_detail(db: AsyncSession, ticket_id: int,
     if t is None:
         raise HTTPException(status_code=404, detail="Ticket not found.")
     if department is not None and t.department != department:
-        raise HTTPException(status_code=403, detail="Not assigned to your department.")
+        # Relaxation: if THIS dept was ever an actor on this ticket (e.g.
+        # forwarded it out, or accepted then forwarded), allow read-only
+        # detail so the dept can audit its own history without owning the
+        # ticket. Write actions still require ownership (checked in
+        # _get_owned inside each mutation).
+        was_actor = await db.scalar(
+            select(Activity.id).where(
+                Activity.ticket_id == ticket_id,
+                Activity.user == department,
+            ).limit(1)
+        )
+        if not was_actor:
+            raise HTTPException(status_code=403, detail="Not assigned to your department.")
 
     # v2: events come from the unified activity table (Activity.ticket_id).
     ticket_events = list((await db.execute(
@@ -361,4 +394,16 @@ async def department_counts(db: AsyncSession, department: str) -> Dict[str, int]
         .where(Ticket.department == department)
         .group_by(Ticket.status)
     )
-    return {status: n for status, n in rows}
+    counts = {status: n for status, n in rows}
+    # forwarded_out is a virtual segment computed from the activity log —
+    # the tickets themselves no longer live under this dept.
+    forwarded_out = await db.scalar(
+        select(func.count(func.distinct(Activity.ticket_id)))
+        .where(
+            Activity.user == department,
+            Activity.action_type == TicketEventType.DEPARTMENT_FORWARDED.value,
+        )
+    ) or 0
+    if forwarded_out:
+        counts["forwarded_out"] = int(forwarded_out)
+    return counts

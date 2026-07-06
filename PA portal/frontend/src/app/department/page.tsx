@@ -33,7 +33,8 @@ export default function DepartmentPage() {
   const router = useRouter();
 
   const [label, setLabel]         = useState("");
-  const [seg, setSeg]             = useState("assigned");
+  // Default landing is In Progress — that's the desk's live work.
+  const [seg, setSeg]             = useState("in_progress");
   const [tickets, setTickets]     = useState<DeptTicket[]>([]);
   const [allTickets, setAllTickets] = useState<DeptTicket[]>([]);
   const [counts, setCounts]       = useState<Record<string, number>>({});
@@ -106,12 +107,12 @@ export default function DepartmentPage() {
 
   const jumpFromKpi = (segment: string) => {
     if (segment === "__breached") {
-      // Not a real backend segment — filter locally via priority reset + "All".
-      setSeg("");
+      // No dedicated tab for SLA-breached — they live inside To Accept and
+      // In Progress. Reset filters so the row sort (breached-first) surfaces
+      // them at the top of whatever the user is currently on.
       setPriority("");
-      // Force the search to make it obvious the user is now looking at breaches.
       setQuery("");
-      toast.info("Showing all tickets — sort by SLA to find the breached ones.");
+      toast.info("Breached tickets are at the top of your list.");
       return;
     }
     setSeg(segment);
