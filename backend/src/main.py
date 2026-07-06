@@ -117,6 +117,10 @@ from src.api.v1 import ticketing  # noqa: E402
 app.include_router(ticketing.dept_router)
 app.include_router(ticketing.pa_router)
 
+from src.api.v1 import admin as admin_v1  # noqa: E402
+app.include_router(admin_v1.public_router)   # /api/v1/me + /api/v1/features (auth only)
+app.include_router(admin_v1.router)          # /api/v1/admin/* (super_admin + feature flag)
+
 
 @app.on_event("startup")
 async def _load_admin_lookup():

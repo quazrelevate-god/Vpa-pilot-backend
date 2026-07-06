@@ -87,6 +87,9 @@ class Settings(BaseSettings):
     DASHBOARD_USERNAME: str = "admin"
     DASHBOARD_PASSWORD: str = "admin123"
 
+    # Feature flags — dark-launch tools until the PA office signs off.
+    FEATURE_SUPERADMIN_UI: bool = True   # gated by role on top of this
+
     # Display Board Credentials (separate login)
     DISPLAY_USERNAME: str = "display"
     DISPLAY_PASSWORD: str = "display123"

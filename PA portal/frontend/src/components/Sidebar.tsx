@@ -56,11 +56,14 @@ const NAV_ITEMS: { href: string; tKey: string; icon: typeof CalendarDays; badge?
   { href: "/crowd-qr",      tKey: "nav.crowdQr",      icon: QrCode },
 ];
 
-// Present in the approved reference but not built yet — rendered identically,
-// inert until their pages exist (no dead links).
-const SOON_ITEMS: { tKey: string; icon: typeof CalendarDays }[] = [
-  { tKey: "nav.settings", icon: SettingsIcon },
-];
+// Settings is a real page; only visible to super_admin with the feature
+// flag on. When neither condition holds it disappears from the nav entirely
+// rather than showing a "Coming soon" placeholder.
+const SETTINGS_ITEM = {
+  href: "/settings" as const,
+  tKey: "nav.settings",
+  icon: SettingsIcon,
+};
 
 // Layout breakpoint — at 1280px the sidebar stays open permanently. Below that
 // it starts collapsed to an icon-only rail; a toggle expands it inline.
@@ -95,6 +98,20 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
     loadBadges();
     const id = setInterval(loadBadges, 30_000);
     return () => clearInterval(id);
+  }, [pathname]);
+
+  // Settings nav — visible only to super_admin when the feature flag is on.
+  const [showSettings, setShowSettings] = useState(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const [flags, me] = await Promise.all([
+          fetch("/api/v1/features", { credentials: "include" }).then((r) => r.ok ? r.json() : null),
+          fetch("/api/v1/me", { credentials: "include" }).then((r) => r.ok ? r.json() : null),
+        ]);
+        setShowSettings(Boolean(flags?.superadmin_ui) && me?.role === "super_admin");
+      } catch { /* soft-fail — Settings just stays hidden */ }
+    })();
   }, [pathname]);
 
   // Alt+1…9 — jump to the Nth room from anywhere in the portal.
@@ -237,20 +254,44 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
               </Link>
             );
           })}
-          {SOON_ITEMS.map(({ tKey, icon: Icon }) => (
-            <span
-              key={tKey}
-              title={expanded ? "Coming soon" : t(tKey)}
-              aria-disabled="true"
-              className={cn(
-                "group relative flex h-12 cursor-default select-none items-center rounded-[12px] text-sm font-medium text-[#303446]",
-                expanded ? "gap-3 px-3.5" : "justify-center px-0",
-              )}
-            >
-              <Icon className="h-[22px] w-[22px] flex-shrink-0 text-[#4A4E5E]" />
-              {expanded && <span className="flex-1 truncate">{t(tKey)}</span>}
-            </span>
-          ))}
+          {showSettings && (() => {
+            const { href, tKey, icon: Icon } = SETTINGS_ITEM;
+            const active = pathname?.startsWith(href);
+            return (
+              <Link
+                href={href}
+                title={t(tKey)}
+                aria-current={active ? "page" : undefined}
+                aria-label={t(tKey)}
+                className={cn(
+                  "group relative flex h-12 items-center rounded-[12px] text-sm font-medium",
+                  "transition-colors duration-150",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                  expanded ? "gap-3 px-3.5" : "justify-center px-0",
+                  active
+                    ? "text-[#FFFFFF]"
+                    : "aurora-nav-item text-[#303446] hover:text-[#1E40AF]",
+                )}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="sidebar-active-pill"
+                    className="aurora-nav-active absolute inset-0 rounded-[12px]"
+                    transition={{ type: "spring", stiffness: 420, damping: 38 }}
+                  />
+                )}
+                <Icon
+                  className={cn(
+                    "relative z-[1] h-[22px] w-[22px] flex-shrink-0 transition-[color,transform] duration-150",
+                    active
+                      ? "text-white drop-shadow-[0_1px_1px_rgba(37,99,235,0.35)]"
+                      : "text-[#4A4E5E] group-hover:translate-x-0.5 group-hover:text-[#1E40AF]",
+                  )}
+                />
+                {expanded && <span className="relative z-[1] flex-1 truncate">{t(tKey)}</span>}
+              </Link>
+            );
+          })()}
         </div>
       </nav>
 

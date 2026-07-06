@@ -137,11 +137,33 @@ async def login_page(request: Request) -> HTMLResponse:
 
 @router.post("/login", include_in_schema=False)
 @limiter.limit("5/minute")
-async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+async def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # Env admin is the fallback super-admin credential — always valid so the
+    # office team can never get locked out of the platform even if the
+    # `login` table gets wiped. On success, upsert the DB row so downstream
+    # audit + RBAC see a real user_id.
     if username == settings.DASHBOARD_USERNAME and password == settings.DASHBOARD_PASSWORD:
+        from src.core.rbac import ensure_env_admin_seeded
+        await ensure_env_admin_seeded(db, username)
         response = RedirectResponse(url="/appointments", status_code=302)
         create_session_cookie(response, username)
         return response
+
+    # Non-env users: check the `login` table.
+    from src.models.login_models import Login, verify_password
+    row = (await db.execute(
+        select(Login).where(Login.login_name == username, Login.is_active == True)  # noqa: E712
+    )).scalar_one_or_none()
+    if row and verify_password(password, row.password):
+        response = RedirectResponse(url="/appointments", status_code=302)
+        create_session_cookie(response, username)
+        return response
+
     return templates.TemplateResponse(
         "login.jinja2",
         {"request": request, "error": "Invalid username or password."},
