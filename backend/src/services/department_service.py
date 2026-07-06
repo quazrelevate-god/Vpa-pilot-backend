@@ -9,6 +9,7 @@ portal can render a complete "who did what when" timeline. Department actions
 verify the acting department owns the ticket.
 """
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
@@ -354,7 +355,12 @@ async def get_detail(db: AsyncSession, ticket_id: int,
     )).scalars().all())
 
     appt = (await db.execute(
-        select(Appointment).options(selectinload(Appointment.citizen)).where(Appointment.id == t.appointment_id)
+        select(Appointment)
+        .options(
+            selectinload(Appointment.citizen),
+            selectinload(Appointment.attachments),
+        )
+        .where(Appointment.id == t.appointment_id)
     )).scalar_one_or_none()
     summary = (await db.execute(
         select(GrievanceSummaryRecord).where(
@@ -378,12 +384,36 @@ async def get_detail(db: AsyncSession, ticket_id: int,
              "payload": e.payload, "at": utc_iso(e.created_at)}
             for e in ticket_events
         ],
-        "attachments": [
-            {"url": get_file_url(a.storage_url), "mime": a.mime_type,
-             "name": a.original_filename, "kind": a.kind, "by": a.uploaded_by,
-             "at": utc_iso(a.created_at)}
-            for a in t.attachments
-        ],
+        # Attachments come from two places:
+        #   1. Appointment.attachments — the original citizen petition
+        #      (images/PDFs from QR intake, AI upload, or walk-in scan).
+        #      Tagged kind='petition' so the dept UI groups it under
+        #      "Original petition".
+        #   2. Ticket.attachments — resolution proofs the dept uploaded when
+        #      closing out the case. Already carry kind='resolution'.
+        "attachments": (
+            [
+                {
+                    "url": get_file_url(a.storage_url),
+                    "mime": a.mime_type,
+                    "name": Path(a.storage_url).name if a.storage_url else "petition",
+                    "kind": "petition",
+                    "by": None,
+                    "at": utc_iso(a.created_at),
+                }
+                for a in (appt.attachments if appt else [])
+            ] + [
+                {
+                    "url": get_file_url(a.storage_url),
+                    "mime": a.mime_type,
+                    "name": a.original_filename,
+                    "kind": a.kind,
+                    "by": a.uploaded_by,
+                    "at": utc_iso(a.created_at),
+                }
+                for a in t.attachments
+            ]
+        ),
     })
     return row
 

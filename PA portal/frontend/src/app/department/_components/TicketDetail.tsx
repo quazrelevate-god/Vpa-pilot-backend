@@ -6,7 +6,7 @@ import {
   X, Hash, User, Phone, Flag, Building2, Landmark, ShieldCheck, Clock, CalendarClock,
   Check, Forward, Send, Loader2, Paperclip, CheckCircle2, MessageSquare, UserCheck,
   GitBranch, Sparkles, FileSignature, Inbox, ArrowRight, RotateCcw, Image as ImageIcon,
-  FileText, AlertTriangle,
+  FileText, AlertTriangle, Music, Film, ExternalLink, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -225,34 +225,106 @@ function AttachmentsCard({
   attachments: DeptTicketDetail["attachments"];
   icon?: React.ElementType;
 }) {
+  // Split by media type so we can render each properly. Images get a tile grid
+  // (click-to-open in new tab, hover reveals filename). Audio/video get inline
+  // players so the dept can review the citizen's own words without a download.
+  // PDFs and everything else get a file card with an "Open" link.
+  const images = attachments.filter((a) => a.mime?.startsWith("image/"));
+  const audios = attachments.filter((a) => a.mime?.startsWith("audio/"));
+  const videos = attachments.filter((a) => a.mime?.startsWith("video/"));
+  const others = attachments.filter(
+    (a) => !a.mime?.startsWith("image/") &&
+           !a.mime?.startsWith("audio/") &&
+           !a.mime?.startsWith("video/"),
+  );
+
   return (
     <DrawerCard icon={icon ?? Paperclip} title={title}>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {attachments.map((a, i) => {
-          const isImg = a.mime?.startsWith("image/");
-          return (
-            <a
-              key={i}
-              href={a.url}
-              target="_blank"
-              rel="noreferrer"
-              className="group overflow-hidden rounded-xl border border-border bg-muted/30 transition-colors hover:border-brand/40"
-            >
-              {isImg ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={a.url} alt={a.name ?? ""} className="aspect-[4/3] w-full object-cover" />
-              ) : (
-                <div className="aspect-[4/3] grid place-items-center bg-muted">
-                  <FileText className="h-8 w-8 text-muted-foreground" />
+      <div className="space-y-4">
+        {images.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {images.map((a, i) => (
+              <a
+                key={`img-${i}`}
+                href={a.url}
+                target="_blank"
+                rel="noreferrer"
+                className="group relative overflow-hidden rounded-xl border border-border bg-muted/30 transition-colors hover:border-brand/40"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={a.url} alt={a.name ?? ""} className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-[1.02]" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-slate-900/70 to-transparent px-2.5 py-2 opacity-0 transition-opacity group-hover:opacity-100">
+                  <ImageIcon className="h-3 w-3 text-white/80" />
+                  <div className="truncate text-[11px] font-semibold text-white">{a.name ?? "Image"}</div>
+                  <ExternalLink className="ml-auto h-3 w-3 text-white/70" />
                 </div>
-              )}
-              <div className="border-t border-border bg-card p-2">
-                <div className="truncate text-[11px] font-semibold text-foreground">{a.name ?? "File"}</div>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{a.mime?.split("/")[1] ?? ""}</div>
+              </a>
+            ))}
+          </div>
+        )}
+
+        {audios.map((a, i) => (
+          <div key={`aud-${i}`} className="rounded-xl border border-border bg-card p-3 shadow-card">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand/10 text-brand">
+                <Music className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold text-foreground">{a.name ?? "Audio message"}</div>
+                <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">{a.mime}</div>
               </div>
-            </a>
-          );
-        })}
+              <a
+                href={a.url}
+                download={a.name ?? undefined}
+                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="Download"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </a>
+            </div>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <audio src={a.url} controls preload="metadata" className="w-full" />
+          </div>
+        ))}
+
+        {videos.map((a, i) => (
+          <div key={`vid-${i}`} className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+            <div className="flex items-center gap-2 border-b border-border bg-card p-3">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand/10 text-brand">
+                <Film className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold text-foreground">{a.name ?? "Video"}</div>
+                <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">{a.mime}</div>
+              </div>
+            </div>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video src={a.url} controls preload="metadata" className="aspect-video w-full bg-black" />
+          </div>
+        ))}
+
+        {others.length > 0 && (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {others.map((a, i) => (
+              <a
+                key={`other-${i}`}
+                href={a.url}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-card transition-colors hover:border-brand/40 hover:bg-brand/[0.04]"
+              >
+                <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
+                  <FileText className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-semibold text-foreground">{a.name ?? "File"}</div>
+                  <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">{a.mime}</div>
+                </div>
+                <ExternalLink className="h-4 w-4 flex-shrink-0 text-muted-foreground transition-colors group-hover:text-brand" />
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </DrawerCard>
   );
