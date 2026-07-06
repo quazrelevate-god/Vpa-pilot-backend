@@ -33,6 +33,7 @@ export default function DepartmentPage() {
   const router = useRouter();
 
   const [label, setLabel]         = useState("");
+  const [myDept, setMyDept]       = useState("");
   // Default landing is In Progress — that's the desk's live work.
   const [seg, setSeg]             = useState("in_progress");
   const [tickets, setTickets]     = useState<DeptTicket[]>([]);
@@ -52,6 +53,7 @@ export default function DepartmentPage() {
       const sess = await fetchSession(ac.signal).catch(() => null);
       if (!sess) { router.replace("/department/login"); return; }
       setLabel(sess.label);
+      setMyDept(sess.department);
       try {
         setDepartments(await fetchDepartments());
       } catch { /* fine — Forward will just show empty */ }
@@ -169,6 +171,7 @@ export default function DepartmentPage() {
         <TicketDetail
           detail={detail}
           departments={departments}
+          myDept={myDept}
           onClose={() => setDetail(null)}
           onDone={() => { setDetail(null); load(); }}
         />

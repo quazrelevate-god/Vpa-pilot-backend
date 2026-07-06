@@ -27,11 +27,12 @@ import { PriorityPill, StatusPill, SlaPill, DrawerCard, KV } from "./parts";
 interface Props {
   detail: DeptTicketDetail;
   departments: DeptOption[];
+  myDept: string;               // current session's department key
   onClose: () => void;
   onDone: () => void;
 }
 
-export default function TicketDetail({ detail, departments, onClose, onDone }: Props) {
+export default function TicketDetail({ detail, departments, myDept, onClose, onDone }: Props) {
   const { t, lang } = useDeptLang();
   const [showTa, setShowTa] = useState(lang === "ta");
 
@@ -101,7 +102,12 @@ export default function TicketDetail({ detail, departments, onClose, onDone }: P
         </div>
 
         {/* Action bar */}
-        <ActionBar detail={detail} departments={departments} onDone={onDone} />
+        <ActionBar
+          detail={detail}
+          departments={departments}
+          myDept={myDept}
+          onDone={onDone}
+        />
       </div>
     </div>
   );
@@ -333,15 +339,38 @@ function TimelineCard({ detail }: { detail: DeptTicketDetail }) {
 type Mode = "" | "forward" | "progress" | "resolve";
 
 function ActionBar({
-  detail, departments, onDone,
+  detail, departments, myDept, onDone,
 }: {
-  detail: DeptTicketDetail; departments: DeptOption[]; onDone: () => void;
+  detail: DeptTicketDetail; departments: DeptOption[]; myDept: string; onDone: () => void;
 }) {
   const { t } = useDeptLang();
   const [mode, setMode] = useState<Mode>("");
   const [busy, setBusy] = useState(false);
 
   const s = detail.status;
+  // Ticket has moved on to another dept (Forwarded-tab view). We shouldn't
+  // let this dept take actions — the backend would 403, and even for
+  // `assigned` state showing Accept would be misleading.
+  const ownedByOther = detail.department !== myDept;
+
+  if (ownedByOther) {
+    const currentDept =
+      departments.find((d) => d.key === detail.department)?.label
+      ?? detail.department
+      ?? "another department";
+    return (
+      <div className="border-t border-border bg-card px-6 py-4">
+        <div className="flex items-start gap-3 rounded-xl border border-dashed border-border bg-muted/30 p-4">
+          <ArrowRight className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+          <div className="text-sm text-muted-foreground">
+            You forwarded this ticket to{" "}
+            <b className="text-foreground">{currentDept}</b>. It is theirs to
+            act on now — this view is read-only for your audit trail.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   async function run(action: () => Promise<void>, successMsg: string) {
     setBusy(true);
