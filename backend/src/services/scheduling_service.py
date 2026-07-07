@@ -1,5 +1,5 @@
 """
-Scheduling service — 30-minute fixed slots, up to MAX_CAPACITY citizens each.
+Scheduling service — 1-hour fixed slots, up to MAX_CAPACITY citizens each.
 
 v2 schema notes:
 - appointment.slot_id is the sole booking link (SlotBooking junction removed).

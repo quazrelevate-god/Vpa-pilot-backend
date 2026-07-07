@@ -82,7 +82,7 @@ export default function ReferralsPage() {
   const [qr, setQr]             = useState<QrData | null>(null);
   const [loadingGrid, setLoadingGrid] = useState(false);
   const [opening, setOpening]   = useState(false);
-  const [maxCapacity, setMaxCapacity] = useState(6);
+  const [maxCapacity, setMaxCapacity] = useState(12);
   const [confirmSlot, setConfirmSlot] = useState<Slot | null>(null);
   const [busyId, setBusyId]     = useState<number | null>(null);
 

@@ -84,7 +84,7 @@ export default function SchedulingPage() {
   const [confirmSlot,  setConfirmSlot]  = useState<Slot | null>(null);
   const [showAllocate, setShowAllocate] = useState(false);
   const [allocating,   setAllocating]   = useState(false);
-  const [maxCapacity,  setMaxCapacity]  = useState(6);
+  const [maxCapacity,  setMaxCapacity]  = useState(12);
   const [availFrom,    setAvailFrom]    = useState("14:00");
   const [availTo,      setAvailTo]      = useState("16:00");
 

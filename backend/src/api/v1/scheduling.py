@@ -165,7 +165,7 @@ async def get_slots(
     user: str = Depends(require_auth),
 ):
     """
-    Return all 20 slots for target_date with full booking details.
+    Return all 10 slots for target_date with full booking details.
     Used by the PA portal slot management grid.
     """
     try:

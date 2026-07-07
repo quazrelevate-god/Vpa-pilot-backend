@@ -1,8 +1,8 @@
 """
 SQLAlchemy ORM models for slot-based scheduling (v2 schema).
 
-Design: fixed 08:00-18:00 window → 20 half-hour slots per open date.
-Each slot holds up to MAX_CAPACITY citizens.
+Design: fixed 08:00-18:00 window → 10 one-hour slots per open date.
+Each slot holds up to MAX_CAPACITY citizens (PA can override per day).
 Concurrency-safe via SELECT ... FOR UPDATE in booking service.
 
 v2 changes:
@@ -23,9 +23,9 @@ from src.core.database import Base
 # ── Fixed scheduling constants ────────────────────────────────────────────────
 SLOT_START_HOUR  = 8     # 08:00
 SLOT_END_HOUR    = 18    # 18:00
-SLOT_DURATION    = 30    # minutes per slot
-MAX_CAPACITY     = 12    # citizens per slot
-TOTAL_SLOTS      = (SLOT_END_HOUR - SLOT_START_HOUR) * 60 // SLOT_DURATION  # 20
+SLOT_DURATION    = 60    # minutes per slot (hourly windows: 8-9, 9-10, ...)
+MAX_CAPACITY     = 12    # citizens per slot (default; PA may override per day)
+TOTAL_SLOTS      = (SLOT_END_HOUR - SLOT_START_HOUR) * 60 // SLOT_DURATION  # 10
 FIXED_START_TIME = time(SLOT_START_HOUR, 0)
 FIXED_END_TIME   = time(SLOT_END_HOUR, 0)
 
