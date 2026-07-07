@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { useT } from "../_lib/i18n";
-import { Camera, FileText, UserRound, X } from "../_lib/icons";
+import { Camera, FileText, X } from "../_lib/icons";
 import type { Photo } from "./RegisterWizard";
 
 // 13 grievance categories (value = backend key, label = display).
@@ -72,10 +72,7 @@ export default function WizardDetails({
         <FieldLabel required>{t("Category", "வகை")}</FieldLabel>
         <Select value={category} onValueChange={onCategory}>
           <SelectTrigger className="h-11 rounded-xl">
-            <span className="flex items-center gap-2">
-              <UserRound className="h-4 w-4 text-slate-400" />
-              <SelectValue placeholder={t("— Select —", "— தேர்வு —")} />
-            </span>
+            <SelectValue placeholder={t("— Select —", "— தேர்வு —")} />
           </SelectTrigger>
           <SelectContent>
             {CATS.map(([val, label]) => <SelectItem key={val} value={val}>{label}</SelectItem>)}

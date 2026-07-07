@@ -27,7 +27,7 @@ export default function WizardSlots({
         {t("Select a date", "தேதி தேர்வு")} <span className="font-medium text-slate-400">({t("optional", "விருப்பம்")})</span>
       </div>
 
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1.5">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1.5">
         {!dates ? (
           <Skeleton className="h-[76px] w-[68px] shrink-0 rounded-xl" />
         ) : dates.length === 0 ? (
@@ -39,7 +39,7 @@ export default function WizardSlots({
             return (
               <button key={d.date} onClick={() => onPickDate(d.date)}
                 className={cn("min-w-[68px] shrink-0 rounded-xl border p-2 text-center transition-colors",
-                  on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white")}>
+                  on ? "border-[#1E40AF] bg-[#1E40AF] text-white" : "border-slate-200 bg-white")}>
                 <div className={cn("text-[0.66rem] font-bold uppercase", on ? "text-white/85" : "text-slate-500")}>{dt.toLocaleDateString("en-US", { weekday: "short" })}</div>
                 <div className="text-[1.1rem] font-black leading-tight">{dt.getDate()}</div>
                 <div className={cn("text-[0.62rem] font-bold", on ? "text-white/85" : "text-slate-400")}>{dt.toLocaleDateString("en-US", { month: "short" })}</div>
@@ -95,10 +95,10 @@ function SlotGrid({
           return (
             <button key={s.id} type="button" disabled={!ok && !sel} onClick={() => (ok || sel) && onPickSlot(s.id)}
               className={cn("relative rounded-xl border p-2.5 text-left transition-colors",
-                sel ? "border-blue-600 bg-blue-50"
+                sel ? "border-[#1E40AF] bg-[#1E40AF]/10"
                   : ok ? "border-slate-200 bg-white active:scale-[0.98]"
                     : "cursor-not-allowed border-slate-200 bg-slate-50 opacity-70")}>
-              {sel && <span className="absolute right-2 top-2 grid h-4 w-4 place-items-center rounded-full bg-blue-600 text-white"><Check className="h-2.5 w-2.5" /></span>}
+              {sel && <span className="absolute right-2 top-2 grid h-4 w-4 place-items-center rounded-full bg-[#1E40AF] text-white"><Check className="h-2.5 w-2.5" /></span>}
               <div className={cn("text-[0.84rem] font-bold", ok || sel ? "text-slate-900" : "text-slate-400")}>{s.label}</div>
               <div className={cn("mt-0.5 text-[0.7rem] font-bold",
                 ok ? "text-emerald-600" : "uppercase text-slate-400")}>
@@ -117,10 +117,10 @@ function SlotGrid({
           </div>
           <div className="flex items-center gap-3.5">
             <button type="button" disabled={persons <= 1} onClick={() => onPersons(Math.max(1, persons - 1))}
-              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-blue-600 disabled:opacity-40"><Minus className="h-4 w-4" /></button>
-            <span className="min-w-5 text-center text-lg font-black">{persons}</span>
+              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-[#1E40AF] disabled:opacity-40"><Minus className="h-4 w-4" /></button>
+            <span className="min-w-5 text-center text-lg font-black tabular-nums">{persons}</span>
             <button type="button" disabled={persons >= 4} onClick={() => onPersons(Math.min(4, persons + 1))}
-              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-blue-600 disabled:opacity-40"><Plus className="h-4 w-4" /></button>
+              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-[#1E40AF] disabled:opacity-40"><Plus className="h-4 w-4" /></button>
           </div>
         </div>
       )}

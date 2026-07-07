@@ -107,16 +107,14 @@ async def display_today_api(
             if q not in name.lower() and q not in mobile and q not in str(appt.token_assigned):
                 continue
 
+        # Real slot window (12-hour), e.g. "10:00 AM – 10:30 AM". Uses the
+        # slot's actual start + end times — never a client-side estimate.
         time_str = ""
-        slot_start = appt.scheduled_slot.start_time if appt.scheduled_slot else None
-        if slot_start:
-            hour = slot_start.hour
-            minute = slot_start.minute
-            ampm = "AM" if hour < 12 else "PM"
-            display_hour = hour if hour <= 12 else hour - 12
-            if display_hour == 0:
-                display_hour = 12
-            time_str = f"{display_hour:02d}:{minute:02d} {ampm}"
+        slot = appt.scheduled_slot
+        if slot and slot.start_time:
+            time_str = slot.start_time.strftime("%I:%M %p")
+            if slot.end_time:
+                time_str = f"{time_str} – {slot.end_time.strftime('%I:%M %p')}"
 
         summary_rec = next((s for s in (appt.grievance_summary or []) if s.is_latest), None)
         subject = (summary_rec.citizen_ask if summary_rec else None)

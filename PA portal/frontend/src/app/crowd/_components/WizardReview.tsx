@@ -8,7 +8,7 @@ import { CATS } from "./WizardDetails";
 function Row({ icon, k, v }: { icon: React.ReactNode; k: string; v: React.ReactNode }) {
   return (
     <div className="flex items-start gap-3 border-b border-slate-100 py-3 last:border-b-0">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-blue-50 text-blue-600 [&_svg]:h-[17px] [&_svg]:w-[17px]">{icon}</span>
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-[#1E40AF]/10 text-[#1E40AF] [&_svg]:h-[17px] [&_svg]:w-[17px]">{icon}</span>
       <div className="min-w-0">
         <div className="text-[0.72rem] font-bold uppercase tracking-wide text-slate-500">{k}</div>
         <div className="mt-0.5 text-[0.92rem] font-semibold text-slate-800">{v}</div>

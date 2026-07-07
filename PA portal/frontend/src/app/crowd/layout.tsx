@@ -27,7 +27,7 @@ export const viewport: Viewport = {
 export default function CrowdLayout({ children }: { children: React.ReactNode }) {
   return (
     <CrowdI18nProvider>
-      <div className="relative mx-auto min-h-screen max-w-[560px] bg-slate-50 text-slate-900 [--nav-h:64px]">
+      <div className="crowd-canvas relative mx-auto min-h-screen max-w-[560px] text-slate-900 [--nav-h:64px]">
         {children}
       </div>
       <SwRegister />

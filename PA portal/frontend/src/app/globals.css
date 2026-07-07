@@ -149,6 +149,38 @@
   box-shadow: inset -1px 0 0 rgba(28,30,41,0.05);
 }
 
+/* Crowd PWA canvas — the same sky→lavender bloom as .aurora-sidebar, but as a
+   full-page background (no sidebar hairline). White cards/pills read brighter. */
+.crowd-canvas {
+  background-image:
+    radial-gradient(ellipse 7px 1px at 24% 6%,  rgba(255,255,255,0.70), transparent 100%),
+    radial-gradient(ellipse 1px 7px at 24% 6%,  rgba(255,255,255,0.70), transparent 100%),
+    radial-gradient(circle 1.5px  at 24% 6%,  rgba(255,255,255,0.95), transparent 100%),
+    radial-gradient(ellipse 6px 1px at 78% 30%, rgba(203,184,242,0.55), transparent 100%),
+    radial-gradient(ellipse 1px 6px at 78% 30%, rgba(203,184,242,0.55), transparent 100%),
+    radial-gradient(circle 1.2px  at 78% 30%, rgba(203,184,242,0.85), transparent 100%),
+    radial-gradient(circle 1px   at 44% 11%, rgba(255,255,255,0.80), transparent 100%),
+    radial-gradient(circle 1.2px at 12% 24%, rgba(255,255,255,0.60), transparent 100%),
+    radial-gradient(circle 1px   at 60% 46%, rgba(203,184,242,0.45), transparent 100%),
+    radial-gradient(circle 1.2px at 30% 66%, rgba(255,255,255,0.45), transparent 100%),
+    /* cool sky — glowing at the top-left corner, fading by the top quarter */
+    radial-gradient(160% 14% at 0% 0%, rgba(148,204,238,0.32), rgba(148,204,238,0.12) 60%, transparent 100%),
+    linear-gradient(180deg,
+      rgba(148,204,238,0.26) 0%,
+      rgba(148,204,238,0.16) 12%,
+      rgba(148,204,238,0.06) 20%,
+      rgba(148,204,238,0.00) 28%),
+    /* lavender — takes over where the sky ends and runs to the bottom */
+    linear-gradient(180deg,
+      rgba(203,184,242,0.00) 14%,
+      rgba(203,184,242,0.18) 28%,
+      rgba(203,184,242,0.20) 46%,
+      rgba(203,184,242,0.12) 72%,
+      rgba(203,184,242,0.07) 100%),
+    /* base — cool white */
+    linear-gradient(180deg, #F8FBFF 0%, #F9FAFF 40%, #F7FAFE 100%);
+}
+
 /* Horizontal sibling of .aurora-sidebar — the same sky→lavender wash running
    LEFT→RIGHT, for wide bars like the department header. */
 .aurora-header {

@@ -27,8 +27,8 @@ export default function HeroIllustration({ className }: { className?: string }) 
 
       {/* operator (left, blue) */}
       <g>
-        <path d="M84 196c0-22 12-36 26-36s26 14 26 36z" fill="#2563eb" />
-        <path d="M92 196c0-16 8-26 18-26s18 10 18 26z" fill="#3b82f6" />
+        <path d="M84 196c0-22 12-36 26-36s26 14 26 36z" fill="#1E40AF" />
+        <path d="M92 196c0-16 8-26 18-26s18 10 18 26z" fill="#3B5BD6" />
         <circle cx="110" cy="140" r="17" fill="#f4c9a6" />
         <path d="M93 138c0-12 8-20 17-20s17 8 17 19c-4-3-8-6-17-6-6 0-10 4-13 9-2-1-4-1-4-2z" fill="#3b2f2a" />
         {/* tablet in hand */}

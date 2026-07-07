@@ -9,15 +9,14 @@ import { api, todayISO, nowTime } from "../_lib/api";
 import type { ApptFeed, RefFeed, Availability, IntakeResult } from "../_lib/types";
 
 import BottomNav from "./BottomNav";
-import HomeScreen from "./HomeScreen";
+import CrowdTopBar from "./CrowdTopBar";
 import ListScreen from "./ListScreen";
-import MenuScreen from "./MenuScreen";
 import RegisterWizard from "./RegisterWizard";
 import TicketScreen from "./TicketScreen";
 import OfflineScreen from "./OfflineScreen";
 import InstallSheet from "./InstallSheet";
 
-export type View = "home" | "list" | "menu" | "wizard" | "ticket";
+export type View = "list" | "wizard" | "ticket";
 export type Tab = "appt" | "ref";
 
 type BeforeInstallPromptEvent = Event & {
@@ -29,7 +28,7 @@ export default function CrowdApp() {
   const router = useRouter();
   const { t } = useT();
 
-  const [view, setView] = useState<View>("home");
+  const [view, setView] = useState<View>("list");
   const [tab, setTab] = useState<Tab>("appt");
   const [appt, setAppt] = useState<ApptFeed | null>(null);
   const [refs, setRefs] = useState<RefFeed | null>(null);
@@ -149,37 +148,41 @@ export default function CrowdApp() {
     gotoLogin();
   }
 
-  const chromeless = view === "wizard" || view === "ticket";
+  // The wizard keeps the chrome (top bar + bottom nav); only the ticket
+  // success screen goes full-bleed.
+  const chromeless = view === "ticket";
 
   return (
     <>
       {offline && !appt && !refs ? (
         <OfflineScreen onRetry={() => { load(); loadAvail(); }} />
-      ) : view === "home" ? (
-        <HomeScreen
-          appt={appt} refs={refs} avail={avail} offline={offline}
-          onOpenList={goList} onRegister={() => go("wizard")}
-          onRefresh={() => { load(); loadAvail(); }}
-        />
-      ) : view === "list" ? (
-        <ListScreen
-          tab={tab} appt={appt} refs={refs} offline={offline}
-          onTab={setTab} onMark={onMark}
-          onRegister={() => go("wizard")} onBack={() => go("home")}
-        />
-      ) : view === "menu" ? (
-        <MenuScreen onInstall={promptInstall} onRefresh={() => { load(); loadAvail(); toast(t("Refreshing…", "புதுப்பிக்கிறது…")); }} onSignOut={signOut} />
-      ) : view === "wizard" ? (
-        <RegisterWizard
-          onClose={() => go("home")}
-          onDone={(tk) => { setTicket(tk); go("ticket"); load(); loadAvail(); }}
-        />
-      ) : view === "ticket" ? (
-        <TicketScreen data={ticket} onDone={() => { setTicket(null); go("home"); }} />
-      ) : null}
+      ) : (
+        <>
+          {!chromeless && (
+            <CrowdTopBar
+              avail={avail}
+              onInstall={promptInstall}
+              onRefresh={() => { load(); loadAvail(); toast(t("Refreshing…", "புதுப்பிக்கிறது…")); }}
+              onSignOut={signOut}
+            />
+          )}
+          {view === "list" ? (
+            <ListScreen
+              tab={tab} appt={appt} refs={refs} offline={offline}
+              onMark={onMark}
+            />
+          ) : view === "wizard" ? (
+            <RegisterWizard
+              onDone={(tk) => { setTicket(tk); go("ticket"); load(); loadAvail(); }}
+            />
+          ) : view === "ticket" ? (
+            <TicketScreen data={ticket} onDone={() => { setTicket(null); goList("appt"); }} />
+          ) : null}
+        </>
+      )}
 
       {!chromeless && (
-        <BottomNav view={view} tab={tab} onHome={() => go("home")} onList={goList} onMenu={() => go("menu")} onRegister={() => go("wizard")} />
+        <BottomNav view={view} tab={tab} onList={goList} onRegister={() => go("wizard")} />
       )}
 
       {installSheet && <InstallSheet onClose={() => setInstallSheet(false)} />}

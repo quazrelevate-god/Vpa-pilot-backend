@@ -1,11 +1,10 @@
 "use client";
 
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useT } from "../_lib/i18n";
 import { todayLabel } from "../_lib/api";
-import { Calendar, Users, UserPlus, Bell } from "../_lib/icons";
+import { Calendar, Users, UserPlus } from "../_lib/icons";
 import type { ApptFeed, RefFeed, Availability } from "../_lib/types";
 import AvailabilityCard from "./AvailabilityCard";
 import type { Tab } from "./CrowdApp";
@@ -39,17 +38,15 @@ function StatTile({ tone, n, label }: { tone: "g" | "r" | "b"; n: number; label:
 }
 
 export default function HomeScreen({
-  appt, refs, avail, offline, onOpenList, onRegister, onRefresh,
+  appt, refs, avail, onOpenList, onRegister,
 }: {
   appt: ApptFeed | null;
   refs: RefFeed | null;
   avail: Availability;
-  offline: boolean;
   onOpenList: (t: Tab) => void;
   onRegister: () => void;
-  onRefresh: () => void;
 }) {
-  const { t, lang, toggle } = useT();
+  const { t } = useT();
   const a = appt, r = refs;
   const hour = new Date().getHours();
   const greet = hour < 12
@@ -58,33 +55,11 @@ export default function HomeScreen({
   const dateStr = a?.date || r?.date || todayLabel();
 
   return (
-    <div className="px-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+1.5rem)]">
-      {/* header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-[0.82rem] font-semibold text-slate-500">{greet}</div>
-          <div className="text-[1.35rem] font-black tracking-tight text-slate-900">{t("Floor Operator", "தள ஆபரேட்டர்")}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={toggle}
-            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-600">
-            {lang === "en" ? "தமிழ்" : "EN"}
-          </button>
-          <button onClick={() => { onRefresh(); toast.success(t("You're up to date", "புதுப்பிக்கப்பட்டது")); }}
-            className="relative grid h-9 w-9 place-items-center rounded-full border border-slate-200 bg-white text-slate-600"
-            aria-label={t("Notifications", "அறிவிப்புகள்")}>
-            <Bell className="h-[18px] w-[18px]" />
-            <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-white" />
-          </button>
-        </div>
-      </div>
-
-      <div className="mb-4 mt-1 flex items-center gap-2.5">
-        <span className="text-sm font-semibold text-slate-500">{dateStr}</span>
-        <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold", offline ? "text-amber-600" : "text-emerald-600")}>
-          <span className="h-2 w-2 rounded-full bg-current" />
-          {offline ? t("Offline", "இணைப்பு இல்லை") : t("Online", "இணைப்பில்")}
-        </span>
+    <div className="px-4 pt-4 pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+1.5rem)]">
+      {/* greeting */}
+      <div className="mb-4">
+        <div className="text-[0.82rem] font-semibold text-slate-500">{greet}</div>
+        <div className="text-[1.3rem] font-black tracking-tight text-slate-900">{dateStr}</div>
       </div>
 
       <AvailabilityCard avail={avail} />

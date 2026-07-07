@@ -14,7 +14,7 @@ function StatusPill({ kind }: { kind: PillKind }) {
     came: { label: t("Came", "வந்தார்"), cls: "bg-emerald-100 text-emerald-700" },
     notcame: { label: t("Not Came", "வரவில்லை"), cls: "bg-red-100 text-red-700" },
     resch: { label: t("Rescheduled", "மறுதிட்டம்"), cls: "bg-violet-100 text-violet-700" },
-    expected: { label: t("Expected", "எதிர்பார்ப்பு"), cls: "bg-blue-100 text-blue-700" },
+    expected: { label: t("Expected", "எதிர்பார்ப்பு"), cls: "bg-[#1E40AF]/10 text-[#1E40AF]" },
     pending: { label: t("Pending", "நிலுவை"), cls: "bg-slate-100 text-slate-500" },
   };
   const { label, cls } = map[kind];
@@ -22,7 +22,7 @@ function StatusPill({ kind }: { kind: PillKind }) {
 }
 
 function TokenTag({ token }: { token: string }) {
-  return <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[0.66rem] font-bold text-blue-600">{token}</span>;
+  return <span className="rounded-md bg-[#1E40AF]/10 px-1.5 py-0.5 text-[0.66rem] font-bold text-[#1E40AF]">{token}</span>;
 }
 
 function AttendanceButtons({ came, no, onMark }: {
@@ -57,15 +57,15 @@ export function ApptCard({ it, onMark }: { it: ApptItem; onMark: (id: number, wa
   return (
     <div className="mb-3 rounded-2xl border border-slate-200/70 bg-white p-3.5 shadow-sm">
       <div className="flex items-start gap-2">
-        <TokenTag token={it.token} />
         <span className="flex-1 text-base font-bold text-slate-900">{it.name}</span>
         <StatusPill kind={kind} />
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-3.5 text-sm font-semibold text-slate-500">
+      <div className="mt-1.5 flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-500">
+        <TokenTag token={it.token} />
         <span className="inline-flex items-center gap-1"><UserRound className="h-3.5 w-3.5" /><b className="text-slate-700">{it.num_persons || 1}</b></span>
-        {it.time && <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{it.time}</span>}
+        {it.time && <span className="inline-flex items-center gap-1 tabular-nums"><Clock className="h-3.5 w-3.5" />{it.time}</span>}
       </div>
-      {it.reason && <div className="mt-0.5 text-[0.86rem] text-slate-600">{it.reason}</div>}
+      {it.reason && <div className="mt-1 text-[0.86rem] text-slate-600">{it.reason}</div>}
       <AttendanceButtons came={came} no={no} onMark={(w) => onMark(it.id, w)} />
     </div>
   );
