@@ -27,7 +27,8 @@ export function middleware(req: NextRequest) {
       return NextResponse.next();
     }
     if (deptSession) return NextResponse.next();
-    const url = req.nextUrl.clone(); url.pathname = "/department/login"; return NextResponse.redirect(url);
+    // Unified sign-in lives at /login now.
+    const url = req.nextUrl.clone(); url.pathname = "/login"; return NextResponse.redirect(url);
   }
 
   // ── Crowd Management PWA: its own cookie (display_session) + login page ────────
@@ -49,11 +50,19 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone(); url.pathname = "/crowd/login"; return NextResponse.redirect(url);
   }
 
-  // Already logged in → skip login page, go straight to appointments
-  if (pathname === "/login" && session) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/appointments";
-    return NextResponse.redirect(url);
+  // Already logged in → skip the login page, land on the right workspace.
+  if (pathname === "/login") {
+    if (session) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/appointments";
+      return NextResponse.redirect(url);
+    }
+    const deptSession = req.cookies.get("dept_session");
+    if (deptSession) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/department";
+      return NextResponse.redirect(url);
+    }
   }
 
   // /dashboard is a common guess — redirect to the actual appointments section

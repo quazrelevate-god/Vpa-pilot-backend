@@ -26,20 +26,24 @@ export default function LoginPage() {
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
     try {
-      // /auth/login is proxied by next.config.mjs → FastAPI's /dashboard/login.
-      // FastAPI responds with 302 + Set-Cookie. We use redirect:"manual" so
-      // fetch DOESN'T chase FastAPI's Location header (old Jinja route).
-      const resp = await fetch("/auth/login", {
+      // Unified sign-in: the backend resolves the role (PA staff vs department)
+      // from the credentials, sets the matching session cookie, and returns
+      // where to land. /api/login is proxied → FastAPI /dashboard/api/login.
+      const body = new URLSearchParams();
+      body.set("username", String(form.get("username") ?? "").trim());
+      body.set("password", String(form.get("password") ?? ""));
+      const resp = await fetch("/api/login", {
         method: "POST",
-        body: form,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
         credentials: "include",
-        redirect: "manual",
       });
-      const success = resp.type === "opaqueredirect" || resp.ok;
-      if (success) {
-        window.location.href = "/overview";
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({ redirect: "/appointments" }));
+        window.location.href = data.redirect || "/appointments";
       } else {
-        setError("Invalid username or password.");
+        const d = await resp.json().catch(() => ({}));
+        setError(d.error || "Invalid username or password.");
       }
     } catch {
       setError("Could not reach the server.");

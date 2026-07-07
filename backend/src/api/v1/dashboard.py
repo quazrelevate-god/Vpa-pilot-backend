@@ -171,6 +171,56 @@ async def login_submit(
     )
 
 
+@router.post("/api/login")
+@limiter.limit("5/minute")
+async def unified_login(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Single sign-in for both the PA portal and department workspaces.
+
+    Resolves the role straight from the credentials, sets the matching session
+    cookie, and returns where the client should land — one round-trip, and
+    neither side consumes the other's rate-limited attempt.
+    """
+    uname = username.strip()
+
+    # 1) PA staff — env super-admin fallback, then the `login` table.
+    from src.models.login_models import Login, verify_password as verify_staff
+    staff_ok = False
+    if uname == settings.DASHBOARD_USERNAME and password == settings.DASHBOARD_PASSWORD:
+        from src.core.rbac import ensure_env_admin_seeded
+        await ensure_env_admin_seeded(db, uname)
+        staff_ok = True
+    else:
+        row = (await db.execute(
+            select(Login).where(Login.login_name == uname, Login.is_active == True)  # noqa: E712
+        )).scalar_one_or_none()
+        if row and verify_staff(password, row.password):
+            staff_ok = True
+    if staff_ok:
+        resp = JSONResponse({"ok": True, "role": "staff", "redirect": "/appointments"})
+        create_session_cookie(resp, uname)
+        resp.delete_cookie("dept_session", path="/", httponly=True, samesite="lax")
+        return resp
+
+    # 2) Department shared account.
+    from src.models.department_account import DepartmentAccount, verify_password as verify_dept
+    from src.core.dept_auth import create_dept_session_cookie
+    acct = (await db.execute(
+        select(DepartmentAccount).where(DepartmentAccount.username == uname)
+    )).scalar_one_or_none()
+    if acct and verify_dept(password, acct.password_hash):
+        resp = JSONResponse({"ok": True, "role": "department", "redirect": "/department"})
+        create_dept_session_cookie(resp, acct.department)
+        resp.delete_cookie("dash_session", path="/", httponly=True, samesite="lax")
+        return resp
+
+    return JSONResponse({"error": "Invalid username or password."}, status_code=401)
+
+
 @router.get("/logout", include_in_schema=False)
 async def logout():
     # Redirect to Next.js login page (not the Jinja2 /auth/login backend page)
