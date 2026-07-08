@@ -32,7 +32,7 @@ export default function BottomNav({
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-[calc(var(--nav-h)+env(safe-area-inset-bottom))] max-w-[560px] border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
       <Item active={on("appt")} icon={<Calendar />} label={t("Appointments", "சந்திப்புகள்")} onClick={() => onList("appt")} />
-      <Item active={on("ref")} icon={<Users />} label={t("Referrals", "பரிந்துரைகள்")} onClick={() => onList("ref")} />
+      <Item active={on("ref")} icon={<Users />} label={t("Executive Queue", "நிர்வாக வரிசை")} onClick={() => onList("ref")} />
       <Item active={view === "wizard"} icon={<UserPlus />} label={t("Walk-ins", "நேரடி")} onClick={onRegister} />
     </nav>
   );
