@@ -62,8 +62,8 @@ export default function LoginPage() {
             <Landmark className="h-5 w-5" />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-bold text-foreground">Petition Management</div>
-            <div className="text-xs text-muted-foreground">Staff portal</div>
+            <div className="text-sm font-bold text-foreground">NamKural</div>
+            <div className="text-xs text-muted-foreground">Petition Desk · Staff portal</div>
           </div>
         </motion.div>
 
@@ -83,8 +83,8 @@ export default function LoginPage() {
               <Landmark className="h-5 w-5" />
             </div>
             <div className="leading-tight">
-              <div className="text-sm font-bold text-foreground">Petition Management</div>
-              <div className="text-xs text-muted-foreground">Staff portal</div>
+              <div className="text-sm font-bold text-foreground">NamKural</div>
+              <div className="text-xs text-muted-foreground">Petition Desk · Staff portal</div>
             </div>
           </motion.div>
 

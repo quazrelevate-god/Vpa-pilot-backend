@@ -140,7 +140,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
         expanded ? "w-64" : "w-[72px]",
       )}
     >
-      {/* Brand — Operations Center (links home) */}
+      {/* Brand — NamKural (links home) */}
       <div className="flex items-start gap-2 px-3 pb-4 pt-5">
         <Link
           href="/overview"
@@ -148,7 +148,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
             "flex min-w-0 flex-1 items-center gap-3 rounded-xl transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             expanded ? "px-2" : "justify-center px-0",
           )}
-          title="Operations Center"
+          title="NamKural — Petition Desk"
         >
           <span className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-2xl border border-[#CFE0FB] bg-gradient-to-br from-white to-[#EAF1FE] text-[#1E40AF] shadow-[0_2px_8px_rgba(47,111,237,0.12)]">
             <OpsLogo className="h-[22px] w-[22px]" />
@@ -156,7 +156,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
           {expanded && (
             <span className="min-w-0 leading-tight">
               <span className="block truncate text-[15px] font-bold leading-snug tracking-tight text-foreground">
-                Operations Center
+                NamKural
               </span>
               <span className="mt-0.5 block truncate text-[11px] font-medium text-muted-foreground">Petition Desk</span>
             </span>

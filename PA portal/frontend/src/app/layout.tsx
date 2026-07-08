@@ -36,7 +36,7 @@ const plexMono = IBM_Plex_Mono({
 const fontVars = `${jakarta.variable} ${notoTamil.variable} ${fraunces.variable} ${plexMono.variable}`;
 
 export const metadata: Metadata = {
-  title: "Petition Management — Staff Portal",
+  title: "NamKural — Petition Desk",
   description: "Petition & appointment management for grievance triage and scheduling",
 };
 

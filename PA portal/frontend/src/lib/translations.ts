@@ -7,7 +7,7 @@ export const translations = {
     "nav.appointments": "Appointments",
     "nav.scheduling":   "Scheduling",
     "nav.referrals":    "Executive Queue",
-    "nav.aiUploads":    "AI Uploads",
+    "nav.aiUploads":    "Uploads",
     "nav.aiReview":     "Petition Review",
     "nav.crowdQr":      "Crowd QR",
     "nav.waitingQueue": "Waiting Queue",
@@ -15,8 +15,8 @@ export const translations = {
     "nav.analytics":    "Analytics",
     "nav.settings":     "Settings",
     "nav.paOffice":     "PA Office",
-    "brand.title":      "Petition Management",
-    "brand.subtitle":   "Staff Portal",
+    "brand.title":      "NamKural",
+    "brand.subtitle":   "Petition Desk",
 
     // ── TopBar ───────────────────────────────────────────────────────
     "topbar.title":    "Petition & Appointment Management",
@@ -265,11 +265,11 @@ export const translations = {
     "tickets.colSummary":  "Summary",
 
     // ── AI Uploads page ──────────────────────────────────────────────
-    "uploads.title":        "AI Uploads",
+    "uploads.title":        "Uploads",
     "uploads.topSubtitle":  "Bulk petition extraction",
-    "uploads.subtitle":     "Upload scanned petitions in batches. Gemini AI reads, categorizes and queues them for review.",
+    "uploads.subtitle":     "Upload scanned petitions in batches. AI reads, categorizes and queues them for review.",
     "uploads.feat1Title":   "AI Powered",
-    "uploads.feat1Desc":    "Gemini AI extracts & categorizes text",
+    "uploads.feat1Desc":    "AI extracts & categorizes text",
     "uploads.feat2Title":   "Batch Processing",
     "uploads.feat2Desc":    "Handle multiple files efficiently",
     "uploads.feat3Title":   "Auto Categorization",
@@ -318,13 +318,13 @@ export const translations = {
     "uploads.guide3":       "Supported formats: PDF, JPG, PNG, HEIC",
     "uploads.guide4":       "AI works best on upright documents",
 
-    // ── Referrals (Admin) page ───────────────────────────────────────
-    "ref.title":          "Referrals",
-    "ref.topSubtitle":    "Share your daily referral QR and manage bookings.",
-    "ref.subtitle":       "Daily QR + slot booking (11:00 AM – 1:00 PM). Separate from petitions.",
-    "ref.qrTitle":        "Today's Referral QR",
-    "ref.qrSubtitle":     "Scan to refer & book a slot",
-    "ref.qrResets":       "Resets every day. Share with referred persons.",
+    // ── Executive Queue page ───────────────────────────────────────
+    "ref.title":          "Executive Queue",
+    "ref.topSubtitle":    "Private slot booking for executive & VIP appointments.",
+    "ref.subtitle":       "Daily QR + slot booking (11:00 AM – 1:00 PM). Kept separate from the public petition queue.",
+    "ref.qrTitle":        "Today's Executive QR",
+    "ref.qrSubtitle":     "Scan to book an executive slot",
+    "ref.qrResets":       "Resets every day. Share with executive invitees only.",
     "ref.openForm":       "Open referral form",
     "ref.openDate":       "Open a Date",
     "ref.openDateSub":    "Open bookings for a specific date",
@@ -664,7 +664,7 @@ export const translations = {
     "nav.appointments": "சந்திப்புகள்",
     "nav.scheduling":   "அட்டவணை",
     "nav.referrals":    "நிர்வாக வரிசை",
-    "nav.aiUploads":    "AI பதிவேற்றங்கள்",
+    "nav.aiUploads":    "பதிவேற்றங்கள்",
     "nav.aiReview":     "மனுக்கள் மறுஆய்வு",
     "nav.crowdQr":      "கூட்ட QR",
     "nav.waitingQueue": "காத்திருப்பு வரிசை",
@@ -672,8 +672,8 @@ export const translations = {
     "nav.analytics":    "பகுப்பாய்வு",
     "nav.settings":     "அமைப்புகள்",
     "nav.paOffice":     "PA அலுவலகம்",
-    "brand.title":      "மனு மேலாண்மை",
-    "brand.subtitle":   "ஊழியர் போர்ட்டல்",
+    "brand.title":      "நம்குரல்",
+    "brand.subtitle":   "மனு மேசை",
 
     // ── TopBar ───────────────────────────────────────────────────────
     "topbar.title":    "மனு & சந்திப்பு மேலாண்மை",
@@ -922,11 +922,11 @@ export const translations = {
     "tickets.colSummary":  "சுருக்கம்",
 
     // ── AI Uploads page ──────────────────────────────────────────────
-    "uploads.title":        "AI பதிவேற்றங்கள்",
+    "uploads.title":        "பதிவேற்றங்கள்",
     "uploads.topSubtitle":  "தொகுதி மனு பிரித்தெடுப்பு",
-    "uploads.subtitle":     "ஸ்கேன் செய்யப்பட்ட மனுக்களை தொகுதிகளாக பதிவேற்றவும். Gemini AI படித்து, வகைப்படுத்தி, மதிப்பாய்வுக்கு வரிசைப்படுத்தும்.",
+    "uploads.subtitle":     "ஸ்கேன் செய்யப்பட்ட மனுக்களை தொகுதிகளாக பதிவேற்றவும். AI படித்து, வகைப்படுத்தி, மதிப்பாய்வுக்கு வரிசைப்படுத்தும்.",
     "uploads.feat1Title":   "AI இயக்கம்",
-    "uploads.feat1Desc":    "Gemini AI உரையைப் பிரித்தெடுத்து வகைப்படுத்தும்",
+    "uploads.feat1Desc":    "AI உரையைப் பிரித்தெடுத்து வகைப்படுத்தும்",
     "uploads.feat2Title":   "தொகுதி செயலாக்கம்",
     "uploads.feat2Desc":    "பல கோப்புகளைத் திறமையாகக் கையாளும்",
     "uploads.feat3Title":   "தானியங்கு வகைப்பாடு",
@@ -975,13 +975,13 @@ export const translations = {
     "uploads.guide3":       "ஆதரிக்கப்படும் வடிவங்கள்: PDF, JPG, PNG, HEIC",
     "uploads.guide4":       "நேராக உள்ள ஆவணங்களில் AI சிறப்பாகச் செயல்படும்",
 
-    // ── Referrals (Admin) page ───────────────────────────────────────
-    "ref.title":          "பரிந்துரைகள்",
-    "ref.topSubtitle":    "உங்கள் தினசரி பரிந்துரை QR-ஐப் பகிர்ந்து முன்பதிவுகளை நிர்வகிக்கவும்.",
-    "ref.subtitle":       "தினசரி QR + நேர முன்பதிவு (காலை 11:00 – மதியம் 1:00). மனுக்களிலிருந்து தனியானது.",
-    "ref.qrTitle":        "இன்றைய பரிந்துரை QR",
-    "ref.qrSubtitle":     "பரிந்துரைத்து நேரத்தை முன்பதிவு செய்ய ஸ்கேன் செய்யவும்",
-    "ref.qrResets":       "தினமும் மீட்டமைக்கப்படும். பரிந்துரைக்கப்பட்டவர்களுடன் பகிரவும்.",
+    // ── Executive Queue page ───────────────────────────────────────
+    "ref.title":          "நிர்வாக வரிசை",
+    "ref.topSubtitle":    "நிர்வாக மற்றும் VIP சந்திப்புகளுக்கான தனிப்பட்ட நேர முன்பதிவு.",
+    "ref.subtitle":       "தினசரி QR + நேர முன்பதிவு (காலை 11:00 – மதியம் 1:00). பொது மனு வரிசையிலிருந்து தனியாக வைக்கப்படுகிறது.",
+    "ref.qrTitle":        "இன்றைய நிர்வாக QR",
+    "ref.qrSubtitle":     "நிர்வாக நேரத்தை முன்பதிவு செய்ய ஸ்கேன் செய்யவும்",
+    "ref.qrResets":       "தினமும் மீட்டமைக்கப்படும். நிர்வாக அழைப்பாளர்களுடன் மட்டும் பகிரவும்.",
     "ref.openForm":       "பரிந்துரை படிவத்தைத் திற",
     "ref.openDate":       "ஒரு தேதியைத் திற",
     "ref.openDateSub":    "குறிப்பிட்ட தேதிக்கு முன்பதிவுகளைத் திற",
