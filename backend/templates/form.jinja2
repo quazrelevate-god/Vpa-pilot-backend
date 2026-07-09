@@ -37,7 +37,7 @@
             backdrop-filter: blur(40px) saturate(200%);
             -webkit-backdrop-filter: blur(40px) saturate(200%);
             border: 1px solid rgba(255, 255, 255, 0.8);
-            border-radius: 5px;
+            border-radius: 1.25rem;
             overflow: hidden;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 1);
         }
@@ -464,17 +464,19 @@
         .choice-card__title { font-weight: 800; font-size: 1.05rem; line-height: 1.2; display: block; }
         .choice-card__sub   { font-size: 0.8rem; color: #64748b; margin-top: 3px; display: block; }
 
-        .choice-card--meeting       { border-color: #6ee7b7; }
-        .choice-card--meeting:hover { border-color: #34d399; }
-        .choice-card--meeting::after { color: #34d399; }
-        .choice-card--meeting  .choice-card__icon  { background: #d1fae5; }
-        .choice-card--meeting  .choice-card__title { color: #047857; }
+        .choice-card--meeting       { border-color: #059669; background: #059669; }
+        .choice-card--meeting:hover { border-color: #047857; background: #047857; }
+        .choice-card--meeting::after { color: rgba(255,255,255,0.7); }
+        .choice-card--meeting  .choice-card__icon  { background: rgba(255,255,255,0.2); color: #fff; }
+        .choice-card--meeting  .choice-card__title { color: #ffffff; }
+        .choice-card--meeting  .choice-card__sub   { color: rgba(255,255,255,0.8); }
 
-        .choice-card--petition       { border-color: #93c5fd; }
-        .choice-card--petition:hover { border-color: #60a5fa; }
-        .choice-card--petition::after { color: #60a5fa; }
-        .choice-card--petition .choice-card__icon  { background: #dbeafe; }
-        .choice-card--petition .choice-card__title { color: #1d4ed8; }
+        .choice-card--petition       { border-color: #1d4ed8; background: #1d4ed8; }
+        .choice-card--petition:hover { border-color: #1e40af; background: #1e40af; }
+        .choice-card--petition::after { color: rgba(255,255,255,0.7); }
+        .choice-card--petition .choice-card__icon  { background: rgba(255,255,255,0.2); color: #fff; }
+        .choice-card--petition .choice-card__title { color: #ffffff; }
+        .choice-card--petition .choice-card__sub   { color: rgba(255,255,255,0.8); }
         .choice-card--petition:not(.choice-card--primary) {
             padding: 0.7rem 1rem;
             border-radius: 10px;
@@ -492,22 +494,19 @@
             font-size: 0.72rem;
         }
 
-        .choice-card--waitlist       { border-color: #fcd34d; }
-        .choice-card--waitlist:hover { border-color: #fbbf24; }
-        .choice-card--waitlist::after { color: #fbbf24; }
-        .choice-card--waitlist .choice-card__icon  { background: #fef3c7; }
-        .choice-card--waitlist .choice-card__title { color: #b45309; }
+        .choice-card--waitlist       { border-color: #b45309; background: #b45309; }
+        .choice-card--waitlist:hover { border-color: #92400e; background: #92400e; }
+        .choice-card--waitlist::after { color: rgba(255,255,255,0.7); }
+        .choice-card--waitlist .choice-card__icon  { background: rgba(255,255,255,0.2); color: #fff; }
+        .choice-card--waitlist .choice-card__title { color: #ffffff; }
+        .choice-card--waitlist .choice-card__sub   { color: rgba(255,255,255,0.8); }
 
         .choice-card--primary { border-width: 2.5px; }
         .choice-card--meeting.choice-card--primary  {
-            border-color: #34d399;
-            background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
-            box-shadow: 0 4px 16px rgba(5,150,105,0.15);
+            box-shadow: 0 4px 16px rgba(5,150,105,0.35);
         }
         .choice-card--petition.choice-card--primary {
-            border-color: #60a5fa;
-            background: linear-gradient(135deg, #eff6ff, #eef5ff);
-            box-shadow: 0 4px 16px rgba(59,130,246,0.15);
+            box-shadow: 0 4px 16px rgba(29,78,216,0.35);
         }
 
         @keyframes choiceReveal {
@@ -707,15 +706,14 @@
             text-decoration: none;
         }
         .btn-inline-action {
-            background: rgba(59, 130, 246, 0.85);
+            background: #1d4ed8;
             color: white;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: none;
             font-size: 0.85rem;
             padding: 0.75rem 1.25rem;
             height: 100%;
         }
-        .btn-inline-action:hover { background: rgba(37, 99, 235, 0.95); }
+        .btn-inline-action:hover { background: #1e40af; }
         .base-btn:disabled {
             background: rgba(156, 163, 175, 0.4) !important;
             color: rgba(31, 41, 55, 0.4) !important;
@@ -774,9 +772,9 @@
         .receipt-val   { color: #1f2937; font-weight: 700; }
         .btn-modal-close {
             width: 100%;
-            background: rgba(68, 139, 69, 0.85);
+            background: #059669;
             color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: none;
         }
 
         /* ── Responsive ────────────────────────────────────────────────────── */
@@ -1076,7 +1074,7 @@
                     <span class="consent-ta" style="display:none;">ரத்து செய்</span>
                 </button>
                 <button type="button" id="btnConsentConfirm" onclick="submitForm(true)" disabled
-                    style="padding:0.7rem; border:none; border-radius:8px; background:rgba(5,150,105,0.85); color:#fff; font-weight:700; font-size:0.88rem; cursor:pointer; opacity:0.45; transition:opacity 0.2s;">
+                    style="padding:0.7rem; border:none; border-radius:8px; background:#059669; color:#fff; font-weight:700; font-size:0.88rem; cursor:pointer; opacity:0.45; transition:opacity 0.2s;">
                     <span class="consent-en">Confirm &amp; Submit</span>
                     <span class="consent-ta" style="display:none;">உறுதிசெய் &amp; சமர்ப்பி</span>
                 </button>
