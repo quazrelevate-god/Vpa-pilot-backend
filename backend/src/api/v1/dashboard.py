@@ -33,44 +33,58 @@ async def display_qr_info(request: Request, user: str = Depends(require_auth)):
 
 
 # ── Analytics dashboard ─────────────────────────────────────────────────────────
-def _analytics_filters(date_from, date_to, category, priority, ministry, channel, status):
+def _analytics_filters(date_from, date_to, category, priority, ministry, channel, status, district=None):
     from src.services.analytics_service import Filters
     return Filters(date_from=date_from, date_to=date_to, category=category,
-                   priority=priority, ministry=ministry, channel=channel, status=status)
+                   priority=priority, ministry=ministry, channel=channel, status=status,
+                   district=district)
 
 
 @router.get("/api/analytics")
 async def api_analytics(
     date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
-    ministry: str = None, channel: str = None, status: str = None,
+    ministry: str = None, channel: str = None, status: str = None, district: str = None,
     db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
 ):
     from src.services.analytics_service import analytics_service
-    f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status)
+    f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status, district)
     return JSONResponse(await analytics_service.get_analytics(db, f))
+
+
+@router.get("/api/analytics/operations")
+async def api_analytics_operations(
+    date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
+    ministry: str = None, channel: str = None, status: str = None, district: str = None,
+    db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
+):
+    """Department performance and district breakdown for the lower half of the
+    overview dashboard."""
+    from src.services.analytics_service import analytics_service
+    f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status, district)
+    return JSONResponse(await analytics_service.get_operations(db, f))
 
 
 @router.get("/api/analytics/petitions")
 async def api_analytics_petitions(
     date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
-    ministry: str = None, channel: str = None, status: str = None,
+    ministry: str = None, channel: str = None, status: str = None, district: str = None,
     page: int = 1, page_size: int = 50, sort: str = "created_at", direction: str = "desc",
     db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
 ):
     from src.services.analytics_service import analytics_service
-    f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status)
+    f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status, district)
     return JSONResponse(await analytics_service.get_petitions(db, f, page, page_size, sort, direction))
 
 
 @router.get("/api/analytics/export")
 async def api_analytics_export(
     date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
-    ministry: str = None, channel: str = None, status: str = None,
+    ministry: str = None, channel: str = None, status: str = None, district: str = None,
     db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
 ):
     import csv, io
     from src.services.analytics_service import analytics_service
-    f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status)
+    f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status, district)
     data = await analytics_service.get_petitions(db, f, page=1, page_size=5000)
     buf = io.StringIO()
     w = csv.writer(buf)

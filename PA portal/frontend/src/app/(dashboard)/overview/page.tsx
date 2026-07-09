@@ -2,37 +2,73 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Users, Megaphone, Flame, Handshake, ClipboardList, RefreshCw, Download, X,
-  ChevronLeft, ChevronRight, ArrowUpDown, Radio, AudioLines,
+  Users, Megaphone, Flame, Handshake, RefreshCw, Download, X,
+  ChevronLeft, ChevronRight, ArrowUpDown, AudioLines, CheckCircle2,
+  Timer, Gauge, TrendingUp, TrendingDown, Landmark, MapPin, Building2,
 } from "lucide-react";
+import {
+  ResponsiveContainer, AreaChart, Area, BarChart, Bar as RBar, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line,
+} from "recharts";
 
 import TopBar from "@/components/TopBar";
-import MetricTile from "@/components/MetricTile";
-import PriorityBadge from "@/components/PriorityBadge";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
+import TamilNaduMap from "@/components/TamilNaduMap";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AppointmentRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Aurora chart palette (matches globals.css tokens) ────────────────────────
+const C = {
+  brand:   "#1E40AF",   // royal blue — primary series
+  mint:    "#34A26C",   // success — resolved series
+  ink:     "#191C24",
+  muted:   "#5C5E6E",
+  border:  "#ECECF3",
+  grid:    "#EDF0F6",
+  critical:"#E5484D",
+  high:    "#EE7327",
+  medium:  "#D39412",
+  low:     "#34A26C",
+};
+const PRIORITY_META = [
+  { key: "critical", label: "Critical", color: C.critical },
+  { key: "high",     label: "High",     color: C.high },
+  { key: "medium",   label: "Medium",   color: C.medium },
+  { key: "low",      label: "Low",      color: C.low },
+] as const;
+
+// ── Types ────────────────────────────────────────────────────────────────────
 interface Bar { key: string; label: string; count: number }
+interface TrendPoint { date: string; received: number; resolved: number; count: number }
 interface Analytics {
-  kpis: { received: number; citizens: number; urgent: number; meetings: number; meeting_persons: number; awaiting_review: number; growth_pct: number | null };
+  kpis: {
+    received: number; citizens: number; urgent: number; meetings: number;
+    meeting_persons: number; awaiting_review: number; growth_pct: number | null;
+    resolution_rate: number; avg_response_hours: number; on_time_pct: number; resolved: number;
+  };
   categories: Bar[]; ministries: Bar[]; channels: Bar[];
   priority: { critical: number; high: number; medium: number; low: number };
-  trend: { date: string; count: number }[];
+  trend: TrendPoint[];
 }
 interface Petition {
   id: number; token: string; name: string; mobile: string; category: string | null;
   category_label: string; priority: string | null; status: string; source: string;
   source_label: string; schedule_meeting: boolean; created_at: string | null;
+  citizen_ask?: string | null;
 }
-type Filters = { category?: string; priority?: string; ministry?: string; channel?: string };
+interface DeptPerf {
+  key: string; label: string; open: number; resolved: number; total: number;
+  resolution_rate: number; avg_resolution_days: number | null; on_time_pct: number | null;
+  avg_accept_minutes: number | null; active_load: number; avg_progress: number;
+}
+interface Operations { departments: DeptPerf[]; districts: Bar[] }
+type Filters = { category?: string; priority?: string; ministry?: string; channel?: string; district?: string };
 
-// ── Date presets ────────────────────────────────────────────────────────────────
+// ── Date presets ─────────────────────────────────────────────────────────────
 type Preset = "today" | "7d" | "30d" | "90d" | "month" | "lastmonth" | "quarter" | "year" | "all";
 const PRESETS: { key: Preset; label: string }[] = [
   { key: "today", label: "Today" }, { key: "7d", label: "7 days" }, { key: "30d", label: "30 days" },
@@ -53,17 +89,12 @@ function presetDates(p: Preset): { from?: string; to?: string } {
   return { from: iso(f), to: iso(now) };
 }
 
-const PRIORITY_TONE: Record<string, string> = { critical: "bg-[#E5484D]", high: "bg-[#EE7327]", medium: "bg-[#D39412]", low: "bg-[#34A26C]" };
-const STATUS_PILL: Record<string, { cls: string; label: string }> = {
-  SCHEDULED:       { cls: "s-Scheduled",      label: "Scheduled" },
-  WAITING:         { cls: "s-Waiting",        label: "Waiting" },
-  RESCHEDULED:     { cls: "s-Rescheduled",    label: "Rescheduled" },
-  AWAITING_REVIEW: { cls: "s-AwaitingReview", label: "Awaiting Review" },
-  REVIEWED:        { cls: "s-Reviewed",       label: "Reviewed" },
-  NOT_CAME:        { cls: "s-NotCame",        label: "Not Came" },
-  COURTESY_DONE:   { cls: "s-CourtesyDone",   label: "Courtesy Done" },
-};
-const fmt = (v: number | undefined | null) => (v == null ? "—" : v.toLocaleString());
+const fmt = (v: number | undefined | null) => (v == null ? "—" : v.toLocaleString("en-IN"));
+function fmtDuration(hours: number | undefined | null): string {
+  if (hours == null || hours === 0) return "—";
+  if (hours < 48) return `${hours.toFixed(1)} hrs`;
+  return `${(hours / 24).toFixed(1)} days`;
+}
 
 export default function OverviewPage() {
   const [preset, setPreset] = useState<Preset>("30d");
@@ -78,6 +109,9 @@ export default function OverviewPage() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ by: string; dir: "asc" | "desc" }>({ by: "created_at", dir: "desc" });
   const [selected, setSelected] = useState<AppointmentRow | null>(null);
+
+  // operations (Phase 2): department performance, districts, recent activity
+  const [ops, setOps] = useState<Operations | null>(null);
 
   async function openDetail(id: number) {
     try {
@@ -108,18 +142,24 @@ export default function OverviewPage() {
 
   const loadPetitions = useCallback(async () => {
     try {
-      const r = await fetch(`/api/analytics/petitions?${qs({ page, page_size: 50, sort: sort.by, direction: sort.dir })}`, { credentials: "include" });
+      const r = await fetch(`/api/analytics/petitions?${qs({ page, page_size: 25, sort: sort.by, direction: sort.dir })}`, { credentials: "include" });
       if (!r.ok) { setPets({ items: [], total: 0, page: 1, pages: 1 }); return; }
       setPets(await r.json());
     } catch { setPets({ items: [], total: 0, page: 1, pages: 1 }); }
   }, [qs, page, sort]);
 
+  const loadOps = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/analytics/operations?${qs()}`, { credentials: "include" });
+      if (r.ok) setOps(await r.json());
+    } catch { /* soft-fail — panels show their empty state */ }
+  }, [qs]);
+
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
   useEffect(() => { loadPetitions(); }, [loadPetitions]);
-  // reset to page 1 whenever the scope changes
+  useEffect(() => { loadOps(); }, [loadOps]);
   useEffect(() => { setPage(1); }, [preset, filters]);
 
-  // toggle a filter (click again to clear)
   function toggle(dim: keyof Filters, key: string) {
     setFilters(f => ({ ...f, [dim]: f[dim] === key ? undefined : key }));
   }
@@ -127,26 +167,19 @@ export default function OverviewPage() {
   const chipLabel = (dim: keyof Filters, v: string) => {
     if (dim === "category") return data?.categories.find(c => c.key === v)?.label ?? v;
     if (dim === "ministry") return data?.ministries.find(c => c.key === v)?.label ?? v;
-    if (dim === "channel") return data?.channels.find(c => c.key === v)?.label ?? v;
+    if (dim === "district") return ops?.districts.find(c => c.key === v)?.label ?? v;
     return v;
   };
 
   const k = data?.kpis;
-  const priorityTotal = data ? Object.values(data.priority).reduce((a, b) => a + b, 0) : 0;
-  const maxCat = Math.max(1, ...(data?.categories ?? []).map(c => c.count));
-  const maxMin = Math.max(1, ...(data?.ministries ?? []).map(c => c.count));
-  const maxChan = Math.max(1, ...(data?.channels ?? []).map(c => c.count));
+  const priorityTotal = data ? PRIORITY_META.reduce((a, p) => a + (data.priority[p.key] ?? 0), 0) : 0;
 
   return (
     <>
-      <TopBar
-        title="Voice of the People"
-        subtitle="Overview Dashboard"
-        icon={<AudioLines className="h-5 w-5" />}
-      />
+      <TopBar title="Voice of the People" subtitle="Overview Dashboard" icon={<AudioLines className="h-5 w-5" />} />
       <main className="flex-1 overflow-y-auto bg-background">
-        <div className="space-y-3 px-3 py-4 animate-in-up">
-          {/* Live system · period · refresh (per reference) */}
+        <div className="mx-auto max-w-[1440px] space-y-3 px-3 py-4 animate-in-up">
+          {/* Live · period · refresh */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 text-[13px]">
               <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
@@ -156,16 +189,14 @@ export default function OverviewPage() {
                 </span>
                 Live System
               </span>
-              {lastUpdated && (
-                <span className="text-muted-foreground">Last updated: {lastUpdated}</span>
-              )}
+              {lastUpdated && <span className="text-muted-foreground">Last updated: <span className="tabular-nums">{lastUpdated}</span></span>}
             </div>
             <div className="flex items-center gap-2">
               <select value={preset} onChange={e => setPreset(e.target.value as Preset)}
                 className="h-9 rounded-xl border border-input bg-card px-3 text-xs font-semibold shadow-card focus:border-brand focus:outline-none">
                 {PRESETS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
               </select>
-              <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => { loadAnalytics(); loadPetitions(); }} disabled={loading}>
+              <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => { loadAnalytics(); loadPetitions(); loadOps(); }} disabled={loading}>
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               </Button>
             </div>
@@ -185,122 +216,91 @@ export default function OverviewPage() {
             </div>
           )}
 
-          {/* Error banner */}
           {error && (
-            <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-              {error}
-            </div>
+            <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>
           )}
 
-          {/* KPIs */}
+          {/* KPI cards */}
           {!data ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[108px] rounded-2xl" />)}</div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[116px] rounded-2xl" />)}</div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              <MetricTile label="Petitions" value={fmt(k!.received)} caption="received" icon={Megaphone} tone="brand" deltaPct={k!.growth_pct ?? undefined} />
-              <MetricTile label="Citizens" value={fmt(k!.citizens)} caption="unique people" icon={Users} tone="violet" />
-              <MetricTile label="Urgent" value={fmt(k!.urgent)} caption="critical + high" icon={Flame} tone="rose" />
-              <MetricTile label="Meetings" value={fmt(k!.meetings)} caption={`${fmt(k!.meeting_persons)} people`} icon={Handshake} tone="amber" />
-              <MetricTile label="Awaiting review" value={fmt(k!.awaiting_review)} caption="pending PA" icon={ClipboardList} tone={k!.awaiting_review > 50 ? "rose" : "slate"} />
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <KpiCard icon={Users} tone="brand" label="Citizens Served" value={fmt(k!.citizens)} caption="unique people" />
+              <KpiCard icon={Megaphone} tone="violet" label="Petitions Received" value={fmt(k!.received)}
+                caption="in this period" delta={k!.growth_pct} series={data.trend.map(t => t.received)} />
+              <KpiCard icon={Gauge} tone="mint" label="Resolution Rate" value={`${k!.resolution_rate}%`}
+                caption={`${fmt(k!.resolved)} resolved`} series={data.trend.map(t => t.resolved)} seriesColor={C.mint} />
+              <KpiCard icon={Timer} tone="amber" label="Avg Response Time" value={fmtDuration(k!.avg_response_hours)} caption="resolved cases" />
+              <KpiCard icon={Handshake} tone="brand" label="Citizens Met" value={fmt(k!.meeting_persons)} caption={`${fmt(k!.meetings)} appointments`} />
+              <KpiCard icon={CheckCircle2} tone="mint" label="On-Time Resolution" value={`${k!.on_time_pct}%`} caption="within SLA target" />
             </div>
           )}
 
-          {/* Charts */}
+          {/* Trend (2/3) + Priority donut (1/3) */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            {/* Voice of the People — categories (hero) */}
             <Card className="p-4 lg:col-span-2">
-              <ChartHead icon={Megaphone} title="Voice of the People" sub="Top categories — click a bar to filter" />
-              <div className="space-y-1.5">
-                {(data?.categories ?? []).map(c => (
-                  <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxCat * 100)}
-                    active={filters.category === c.key} onClick={() => toggle("category", c.key)} tone="bg-brand" total={k?.received} />
-                ))}
-                {data && data.categories.length === 0 && <Empty />}
-              </div>
+              <VolumeTrend trend={data?.trend ?? null} loading={!data} />
             </Card>
-
-            {/* Trend */}
-            <Card className="flex flex-col p-4">
-              <ChartHead icon={Radio} title="Daily volume" sub="Petitions received over the period" />
-              <div className="min-h-[160px] flex-1">{data ? <Trend points={data.trend} /> : <Skeleton className="h-full w-full" />}</div>
+            <Card className="p-4">
+              <ChartHead icon={Flame} title="Priority Mix" sub="Click a level to filter" />
+              <PriorityDonut priority={data?.priority ?? null} total={priorityTotal}
+                active={filters.priority} onSlice={(key) => toggle("priority", key)} loading={!data} />
             </Card>
           </div>
 
+          {/* Category (2/3) + Ministry (1/3) */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            {/* Priority */}
-            <Card className="p-4">
-              <ChartHead icon={Flame} title="Priority mix" sub="Click a level to filter" />
-              <div className="mb-2 flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                {(["critical", "high", "medium", "low"] as const).map(lv => {
-                  const v = data?.priority[lv] ?? 0; const pct = priorityTotal ? v / priorityTotal * 100 : 0;
-                  return <div key={lv} className={PRIORITY_TONE[lv]} style={{ width: `${pct}%` }} title={`${lv}: ${v}`} />;
-                })}
-              </div>
-              <div className="space-y-1">
-                {(["critical", "high", "medium", "low"] as const).map(lv => {
-                  const v = data?.priority[lv] ?? 0;
-                  return (
-                    <button key={lv} onClick={() => toggle("priority", lv)}
-                      className={cn("flex w-full items-center justify-between rounded-md px-1.5 py-1 text-[12px] transition-colors hover:bg-muted", filters.priority === lv && "bg-brand/10 ring-1 ring-brand/20")}>
-                      <span className="inline-flex items-center gap-2 capitalize"><span className={cn("h-2 w-2 rounded-full", PRIORITY_TONE[lv])} />{lv}</span>
-                      <span className="font-semibold tabular-nums">{v}<span className="ml-1 text-[10px] text-muted-foreground">{priorityTotal ? Math.round(v / priorityTotal * 100) : 0}%</span></span>
-                    </button>
-                  );
-                })}
-              </div>
+            <Card className="p-4 lg:col-span-2">
+              <ChartHead icon={Megaphone} title="Petitions by Category" sub="Click a bar to filter" />
+              <CategoryBars data={data?.categories ?? null} activeKey={filters.category}
+                onBar={(key) => toggle("category", key)} loading={!data} />
             </Card>
-
-            {/* Ministries */}
             <Card className="p-4">
-              <ChartHead icon={Megaphone} title="Ministries" sub="Where the load falls" />
-              <div className="space-y-1.5">
-                {(data?.ministries ?? []).slice(0, 6).map(c => (
-                  <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxMin * 100)}
-                    active={filters.ministry === c.key} onClick={() => toggle("ministry", c.key)} tone="bg-brand" />
-                ))}
-                {data && data.ministries.length === 0 && <Empty />}
-              </div>
-            </Card>
-
-            {/* Channels */}
-            <Card className="p-4">
-              <ChartHead icon={Radio} title="Channels" sub="How petitions arrive" />
-              <div className="space-y-1.5">
-                {(data?.channels ?? []).map(c => (
-                  <BarRow key={c.key} label={c.label} count={c.count} pct={Math.round(c.count / maxChan * 100)}
-                    active={filters.channel === c.key} onClick={() => toggle("channel", c.key)} tone="bg-blue-500" total={k?.received} />
-                ))}
-                {data && data.channels.length === 0 && <Empty />}
-              </div>
+              <ChartHead icon={Landmark} title="Ministry Distribution" sub="Where the load falls" />
+              <MinistryBars data={data?.ministries ?? null} activeKey={filters.ministry}
+                onBar={(key) => toggle("ministry", key)} loading={!data} />
             </Card>
           </div>
 
-          {/* Full petitions table */}
+          {/* Department performance */}
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-border p-4">
+              <ChartHead icon={Building2} title="Department Performance" sub="Case load and resolution health per routed department" />
+            </div>
+            <DeptTable rows={ops?.departments ?? null} />
+          </Card>
+
+          {/* Geographic district distribution — counts on the map; click to filter */}
+          <Card className="p-4">
+            <ChartHead icon={MapPin} title="Petitions by District" sub="Click a district to filter the dashboard" />
+            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
+              <TamilNaduMap data={ops?.districts ?? null} activeKey={filters.district} onSelect={(key) => toggle("district", key)} />
+              <DistrictLeaders data={ops?.districts ?? null} loading={ops == null} activeKey={filters.district} onSelect={(key) => toggle("district", key)} />
+            </div>
+          </Card>
+
+          {/* Recent petitions */}
           <Card className="overflow-hidden p-0">
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
-              <h2 className="type-card-heading">All petitions {pets && <span className="text-muted-foreground">· {pets.total.toLocaleString()}</span>}</h2>
+              <h2 className="type-card-heading">Recent Petitions {pets && <span className="text-muted-foreground tabular-nums">· {pets.total.toLocaleString("en-IN")}</span>}</h2>
               <a href={`/api/analytics/export?${qs()}`} className="ml-auto">
                 <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV</Button>
               </a>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] text-left text-sm">
+              <table className="w-full min-w-[620px] text-left text-sm">
                 <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.09em] text-muted-foreground/80">
                   <tr>
                     <th className="px-4 py-3">Citizen</th>
-                    <th className="px-4 py-3">Mobile</th>
+                    <th className="px-4 py-3">Citizen Ask</th>
                     <Th label="Category" col="category" sort={sort} onSort={setSort} />
-                    <th className="px-4 py-2.5">Priority</th>
-                    <Th label="Status" col="status" sort={sort} onSort={setSort} />
-                    <th className="px-4 py-2.5">Channel</th>
-                    <Th label="Submitted" col="created_at" sort={sort} onSort={setSort} />
                   </tr>
                 </thead>
                 <tbody>
                   {!pets ? (
-                    <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">Loading…</td></tr>
+                    <tr><td colSpan={3} className="px-4 py-10 text-center text-muted-foreground">Loading…</td></tr>
                   ) : pets.items.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No petitions match the filters.</td></tr>
+                    <tr><td colSpan={3} className="px-4 py-10 text-center text-muted-foreground">No petitions match the filters.</td></tr>
                   ) : pets.items.map(p => (
                     <tr key={p.id} onClick={() => openDetail(p.id)} className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#EFF3FB]">
                       <td className="px-4 py-3">
@@ -312,20 +312,10 @@ export default function OverviewPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground tabular-nums">{p.mobile}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{p.category_label}</td>
-                      <td className="px-4 py-3"><PriorityBadge priority={p.priority} /></td>
-                      <td className="px-4 py-3">
-                        {STATUS_PILL[p.status] ? (
-                          <span className={cn("inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-semibold", STATUS_PILL[p.status].cls)}>
-                            {STATUS_PILL[p.status].label}
-                          </span>
-                        ) : (
-                          <span className="text-[12px] capitalize">{p.status.replace(/_/g, " ").toLowerCase()}</span>
-                        )}
+                      <td className="max-w-[460px] px-4 py-3 text-[13px] text-foreground/85">
+                        <span className="line-clamp-2">{p.citizen_ask || <span className="italic text-muted-foreground">No summary yet</span>}</span>
                       </td>
-                      <td className="px-4 py-3 text-[12px] text-muted-foreground">{p.source_label}</td>
-                      <td className="px-4 py-3 text-[12px] text-muted-foreground">{p.created_at ? new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{p.category_label}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -333,7 +323,7 @@ export default function OverviewPage() {
             </div>
             {pets && pets.pages > 1 && (
               <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs">
-                <span className="text-muted-foreground">Page {pets.page} of {pets.pages}</span>
+                <span className="text-muted-foreground">Page <span className="tabular-nums">{pets.page}</span> of <span className="tabular-nums">{pets.pages}</span></span>
                 <div className="flex gap-1">
                   <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
                   <Button size="sm" variant="outline" disabled={page >= pets.pages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
@@ -344,17 +334,300 @@ export default function OverviewPage() {
         </div>
       </main>
 
-      {/* Petition detail — summary + attachments */}
-      <AppointmentDetailDrawer
-        row={selected}
-        onClose={() => setSelected(null)}
-        onStatusChange={() => { loadAnalytics(); loadPetitions(); }}
-      />
+      <AppointmentDetailDrawer row={selected} onClose={() => setSelected(null)} onStatusChange={() => { loadAnalytics(); loadPetitions(); }} />
     </>
   );
 }
 
-// ── Small components ─────────────────────────────────────────────────────────────
+// ── KPI card ─────────────────────────────────────────────────────────────────
+const TONE: Record<string, { bg: string; fg: string }> = {
+  brand:  { bg: "bg-brand/10",    fg: "text-brand" },
+  violet: { bg: "bg-[#EDE9FE]",   fg: "text-[#6D28D9]" },
+  mint:   { bg: "bg-[#DCFAE6]",   fg: "text-[#0F8B4C]" },
+  amber:  { bg: "bg-[#FEF0D9]",   fg: "text-[#B45309]" },
+  rose:   { bg: "bg-[#FEE4E2]",   fg: "text-[#C0362C]" },
+};
+function KpiCard({ icon: Icon, tone, label, value, caption, delta, series, seriesColor }: {
+  icon: any; tone: keyof typeof TONE; label: string; value: string; caption: string;
+  delta?: number | null; series?: number[]; seriesColor?: string;
+}) {
+  const t = TONE[tone];
+  const sparkData = series && series.length > 1 ? series.map((v, i) => ({ i, v })) : null;
+  return (
+    <Card className="flex flex-col gap-2 p-4">
+      <div className="flex items-start justify-between">
+        <span className={cn("grid h-9 w-9 place-items-center rounded-xl", t.bg, t.fg)}>
+          <Icon className="h-[18px] w-[18px]" />
+        </span>
+        {delta != null && (
+          <span className={cn("inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums",
+            delta >= 0 ? "text-[#0F8B4C]" : "text-[#C0362C]")}>
+            {delta >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {Math.abs(delta).toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <div>
+        <div className="type-caption text-muted-foreground">{label}</div>
+        <div className="font-mono text-[26px] font-bold leading-tight tracking-tight text-foreground tabular-nums">{value}</div>
+        <div className="type-caption text-muted-foreground">{caption}</div>
+      </div>
+      {sparkData && (
+        <div className="-mb-1 h-7 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={sparkData} margin={{ top: 2, bottom: 2, left: 0, right: 0 }}>
+              <Line type="monotone" dataKey="v" stroke={seriesColor ?? C.brand} strokeWidth={1.75} dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Volume trend ─────────────────────────────────────────────────────────────
+type Gran = "daily" | "weekly" | "monthly";
+function isoWeek(d: Date): string {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const wk = Math.ceil((((t.getTime() - yStart.getTime()) / 86400000) + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(wk).padStart(2, "0")}`;
+}
+function rollup(trend: TrendPoint[], gran: Gran) {
+  if (gran === "daily") {
+    return trend.map(p => ({ label: new Date(p.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }), received: p.received, resolved: p.resolved }));
+  }
+  const buckets = new Map<string, { received: number; resolved: number }>();
+  for (const p of trend) {
+    const key = gran === "weekly" ? isoWeek(new Date(p.date)) : p.date.slice(0, 7);
+    const b = buckets.get(key) ?? { received: 0, resolved: 0 };
+    b.received += p.received; b.resolved += p.resolved; buckets.set(key, b);
+  }
+  return [...buckets.entries()].map(([key, b]) => ({
+    label: gran === "monthly" ? new Date(key + "-01").toLocaleDateString("en-IN", { month: "short", year: "2-digit" }) : key,
+    ...b,
+  }));
+}
+function VolumeTrend({ trend, loading }: { trend: TrendPoint[] | null; loading: boolean }) {
+  const [gran, setGran] = useState<Gran>("daily");
+  const rows = useMemo(() => (trend ? rollup(trend, gran) : []), [trend, gran]);
+  return (
+    <>
+      <div className="mb-3 flex items-start justify-between">
+        <div>
+          <div className="type-card-heading inline-flex items-center gap-2"><TrendingUp className="h-4 w-4 text-brand" /> Petition Volume Trend</div>
+          <div className="type-caption text-muted-foreground">Received vs resolved over the period</div>
+        </div>
+        <div className="flex rounded-lg border border-border bg-muted/40 p-0.5">
+          {(["daily", "weekly", "monthly"] as Gran[]).map(g => (
+            <button key={g} onClick={() => setGran(g)}
+              className={cn("rounded-md px-2.5 py-1 text-[11px] font-semibold capitalize transition-colors",
+                gran === g ? "bg-card text-brand shadow-card" : "text-muted-foreground hover:text-foreground")}>
+              {g}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="h-[240px] w-full">
+        {loading ? <Skeleton className="h-full w-full" /> : rows.length === 0 ? <Empty /> : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+              <defs>
+                <linearGradient id="gRecv" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={C.brand} stopOpacity={0.22} /><stop offset="100%" stopColor={C.brand} stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gRes" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={C.mint} stopOpacity={0.20} /><stop offset="100%" stopColor={C.mint} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.muted }} tickLine={false} axisLine={{ stroke: C.border }} minTickGap={16} />
+              <YAxis tick={{ fontSize: 11, fill: C.muted }} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
+              <Tooltip contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: "var(--font-mono)" }} />
+              <Area type="monotone" dataKey="received" name="Received" stroke={C.brand} strokeWidth={2} fill="url(#gRecv)" isAnimationActive={false} />
+              <Area type="monotone" dataKey="resolved" name="Resolved" stroke={C.mint} strokeWidth={2} fill="url(#gRes)" isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-center gap-5 text-[11px] text-muted-foreground">
+        <Legend color={C.brand} label="Received" />
+        <Legend color={C.mint} label="Resolved" />
+      </div>
+    </>
+  );
+}
+
+// ── Priority donut ───────────────────────────────────────────────────────────
+function PriorityDonut({ priority, total, active, onSlice, loading }: {
+  priority: Analytics["priority"] | null; total: number; active?: string;
+  onSlice: (key: string) => void; loading: boolean;
+}) {
+  if (loading) return <div className="h-[240px]"><Skeleton className="h-full w-full" /></div>;
+  const slices = PRIORITY_META.map(p => ({ ...p, value: priority?.[p.key] ?? 0 })).filter(s => s.value > 0);
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <div className="relative h-[180px] w-full">
+        {total === 0 ? <Empty /> : (
+          <>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={slices} dataKey="value" nameKey="label" cx="50%" cy="50%" innerRadius={54} outerRadius={80} paddingAngle={2} stroke="none" isAnimationActive={false}>
+                  {slices.map(s => (
+                    <Cell key={s.key} fill={s.color} opacity={active && active !== s.key ? 0.35 : 1} className="cursor-pointer" onClick={() => onSlice(s.key)} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: "var(--font-mono)" }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="font-mono text-2xl font-bold tabular-nums text-foreground">{total.toLocaleString("en-IN")}</span>
+              <span className="type-caption text-muted-foreground">Total</span>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="w-full space-y-1">
+        {PRIORITY_META.map(p => {
+          const v = priority?.[p.key] ?? 0;
+          return (
+            <button key={p.key} onClick={() => onSlice(p.key)}
+              className={cn("flex w-full items-center justify-between rounded-md px-1.5 py-1 text-[12px] transition-colors hover:bg-muted", active === p.key && "bg-brand/10 ring-1 ring-brand/20")}>
+              <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: p.color }} />{p.label}</span>
+              <span className="font-semibold tabular-nums">{v.toLocaleString("en-IN")}<span className="ml-1 text-[10px] font-medium text-muted-foreground">{total ? Math.round(v / total * 100) : 0}%</span></span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Horizontal bar charts (category / ministry) ──────────────────────────────
+function HBars({ data, activeKey, onBar, loading, color, height }: {
+  data: Bar[] | null; activeKey?: string; onBar: (key: string) => void; loading: boolean; color: string; height: number;
+}) {
+  if (loading) return <div style={{ height }}><Skeleton className="h-full w-full" /></div>;
+  if (!data || data.length === 0) return <div style={{ height }}><Empty /></div>;
+  const rows = data.map(d => ({ ...d, name: d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label }));
+  return (
+    <div style={{ height }} className="w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 28, bottom: 0, left: 8 }} barCategoryGap={6}>
+          <XAxis type="number" hide />
+          <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11.5, fill: C.ink }} tickLine={false} axisLine={false} />
+          <Tooltip cursor={{ fill: C.grid }} contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: "var(--font-mono)" }} />
+          <RBar dataKey="count" radius={[0, 5, 5, 0]} isAnimationActive={false} label={{ position: "right", fontSize: 11, fill: C.muted, fontFamily: "var(--font-mono)" }}>
+            {rows.map(r => (
+              <Cell key={r.key} fill={color} opacity={activeKey && activeKey !== r.key ? 0.4 : 1} className="cursor-pointer" onClick={() => onBar(r.key)} />
+            ))}
+          </RBar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+function CategoryBars(props: Omit<Parameters<typeof HBars>[0], "color" | "height">) {
+  return <HBars {...props} color={C.brand} height={300} />;
+}
+function MinistryBars(props: Omit<Parameters<typeof HBars>[0], "color" | "height">) {
+  return <HBars {...props} color="#6D28D9" height={300} />;
+}
+
+// ── Department performance table (Phase 2) ───────────────────────────────────
+function DeptTable({ rows }: { rows: DeptPerf[] | null }) {
+  if (rows == null) return <div className="p-4"><Skeleton className="h-40 w-full" /></div>;
+  if (rows.length === 0) return <div className="grid h-32 place-items-center text-[12px] italic text-muted-foreground">No routed departments in this scope</div>;
+  const rateTone = (r: number) => r >= 80 ? "text-[#0F8B4C]" : r >= 50 ? "text-[#B45309]" : "text-[#C0362C]";
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[860px] text-left text-sm">
+        <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
+          <tr>
+            <th className="px-4 py-2.5">Department</th>
+            <th className="px-3 py-2.5 text-right">Open</th>
+            <th className="px-3 py-2.5 text-right">Resolved</th>
+            <th className="px-3 py-2.5 text-right">Resolution</th>
+            <th className="px-3 py-2.5 text-right">Avg. Time</th>
+            <th className="px-3 py-2.5 text-right">On-Time</th>
+            <th className="px-3 py-2.5 text-right">Acceptance</th>
+            <th className="px-4 py-2.5">Progress</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(d => (
+            <tr key={d.key} className="border-t border-border/70 hover:bg-[#EFF3FB]">
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-brand/10 text-brand"><Building2 className="h-3.5 w-3.5" /></span>
+                  <span className="truncate font-medium text-foreground">{d.label}</span>
+                </div>
+              </td>
+              <td className="px-3 py-3 text-right font-mono tabular-nums text-foreground">{d.open}</td>
+              <td className="px-3 py-3 text-right font-mono tabular-nums text-foreground">{d.resolved}</td>
+              <td className={cn("px-3 py-3 text-right font-mono font-semibold tabular-nums", rateTone(d.resolution_rate))}>{d.resolution_rate}%</td>
+              <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{d.avg_resolution_days != null ? `${d.avg_resolution_days}d` : "—"}</td>
+              <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{d.on_time_pct != null ? `${d.on_time_pct}%` : "—"}</td>
+              <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{fmtAccept(d.avg_accept_minutes)}</td>
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-brand" style={{ width: `${d.avg_progress}%` }} /></div>
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{d.avg_progress}%</span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function fmtAccept(min: number | null): string {
+  if (min == null) return "—";
+  if (min < 60) return `${Math.round(min)}m`;
+  if (min < 1440) return `${(min / 60).toFixed(1)}h`;
+  return `${(min / 1440).toFixed(1)}d`;
+}
+
+// ── District leaders — compact text ranking beside the map (Phase 2) ─────────
+function DistrictLeaders({ data, loading, activeKey, onSelect }: {
+  data: Bar[] | null; loading: boolean; activeKey?: string; onSelect?: (key: string) => void;
+}) {
+  if (loading) return <Skeleton className="h-[300px] w-full" />;
+  if (!data || data.length === 0) {
+    return (
+      <div className="grid h-full min-h-[200px] place-items-center px-3 text-center">
+        <div className="space-y-1">
+          <MapPin className="mx-auto h-6 w-6 text-muted-foreground/40" />
+          <div className="text-[12px] font-medium text-muted-foreground">No districts yet</div>
+          <div className="text-[11px] text-muted-foreground/80">Filled as petitions are summarised, or set on a ticket.</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col">
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ranked by volume</div>
+      <div className="max-h-[400px] space-y-0.5 overflow-y-auto pr-1">
+        {data.map((d, i) => (
+          <button key={d.key} onClick={() => onSelect?.(d.key)}
+            className={cn("flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[12.5px] transition-colors hover:bg-muted/50",
+              activeKey === d.key && "bg-brand/10 ring-1 ring-brand/20")}>
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <span className="grid h-4 w-4 flex-shrink-0 place-items-center rounded bg-brand/10 font-mono text-[9px] font-bold text-brand">{i + 1}</span>
+              <span className="truncate text-foreground/90">{d.label}</span>
+            </span>
+            <span className="ml-2 flex-shrink-0 font-mono font-bold tabular-nums text-foreground">{d.count.toLocaleString("en-IN")}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// ── Small shared bits ────────────────────────────────────────────────────────
 function ChartHead({ icon: Icon, title, sub }: { icon: any; title: string; sub: string }) {
   return (
     <div className="mb-3">
@@ -363,16 +636,8 @@ function ChartHead({ icon: Icon, title, sub }: { icon: any; title: string; sub: 
     </div>
   );
 }
-function BarRow({ label, count, pct, active, onClick, tone, total }: { label: string; count: number; pct: number; active: boolean; onClick: () => void; tone: string; total?: number }) {
-  return (
-    <button onClick={onClick} className={cn("group block w-full rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted", active && "bg-brand/10 ring-1 ring-brand/20")}>
-      <div className="mb-0.5 flex items-center justify-between text-[12px]">
-        <span className="truncate pr-2 font-medium text-foreground/90">{label}</span>
-        <span className="shrink-0 font-bold tabular-nums">{count}{total ? <span className="ml-1 text-[10px] font-medium text-muted-foreground">{Math.round(count / total * 100)}%</span> : null}</span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted"><div className={cn("h-full rounded-full", tone)} style={{ width: `${pct}%` }} /></div>
-    </button>
-  );
+function Legend({ color, label }: { color: string; label: string }) {
+  return <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ background: color }} />{label}</span>;
 }
 function Th({ label, col, sort, onSort }: { label: string; col: string; sort: { by: string; dir: "asc" | "desc" }; onSort: (s: any) => void }) {
   return (
@@ -381,18 +646,4 @@ function Th({ label, col, sort, onSort }: { label: string; col: string; sort: { 
     </th>
   );
 }
-function Trend({ points }: { points: { date: string; count: number }[] }) {
-  if (!points.length) return <div className="grid h-full place-items-center text-[12px] italic text-muted-foreground">No data</div>;
-  const max = Math.max(1, ...points.map(p => p.count));
-  const W = 100, H = 100;
-  const step = points.length > 1 ? W / (points.length - 1) : 0;
-  const pts = points.map((p, i) => `${i * step},${H - (p.count / max) * H}`);
-  const area = `0,${H} ${pts.join(" ")} ${(points.length - 1) * step},${H}`;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
-      <polygon points={area} fill="currentColor" fillOpacity="0.12" className="text-brand" />
-      <polyline points={pts.join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" className="text-brand" />
-    </svg>
-  );
-}
-function Empty() { return <div className="grid h-24 place-items-center text-[12px] italic text-muted-foreground">No data in this scope</div>; }
+function Empty() { return <div className="grid h-full min-h-[80px] place-items-center text-[12px] italic text-muted-foreground">No data in this scope</div>; }
