@@ -1,7 +1,7 @@
 """venue registry + FK on appointment.venue
 
-Revision ID: 027
-Revises: 026
+Revision ID: 028
+Revises: 027
 Create Date: 2026-07-09
 
 Adds `venue_registry` — the super-admin-managed list of scan venues (offices /
@@ -20,8 +20,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "027"
-down_revision: Union[str, None] = "026"
+revision: str = "028"
+down_revision: Union[str, None] = "027"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
