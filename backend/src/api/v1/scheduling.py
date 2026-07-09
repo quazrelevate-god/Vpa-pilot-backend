@@ -385,15 +385,31 @@ async def get_mlas(
 @router.post("/admin/cancel-all-scheduled")
 async def cancel_all_scheduled(
     request: Request,
+    target_date: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
     """
-    Emergency: move all today's SCHEDULED appointments back to waiting queue
-    and cancel today's availability.
+    Emergency: move all SCHEDULED appointments on `target_date` (defaults to
+    today) back to the waiting queue and close that date's availability.
+
+    `target_date` may come from the query string (?target_date=YYYY-MM-DD)
+    or the JSON body — the PA scheduler passes the currently selected date.
     """
     try:
-        result = await scheduling_service.cancel_all_scheduled(db)
+        parsed: Optional[date_type] = None
+        if target_date:
+            parsed = datetime_type.strptime(target_date, "%Y-%m-%d").date()
+        else:
+            # Fall back to JSON body (front-end may POST it that way too).
+            try:
+                body = await request.json()
+                td = (body or {}).get("target_date")
+                if td:
+                    parsed = datetime_type.strptime(td, "%Y-%m-%d").date()
+            except Exception:
+                pass
+        result = await scheduling_service.cancel_all_scheduled(db, target_date=parsed)
         return JSONResponse(result)
     except Exception as e:
         await db.rollback()

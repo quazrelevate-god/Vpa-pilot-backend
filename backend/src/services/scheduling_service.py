@@ -850,16 +850,26 @@ class SchedulingService:
 
     # ── Emergency: cancel today's scheduled appointments ─────────────────────
 
-    async def cancel_all_scheduled(self, db: AsyncSession) -> Dict:
-        today = date.today()
+    async def cancel_all_scheduled(
+        self,
+        db: AsyncSession,
+        target_date: Optional[date] = None,
+    ) -> Dict:
+        """Cancel every SCHEDULED / RESCHEDULED appointment on `target_date`
+        (defaults to today), move them back to the waiting queue, and close
+        the day's availability so no new bookings can come in.
 
-        # v2: derive today's scheduled appointments via slot → availability join
+        Called by the PA's "Cancel All" button, which now sends the date
+        currently selected in the scheduling grid — not just today.
+        """
+        target_date = target_date or date.today()
+
         appt_result = await db.execute(
             select(Appointment)
             .join(AppointmentSlot, AppointmentSlot.id == Appointment.slot_id)
             .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
             .where(Appointment.status.in_(["SCHEDULED", "RESCHEDULED"]))
-            .where(MLADailyAvailability.date == today)
+            .where(MLADailyAvailability.date == target_date)
             .order_by(AppointmentSlot.start_time)
         )
         appointments = appt_result.scalars().all()
@@ -879,7 +889,7 @@ class SchedulingService:
 
         avail_result = await db.execute(
             select(MLADailyAvailability)
-            .where(MLADailyAvailability.date    == today)
+            .where(MLADailyAvailability.date    == target_date)
             .where(MLADailyAvailability.is_open == True)  # noqa: E712
         )
         cancelled_dates = 0
@@ -888,12 +898,15 @@ class SchedulingService:
             cancelled_dates += 1
 
         await db.commit()
+        date_label = target_date.strftime("%d %b %Y")
         return {
             "cancelled_appointments": cancelled,
             "cancelled_dates":        cancelled_dates,
+            "date":                   target_date.isoformat(),
+            "date_label":             date_label,
             "message": (
-                f"Moved {cancelled} appointment(s) to waiting queue. "
-                f"Cancelled {cancelled_dates} availability record(s) for today."
+                f"Moved {cancelled} appointment(s) on {date_label} to the waiting "
+                f"queue. Cancelled {cancelled_dates} availability record(s)."
             ),
         }
 

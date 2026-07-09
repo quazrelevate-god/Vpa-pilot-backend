@@ -233,7 +233,11 @@ export default function SchedulingPage() {
   async function handleCancelAll() {
     setCancelling(true);
     try {
-      const res  = await fetch("/api/v1/scheduling/admin/cancel-all-scheduled", { method: "POST" });
+      // The "Cancel All" button now cancels the CURRENTLY SELECTED DATE,
+      // not always today. Backend still defaults to today if we omit it,
+      // but we always send explicitly so it matches the grid on screen.
+      const url = `/api/v1/scheduling/admin/cancel-all-scheduled?target_date=${encodeURIComponent(selectedDate)}`;
+      const res  = await fetch(url, { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         toast.success("Cancelled", { description: data.message });
@@ -269,22 +273,29 @@ export default function SchedulingPage() {
       <main className="flex-1 overflow-y-auto bg-background xl:overflow-hidden">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-6 animate-in-up xl:h-full">
 
-          {/* Cancel all today */}
-          <div className="flex shrink-0 items-center justify-end gap-2">
-            {showCancel ? (
-              <>
-                <span className="text-sm font-semibold text-destructive">{t("sched.cancelAllConfirm")}</span>
-                <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setShowCancel(false)}>{t("sched.no")}</Button>
-                <Button size="sm" className="rounded-xl bg-red-600 text-white hover:bg-red-700" onClick={handleCancelAll} disabled={cancelling}>
-                  {cancelling ? t("sched.cancelling") : t("sched.yesCancelAll")}
+          {/* Cancel all bookings on the currently selected date. Only shown
+              when the date is actually open — after cancel, has_availability
+              flips to false and the button hides itself so the PA can't
+              re-fire a no-op cancel on an already-closed date. */}
+          {grid?.has_availability && (
+            <div className="flex shrink-0 items-center justify-end gap-2">
+              {showCancel ? (
+                <>
+                  <span className="text-sm font-semibold text-destructive">
+                    {t("sched.cancelAllConfirmFor").replace("{date}", dateLabel)}
+                  </span>
+                  <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setShowCancel(false)}>{t("sched.no")}</Button>
+                  <Button size="sm" className="rounded-xl bg-red-600 text-white hover:bg-red-700" onClick={handleCancelAll} disabled={cancelling}>
+                    {cancelling ? t("sched.cancelling") : t("sched.yesCancelAll")}
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" variant="outline" className="h-9 rounded-xl border-red-200 text-red-600 hover:bg-red-50" onClick={() => setShowCancel(true)}>
+                  <Trash2 className="h-4 w-4" /> {t("sched.cancelAllFor").replace("{date}", dateLabel)}
                 </Button>
-              </>
-            ) : (
-              <Button size="sm" variant="outline" className="h-9 rounded-xl border-red-200 text-red-600 hover:bg-red-50" onClick={() => setShowCancel(true)}>
-                <Trash2 className="h-4 w-4" /> {t("sched.cancelAllToday")}
-              </Button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Stats */}
           {statCards.length > 0 && (
