@@ -79,7 +79,7 @@ class SchedulingService:
             available_to = time(16, 0)
         if available_from >= available_to:
             raise ValueError("available_from must be before available_to.")
-        if target_date < date.today():
+        if target_date < (datetime.utcnow() + timedelta(hours=5, minutes=30)).date():
             raise ValueError(
                 f"Cannot open a past date ({target_date.strftime('%d %b %Y')}). "
                 "Only today or future dates are allowed."
@@ -159,7 +159,7 @@ class SchedulingService:
         target_date: Optional[date] = None,
     ) -> Dict:
         if target_date is None:
-            target_date = date.today()
+            target_date = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
 
         avail = await db.scalar(
             select(MLADailyAvailability)
@@ -215,10 +215,11 @@ class SchedulingService:
     # ── Citizen: list open dates ─────────────────────────────────────────────
 
     async def list_open_dates_public(self, db: AsyncSession) -> List[Dict]:
+        today_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
         result = await db.execute(
             select(MLADailyAvailability)
             .where(MLADailyAvailability.is_open == True)  # noqa: E712
-            .where(MLADailyAvailability.date    >= date.today())
+            .where(MLADailyAvailability.date    >= today_ist)
             .order_by(MLADailyAvailability.date)
         )
         dates: List[Dict] = []
@@ -367,8 +368,9 @@ class SchedulingService:
             bookings = list(booked_appts_result.scalars().all())
 
             avail = await db.get(MLADailyAvailability, slot.availability_id)
-            slot_date = avail.date if avail else date.today()
-            is_today = (slot_date == date.today())
+            today_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
+            slot_date = avail.date if avail else today_ist
+            is_today = (slot_date == today_ist)
 
             if is_today:
                 now = datetime.utcnow() + timedelta(hours=5, minutes=30)
@@ -518,10 +520,11 @@ class SchedulingService:
     # ── Admin: list open dates ───────────────────────────────────────────────
 
     async def get_open_dates(self, db: AsyncSession) -> List[Dict]:
+        today_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
         result = await db.execute(
             select(MLADailyAvailability)
             .where(MLADailyAvailability.is_open == True)  # noqa: E712
-            .where(MLADailyAvailability.date    >= date.today())
+            .where(MLADailyAvailability.date    >= today_ist)
             .order_by(MLADailyAvailability.date)
         )
         rows = []
@@ -612,7 +615,7 @@ class SchedulingService:
         target_date = dt.date()
         requested_time = dt.time()
 
-        if target_date < date.today():
+        if target_date < (datetime.utcnow() + timedelta(hours=5, minutes=30)).date():
             raise ValueError("Cannot reschedule to a past date.")
 
         avail = await db.scalar(
@@ -779,7 +782,7 @@ class SchedulingService:
     # ── Auto-allocate waiting queue to today's available slots ──────────────
 
     async def auto_allocate_waiting_queue(self, db: AsyncSession) -> Dict:
-        today = date.today()
+        today = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
 
         avail = await db.scalar(
             select(MLADailyAvailability)
@@ -862,7 +865,7 @@ class SchedulingService:
         Called by the PA's "Cancel All" button, which now sends the date
         currently selected in the scheduling grid — not just today.
         """
-        target_date = target_date or date.today()
+        target_date = target_date or (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
 
         appt_result = await db.execute(
             select(Appointment)
@@ -918,7 +921,7 @@ class SchedulingService:
             .where(Appointment.status == "WAITING")
         ) or 0
 
-        today = date.today()
+        today = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
         # Scheduled today = appointment.slot_id → slot → availability with date=today
         scheduled_today = await db.scalar(
             select(func.count(Appointment.id))

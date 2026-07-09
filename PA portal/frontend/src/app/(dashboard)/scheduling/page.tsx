@@ -63,7 +63,9 @@ const SLOT_STYLE: Record<SlotState, { tint: string; dot: string; text: string; l
 };
 
 function todayIso(): string {
-  return new Date().toISOString().split("T")[0];
+  // Use IST (UTC+5:30) so the date boundary matches the server.
+  const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return now.toISOString().split("T")[0];
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
