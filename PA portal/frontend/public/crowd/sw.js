@@ -8,7 +8,7 @@
        (so a deploy never leaves the app pointing at chunk hashes it can't load).
      - /crowd/* static files (manifest, icons) : cache-first.
 */
-const CACHE = "crowd-pwa-v1";
+const CACHE = "crowd-pwa-v2";
 const SHELL = ["/crowd", "/crowd/icon-192.png", "/crowd/icon-512.png", "/crowd/manifest.json"];
 
 self.addEventListener("install", (event) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, Landmark } from "lucide-react";
+import { AlertCircle, Landmark, Eye, EyeOff } from "lucide-react";
 import { motion, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ const item: Variants = {
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -109,8 +110,15 @@ export default function LoginPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Password</label>
-              <Input type="password" name="password" required placeholder="Enter your password"
-                onChange={() => setError(null)} className="h-11" />
+              <div className="relative">
+                <Input type={showPassword ? "text" : "password"} name="password" required placeholder="Enter your password"
+                  onChange={() => setError(null)} className="h-11 pr-11" />
+                <button type="button" onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword}
+                  className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground">
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <Button type="submit" disabled={submitting} size="lg"
               className="aurora-primary mt-2 w-full transition-transform active:scale-[0.99]">

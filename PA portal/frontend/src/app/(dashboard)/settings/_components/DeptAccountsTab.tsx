@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { KeyRound, Copy, Check, RefreshCw, Plus, Building2, Trash2 } from "lucide-react";
+import { KeyRound, Copy, Check, RefreshCw, Plus, Building2, Trash2, Eye, EyeOff } from "lucide-react";
 
 import { SectionCard, StatusDot } from "@/components/ui/detail-primitives";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export default function DeptAccountsTab() {
   const [depts, setDepts]       = useState<DepartmentRow[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [reveal, setReveal]     = useState<null | { username: string; password: string; department: string }>(null);
+  const [resetFor, setResetFor] = useState<DeptAccountRow | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DeptAccountRow | null>(null);
 
   const load = async () => {
@@ -94,15 +95,7 @@ export default function DeptAccountsTab() {
               <div className="flex flex-shrink-0 items-center gap-1.5">
                 <Button
                   size="sm" variant="outline"
-                  onClick={async () => {
-                    try {
-                      const out = await resetDeptPassword(r.department);
-                      setReveal({ username: out.username, password: out.password, department: r.department });
-                      toast.success("Password reset");
-                    } catch (e) {
-                      toast.error("Reset failed", { description: (e as Error).message });
-                    }
-                  }}
+                  onClick={() => setResetFor(r)}
                 >
                   <RefreshCw className="mr-1 h-3.5 w-3.5" /> Reset password
                 </Button>
@@ -164,6 +157,22 @@ export default function DeptAccountsTab() {
             load();
           }}
         />
+      </Dialog>
+
+      {/* Reset dialog — set a chosen password or auto-generate */}
+      <Dialog open={!!resetFor} onOpenChange={(o) => !o && setResetFor(null)}>
+        {resetFor && (
+          <ResetDialog
+            departmentLabel={deptLabel(resetFor.department)}
+            onCancel={() => setResetFor(null)}
+            onReset={async (password) => {
+              const out = await resetDeptPassword(resetFor.department, password);
+              setResetFor(null);
+              setReveal({ username: out.username, password: out.password, department: resetFor.department });
+              toast.success("Password reset");
+            }}
+          />
+        )}
       </Dialog>
 
       {/* Password reveal dialog */}
@@ -245,6 +254,73 @@ function CreateDeptAccountDialog({
           }}
         >
           <Check className="mr-1.5 h-3.5 w-3.5" /> Create + generate password
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function ResetDialog({
+  departmentLabel, onCancel, onReset,
+}: {
+  departmentLabel: string;
+  onCancel: () => void;
+  onReset: (password?: string) => Promise<void>;
+}) {
+  const [pw, setPw] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const trimmed = pw.trim();
+  const custom = trimmed.length > 0;
+  const tooShort = custom && trimmed.length < 8;
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Reset password — {departmentLabel}</DialogTitle>
+        <DialogDescription>
+          Set a password the team will remember, or leave it blank to generate a strong one.
+          The new password is shown once so you can hand it over.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-1.5">
+        <Label>New password <span className="font-normal text-muted-foreground">(optional)</span></Label>
+        <div className="relative">
+          <Input
+            type={show ? "text" : "password"}
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder="Leave blank to auto-generate"
+            className="pr-11 font-mono"
+          />
+          <button
+            type="button"
+            onClick={() => setShow((v) => !v)}
+            aria-label={show ? "Hide password" : "Show password"}
+            className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        {tooShort && <p className="text-xs font-medium text-red-600">At least 8 characters.</p>}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
+        <Button
+          className="aurora-primary text-white"
+          disabled={busy || tooShort}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onReset(custom ? trimmed : undefined);
+            } catch (e) {
+              toast.error("Reset failed", { description: (e as Error).message });
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> {custom ? "Set password" : "Generate + reset"}
         </Button>
       </DialogFooter>
     </DialogContent>
