@@ -195,16 +195,16 @@ class AppointmentService:
             otp_from_api = resp.text.strip().strip('"')
 
             if not otp_from_api or not otp_from_api.isdigit():
-                logger.info(f"[APM SMS ERROR] Could not extract OTP from response: {resp.text!r}")
+                logger.warning("SMS OTP extract failed for %s: %r", phone, resp.text[:80])
                 raise HTTPException(status_code=502, detail="SMS gateway did not return an OTP.")
 
-            logger.info(f"[APM SMS SUCCESS] OTP sent to {phone}, otp: {otp_from_api}")
+            logger.info("SMS OTP sent to %s", phone)
             return otp_from_api
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.info(f"[APM SMS ERROR] Failed to send OTP to {mobile_number}: {e}")
+            logger.warning("SMS OTP send failed for %s: %s", mobile_number, e)
             raise HTTPException(status_code=502, detail=f"SMS gateway error: {e}")
 
     async def _send_confirmation_sms(self, mobile_number: str, token_number: int, citizen_name: str) -> bool:
@@ -223,7 +223,7 @@ class AppointmentService:
             bool: True if sent successfully, False otherwise
         """
         if not settings.APM_SMS_API_KEY:
-            logger.info(f"[SMS CONFIRMATION DUMMY] Token {token_number} assigned to {citizen_name} ({mobile_number})")
+            logger.debug("SMS confirmation skipped (no API key) — token %s for %s", token_number, mobile_number)
             return False
         
         phone = mobile_number.lstrip("+")
@@ -239,10 +239,10 @@ class AppointmentService:
                     params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
                 )
             resp.raise_for_status()
-            logger.info(f"[SMS CONFIRMATION SUCCESS] Token {token_number} sent to {phone}")
+            logger.info("SMS confirmation sent — token %s to %s", token_number, phone)
             return True
         except Exception as e:
-            logger.info(f"[SMS CONFIRMATION ERROR] Failed to send to {mobile_number}: {e}")
+            logger.warning("SMS confirmation failed for %s: %s", mobile_number, e)
             return False
     
     async def send_status_update_sms(self, mobile_number: str, token_number: int, citizen_name: str, new_status: str) -> bool:

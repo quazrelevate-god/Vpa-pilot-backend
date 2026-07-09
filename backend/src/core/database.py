@@ -23,7 +23,7 @@ if _DATABASE_URL and _DATABASE_URL.startswith("postgresql+psycopg://"):
 # Connection pool configured for high-traffic scenarios
 engine = create_async_engine(
     _DATABASE_URL,
-    echo=settings.DEBUG,  # SQL query logging in debug mode
+    echo=False,  # Never echo SQL — use sqlalchemy.engine logger level if needed
     pool_size=20,  # Number of persistent connections
     max_overflow=10,  # Additional connections when pool is exhausted
     pool_pre_ping=True,  # Verify connections before using them

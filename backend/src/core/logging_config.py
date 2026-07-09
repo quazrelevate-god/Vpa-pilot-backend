@@ -29,10 +29,26 @@ def setup_logging() -> None:
     for h in list(root.handlers):
         root.removeHandler(h)
     root.addHandler(handler)
-    # Quiet noisy libs unless debugging
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING if not settings.DEBUG else logging.INFO)
+
+    # Silence noisy libraries — always, regardless of DEBUG flag
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("multipart").setLevel(logging.WARNING)
+    # Uvicorn access log is useful but /health spam isn't — handled by filter below
+    logging.getLogger("uvicorn.access").addFilter(_HealthCheckFilter())
     _CONFIGURED = True
+
+
+class _HealthCheckFilter(logging.Filter):
+    """Drop GET /health and static asset access-log lines."""
+    _SKIP = ("/health", "/static/", "/favicon")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(s in msg for s in self._SKIP)
 
 
 def init_sentry() -> bool:

@@ -152,7 +152,7 @@ class AiUploadService:
             await db.commit()
             n = res.rowcount or 0
             if n:
-                logger.info(f"[AI UPLOAD] recovered {n} stale PROCESSING row(s) -> QUEUED")
+                logger.info("ai_upload: recovered %d stale PROCESSING row(s) → QUEUED", n)
             return n
 
     async def _claim_next_queued(self) -> Optional[int]:
@@ -176,7 +176,7 @@ class AiUploadService:
         from src.services.petition_extraction import PetitionExtractionService
         from src.services.storage_service import get_file_bytes
 
-        logger.info(f"[AI UPLOAD] processing id={upload_id}")
+        logger.info("ai_upload processing id=%s", upload_id)
         try:
             async with AsyncSessionLocal() as db:
                 row = await db.get(AiUpload, upload_id)
@@ -223,10 +223,10 @@ class AiUploadService:
                 row.status             = STATUS_AWAITING_REVIEW
                 row.processed_at       = datetime.utcnow()
                 await db.commit()
-            logger.info(f"[AI UPLOAD] id={upload_id} -> AWAITING_REVIEW ({latency_ms}ms)")
+            logger.info("ai_upload id=%s → AWAITING_REVIEW (%dms)", upload_id, latency_ms)
 
         except Exception as exc:
-            logger.info(f"[AI UPLOAD] id={upload_id} FAILED: {exc}")
+            logger.warning("ai_upload id=%s FAILED: %s", upload_id, exc)
             try:
                 async with AsyncSessionLocal() as db:
                     row = await db.get(AiUpload, upload_id)
@@ -236,7 +236,7 @@ class AiUploadService:
                         row.processed_at = datetime.utcnow()
                         await db.commit()
             except Exception as inner:
-                logger.info(f"[AI UPLOAD] could not mark FAILED id={upload_id}: {inner}")
+                logger.warning("ai_upload could not mark FAILED id=%s: %s", upload_id, inner)
 
     # ── Read ────────────────────────────────────────────────────────────────────
     @staticmethod
