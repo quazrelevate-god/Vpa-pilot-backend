@@ -80,6 +80,17 @@ class GrievanceSummaryRecord(Base):
         comment="Ministry enum value — the ministry owning the root cause",
     )
 
+    district = Column(
+        VARCHAR(40),
+        nullable=True,
+        comment=(
+            "Tamil Nadu district enum value the petition originates from. "
+            "NULL when Gemini could not confidently extract a district; PA "
+            "may fill it manually from the detail drawer. Never store the "
+            "sentinel string 'unknown' — persist as NULL instead."
+        ),
+    )
+
     # ── Citizen name (bilingual echo) ──────────────────────────────────────────
     name_en = Column(
         VARCHAR(200),
@@ -179,6 +190,13 @@ class GrievanceSummaryRecord(Base):
         audio_stt_latency_ms: int | None = None,
     ) -> "GrievanceSummaryRecord":
         """Build a ready-to-persist record from a GrievanceSummary Pydantic object."""
+        # District: Gemini returns "unknown" as calibrated abstention;
+        # persist that as NULL so the frontend can treat missing / abstained
+        # the same way and the "unknown" string never leaks into the DB.
+        district_value = summary.district.value if summary.district else None
+        if district_value == "unknown":
+            district_value = None
+
         return cls(
             appointment_id=appointment_id,
             is_latest=True,
@@ -186,6 +204,7 @@ class GrievanceSummaryRecord(Base):
             priority=summary.urgency.value,
             category=summary.category.value,
             ministry=summary.ministry.value,
+            district=district_value,
             # bilingual name
             name_en=summary.name_en,
             name_ta=summary.name_ta,
@@ -221,5 +240,6 @@ class GrievanceSummaryRecord(Base):
         Index("ix_gsr_priority", "priority"),
         Index("ix_gsr_category", "category"),
         Index("ix_gsr_ministry", "ministry"),
+        Index("ix_gsr_district", "district"),
         Index("ix_gsr_created_at", "created_at"),
     )

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowRight, MessageSquare, CheckCircle2, Lock, RotateCcw, Send, Building2,
-  Clock, User, Phone, Hash, CalendarDays, X, Sparkles,
+  Clock, User, Phone, Hash, CalendarDays, X, Sparkles, MapPin,
   GitBranch, Flag, UserCheck, Paperclip, FileSignature, FileCheck2, Inbox,
   ClipboardList, Landmark, Tag, BarChart3, Image as ImageIcon,
 } from "lucide-react";
@@ -77,6 +77,54 @@ const SCHOOL_DEPT_LABEL: Record<string, string> = Object.fromEntries(
 );
 // Department actions log the department key as the actor — show its full name.
 const prettyActor = (a: string) => SCHOOL_DEPT_LABEL[a] ?? a;
+
+// Tamil Nadu districts (38 as of 2020). Keys mirror the backend District enum
+// exactly — do not localise the key. Display labels are English here; Tamil
+// UI still sees English labels for now (the enum is EN by design).
+const TN_DISTRICTS: { key: string; label: string }[] = [
+  { key: "ariyalur", label: "Ariyalur" },
+  { key: "chengalpattu", label: "Chengalpattu" },
+  { key: "chennai", label: "Chennai" },
+  { key: "coimbatore", label: "Coimbatore" },
+  { key: "cuddalore", label: "Cuddalore" },
+  { key: "dharmapuri", label: "Dharmapuri" },
+  { key: "dindigul", label: "Dindigul" },
+  { key: "erode", label: "Erode" },
+  { key: "kallakurichi", label: "Kallakurichi" },
+  { key: "kanchipuram", label: "Kanchipuram" },
+  { key: "kanyakumari", label: "Kanyakumari" },
+  { key: "karur", label: "Karur" },
+  { key: "krishnagiri", label: "Krishnagiri" },
+  { key: "madurai", label: "Madurai" },
+  { key: "mayiladuthurai", label: "Mayiladuthurai" },
+  { key: "nagapattinam", label: "Nagapattinam" },
+  { key: "namakkal", label: "Namakkal" },
+  { key: "nilgiris", label: "The Nilgiris" },
+  { key: "perambalur", label: "Perambalur" },
+  { key: "pudukkottai", label: "Pudukkottai" },
+  { key: "ramanathapuram", label: "Ramanathapuram" },
+  { key: "ranipet", label: "Ranipet" },
+  { key: "salem", label: "Salem" },
+  { key: "sivaganga", label: "Sivaganga" },
+  { key: "tenkasi", label: "Tenkasi" },
+  { key: "thanjavur", label: "Thanjavur" },
+  { key: "theni", label: "Theni" },
+  { key: "thoothukudi", label: "Thoothukudi" },
+  { key: "tiruchirappalli", label: "Tiruchirappalli" },
+  { key: "tirunelveli", label: "Tirunelveli" },
+  { key: "tirupattur", label: "Tirupattur" },
+  { key: "tiruppur", label: "Tiruppur" },
+  { key: "tiruvallur", label: "Tiruvallur" },
+  { key: "tiruvannamalai", label: "Tiruvannamalai" },
+  { key: "tiruvarur", label: "Tiruvarur" },
+  { key: "vellore", label: "Vellore" },
+  { key: "viluppuram", label: "Viluppuram" },
+  { key: "virudhunagar", label: "Virudhunagar" },
+];
+// Sentinel used inside the Select to represent "clear the district".
+// Radix Select refuses "" as an item value, so we round-trip through this
+// token and translate it back to "" in the patch call.
+const DISTRICT_CLEAR = "__none__";
 
 function galleryType(mime?: string): GalleryAttachment["type"] {
   if (mime?.startsWith("image/")) return "IMAGE";
@@ -202,6 +250,15 @@ export default function TicketDetailDrawer({
                 <StatusDot label={<span className="uppercase tracking-wide">{priorityText(t.priority)}</span>} tone={priorityTone(t.priority)} />
               )}
               {categoryText && <StatusDot label={categoryText} tone="slate" />}
+              {t?.district && (
+                <span
+                  title={`District — ${t.district_label ?? t.district}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-brand/20 bg-brand/5 px-2 py-0.5 text-[11px] font-semibold text-brand"
+                >
+                  <MapPin className="h-3 w-3" />
+                  {t.district_label ?? t.district}
+                </span>
+              )}
             </div>
           </div>
           <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
@@ -298,6 +355,37 @@ export default function TicketDetailDrawer({
                       <Label>{tr("tkt.dueDate")}</Label>
                       <Input type="datetime-local" defaultValue={toLocalDateTimeInput(t.due_date)} disabled={!canEdit} className="h-9"
                         onBlur={(e) => { const v = e.target.value; patch({ due_date: fromLocalDateTimeInput(v) }); }} />
+                    </div>
+                    {/* District — AI extracts when confident; PA can override
+                        or clear from the dropdown. Empty selection sends
+                        district="" which the backend maps to NULL. */}
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {tr("tkt.district")}
+                        {!t.district && (
+                          <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                            {tr("tkt.districtNotIdentified")}
+                          </span>
+                        )}
+                      </Label>
+                      <Select
+                        value={t.district ?? DISTRICT_CLEAR}
+                        onValueChange={(v) => patch({ district: v === DISTRICT_CLEAR ? "" : v })}
+                        disabled={!canEdit}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder={tr("tkt.districtPlaceholder")} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-72">
+                          <SelectItem value={DISTRICT_CLEAR}>
+                            <span className="text-muted-foreground">{tr("tkt.districtNone")}</span>
+                          </SelectItem>
+                          {TN_DISTRICTS.map((d) => (
+                            <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   {!isOpen && (

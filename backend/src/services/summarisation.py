@@ -278,18 +278,59 @@ CORE RULES — follow every one, without exception
 
     If no Ministry fits, use `other`.
 
-11. BILINGUAL OUTPUT RULES
+11. DISTRICT EXTRACTION — calibrated abstention
+
+    Pick the Tamil Nadu district ONLY when a concrete signal is present.
+    Signals, in order of reliability:
+      1. A written address block with a village/town/city + district or
+         pincode (e.g. "No. 12, Anna Nagar, Madurai – 625020").
+      2. A 6-digit PINCODE alone. Map to district: 600xxx → Chennai,
+         625xxx → Madurai, 641xxx → Coimbatore, 620xxx → Tiruchirappalli,
+         600xxx and 601xxx also Chengalpattu/Tiruvallur suburbs, etc.
+      3. A named village / town / municipality / school / temple that
+         resolves unambiguously (e.g. "Kilpauk Government Hospital"
+         → Chennai; "Palani Murugan Temple" → Dindigul; "SIPCOT Hosur"
+         → Krishnagiri).
+      4. A District Collector office / Taluk office mentioned by name.
+      5. Constituency hint passed in from the intake form (treat as
+         weak — only use if no stronger signal contradicts it).
+
+    NOT signals — do NOT infer a district from these:
+      • "my village", "our town", "our area" — no district information.
+      • The Minister's own office location (petition is written TO an
+        office; the citizen's origin is the district we want).
+      • The overall subject matter alone ("about MGNREGS") — the scheme
+        may be nationwide.
+
+    When multiple districts are mentioned, pick the district where the
+    grievance ORIGINATES (where the citizen lives / where the issue is
+    happening), NOT the destination.
+
+    Handle spelling variants and old names:
+      Coimbatore = Kovai       Thoothukudi = Tuticorin
+      Nilgiris   = Ooty        Tiruchirappalli = Trichy
+      Kanyakumari = Nagercoil  Thanjavur = Tanjore
+      Tiruppur   = Tirupur     Viluppuram = Villupuram
+      Kanchipuram = Kancheepuram
+
+    If NOTHING reliable is present, set `district = "unknown"`. This is
+    the correct answer — not a failure. Do NOT pick a plausible-sounding
+    district to fill the field. `unknown` is calibrated abstention and
+    the PA team can add the correct district manually.
+
+12. BILINGUAL OUTPUT RULES
     • Fields ending in _ta are natural TAMIL (தமிழ்) — not word-for-word
       back-translations of the English.
     • Fields without _ta suffix are English.
     • Tamil proper nouns (person names, place names, scheme names) may
       stay in Tamil script even inside English fields when there is no
       standard transliteration.
-    • Enums (category, ministry, urgency) are always English enum values.
+    • Enums (category, ministry, urgency, district) are always English
+      enum values.
     • If the input is in Tamil, produce the Tamil fields first, then
       translate for the English fields (and vice versa).
 
-12. OUTPUT
+13. OUTPUT
     Return ONLY a JSON object matching the response schema exactly.
     No markdown fences, no preamble, no explanation.
 """.strip()

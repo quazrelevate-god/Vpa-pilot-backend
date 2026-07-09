@@ -118,6 +118,7 @@ def main() -> None:
 
         pred_cat = pred_min = pred_urg = citizen_ask = summary_en = summary_ta = ""
         pred_name_en = pred_name_ta = ""
+        pred_district = ""
         tokens_in = tokens_out = 0
         t0 = time.monotonic()
         if not err and attachments:
@@ -126,6 +127,11 @@ def main() -> None:
                 pred_cat, pred_min, pred_urg = s.category.value, s.ministry.value, s.urgency.value
                 citizen_ask, summary_en, summary_ta = s.citizen_ask, s.summary, s.summary_ta
                 pred_name_en, pred_name_ta = s.name_en, s.name_ta
+                # District: "unknown" is calibrated abstention — normalise to
+                # "" so the scorer treats it the same as gold=""/left blank.
+                pred_district = s.district.value if s.district else ""
+                if pred_district == "unknown":
+                    pred_district = ""
             except Exception as e:
                 err = str(e)[:250]
         elif not err:
@@ -136,6 +142,12 @@ def main() -> None:
         gcat = (r.get("gold_category") or "").strip().lower()
         # Accept either `gold_ministry` (new) or `gold_department` (legacy) column headers.
         gmin = (r.get("gold_ministry") or r.get("gold_department") or "").strip().lower()
+        # District — gold column is optional (blank = "unknown / not
+        # extractable from this case"). "unknown" maps to blank so both
+        # sides compare as calibrated abstention.
+        gdis = (r.get("gold_district") or "").strip().lower()
+        if gdis == "unknown":
+            gdis = ""
         row = {
             "id": cid,
             "language": r.get("language", ""),
@@ -147,6 +159,9 @@ def main() -> None:
             "gold_ministry":   gmin,
             "pred_ministry":   pred_min,
             "ministry_match":  _match(gmin, pred_min, errored),
+            "gold_district":   gdis,
+            "pred_district":   pred_district,
+            "district_match":  _match(gdis, pred_district, errored),
             "pred_urgency":    pred_urg,
             "urgency_right":   "",   # <-- HUMAN fills 1 (right) or 0 (wrong)
             "pred_name_en":    pred_name_en,
@@ -165,6 +180,7 @@ def main() -> None:
         mark = lambda m: ("·" if m == "" else ("✓" if m == 1 else "✗"))
         print(f"[{cid}] min {mark(row['ministry_match'])} ({pred_min or '—'})  "
               f"cat {mark(row['category_match'])} ({pred_cat or '—'})  "
+              f"dis {mark(row['district_match'])} ({pred_district or 'unknown'})  "
               f"urg? ({pred_urg or '—'})  {latency_ms}ms"
               + (f"  ERROR: {err}" if err else ""))
 

@@ -501,7 +501,7 @@ async def api_ticket_patch(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    """Update any subset of {status, priority, assigned_to_pa, due_date}."""
+    """Update any subset of {status, priority, assigned_to_pa, due_date, district}."""
     body = await request.json()
     try:
         data = await ticket_service.update_ticket_fields(
@@ -510,6 +510,7 @@ async def api_ticket_patch(
             priority=body.get("priority"),
             assigned_to_pa=body.get("assigned_to_pa"),
             due_date=body.get("due_date"),
+            district=body.get("district"),
         )
     except ValueError as e:
         await db.rollback()

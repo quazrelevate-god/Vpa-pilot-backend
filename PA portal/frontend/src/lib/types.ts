@@ -157,6 +157,8 @@ export interface TicketRow {
   category_label?: string | null;
   ministry?: string | null;
   ministry_label?: string | null;
+  district?: string | null;         // TN district enum key ("madurai" etc.); null = unknown/absent
+  district_label?: string | null;   // Display label ("Madurai") — null when district is null
   citizen_ask?: string | null;
 }
 

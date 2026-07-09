@@ -19,7 +19,9 @@ from sqlalchemy.orm import selectinload
 from src.core.utils import utc_iso
 from src.models.appointment_models import Appointment, Citizen
 from src.models.grievance_summary_record import GrievanceSummaryRecord
-from src.models.grievance_summary import CATEGORY_DISPLAY, MINISTRY_DISPLAY
+from src.models.grievance_summary import (
+    CATEGORY_DISPLAY, DISTRICT_DISPLAY, District, MINISTRY_DISPLAY,
+)
 from src.models.school_department import department_label as school_department_label
 from src.models.ticket_models import (
     Ticket,
@@ -34,6 +36,7 @@ from src.services.v2_helpers import v2
 class _EventType:
     STATUS_CHANGED    = "status_changed"
     PRIORITY_CHANGED  = "priority_changed"
+    DISTRICT_CHANGED  = "district_changed"
     ASSIGNED          = "assigned"
     UNASSIGNED        = "unassigned"
     DUE_DATE_SET      = "due_date_set"
@@ -87,6 +90,11 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         "ministry":        summary_rec.ministry if summary_rec else None,
         "ministry_label": (
             MINISTRY_DISPLAY.get(summary_rec.ministry) if summary_rec else None
+        ),
+        "district":        (summary_rec.district if summary_rec else None),
+        "district_label":  (
+            DISTRICT_DISPLAY.get(summary_rec.district)
+            if (summary_rec and summary_rec.district) else None
         ),
         "citizen_ask":     summary_rec.citizen_ask if summary_rec else None,
     }
@@ -441,6 +449,7 @@ async def update_ticket_fields(
     priority: Optional[str] = None,
     assigned_to_pa: Optional[str] = None,
     due_date: Optional[str] = None,   # ISO date or datetime string
+    district: Optional[str] = None,   # "" clears; a value must be a District enum member
 ) -> Optional[Dict[str, Any]]:
     """Generic patch — applies whichever fields are provided, logs one event per change."""
     t = await _load(db, ticket_id)
@@ -479,6 +488,26 @@ async def update_ticket_fields(
             _log(db, t.id, _EventType.DUE_DATE_SET, actor,
                  payload={"due_date": dd.isoformat() if dd else None})
             t.due_date = dd
+
+    if district is not None:
+        # Empty string clears the district back to NULL; anything else must
+        # be a valid District enum member. We never store the sentinel
+        # "unknown" — it maps to NULL like the empty case.
+        new_district = None if district in ("", "unknown") else district
+        if new_district is not None:
+            try:
+                District(new_district)  # validate enum membership
+            except ValueError:
+                raise ValueError(f"Invalid district: {district!r}")
+        appt = t.appointment
+        summary_rec = next(
+            (s for s in (appt.grievance_summary if appt else []) if s.is_latest),
+            None,
+        )
+        if summary_rec and summary_rec.district != new_district:
+            _log(db, t.id, _EventType.DISTRICT_CHANGED, actor,
+                 payload={"from": summary_rec.district, "to": new_district})
+            summary_rec.district = new_district
 
     await db.commit()
     return await get_ticket(db, ticket_id)

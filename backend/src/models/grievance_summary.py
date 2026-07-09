@@ -159,6 +159,149 @@ MINISTRY_DISPLAY: dict[str, str] = {
 }
 
 
+class District(str, Enum):
+    """
+    Tamil Nadu districts — 38 as of 2020 (Mayiladuthurai carved out of
+    Nagapattinam being the most recent). Used purely for analytics + the
+    detail-drawer chip.
+
+    UNKNOWN is the calibrated-abstention value: Gemini returns it when no
+    reliable district signal exists in the petition (no address, no pin,
+    no village, no school). At persist time we convert UNKNOWN to SQL NULL
+    so downstream code can just check truthiness. Never guess a district
+    to look confident.
+    """
+    ARIYALUR         = "ariyalur"
+    CHENGALPATTU     = "chengalpattu"
+    CHENNAI          = "chennai"
+    COIMBATORE       = "coimbatore"
+    CUDDALORE        = "cuddalore"
+    DHARMAPURI       = "dharmapuri"
+    DINDIGUL         = "dindigul"
+    ERODE            = "erode"
+    KALLAKURICHI     = "kallakurichi"
+    KANCHIPURAM      = "kanchipuram"
+    KANYAKUMARI      = "kanyakumari"
+    KARUR            = "karur"
+    KRISHNAGIRI      = "krishnagiri"
+    MADURAI          = "madurai"
+    MAYILADUTHURAI   = "mayiladuthurai"
+    NAGAPATTINAM     = "nagapattinam"
+    NAMAKKAL         = "namakkal"
+    NILGIRIS         = "nilgiris"
+    PERAMBALUR       = "perambalur"
+    PUDUKKOTTAI      = "pudukkottai"
+    RAMANATHAPURAM   = "ramanathapuram"
+    RANIPET          = "ranipet"
+    SALEM            = "salem"
+    SIVAGANGA        = "sivaganga"
+    TENKASI          = "tenkasi"
+    THANJAVUR        = "thanjavur"
+    THENI            = "theni"
+    THOOTHUKUDI      = "thoothukudi"
+    TIRUCHIRAPPALLI  = "tiruchirappalli"
+    TIRUNELVELI      = "tirunelveli"
+    TIRUPATTUR       = "tirupattur"
+    TIRUPPUR         = "tiruppur"
+    TIRUVALLUR       = "tiruvallur"
+    TIRUVANNAMALAI   = "tiruvannamalai"
+    TIRUVARUR        = "tiruvarur"
+    VELLORE          = "vellore"
+    VILUPPURAM       = "viluppuram"
+    VIRUDHUNAGAR     = "virudhunagar"
+    UNKNOWN          = "unknown"
+
+
+# English display names for the PA portal chip + edit dropdown.
+DISTRICT_DISPLAY_EN: dict[str, str] = {
+    "ariyalur":        "Ariyalur",
+    "chengalpattu":    "Chengalpattu",
+    "chennai":         "Chennai",
+    "coimbatore":      "Coimbatore",
+    "cuddalore":       "Cuddalore",
+    "dharmapuri":      "Dharmapuri",
+    "dindigul":        "Dindigul",
+    "erode":           "Erode",
+    "kallakurichi":    "Kallakurichi",
+    "kanchipuram":     "Kanchipuram",
+    "kanyakumari":     "Kanyakumari",
+    "karur":           "Karur",
+    "krishnagiri":     "Krishnagiri",
+    "madurai":         "Madurai",
+    "mayiladuthurai":  "Mayiladuthurai",
+    "nagapattinam":    "Nagapattinam",
+    "namakkal":        "Namakkal",
+    "nilgiris":        "The Nilgiris",
+    "perambalur":      "Perambalur",
+    "pudukkottai":     "Pudukkottai",
+    "ramanathapuram":  "Ramanathapuram",
+    "ranipet":         "Ranipet",
+    "salem":           "Salem",
+    "sivaganga":       "Sivaganga",
+    "tenkasi":         "Tenkasi",
+    "thanjavur":       "Thanjavur",
+    "theni":           "Theni",
+    "thoothukudi":     "Thoothukudi",
+    "tiruchirappalli": "Tiruchirappalli",
+    "tirunelveli":     "Tirunelveli",
+    "tirupattur":      "Tirupattur",
+    "tiruppur":        "Tiruppur",
+    "tiruvallur":      "Tiruvallur",
+    "tiruvannamalai":  "Tiruvannamalai",
+    "tiruvarur":       "Tiruvarur",
+    "vellore":         "Vellore",
+    "viluppuram":      "Viluppuram",
+    "virudhunagar":    "Virudhunagar",
+    "unknown":         "Unknown",
+}
+
+# Tamil display names for citizen-facing surfaces + Tamil UI.
+DISTRICT_DISPLAY_TA: dict[str, str] = {
+    "ariyalur":        "அரியலூர்",
+    "chengalpattu":    "செங்கல்பட்டு",
+    "chennai":         "சென்னை",
+    "coimbatore":      "கோயம்புத்தூர்",
+    "cuddalore":       "கடலூர்",
+    "dharmapuri":      "தர்மபுரி",
+    "dindigul":        "திண்டுக்கல்",
+    "erode":           "ஈரோடு",
+    "kallakurichi":    "கள்ளக்குறிச்சி",
+    "kanchipuram":     "காஞ்சிபுரம்",
+    "kanyakumari":     "கன்னியாகுமரி",
+    "karur":           "கரூர்",
+    "krishnagiri":     "கிருஷ்ணகிரி",
+    "madurai":         "மதுரை",
+    "mayiladuthurai":  "மயிலாடுதுறை",
+    "nagapattinam":    "நாகப்பட்டினம்",
+    "namakkal":        "நாமக்கல்",
+    "nilgiris":        "நீலகிரி",
+    "perambalur":      "பெரம்பலூர்",
+    "pudukkottai":     "புதுக்கோட்டை",
+    "ramanathapuram":  "இராமநாதபுரம்",
+    "ranipet":         "ராணிப்பேட்டை",
+    "salem":           "சேலம்",
+    "sivaganga":       "சிவகங்கை",
+    "tenkasi":         "தென்காசி",
+    "thanjavur":       "தஞ்சாவூர்",
+    "theni":           "தேனி",
+    "thoothukudi":     "தூத்துக்குடி",
+    "tiruchirappalli": "திருச்சிராப்பள்ளி",
+    "tirunelveli":     "திருநெல்வேலி",
+    "tirupattur":      "திருப்பத்தூர்",
+    "tiruppur":        "திருப்பூர்",
+    "tiruvallur":      "திருவள்ளூர்",
+    "tiruvannamalai":  "திருவண்ணாமலை",
+    "tiruvarur":       "திருவாரூர்",
+    "vellore":         "வேலூர்",
+    "viluppuram":      "விழுப்புரம்",
+    "virudhunagar":    "விருதுநகர்",
+    "unknown":         "தெரியவில்லை",
+}
+
+# Default alias — PA portal / dashboard use English
+DISTRICT_DISPLAY = DISTRICT_DISPLAY_EN
+
+
 class UrgencyLevel(str, Enum):
     LOW      = "low"       # routine, no time pressure
     MEDIUM   = "medium"    # should be addressed this week
@@ -265,6 +408,21 @@ class GrievanceSummary(BaseModel):
             "ALWAYS low (they depend on other schools' vacancies). See the "
             "urgency calibration rules in the system prompt."
         )
+    )
+
+    district: District = Field(
+        default=District.UNKNOWN,
+        description=(
+            "Tamil Nadu district the petition originates from. Extract ONLY "
+            "from concrete signals in the petition: a pin code, a specific "
+            "village/town/city, a school name that resolves unambiguously, "
+            "an address block, or the constituency hint. Vague phrases like "
+            "'my village', 'our town' are NOT signals. If nothing reliable "
+            "is present, return `unknown` — never guess a plausible district. "
+            "Better to abstain than mislabel. Handle common spelling "
+            "variants: Coimbatore/Kovai, Thoothukudi/Tuticorin, "
+            "Nilgiris/Ooty, Tiruchirappalli/Trichy, Kanyakumari/Nagercoil."
+        ),
     )
 
     # ── Supporting evidence ───────────────────────────────────────────────────

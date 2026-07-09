@@ -149,7 +149,13 @@ export async function fetchTicketsOpenCount(): Promise<number> {
 
 export async function patchTicket(
   id: number,
-  patch: { status?: string; priority?: string; assigned_to_pa?: string; due_date?: string | null },
+  patch: {
+    status?: string;
+    priority?: string;
+    assigned_to_pa?: string;
+    due_date?: string | null;
+    district?: string | null;   // District enum key ("madurai") or "" to clear back to unknown
+  },
 ): Promise<TicketDetail> {
   const r = await fetch(`/api/tickets/${id}`, {
     method: "PATCH", headers: J, credentials: "include", body: JSON.stringify(patch),

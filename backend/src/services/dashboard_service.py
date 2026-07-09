@@ -19,7 +19,7 @@ from src.models.scheduling_models import AppointmentSlot, MLADailyAvailability
 from src.services.scheduling_service import scheduling_service
 from src.services.notification_service import notify as _notify
 from src.models.grievance_summary_record import GrievanceSummaryRecord
-from src.models.grievance_summary import CATEGORY_DISPLAY, MINISTRY_DISPLAY
+from src.models.grievance_summary import CATEGORY_DISPLAY, DISTRICT_DISPLAY, MINISTRY_DISPLAY
 from src.services.v2_helpers import v2
 
 
@@ -742,6 +742,11 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "summary_status": appt.summary_status,
         "category_label": _category_label(appt.grievance_category),
         "ministry_label": (MINISTRY_DISPLAY.get(summary_rec.ministry, summary_rec.ministry) if summary_rec and summary_rec.ministry else None),
+        "district": (summary_rec.district if summary_rec else None),
+        "district_label": (
+            DISTRICT_DISPLAY.get(summary_rec.district, summary_rec.district)
+            if summary_rec and summary_rec.district else None
+        ),
         "attachments": attachments_data,
     }
 
