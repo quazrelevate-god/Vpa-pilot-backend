@@ -7,6 +7,7 @@ import {
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
   ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
   CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2, MapPin,
+  Mail, Landmark,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -100,9 +101,11 @@ const PRIORITY_TKEY: Record<string, string> = {
 };
 
 const SOURCE_META: Record<string, { tKey: string; cls: string; icon: typeof QrCode }> = {
-  qr_citizen:  { tKey: "petition.sourceCitizen", cls: "bg-sky-100 text-sky-700",       icon: QrCode },
-  ai_scan:     { tKey: "petition.sourceScanned", cls: "bg-blue-100 text-blue-700", icon: ScanLine },
-  manual_staff:{ tKey: "petition.sourceStaff",   cls: "bg-slate-100 text-slate-600",   icon: UserCog },
+  qr_citizen:  { tKey: "petition.sourceCitizen",  cls: "bg-sky-100 text-sky-700",      icon: QrCode },
+  ai_scan:     { tKey: "petition.sourceScanned",  cls: "bg-blue-100 text-blue-700",    icon: ScanLine },
+  manual_staff:{ tKey: "petition.sourceStaff",    cls: "bg-slate-100 text-slate-600",  icon: UserCog },
+  postal:      { tKey: "petition.sourcePostal",   cls: "bg-amber-100 text-amber-700",  icon: Mail },
+  cm_office:   { tKey: "petition.sourceCmOffice", cls: "bg-purple-100 text-purple-700",icon: Landmark },
 };
 const SOURCE_KEYS = Object.keys(SOURCE_META);
 
