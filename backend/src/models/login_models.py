@@ -19,12 +19,13 @@ from src.core.config import settings
 
 
 # Roles — the coarse RBAC axis. Fine-grained perms still live on `scope` JSONB.
-ROLE_SUPER_ADMIN  = "super_admin"
-ROLE_PA           = "pa"
-ROLE_DEPT_OFFICER = "dept_officer"
-ROLE_AUDITOR      = "auditor"
+ROLE_SUPER_ADMIN       = "super_admin"
+ROLE_PA                = "pa"
+ROLE_DEPT_OFFICER      = "dept_officer"
+ROLE_PETITION_REVIEWER = "petition_reviewer"
+ROLE_AUDITOR           = "auditor"
 
-ALL_ROLES = (ROLE_SUPER_ADMIN, ROLE_PA, ROLE_DEPT_OFFICER, ROLE_AUDITOR)
+ALL_ROLES = (ROLE_SUPER_ADMIN, ROLE_PA, ROLE_DEPT_OFFICER, ROLE_PETITION_REVIEWER, ROLE_AUDITOR)
 
 
 def hash_password(password: str) -> str:

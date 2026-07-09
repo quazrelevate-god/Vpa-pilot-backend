@@ -59,6 +59,8 @@ export interface AppointmentRow {
   ministry?: string | null;     // AI-classified Ministry — snake_case Ministry enum key
   status: AppointmentStatus;
   source?: string | null;    // intake channel: qr_citizen | ai_scan | manual_staff
+  venue?: string | null;       // venue registry key (raw)
+  venue_label?: string | null; // friendly venue name from the registry
   created_at: string;        // pre-formatted timestamp
   scheduled_date?: string | null;  // ISO date of the meeting slot (YYYY-MM-DD)
   appointment_time?: string;        // personal sub-slot ISO datetime

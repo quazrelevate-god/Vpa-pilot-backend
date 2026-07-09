@@ -21,22 +21,24 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { InitialsAvatar } from "@/components/ui/avatar";
 
 import {
-  listUsers, createUser, updateUser, deleteUser,
-  type UserRow, type Role,
+  listUsers, createUser, updateUser, deleteUser, listDepartments,
+  type UserRow, type Role, type DepartmentRow,
 } from "../_lib/adminApi";
 
 const ROLE_LABELS: Record<Role, string> = {
-  super_admin:  "Super admin",
-  pa:           "PA officer",
-  dept_officer: "Department officer",
-  auditor:      "Auditor (read-only)",
+  super_admin:       "Super admin",
+  pa:                "PA officer",
+  petition_reviewer: "Petition reviewer",
+  dept_officer:      "Department officer",
+  auditor:           "Auditor (read-only)",
 };
 
 const ROLE_TONE: Record<Role, Parameters<typeof StatusDot>[0]["tone"]> = {
-  super_admin:  "brand",
-  pa:           "blue",
-  dept_officer: "emerald",
-  auditor:      "slate",
+  super_admin:       "brand",
+  pa:                "blue",
+  petition_reviewer: "amber",
+  dept_officer:      "emerald",
+  auditor:           "slate",
 };
 
 // Human-friendly "what does this role actually do" — shown live under the
@@ -71,6 +73,19 @@ const ROLE_CAPABILITIES: Record<Role, {
     ],
     cannot: [
       "Access Settings",
+      "Create or edit other users",
+      "Change department / ministry configuration",
+    ],
+  },
+  petition_reviewer: {
+    scope: "Case review across the PA portal.",
+    can: [
+      "View and edit appointments",
+      "Run petition review + edit petitions",
+      "View and edit tickets",
+    ],
+    cannot: [
+      "Access Settings, Scheduling, AI Uploads, Executive Queue or Crowd QR",
       "Create or edit other users",
       "Change department / ministry configuration",
     ],
@@ -170,6 +185,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                   full_name: values.full_name,
                   email: values.email,
                   role: values.role,
+                  department: values.department,
                 });
                 toast.success("User created");
                 setOpenCreate(false);
@@ -247,6 +263,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                   full_name: values.full_name,
                   email: values.email,
                   role: values.role,
+                  department: values.department,
                   ...(values.password ? { password: values.password } : {}),
                 });
                 toast.success("Saved");
@@ -276,6 +293,7 @@ function UserFormDialog({
     full_name?: string;
     email?: string;
     role: Role;
+    department?: string;
   }) => Promise<void>;
   requirePassword?: boolean;
 }) {
@@ -283,10 +301,17 @@ function UserFormDialog({
   const [fullName, setFullName]   = useState(initial?.full_name ?? "");
   const [email, setEmail]         = useState(initial?.email ?? "");
   const [role, setRole]           = useState<Role>(initial?.role ?? "pa");
+  const [department, setDepartment] = useState<string>(initial?.department ?? "");
+  const [departments, setDepartments] = useState<DepartmentRow[]>([]);
   const [password, setPassword]   = useState("");
   const [busy, setBusy]           = useState(false);
 
   const isEdit = !!initial;
+  const needsDept = role === "dept_officer";
+
+  useEffect(() => {
+    listDepartments().then((d) => setDepartments(d.filter((x) => x.is_active))).catch(() => {});
+  }, []);
 
   return (
     <DialogContent>
@@ -316,12 +341,30 @@ function UserFormDialog({
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {(Object.entries(ROLE_LABELS) as [Role, string][]).map(([k, v]) =>
-                <SelectItem key={k} value={k}>{v}</SelectItem>
-              )}
+              {(Object.entries(ROLE_LABELS) as [Role, string][])
+                // dept_officer is deprecated in the UI — only surface it when
+                // editing a user who already has that role.
+                .filter(([k]) => k !== "dept_officer" || initial?.role === "dept_officer")
+                .map(([k, v]) =>
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                )}
             </SelectContent>
           </Select>
         </div>
+        {needsDept && (
+          <div className="space-y-1.5">
+            <Label>Department</Label>
+            <Select value={department} onValueChange={setDepartment}>
+              <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+              <SelectContent>
+                {departments.map((d) =>
+                  <SelectItem key={d.key} value={d.key}>{d.display_en}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">This officer will only see tickets routed to this department.</p>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label>{isEdit ? "New password (leave blank to keep)" : "Password"}</Label>
           <Input
@@ -336,7 +379,7 @@ function UserFormDialog({
       <DialogFooter>
         <Button
           className="aurora-primary text-white"
-          disabled={busy || !loginName || (requirePassword && !password)}
+          disabled={busy || !loginName || (requirePassword && !password) || (needsDept && !department)}
           onClick={async () => {
             setBusy(true);
             try {
@@ -346,6 +389,7 @@ function UserFormDialog({
                 full_name: fullName || undefined,
                 email: email || undefined,
                 role,
+                department: needsDept ? department : undefined,
               });
             } finally { setBusy(false); }
           }}

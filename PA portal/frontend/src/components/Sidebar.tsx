@@ -102,6 +102,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
 
   // Settings nav — visible only to super_admin when the feature flag is on.
   const [showSettings, setShowSettings] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
   useEffect(() => {
     (async () => {
       try {
@@ -110,9 +111,21 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
           fetch("/api/v1/me", { credentials: "include" }).then((r) => r.ok ? r.json() : null),
         ]);
         setShowSettings(Boolean(flags?.superadmin_ui) && me?.role === "super_admin");
+        setRole(me?.role ?? null);
       } catch { /* soft-fail — Settings just stays hidden */ }
     })();
   }, [pathname]);
+
+  // Roles that only get a slice of the portal. Everyone else (super_admin / pa
+  // / auditor) sees every room.
+  const ROLE_NAV: Record<string, string[]> = {
+    dept_officer: ["/tickets"],
+    petition_reviewer: ["/appointments", "/ai-review", "/tickets"],
+  };
+  const allowedHrefs = role ? ROLE_NAV[role] : undefined;
+  const navItems = allowedHrefs
+    ? NAV_ITEMS.filter((i) => allowedHrefs.includes(i.href))
+    : NAV_ITEMS;
 
   // Alt+1…9 — jump to the Nth room from anywhere in the portal.
   useEffect(() => {
@@ -185,7 +198,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
           </div>
         )}
         <div className="space-y-2">
-          {NAV_ITEMS.map(({ href, tKey, icon: Icon, badge, badgeTone }, i) => {
+          {navItems.map(({ href, tKey, icon: Icon, badge, badgeTone }, i) => {
             const active = pathname?.startsWith(href);
             const badgeVal = badge ? badges[badge] : null;
             return (

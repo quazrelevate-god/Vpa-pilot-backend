@@ -8,12 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import Dict, Any
 
 from src.core.database import get_db
 from src.core.config import settings
 from src.core.utils import generate_device_fingerprint
 from src.services.qr_service import qr_service
+from src.models.registry_models import VenueRegistry
 
 # Templates dir: backend/templates/
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
@@ -24,6 +26,23 @@ router = APIRouter(
     prefix="/api/v1/qr",
     tags=["QR Code Management"]
 )
+
+
+async def _require_active_venue(db: AsyncSession, venue_id: str) -> None:
+    """The QR display only works for a venue that exists + is active in the
+    registry. appointment.venue is a FK into venue_registry, so accepting an
+    unknown venue here would break citizen intake at insert time."""
+    v = await db.scalar(
+        select(VenueRegistry).where(
+            VenueRegistry.key == venue_id,
+            VenueRegistry.is_active == True,  # noqa: E712
+        )
+    )
+    if v is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown or inactive venue '{venue_id}'. Add it in Settings → Venues first.",
+        )
 
 
 @router.get("/display", include_in_schema=False)
@@ -41,6 +60,7 @@ async def display_qr(
     Venue display screen — renders qr_display.jinja2 with an initial QR code.
     The page JS auto-rotates the QR before expiry.
     """
+    await _require_active_venue(db, venue_id)
     qr_data = await qr_service.generate_rotating_qr(venue_id, db)
     # Use SERVER_BASE_URL when explicitly configured (e.g. LAN IP for phone scanning).
     # Fall back to the request's own origin so localhost dev works without config changes.
@@ -120,6 +140,7 @@ async def generate_qr_code(
         - Auto-committed by get_db() dependency on success
         - Auto-rolled back by get_db() dependency on exception
     """
+    await _require_active_venue(db, venue_id)
     try:
         qr_data = await qr_service.generate_rotating_qr(venue_id, db)
         return qr_data

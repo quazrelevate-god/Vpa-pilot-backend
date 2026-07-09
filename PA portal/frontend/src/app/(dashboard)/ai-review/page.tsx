@@ -6,7 +6,7 @@ import {
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, ShieldAlert,
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
   ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
-  CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2,
+  CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2, MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -62,6 +62,8 @@ interface InboxRow {
   priority: string | null;
   statusKey: StatusKey;
   source: string;
+  venue: string | null;         // venue registry key (petitions only)
+  venue_label: string | null;   // friendly venue name from the registry
   created_at: string | null;
   ticket_number: string | null;
   summary: string | null;       // citizen's ask ("what they want") shown in the list
@@ -274,6 +276,14 @@ const InboxTableRow = memo(function InboxTableRow({
           <SIcon className="h-3.5 w-3.5" /> {t(sm.tKey)}
         </span>
       </td>
+      <td className="max-w-[200px] px-4 py-4">
+        {row.venue ? (
+          <span className="inline-flex items-center gap-1.5 text-sm text-foreground/85">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{row.venue_label || row.venue}</span>
+          </span>
+        ) : <span className="text-muted-foreground/40">—</span>}
+      </td>
       <td className="px-4 py-4 text-[15px] font-semibold text-foreground">{catLabel(row.categoryKey, lang)}</td>
       <td className="px-4 py-4">
         {row.priority
@@ -451,7 +461,7 @@ export default function AiReviewPage() {
     const up: InboxRow[] = uploads.map(u => ({
       kind: "upload", id: u.id, name: u.name, name_ta: u.name_ta, mobile: u.mobile,
       token: u.ticket_number, categoryKey: u.category,
-      priority: u.priority, statusKey: u.status, source: "ai_scan",
+      priority: u.priority, statusKey: u.status, source: "ai_scan", venue: null, venue_label: null,
       created_at: u.created_at, ticket_number: u.ticket_number,
       summary: u.citizen_ask ?? null, summary_ta: u.citizen_ask_ta ?? null,
       upload: u,
@@ -460,7 +470,7 @@ export default function AiReviewPage() {
       kind: "petition", id: p.id, name: p.name, name_ta: p.name_ta ?? null, mobile: p.mobile,
       token: p.token != null ? String(p.token) : null,
       categoryKey: p.category ?? null, priority: p.priority ?? null,
-      statusKey: petitionStatusKey(p.status), source: p.source || "qr_citizen",
+      statusKey: petitionStatusKey(p.status), source: p.source || "qr_citizen", venue: p.venue ?? null, venue_label: p.venue_label ?? null,
       created_at: p.created_at, ticket_number: null,
       summary: p.citizen_ask ?? null, summary_ta: p.citizen_ask_ta ?? null,
       petition: p,
@@ -640,10 +650,11 @@ export default function AiReviewPage() {
   }
 
   async function doExport() {
-    const headers = ["Token", "Name", "Phone", "Source", "Category", "Priority", "Status", "Submitted"];
+    const headers = ["Token", "Name", "Phone", "Source", "Venue", "Category", "Priority", "Status", "Submitted"];
     const lines = filtered.map((r) => [
       r.token ?? "", r.name ?? "", r.mobile ?? "",
       t(SOURCE_META[r.source]?.tKey ?? "petition.sourceStaff"),
+      r.venue ?? "",
       catLabel(r.categoryKey, "en"), r.priority ?? "",
       t(STATUS_TKEY[r.statusKey]), r.created_at ?? "",
     ]);
@@ -794,6 +805,7 @@ export default function AiReviewPage() {
                         <th className={cn(th, "w-[210px]")}>{t("petition.colName")}</th>
                         <th className={th}>{t("petition.colAsk")}</th>
                         <th className={cn(th, "w-36")}>{t("petition.colSource")}</th>
+                        <th className={cn(th, "w-40")}>{t("petition.colVenue")}</th>
                         <th className={cn(th, "w-44")}>{t("petition.colCategory")}</th>
                         <th className={cn(th, "w-28")}>
                           <SortHeader label={t("petition.colUrgency")} state={sort === "priority_desc" ? "desc" : null}
@@ -813,13 +825,14 @@ export default function AiReviewPage() {
                             <td className="px-4 py-4"><div className="flex items-center gap-2.5"><Skeleton className="h-9 w-9 rounded-lg" /><div className="space-y-1.5"><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3 w-20" /></div></div></td>
                             <td className="px-4 py-4"><div className="space-y-1.5"><Skeleton className="h-3.5 w-full max-w-[240px]" /><Skeleton className="h-3.5 w-3/4 max-w-[180px]" /></div></td>
                             <td className="px-4 py-4"><Skeleton className="h-5 w-24 rounded-full" /></td>
+                            <td className="px-4 py-4"><Skeleton className="h-4 w-20" /></td>
                             <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
                             <td className="px-4 py-4"><Skeleton className="h-5 w-12 rounded" /></td>
                             <td className="px-4 py-4"><Skeleton className="h-4 w-20" /></td>
                           </tr>
                         ))
                       ) : pageRows.length === 0 ? (
-                        <tr><td colSpan={6} className="px-4 py-16 text-center">
+                        <tr><td colSpan={7} className="px-4 py-16 text-center">
                           <ClipboardCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
                           <div className="text-base font-semibold text-foreground">{t("petition.noResults")}</div>
                           {anyFilterActive && (

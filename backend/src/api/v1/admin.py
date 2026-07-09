@@ -33,7 +33,7 @@ from src.models.login_models import (
     ROLE_SUPER_ADMIN, ROLE_PA, ROLE_DEPT_OFFICER, ROLE_AUDITOR, ALL_ROLES,
     hash_password,
 )
-from src.models.registry_models import DepartmentRegistry, MinistryRegistry
+from src.models.registry_models import DepartmentRegistry, MinistryRegistry, VenueRegistry
 from src.models.department_account import DepartmentAccount, hash_password as dept_hash
 
 
@@ -57,6 +57,7 @@ class UserRow(BaseModel):
     full_name: Optional[str] = None
     email: Optional[str] = None
     role: str
+    department: Optional[str] = None   # for dept officers — from scope.department
     is_active: bool
     created_at: datetime
 
@@ -67,12 +68,15 @@ class UserCreate(BaseModel):
     full_name: Optional[str] = Field(default=None, max_length=200)
     email: Optional[EmailStr] = None
     role: str = Field(default=ROLE_PA)
+    department: Optional[str] = Field(default=None, max_length=60,
+                                      description="Required when role=dept_officer — scopes them to one department.")
 
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: Optional[str] = None
+    department: Optional[str] = Field(default=None, max_length=60)
     is_active: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=6, max_length=200)
 
@@ -116,6 +120,31 @@ class MinistryUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class VenueRow(BaseModel):
+    id: int
+    key: str
+    display_en: str
+    display_ta: Optional[str] = None
+    address: Optional[str] = None
+    is_active: bool
+    is_builtin: bool
+
+
+class VenueCreate(BaseModel):
+    key: str = Field(min_length=2, max_length=100, pattern=r"^[a-z0-9][a-z0-9_]*$",
+                     description="Stable id used in the QR display URL (?venue_id=...).")
+    display_en: str = Field(min_length=2, max_length=200)
+    display_ta: Optional[str] = Field(default=None, max_length=200)
+    address: Optional[str] = Field(default=None, max_length=400)
+
+
+class VenueUpdate(BaseModel):
+    display_en: Optional[str] = Field(default=None, max_length=200)
+    display_ta: Optional[str] = Field(default=None, max_length=200)
+    address: Optional[str] = Field(default=None, max_length=400)
+    is_active: Optional[bool] = None
+
+
 class DeptAccountRow(BaseModel):
     id: int
     department: str
@@ -144,6 +173,7 @@ async def me(current: Login = Depends(get_current_login)) -> dict:
         "full_name": current.full_name,
         "email": current.email,
         "role": current.role,
+        "department": (current.scope or {}).get("department"),
     }
 
 
@@ -157,10 +187,16 @@ async def features() -> dict:
 
 # ── Users ────────────────────────────────────────────────────────────────────
 
+def _user_row(r: Login) -> UserRow:
+    row = UserRow.model_validate(r, from_attributes=True)
+    row.department = (r.scope or {}).get("department")
+    return row
+
+
 @router.get("/users", response_model=list[UserRow])
 async def list_users(db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(Login).order_by(Login.id))).scalars().all()
-    return [UserRow.model_validate(r, from_attributes=True) for r in rows]
+    return [_user_row(r) for r in rows]
 
 
 @router.post("/users", response_model=UserRow, status_code=201)
@@ -172,18 +208,25 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db)):
     if existing:
         raise HTTPException(409, f"Username '{body.login_name}' already exists.")
 
+    scope: dict = {}
+    if body.role == ROLE_DEPT_OFFICER:
+        if not body.department:
+            raise HTTPException(422, "A department is required for a department officer.")
+        scope = {"department": body.department}
+
     row = Login(
         login_name=body.login_name,
         password=hash_password(body.password),
         full_name=body.full_name,
         email=body.email,
         role=body.role,
+        scope=scope,
         is_active=True,
     )
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return UserRow.model_validate(row, from_attributes=True)
+    return _user_row(row)
 
 
 @router.patch("/users/{user_id}", response_model=UserRow)
@@ -223,9 +266,18 @@ async def update_user(
     if body.is_active is not None:  row.is_active = body.is_active
     if body.password:               row.password = hash_password(body.password)
 
+    # Department scope follows the (possibly updated) role.
+    if row.role == ROLE_DEPT_OFFICER:
+        dept = body.department if body.department is not None else (row.scope or {}).get("department")
+        if not dept:
+            raise HTTPException(422, "A department is required for a department officer.")
+        row.scope = {"department": dept}
+    else:
+        row.scope = {}
+
     await db.commit()
     await db.refresh(row)
-    return UserRow.model_validate(row, from_attributes=True)
+    return _user_row(row)
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -242,6 +294,54 @@ async def delete_user(
     # Soft-delete pattern: flip is_active off. Preserves audit history.
     row.is_active = False
     await db.commit()
+
+
+# ── Venues ───────────────────────────────────────────────────────────────────
+
+@router.get("/venues", response_model=list[VenueRow])
+async def list_venues(db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(VenueRegistry).order_by(VenueRegistry.is_builtin.desc(), VenueRegistry.display_en)
+    )).scalars().all()
+    return [VenueRow.model_validate(r, from_attributes=True) for r in rows]
+
+
+@router.post("/venues", response_model=VenueRow, status_code=201)
+async def create_venue(
+    body: VenueCreate,
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(require_super_admin),
+):
+    existing = await db.scalar(select(VenueRegistry).where(VenueRegistry.key == body.key))
+    if existing:
+        raise HTTPException(409, f"Venue id '{body.key}' already exists.")
+    row = VenueRegistry(
+        key=body.key,
+        display_en=body.display_en,
+        display_ta=body.display_ta,
+        address=body.address,
+        is_active=True,
+        is_builtin=False,
+        created_by=current.login_name,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return VenueRow.model_validate(row, from_attributes=True)
+
+
+@router.patch("/venues/{venue_id}", response_model=VenueRow)
+async def update_venue(venue_id: int, body: VenueUpdate, db: AsyncSession = Depends(get_db)):
+    row = await db.get(VenueRegistry, venue_id)
+    if not row:
+        raise HTTPException(404, "Venue not found.")
+    if body.display_en is not None: row.display_en = body.display_en
+    if body.display_ta is not None: row.display_ta = body.display_ta
+    if body.address is not None:    row.address = body.address
+    if body.is_active is not None:  row.is_active = body.is_active
+    await db.commit()
+    await db.refresh(row)
+    return VenueRow.model_validate(row, from_attributes=True)
 
 
 # ── Departments ──────────────────────────────────────────────────────────────

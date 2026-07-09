@@ -333,6 +333,23 @@ async def get_stats(
     }
 
 
+async def _attach_venue_labels(db: AsyncSession, items: list) -> None:
+    """Fill each row's `venue_label` (friendly name) from the venue registry —
+    one query for the whole page. Rows with no venue stay None."""
+    keys = {it.get("venue") for it in items if it.get("venue")}
+    if not keys:
+        return
+    from src.models.registry_models import VenueRegistry
+    rows = (await db.execute(
+        select(VenueRegistry.key, VenueRegistry.display_en).where(VenueRegistry.key.in_(keys))
+    )).all()
+    label_map = {k: v for k, v in rows}
+    for it in items:
+        v = it.get("venue")
+        if v:
+            it["venue_label"] = label_map.get(v)
+
+
 async def get_appointments(
     db: AsyncSession,
     status_filter: Optional[str] = None,
@@ -523,6 +540,7 @@ async def get_appointments(
         start = (page - 1) * page_size
         page_rows = matched[start:start + page_size]
         items = [build_appointment_row(appt) for appt in page_rows]
+        await _attach_venue_labels(db, items)
         return {"items": items, "total": total, "page": page, "page_size": page_size}
 
     # ── No-search path: efficient DB-side count + pagination ────────────────────
@@ -534,6 +552,7 @@ async def get_appointments(
     appointments = result.scalars().all()
 
     items = [build_appointment_row(appt) for appt in appointments]
+    await _attach_venue_labels(db, items)
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
@@ -711,6 +730,8 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "status_db": appt.status,
         "status": _resolve_display_status(appt),
         "source": "qr_citizen",  # v2: source column removed; default for now
+        "venue": appt.venue_id,  # physical location / event where the QR was scanned
+        "venue_label": None,     # filled from the venue registry by _attach_venue_labels
         "created_at": utc_iso(appt.created_at),
         "scheduled_date": (slot_date.isoformat() if slot_date else None),
         "appointment_time": (

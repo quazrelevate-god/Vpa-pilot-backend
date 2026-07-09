@@ -46,3 +46,23 @@ class MinistryRegistry(Base):
     is_active   = Column(Boolean, nullable=False, server_default=text("true"))
     updated_at  = Column(DateTime, nullable=False, default=datetime.utcnow,
                          onupdate=datetime.utcnow)
+
+
+class VenueRegistry(Base):
+    """Managed list of scan venues (offices / camps). `appointment.venue` is a
+    real FK into this table's `key` (migration 027) — the QR display only
+    accepts a `venue_id` that exists + is active here."""
+    __tablename__ = "venue_registry"
+
+    id          = Column(BigInteger, primary_key=True, autoincrement=True)
+    key         = Column(String(100), nullable=False, unique=True)
+    display_en  = Column(String(200), nullable=False)
+    display_ta  = Column(String(200), nullable=True)
+    address     = Column(String(400), nullable=True)
+    is_active   = Column(Boolean, nullable=False, server_default=text("true"))
+    is_builtin  = Column(Boolean, nullable=False, server_default=text("false"),
+                         comment="TRUE for the seeded default venue(s); can't be deleted")
+    created_by  = Column(String(100), nullable=True)
+    created_at  = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at  = Column(DateTime, nullable=False, default=datetime.utcnow,
+                         onupdate=datetime.utcnow)

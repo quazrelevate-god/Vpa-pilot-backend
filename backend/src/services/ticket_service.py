@@ -225,6 +225,7 @@ async def list_tickets(
     category: Optional[str] = None,
     assigned_to: Optional[str] = None,
     forwarded_to_dept: Optional[str] = None,
+    department: Optional[str] = None,   # routed school department (Ticket.department) — scopes dept officers
     search: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -249,6 +250,8 @@ async def list_tickets(
         clauses.append(Ticket.assigned_to_pa == assigned_to)
     if forwarded_to_dept:
         clauses.append(Ticket.forwarded_to_dept == forwarded_to_dept)
+    if department:
+        clauses.append(Ticket.department == department)
     if date_from:
         clauses.append(Ticket.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
     if date_to:
@@ -306,6 +309,7 @@ async def get_ticket_counts(
     category: Optional[str] = None,
     assigned_to: Optional[str] = None,
     forwarded_to_dept: Optional[str] = None,
+    department: Optional[str] = None,   # routed school department — scopes dept officers
     search: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -319,6 +323,8 @@ async def get_ticket_counts(
         clauses.append(Ticket.assigned_to_pa == assigned_to)
     if forwarded_to_dept:
         clauses.append(Ticket.forwarded_to_dept == forwarded_to_dept)
+    if department:
+        clauses.append(Ticket.department == department)
     if date_from:
         clauses.append(Ticket.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
     if date_to:
@@ -626,7 +632,7 @@ async def reopen(
 
 # ── Dashboard helpers (counts for nav badge) ──────────────────────────────────
 
-async def get_open_count(db: AsyncSession) -> int:
+async def get_open_count(db: AsyncSession, department: Optional[str] = None) -> int:
     """
     Count tickets that need PA attention — feeds the sidebar badge.
 
@@ -642,6 +648,7 @@ async def get_open_count(db: AsyncSession) -> int:
         TicketStatus.FORWARDED_TO_DEPT.value,
         TicketStatus.PENDING_CITIZEN.value,
     ]
-    return await db.scalar(
-        select(func.count(Ticket.id)).where(Ticket.status.in_(actionable))
-    ) or 0
+    stmt = select(func.count(Ticket.id)).where(Ticket.status.in_(actionable))
+    if department:
+        stmt = stmt.where(Ticket.department == department)
+    return await db.scalar(stmt) or 0

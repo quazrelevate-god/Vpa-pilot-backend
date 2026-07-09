@@ -6,7 +6,7 @@ import {
   Download, Search, ChevronLeft, ChevronRight, ChevronRight as RowChevron,
   CalendarClock, CalendarDays, CalendarRange, X, ArrowUpDown, ArrowDownNarrowWide,
   ArrowDownAZ, ArrowUpAZ, SlidersHorizontal, MoreVertical, Clock,
-  CalendarCheck, RotateCw,
+  CalendarCheck, RotateCw, MapPin,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -284,6 +284,14 @@ const AppointmentTableRow = memo(function AppointmentTableRow({
             {row.num_persons}
           </div>
         ) : <div className="text-center text-muted-foreground/40">—</div>}
+      </td>
+      <td className="max-w-[220px] px-4 py-4">
+        {row.venue ? (
+          <span className="inline-flex items-center gap-1.5 text-sm text-foreground/85">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{row.venue_label || row.venue}</span>
+          </span>
+        ) : <span className="text-muted-foreground/40">—</span>}
       </td>
     </motion.tr>
   );
@@ -700,6 +708,7 @@ function AppointmentsPageInner() {
                       />
                     </th>
                     <th className={cn(th, "w-24 text-center")}>{t("appts.colPeople")}</th>
+                    <th className={cn(th, "w-40")}>{t("appts.colVenue")}</th>
                   </tr>
                 </thead>
                 <tbody key={`${tab}-${page}`}>
@@ -711,11 +720,11 @@ function AppointmentsPageInner() {
                         <td className="px-4 py-3"><div className="space-y-1.5"><Skeleton className="h-3.5 w-full max-w-[220px]" /><Skeleton className="h-3.5 w-3/4 max-w-[160px]" /></div></td>
                         <td className="px-4 py-3"><div className="space-y-1.5"><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3 w-20" /></div></td>
                         <td className="px-4 py-3"><Skeleton className="mx-auto h-4 w-6" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-6 w-20 rounded-lg" /></td>
+                        <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
                       </tr>
                     ))
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={5} className="px-4 py-16 text-center">
+                    <tr><td colSpan={6} className="px-4 py-16 text-center">
                       <CalendarClock className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
                       <div className="text-base font-semibold text-foreground">{t("appts.noAppts")}</div>
                       {anyFilterActive ? (

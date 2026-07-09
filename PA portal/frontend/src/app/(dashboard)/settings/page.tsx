@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Users, Building2, Landmark, KeyRound, Settings as CogIcon, ShieldCheck,
+  Users, Building2, Landmark, KeyRound, Settings as CogIcon, ShieldCheck, MapPin,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -30,6 +30,7 @@ import { fetchMe, fetchFeatures, type SessionUser } from "./_lib/adminApi";
 
 import UsersTab from "./_components/UsersTab";
 import DepartmentsTab from "./_components/DepartmentsTab";
+import VenuesTab from "./_components/VenuesTab";
 import MinistriesTab from "./_components/MinistriesTab";
 import DeptAccountsTab from "./_components/DeptAccountsTab";
 
@@ -86,6 +87,7 @@ export default function SettingsPage() {
                 <TabsList className="h-11 gap-1 rounded-xl bg-card p-1 shadow-card">
                   <TabTrigger value="users"       icon={Users}     label="Users" />
                   <TabTrigger value="departments" icon={Building2} label="Departments" />
+                  <TabTrigger value="venues"      icon={MapPin}    label="Venues" />
                   <TabTrigger value="ministries"  icon={Landmark}  label="Ministry emails" />
                   <TabTrigger value="dept-logins" icon={KeyRound}  label="Department logins" />
                 </TabsList>
@@ -95,6 +97,9 @@ export default function SettingsPage() {
                 </TabsContent>
                 <TabsContent value="departments" className="mt-6">
                   <DepartmentsTab />
+                </TabsContent>
+                <TabsContent value="venues" className="mt-6">
+                  <VenuesTab />
                 </TabsContent>
                 <TabsContent value="ministries" className="mt-6">
                   <MinistriesTab />

@@ -204,18 +204,24 @@ async def unified_login(
     # 1) PA staff — env super-admin fallback, then the `login` table.
     from src.models.login_models import Login, verify_password as verify_staff
     staff_ok = False
+    staff_role = "pa"
     if uname == settings.DASHBOARD_USERNAME and password == settings.DASHBOARD_PASSWORD:
         from src.core.rbac import ensure_env_admin_seeded
         await ensure_env_admin_seeded(db, uname)
         staff_ok = True
+        staff_role = "super_admin"
     else:
         row = (await db.execute(
             select(Login).where(Login.login_name == uname, Login.is_active == True)  # noqa: E712
         )).scalar_one_or_none()
         if row and verify_staff(password, row.password):
             staff_ok = True
+            staff_role = row.role
     if staff_ok:
-        resp = JSONResponse({"ok": True, "role": "staff", "redirect": "/appointments"})
+        # Department officers are scoped to tickets — land them there, not on
+        # the (unscoped) appointments board.
+        redirect = "/tickets" if staff_role == ROLE_DEPT_OFFICER else "/appointments"
+        resp = JSONResponse({"ok": True, "role": staff_role, "redirect": redirect})
         create_session_cookie(resp, uname)
         resp.delete_cookie("dept_session", path="/", httponly=True, samesite="lax")
         return resp
@@ -422,15 +428,37 @@ async def api_appointment_activity(
 # All routes require auth and write a TicketEvent for every mutation.
 
 from src.services import ticket_service  # noqa: E402
+from src.core.rbac import get_current_login  # noqa: E402
+from src.models.login_models import Login, ROLE_DEPT_OFFICER  # noqa: E402
+from src.models.ticket_models import Ticket as _Ticket  # noqa: E402
+
+
+def _officer_dept(current: Login) -> str | None:
+    """Department a dept_officer is pinned to. Fail-closed to a no-match
+    sentinel when a dept_officer has no department set, so they see nothing
+    rather than everything. Returns None for full-access roles (super_admin /
+    pa / auditor), which applies no department filter."""
+    if current.role == ROLE_DEPT_OFFICER:
+        return (current.scope or {}).get("department") or "__none__"
+    return None
+
+
+async def _ticket_in_scope(db, ticket_id: int, current: Login) -> bool:
+    """A dept officer may only act on tickets routed to their own department."""
+    dept = _officer_dept(current)
+    if dept is None:
+        return True
+    t = await db.get(_Ticket, ticket_id)
+    return bool(t is not None and t.department == dept)
 
 
 @router.get("/api/tickets/open_count")
 async def api_tickets_open_count(
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
     """Feeds the sidebar badge."""
-    return JSONResponse({"open": await ticket_service.get_open_count(db)})
+    return JSONResponse({"open": await ticket_service.get_open_count(db, department=_officer_dept(current))})
 
 
 @router.get("/api/tickets")
@@ -447,7 +475,7 @@ async def api_tickets_list(
     date_to: str = "",
     page: int = 1,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
     data = await ticket_service.list_tickets(
         db,
@@ -457,6 +485,7 @@ async def api_tickets_list(
         category=category or None,
         assigned_to=assigned_to or None,
         forwarded_to_dept=forwarded_to_dept or None,
+        department=_officer_dept(current),
         search=search or None,
         date_from=date_from or None,
         date_to=date_to or None,
@@ -477,7 +506,7 @@ async def api_ticket_counts(
     date_from: str = "",
     date_to: str = "",
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
     """Single-call per-segment counts (All/Open/In progress/Forwarded/Resolved/Closed).
     Replaces the 6× parallel list-call pattern. Must be declared BEFORE the
@@ -489,6 +518,7 @@ async def api_ticket_counts(
         category=category or None,
         assigned_to=assigned_to or None,
         forwarded_to_dept=forwarded_to_dept or None,
+        department=_officer_dept(current),
         search=search or None,
         date_from=date_from or None,
         date_to=date_to or None,
@@ -500,10 +530,13 @@ async def api_ticket_counts(
 async def api_ticket_detail(
     ticket_id: int,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
     data = await ticket_service.get_ticket(db, ticket_id)
     if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    dept = _officer_dept(current)
+    if dept is not None and data.get("assigned_department") != dept:
         return JSONResponse({"error": "Ticket not found"}, status_code=404)
     return JSONResponse(data)
 
@@ -513,13 +546,15 @@ async def api_ticket_patch(
     ticket_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
     """Update any subset of {status, priority, assigned_to_pa, due_date, district}."""
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
     body = await request.json()
     try:
         data = await ticket_service.update_ticket_fields(
-            db, ticket_id, actor=user,
+            db, ticket_id, actor=current.login_name,
             status=body.get("status"),
             priority=body.get("priority"),
             assigned_to_pa=body.get("assigned_to_pa"),
@@ -539,14 +574,16 @@ async def api_ticket_forward(
     ticket_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
     body = await request.json()
     dept = body.get("department")
     if not dept:
         return JSONResponse({"error": "department is required"}, status_code=400)
     data = await ticket_service.forward_to_dept(
-        db, ticket_id, actor=user, department=dept, notes=body.get("notes"),
+        db, ticket_id, actor=current.login_name, department=dept, notes=body.get("notes"),
     )
     if data is None:
         return JSONResponse({"error": "Ticket not found"}, status_code=404)
@@ -558,12 +595,14 @@ async def api_ticket_comment(
     ticket_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
     body = await request.json()
     try:
         data = await ticket_service.add_comment(
-            db, ticket_id, actor=user, text=body.get("text", ""),
+            db, ticket_id, actor=current.login_name, text=body.get("text", ""),
         )
     except ValueError as e:
         await db.rollback()
@@ -578,12 +617,14 @@ async def api_ticket_resolve(
     ticket_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
     body = await request.json()
     try:
         data = await ticket_service.mark_resolved(
-            db, ticket_id, actor=user,
+            db, ticket_id, actor=current.login_name,
             resolution_notes=body.get("resolution_notes", ""),
         )
     except ValueError as e:
@@ -599,14 +640,16 @@ async def api_ticket_close(
     ticket_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
     body = await request.json()
     reason = body.get("closure_reason")
     if not reason:
         return JSONResponse({"error": "closure_reason is required"}, status_code=400)
     data = await ticket_service.mark_closed(
-        db, ticket_id, actor=user,
+        db, ticket_id, actor=current.login_name,
         closure_reason=reason, notes=body.get("notes"),
     )
     if data is None:
@@ -619,11 +662,13 @@ async def api_ticket_reopen(
     ticket_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
     body = await request.json()
     data = await ticket_service.reopen(
-        db, ticket_id, actor=user, reason=body.get("reason"),
+        db, ticket_id, actor=current.login_name, reason=body.get("reason"),
     )
     if data is None:
         return JSONResponse({"error": "Ticket not found"}, status_code=404)

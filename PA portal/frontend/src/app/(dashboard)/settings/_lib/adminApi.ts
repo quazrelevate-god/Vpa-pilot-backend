@@ -2,7 +2,7 @@
 // /api/v1/features. All endpoints assume the caller has a valid dash_session
 // cookie; admin/* additionally require role=super_admin server-side.
 
-export type Role = "super_admin" | "pa" | "dept_officer" | "auditor";
+export type Role = "super_admin" | "pa" | "petition_reviewer" | "dept_officer" | "auditor";
 
 export interface SessionUser {
   id: number;
@@ -10,6 +10,7 @@ export interface SessionUser {
   full_name: string | null;
   email: string | null;
   role: Role;
+  department: string | null;   // set for dept_officer — the department they're scoped to
 }
 
 export interface FeatureFlags {
@@ -22,6 +23,7 @@ export interface UserRow {
   full_name: string | null;
   email: string | null;
   role: Role;
+  department: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -52,6 +54,16 @@ export interface DeptAccountRow {
   display_name: string | null;
 }
 
+export interface VenueRow {
+  id: number;
+  key: string;
+  display_en: string;
+  display_ta: string | null;
+  address: string | null;
+  is_active: boolean;
+  is_builtin: boolean;
+}
+
 // ── Session helpers ────────────────────────────────────────────────────────
 export async function fetchMe(signal?: AbortSignal): Promise<SessionUser | null> {
   const r = await fetch("/api/v1/me", { credentials: "include", cache: "no-store", signal });
@@ -74,7 +86,7 @@ export async function listUsers(): Promise<UserRow[]> {
 }
 
 export async function createUser(body: {
-  login_name: string; password: string; full_name?: string; email?: string; role: Role;
+  login_name: string; password: string; full_name?: string; email?: string; role: Role; department?: string;
 }): Promise<UserRow> {
   const r = await fetch("/api/v1/admin/users", {
     method: "POST", credentials: "include",
@@ -86,7 +98,7 @@ export async function createUser(body: {
 }
 
 export async function updateUser(id: number, patch: {
-  full_name?: string; email?: string; role?: Role; is_active?: boolean; password?: string;
+  full_name?: string; email?: string; role?: Role; is_active?: boolean; password?: string; department?: string;
 }): Promise<UserRow> {
   const r = await fetch(`/api/v1/admin/users/${id}`, {
     method: "PATCH", credentials: "include",
@@ -138,6 +150,37 @@ export async function deleteDepartment(id: number): Promise<void> {
     method: "DELETE", credentials: "include",
   });
   if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+}
+
+// ── Venues ─────────────────────────────────────────────────────────────────
+export async function listVenues(): Promise<VenueRow[]> {
+  const r = await fetch("/api/v1/admin/venues", { credentials: "include", cache: "no-store" });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+export async function createVenue(body: {
+  key: string; display_en: string; display_ta?: string; address?: string;
+}): Promise<VenueRow> {
+  const r = await fetch("/api/v1/admin/venues", {
+    method: "POST", credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function updateVenue(id: number, patch: {
+  display_en?: string; display_ta?: string; address?: string; is_active?: boolean;
+}): Promise<VenueRow> {
+  const r = await fetch(`/api/v1/admin/venues/${id}`, {
+    method: "PATCH", credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
 }
 
 // ── Ministries ─────────────────────────────────────────────────────────────
