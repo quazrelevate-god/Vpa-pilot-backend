@@ -344,6 +344,7 @@ async def api_update_appointment_details(
         priority=body.get("priority") if "priority" in body else None,
         category=body.get("category") if "category" in body else None,
         ministry=body.get("ministry") if "ministry" in body else None,
+        district=body.get("district") if "district" in body else None,
         name=body.get("name") if "name" in body else None,
         name_ta=body.get("name_ta") if "name_ta" in body else None,
         summary_text=body.get("summary") if "summary" in body else None,

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Phone, Hash, CalendarDays, X, User, Users, FileText, Mic, Pencil, Check, ShieldAlert,
   Clock, GitBranch, Flag, ArrowRight, Activity as ActivityIcon,
-  ClipboardList, Landmark, Tag, BarChart3, Sparkles, Image as ImageIcon,
+  ClipboardList, Landmark, MapPin, Tag, BarChart3, Sparkles, Image as ImageIcon,
 } from "lucide-react";
 import {
   SectionCard, OverviewGrid, OverviewItem, StatusDot, statusTone, priorityTone,
@@ -283,6 +283,9 @@ export default function AppointmentDetailDrawer({
                     />
                     {ministryLabel && (
                       <OverviewItem icon={Landmark} label={t("petition.fMinistry")} value={ministryLabel} />
+                    )}
+                    {a.district_label && (
+                      <OverviewItem icon={MapPin} label={t("petition.fDistrict")} value={a.district_label} />
                     )}
                     {a.appointment_time && (
                       <OverviewItem icon={CalendarDays} label={t("appt.appointment")}

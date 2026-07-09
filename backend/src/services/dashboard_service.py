@@ -807,6 +807,7 @@ async def update_appointment_derived_fields(
     priority: Optional[str] = None,
     category: Optional[str] = None,
     ministry: Optional[str] = None,
+    district: Optional[str] = None,
     name: Optional[str] = None,
     name_ta: Optional[str] = None,
     summary_text: Optional[str] = None,
@@ -863,6 +864,15 @@ async def update_appointment_derived_fields(
             if old_ministry != summary_rec.ministry:
                 _log_appt_event(db, appointment_id, "ministry_changed",
                                 payload={"from": old_ministry, "to": summary_rec.ministry})
+        if district is not None:
+            # Empty string / "unknown" → NULL (matches the persist convention
+            # used elsewhere so downstream can just check truthiness).
+            new_district = None if district in ("", "unknown") else district
+            old_district = summary_rec.district
+            summary_rec.district = new_district
+            if old_district != new_district:
+                _log_appt_event(db, appointment_id, "district_changed",
+                                payload={"from": old_district, "to": new_district})
         if summary_text is not None:
             summary_rec.summary = summary_text
 

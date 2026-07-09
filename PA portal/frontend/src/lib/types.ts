@@ -81,6 +81,8 @@ export interface AppointmentRow {
   attachments?: AppointmentAttachment[];
   category_label?: string | null;
   ministry_label?: string | null;
+  district?: string | null;           // TN district enum key ("madurai" etc.); null when Gemini abstained
+  district_label?: string | null;     // Display label ("Madurai") — null when district is null
   num_persons?: number | null;
   // Standalone STT transcript for courtesy submissions (invitation/greetings).
   // Populated by the backend when audio was attached and AI was skipped.

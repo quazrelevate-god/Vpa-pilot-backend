@@ -42,6 +42,49 @@ export const MINISTRY_DISPLAY: Record<string, string> = {
   other:                                     "Other / Unclassified",
 };
 
+// Tamil Nadu districts (38 as of 2020). Key mirrors the backend District enum
+// exactly. Used by every review/edit drawer that surfaces district selection.
+export const DISTRICT_DISPLAY: Record<string, string> = {
+  ariyalur:        "Ariyalur",
+  chengalpattu:    "Chengalpattu",
+  chennai:         "Chennai",
+  coimbatore:      "Coimbatore",
+  cuddalore:       "Cuddalore",
+  dharmapuri:      "Dharmapuri",
+  dindigul:        "Dindigul",
+  erode:           "Erode",
+  kallakurichi:    "Kallakurichi",
+  kanchipuram:     "Kanchipuram",
+  kanyakumari:     "Kanyakumari",
+  karur:           "Karur",
+  krishnagiri:     "Krishnagiri",
+  madurai:         "Madurai",
+  mayiladuthurai:  "Mayiladuthurai",
+  nagapattinam:    "Nagapattinam",
+  namakkal:        "Namakkal",
+  nilgiris:        "The Nilgiris",
+  perambalur:      "Perambalur",
+  pudukkottai:     "Pudukkottai",
+  ramanathapuram:  "Ramanathapuram",
+  ranipet:         "Ranipet",
+  salem:           "Salem",
+  sivaganga:       "Sivaganga",
+  tenkasi:         "Tenkasi",
+  thanjavur:       "Thanjavur",
+  theni:           "Theni",
+  thoothukudi:     "Thoothukudi",
+  tiruchirappalli: "Tiruchirappalli",
+  tirunelveli:     "Tirunelveli",
+  tirupattur:      "Tirupattur",
+  tiruppur:        "Tiruppur",
+  tiruvallur:      "Tiruvallur",
+  tiruvannamalai:  "Tiruvannamalai",
+  tiruvarur:       "Tiruvarur",
+  vellore:         "Vellore",
+  viluppuram:      "Viluppuram",
+  virudhunagar:    "Virudhunagar",
+};
+
 // English-only category labels — used in PA portal (English UI)
 export const CATEGORY_DISPLAY_EN: Record<string, string> = {
   action_required:     "Action Required",
