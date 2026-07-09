@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Sparkles, UploadCloud, Loader2, FolderUp, Files, Check, CheckCircle2,
   AlertTriangle, MoreVertical, Layers, Tag, ClipboardCheck, FileText,
-  FileCheck2, Flag, ArrowRight, RefreshCw,
+  FileCheck2, Flag, ArrowRight, RefreshCw, Mail, Landmark, ScanLine,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,6 +46,7 @@ export default function AiUploadsPage() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [category, setCategory] = useState("");            // "" = Auto
+  const [source, setSource] = useState("ai_scan");
   const [dupMode, setDupMode] = useState<"skip" | "allow">("skip");
   const [rows, setRows] = useState<Row[]>([]);
   const [showAll, setShowAll] = useState(false);
@@ -130,6 +131,7 @@ export default function AiUploadsPage() {
       const fd = new FormData();
       chunk.forEach(f => fd.append("files", f));
       fd.append("batch_id", batchId);
+      fd.append("source", source);
       if (category) fd.append("category", category);
       try {
         const r = await fetch("/api/ai-uploads/upload", { method: "POST", body: fd, credentials: "include" });
@@ -292,7 +294,32 @@ export default function AiUploadsPage() {
                 <Sparkles className="h-4 w-4 text-brand" /> {t("uploads.settings")}
               </h3>
 
-              <label className="mb-1.5 block text-sm font-semibold text-foreground">{t("uploads.categoryLabel")}</label>
+              <label className="mb-1.5 block text-sm font-semibold text-foreground">{t("uploads.sourceLabel")}</label>
+              <div className="grid grid-cols-1 gap-1.5">
+                {[
+                  { key: "ai_scan",   Icon: ScanLine, label: t("petition.sourceScanned") },
+                  { key: "postal",    Icon: Mail,     label: t("petition.sourcePostal") },
+                  { key: "cm_office", Icon: Landmark, label: t("petition.sourceCmOffice") },
+                ].map(({ key, Icon, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setSource(key)}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-xl border px-3 py-2 text-[13px] font-medium transition-colors text-left",
+                      source === key
+                        ? "border-brand/40 bg-brand/5 text-brand"
+                        : "border-border bg-card text-foreground hover:bg-muted",
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    {label}
+                    {source === key && <Check className="ml-auto h-3.5 w-3.5" />}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[13px] text-muted-foreground">{t("uploads.sourceHelp")}</p>
+
+              <label className="mb-1.5 mt-5 block text-sm font-semibold text-foreground">{t("uploads.categoryLabel")}</label>
               <Select value={category === "" ? AUTO : category} onValueChange={(v) => setCategory(v === AUTO ? "" : v)}>
                 <SelectTrigger className={cn("h-11 rounded-xl text-sm", category && "border-brand/40 bg-brand/5 font-semibold text-brand")}>
                   <SelectValue />

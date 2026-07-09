@@ -42,6 +42,7 @@ interface Upload {
   citizen_ask: string | null; citizen_ask_ta: string | null;
   key_details: string[]; key_details_ta: string[];
   error: string | null; ticket_number: string | null; appointment_id: number | null; created_at: string | null;
+  source?: string | null;
   // Unified review drawer: petitions reuse this shape with a source tag +
   // their own attachments/audio (uploads keep the single-file preview).
   _kind?: "upload" | "petition";
@@ -464,7 +465,7 @@ export default function AiReviewPage() {
     const up: InboxRow[] = uploads.map(u => ({
       kind: "upload", id: u.id, name: u.name, name_ta: u.name_ta, mobile: u.mobile,
       token: u.ticket_number, categoryKey: u.category,
-      priority: u.priority, statusKey: u.status, source: "ai_scan", venue: null, venue_label: null,
+      priority: u.priority, statusKey: u.status, source: u.source || "ai_scan", venue: null, venue_label: null,
       created_at: u.created_at, ticket_number: u.ticket_number,
       summary: u.citizen_ask ?? null, summary_ta: u.citizen_ask_ta ?? null,
       upload: u,

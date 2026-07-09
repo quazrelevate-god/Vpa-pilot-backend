@@ -29,11 +29,12 @@ async def upload_batch(
     files: List[UploadFile] = File(...),
     category: str = Form(default=""),
     batch_id: str = Form(default=""),
+    source: str = Form(default="ai_scan"),
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
     return JSONResponse(
-        await ai_upload_service.create_batch(files, db, category=category, batch_id=batch_id),
+        await ai_upload_service.create_batch(files, db, category=category, batch_id=batch_id, source=source),
         status_code=201,
     )
 

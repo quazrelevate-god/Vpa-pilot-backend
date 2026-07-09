@@ -54,7 +54,8 @@ class AiUploadService:
     # ── Batch upload ────────────────────────────────────────────────────────────
     async def create_batch(self, files: List[UploadFile], db: AsyncSession,
                            category: Optional[str] = None,
-                           batch_id: Optional[str] = None) -> Dict[str, Any]:
+                           batch_id: Optional[str] = None,
+                           source: Optional[str] = None) -> Dict[str, Any]:
         from src.services.appointment_service import appointment_service
         from src.services.storage_service import save_file
         from src.models.grievance_summary import GrievanceCategory
@@ -101,6 +102,7 @@ class AiUploadService:
                 status=STATUS_QUEUED,
                 forced_category=forced_category,
                 grievance_category=forced_category,   # show the chosen category up-front
+                source=(source or "ai_scan").strip() or "ai_scan",
                 created_at=datetime.utcnow(),
             )
             db.add(row)
@@ -268,6 +270,7 @@ class AiUploadService:
             "error": row.error_message,
             "ticket_number": row.ticket_number,
             "appointment_id": row.appointment_id,
+            "source": row.source or "ai_scan",
             "created_at": row.created_at.isoformat() if row.created_at else None,
         }
 

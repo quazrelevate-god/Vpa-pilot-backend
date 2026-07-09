@@ -63,6 +63,9 @@ class AiUpload(Base):
     # overrides whatever Gemini detects. NULL/'general' => use the AI value.
     forced_category    = Column(VARCHAR(50), nullable=True)
 
+    # Source channel chosen at upload time (ai_scan / postal / cm_office / etc.)
+    source             = Column(VARCHAR(50), nullable=False, server_default="ai_scan")
+
     # ── Full Gemini extraction (used to build a GrievanceSummaryRecord on approve)
     summary_json = Column(JSONB, nullable=True)
 
