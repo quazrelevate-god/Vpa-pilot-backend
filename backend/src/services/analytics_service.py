@@ -53,12 +53,18 @@ class Filters:
         self.district = district or None
 
 
+_IST = timedelta(hours=5, minutes=30)
+
+
 def _parse_dt(s: Optional[str], end: bool):
     if not s:
         return None
     try:
         d = datetime.strptime(s[:10], "%Y-%m-%d")
-        return d.replace(hour=23, minute=59, second=59) if end else d
+        # Interpret the date as IST; convert to UTC for DB comparison
+        if end:
+            return d + timedelta(days=1) - _IST  # IST end-of-day → UTC
+        return d - _IST  # IST midnight → UTC
     except ValueError:
         return None
 

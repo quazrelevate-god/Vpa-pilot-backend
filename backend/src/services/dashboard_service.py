@@ -23,6 +23,19 @@ from src.models.grievance_summary import CATEGORY_DISPLAY, DISTRICT_DISPLAY, MIN
 from src.services.v2_helpers import v2
 
 
+_IST = timedelta(hours=5, minutes=30)
+
+
+def _ist_start(date_str: str) -> datetime:
+    """Interpret date_str as IST midnight and return the equivalent UTC datetime."""
+    return datetime.strptime(date_str, "%Y-%m-%d") - _IST
+
+
+def _ist_end(date_str: str) -> datetime:
+    """Interpret date_str as IST end-of-day (23:59:59.999…) → UTC datetime."""
+    return datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1) - _IST
+
+
 def _category_label(value: Optional[str]) -> str:
     """Map a snake_case category to its human-readable form."""
     if not value:
@@ -91,9 +104,9 @@ async def get_stats(
         """Build WHERE clause list scoped to Appointment.created_at."""
         clauses = []
         if date_from:
-            clauses.append(Appointment.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+            clauses.append(Appointment.created_at >= _ist_start(date_from))
         if date_to:
-            clauses.append(Appointment.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
+            clauses.append(Appointment.created_at < _ist_end(date_to))
         if extra:
             clauses.extend(extra if isinstance(extra, list) else [extra])
         return clauses
@@ -242,8 +255,8 @@ async def get_stats(
     # Period-over-period — same window length, immediately prior
     growth_pct = None
     if date_from and date_to:
-        start_dt = datetime.strptime(date_from, "%Y-%m-%d")
-        end_dt = datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S")
+        start_dt = _ist_start(date_from)
+        end_dt = _ist_end(date_to)
         window = end_dt - start_dt
         prior_start = start_dt - window - timedelta(seconds=1)
         prior_end = start_dt - timedelta(seconds=1)
@@ -276,9 +289,9 @@ async def get_stats(
     )
     # Apply same date window if provided
     if date_from:
-        forwarded_q = forwarded_q.where(Ticket.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+        forwarded_q = forwarded_q.where(Ticket.created_at >= _ist_start(date_from))
     if date_to:
-        forwarded_q = forwarded_q.where(Ticket.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
+        forwarded_q = forwarded_q.where(Ticket.created_at < _ist_end(date_to))
     forwarded_rows = await db.execute(forwarded_q)
     forwarded_ministries = [
         {"label": MINISTRY_DISPLAY.get(r[0], r[0]), "count": r[1]} for r in forwarded_rows
@@ -397,11 +410,11 @@ async def get_appointments(
     elif kind == "petition":
         stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
 
-    # Submission date filter (when citizen submitted the form)
+    # Submission date filter (when citizen submitted the form) — dates are IST
     if date_from:
-        stmt = stmt.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
+        stmt = stmt.where(Appointment.created_at >= _ist_start(date_from))
     if date_to:
-        stmt = stmt.where(Appointment.created_at <= dt.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
+        stmt = stmt.where(Appointment.created_at < _ist_end(date_to))
 
     # Appointment date filter (when the meeting slot is scheduled)
     from datetime import date as date_type
@@ -585,13 +598,13 @@ async def get_appointment_counts(
         base = base.where(Appointment.schedule_meeting == False)  # noqa: E712
 
     if date_from:
-        base = base.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
+        base = base.where(Appointment.created_at >= _ist_start(date_from))
     if date_to:
-        base = base.where(Appointment.created_at <= dt.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
+        base = base.where(Appointment.created_at < _ist_end(date_to))
     if appt_date_from:
-        base = base.where(Appointment.created_at >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+        base = base.where(Appointment.created_at >= _ist_start(appt_date_from))
     if appt_date_to:
-        base = base.where(Appointment.created_at <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+        base = base.where(Appointment.created_at < _ist_end(appt_date_to))
 
     if priority or ministry or category:
         gsr_sub = (
@@ -624,13 +637,13 @@ async def get_appointment_counts(
         elif kind == "petition":
             stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
         if date_from:
-            stmt = stmt.where(Appointment.created_at >= dt.strptime(date_from, "%Y-%m-%d"))
+            stmt = stmt.where(Appointment.created_at >= _ist_start(date_from))
         if date_to:
-            stmt = stmt.where(Appointment.created_at <= dt.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S"))
+            stmt = stmt.where(Appointment.created_at < _ist_end(date_to))
         if appt_date_from:
-            stmt = stmt.where(Appointment.created_at >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+            stmt = stmt.where(Appointment.created_at >= _ist_start(appt_date_from))
         if appt_date_to:
-            stmt = stmt.where(Appointment.created_at <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+            stmt = stmt.where(Appointment.created_at < _ist_end(appt_date_to))
         if priority or ministry or category:
             gsr_sub = (
                 select(GrievanceSummaryRecord.appointment_id)

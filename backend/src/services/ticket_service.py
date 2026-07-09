@@ -8,9 +8,20 @@ politically sensitive environment and the timeline of decisions matters.
 from __future__ import annotations
 
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_IST = timedelta(hours=5, minutes=30)
+
+
+def _ist_start(date_str: str) -> datetime:
+    return datetime.strptime(date_str, "%Y-%m-%d") - _IST
+
+
+def _ist_end(date_str: str) -> datetime:
+    return datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1) - _IST
+
 
 from sqlalchemy import and_, func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -253,11 +264,9 @@ async def list_tickets(
     if department:
         clauses.append(Ticket.department == department)
     if date_from:
-        clauses.append(Ticket.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+        clauses.append(Ticket.created_at >= _ist_start(date_from))
     if date_to:
-        clauses.append(
-            Ticket.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S")
-        )
+        clauses.append(Ticket.created_at < _ist_end(date_to))
 
     # AI-derived filters live on GrievanceSummaryRecord — join when needed
     if priority or ministry or category:
@@ -326,11 +335,9 @@ async def get_ticket_counts(
     if department:
         clauses.append(Ticket.department == department)
     if date_from:
-        clauses.append(Ticket.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+        clauses.append(Ticket.created_at >= _ist_start(date_from))
     if date_to:
-        clauses.append(
-            Ticket.created_at <= datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S")
-        )
+        clauses.append(Ticket.created_at < _ist_end(date_to))
 
     if priority or ministry or category:
         gsr_sub = (
