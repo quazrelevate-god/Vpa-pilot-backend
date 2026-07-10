@@ -1369,15 +1369,23 @@ function DocPreview({ review, t }: { review: Upload; t: (k: string) => string })
       : <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
   }
   if (review.file_url) {
-    return review.mime_type === "application/pdf"
-      ? <iframe
-          src={`${review.file_url}#toolbar=0&navpanes=0`}
-          className="h-full min-h-[240px] w-full rounded-lg border border-border bg-white"
-          title="document"
-          sandbox="allow-same-origin allow-scripts"
-        />
-      : (// eslint-disable-next-line @next/next/no-img-element
-        <img src={review.file_url} alt="petition" className="mx-auto max-w-full select-none rounded-lg shadow" draggable={false} />);
+    if (review.mime_type === "application/pdf") {
+      // Chrome/Edge's built-in PDF viewer is treated as a plugin and gets
+      // silently blocked inside a `sandbox` iframe — you'd see either a
+      // blank pane or the 🚫 no-entry glyph. Serve without sandbox and
+      // hide the toolbar via the #toolbar=0 fragment. <object> is the
+      // preferred renderer; <iframe> is the fallback for browsers that
+      // don't wire up <object type="application/pdf">. Matches the
+      // pattern used by @/components/ui/inline-attachment-preview.tsx.
+      const src = `${review.file_url}#toolbar=0&navpanes=0&view=FitH`;
+      return (
+        <object data={src} type="application/pdf" className="h-full min-h-[240px] w-full rounded-lg border border-border bg-white">
+          <iframe src={src} title="document" className="h-full min-h-[240px] w-full rounded-lg border border-border bg-white" />
+        </object>
+      );
+    }
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={review.file_url} alt="petition" className="mx-auto max-w-full select-none rounded-lg shadow" draggable={false} />;
   }
   return <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
 }

@@ -275,6 +275,15 @@ class AiUploadService:
             "key_details": sj.get("key_details") or [],
             "key_details_ta": sj.get("key_details_ta") or [],
             "ministry": sj.get("ministry") or sj.get("department"),
+            # District: Gemini fills this in summary_json ("unknown" when it
+            # couldn't confidently extract). Normalise the sentinel back to
+            # null so the frontend can just check truthiness, matching how
+            # ticket + appointment drawers already treat district.
+            "district": (
+                None
+                if (sj.get("district") in (None, "", "unknown"))
+                else sj.get("district")
+            ),
             "error": row.error_message,
             "ticket_number": row.ticket_number,
             "appointment_id": row.appointment_id,
@@ -319,6 +328,12 @@ class AiUploadService:
         # also decides the approve button (Accept vs Forward).
         if "ministry" in fields and fields["ministry"] is not None:
             sj["ministry"] = str(fields["ministry"]).strip() or None
+        # District — same story as ministry: summary_json only, no column.
+        # PA edits during review reach the GSR record via _build_case, which
+        # calls from_gemini_response(summary=extraction) and that factory
+        # already normalises "unknown"/empty to NULL on persist.
+        if "district" in fields and fields["district"] is not None:
+            sj["district"] = str(fields["district"]).strip() or "unknown"
         # Free-text narrative edits (summary, citizen_ask + _ta)
         for k in ("summary", "summary_ta", "citizen_ask", "citizen_ask_ta"):
             if k in fields and fields[k] is not None:
