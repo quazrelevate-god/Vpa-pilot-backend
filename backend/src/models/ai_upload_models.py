@@ -31,6 +31,11 @@ STATUS_PROCESSING      = "PROCESSING"
 STATUS_AWAITING_REVIEW = "AWAITING_REVIEW"
 STATUS_REVIEWED        = "REVIEWED"
 STATUS_FAILED          = "FAILED"
+# PA can mark a petition as reviewed WITHOUT creating a ticket / citizen /
+# appointment — e.g. a courtesy audio message, or a duplicate submission.
+# The row stays visible in "All" but hides from Awaiting / Reviewed / Failed
+# segments so the queue does not collect noise.
+STATUS_DISMISSED       = "DISMISSED"
 
 
 class AiUpload(Base):

@@ -92,6 +92,26 @@ async def approve_upload(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@router.post("/{upload_id}/dismiss")
+async def dismiss_upload(
+    upload_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Mark an awaiting-review upload as DISMISSED — reviewed by the PA with
+    no ticket / citizen / appointment created. Used for courtesy audio, blank
+    scans, duplicates. Row stays visible in the "All" segment only.
+    """
+    try:
+        return JSONResponse(await ai_upload_service.dismiss(db, upload_id, reviewed_by=user))
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @router.post("/retry")
 async def retry_uploads(
     payload: dict = Body(...),

@@ -30,7 +30,7 @@ from src.core.utils import utc_iso
 from src.models.ai_upload_models import (
     AiUpload,
     STATUS_QUEUED, STATUS_PROCESSING, STATUS_AWAITING_REVIEW,
-    STATUS_REVIEWED, STATUS_FAILED,
+    STATUS_REVIEWED, STATUS_FAILED, STATUS_DISMISSED,
 )
 
 logger = logging.getLogger(__name__)
@@ -344,6 +344,30 @@ class AiUploadService:
                 sj[k] = str(fields[k])
         row.summary_json = sj
         await db.commit()
+        return self._row_to_dict(row)
+
+    # ── Dismiss → mark reviewed with NO ticket / citizen / appointment ─────────
+    # For petitions the PA does not want to convert into a case: courtesy audio
+    # messages, duplicates, blank scans, etc. Row stays on the list under "All"
+    # but drops out of Awaiting Review so the queue stays clean.
+    async def dismiss(self, db: AsyncSession, upload_id: int, reviewed_by: str) -> Dict[str, Any]:
+        # Atomic claim, same shape as approve() — only AWAITING_REVIEW rows may
+        # be dismissed, and a double-click / concurrent PA loses the race.
+        claim = await db.execute(
+            update(AiUpload)
+            .where(AiUpload.id == upload_id, AiUpload.status == STATUS_AWAITING_REVIEW)
+            .values(
+                status=STATUS_DISMISSED,
+                reviewed_at=datetime.utcnow(),
+                reviewed_by=reviewed_by,
+            )
+        )
+        await db.commit()
+        if (claim.rowcount or 0) == 0:
+            if await db.get(AiUpload, upload_id) is None:
+                raise ValueError("Upload not found.")
+            raise ValueError("Already reviewed or not awaiting review.")
+        row = await db.get(AiUpload, upload_id)
         return self._row_to_dict(row)
 
     # ── Approve → create the case + ticket ──────────────────────────────────────

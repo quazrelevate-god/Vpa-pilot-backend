@@ -7,7 +7,7 @@ import {
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
   ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
   CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2, MapPin,
-  Mail, Landmark,
+  Mail, Landmark, Archive,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -52,7 +52,7 @@ interface Upload {
   audio_transcript?: string | null;
 }
 
-type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED";
+type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED" | "DISMISSED";
 
 interface InboxRow {
   kind: "upload" | "petition";
@@ -117,6 +117,7 @@ const STATUS_TKEY: Record<StatusKey, string> = {
   AWAITING_REVIEW: "petition.statusAwaitingReview",
   REVIEWED:        "petition.statusReviewed",
   FAILED:          "petition.statusFailed",
+  DISMISSED:       "petition.statusDismissed",
 };
 
 const STATUS_CLS: Record<StatusKey, string> = {
@@ -125,6 +126,7 @@ const STATUS_CLS: Record<StatusKey, string> = {
   AWAITING_REVIEW: "bg-amber-100 text-amber-700",
   REVIEWED:        "bg-emerald-100 text-emerald-700",
   FAILED:          "bg-red-100 text-red-700",
+  DISMISSED:       "bg-slate-100 text-slate-500",
 };
 
 const STATUS_ICON: Record<StatusKey, typeof Clock> = {
@@ -133,6 +135,7 @@ const STATUS_ICON: Record<StatusKey, typeof Clock> = {
   AWAITING_REVIEW: AlertTriangle,
   REVIEWED:        Check,
   FAILED:          X,
+  DISMISSED:       Archive,
 };
 
 const pretty = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
@@ -626,6 +629,25 @@ export default function AiReviewPage() {
           : (d.ticket_number ? `Ticket ${d.ticket_number} created` : "Approved"));
         setReview(null); load();
       } else toast.error(d.error || "Action failed");
+    } catch { toast.error("Network error"); } finally { setBusy(false); }
+  }
+
+  // Dismiss — mark reviewed WITHOUT creating a ticket / citizen / appointment.
+  // Uploads only; the corresponding path for citizen-submitted petitions is
+  // a status flip we haven't wired yet, so surface a clear error there for now.
+  async function dismiss() {
+    if (!review) return;
+    if (review._kind === "petition") {
+      toast.error("Dismiss is only available for AI Uploads right now.");
+      return;
+    }
+    if (!confirm("Dismiss this petition without creating a ticket? It stays in the All list for reference.")) return;
+    setBusy(true);
+    try {
+      const r = await fetch(api(`/${review.id}/dismiss`), { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { toast.success("Dismissed — no ticket created"); setReview(null); load(); }
+      else toast.error(d.error || "Dismiss failed");
     } catch { toast.error("Network error"); } finally { setBusy(false); }
   }
 
@@ -1166,18 +1188,34 @@ export default function AiReviewPage() {
                 {review.status === "AWAITING_REVIEW" && (() => {
                   // Ministry drives the action: School → Accept (school department
                   // workflow); any other ministry → Forward (out to that ministry).
+                  // Dismiss is a secondary escape hatch (courtesy audio, duplicate,
+                  // blank scan) that marks the row reviewed without creating a case.
                   const isSchool = (review.ministry ?? SCHOOL_MINISTRY) === SCHOOL_MINISTRY;
                   const ministryLabel = review.ministry ? (MINISTRY_DISPLAY[review.ministry] ?? review.ministry) : "";
                   return (
-                    <Button
-                      className={cn("w-full text-white", isSchool ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}
-                      onClick={approve}
-                      disabled={busy || editing}
-                    >
-                      {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        : isSchool ? <Check className="mr-2 h-4 w-4" /> : <Forward className="mr-2 h-4 w-4" />}
-                      {isSchool ? t("petition.acceptCta") : `${t("petition.forwardCta")}${ministryLabel ? ` — ${ministryLabel}` : ""}`}
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        className={cn(
+                          "w-full text-white",
+                          isSchool ? "bg-green-600 hover:bg-green-700" : "bg-orange-700 hover:bg-orange-800",
+                        )}
+                        onClick={approve}
+                        disabled={busy || editing}
+                      >
+                        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          : isSchool ? <Check className="mr-2 h-4 w-4" /> : <Forward className="mr-2 h-4 w-4" />}
+                        {isSchool ? t("petition.acceptCta") : `${t("petition.forwardCta")}${ministryLabel ? ` — ${ministryLabel}` : ""}`}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={dismiss}
+                        disabled={busy || editing}
+                      >
+                        <Archive className="mr-2 h-4 w-4" />
+                        {t("petition.dismissCta")}
+                      </Button>
+                    </div>
                   );
                 })()}
                 {review.status === "REVIEWED" && (
