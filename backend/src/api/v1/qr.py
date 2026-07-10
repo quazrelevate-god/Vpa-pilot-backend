@@ -30,7 +30,8 @@ router = APIRouter(
 
 async def _require_active_venue(db: AsyncSession, venue_id: str) -> None:
     """The QR display only works for a venue that exists + is active in the
-    registry. appointment.venue is a FK into venue_registry, so accepting an
+    registry.
+    appointment.venue is a FK into venue_registry, so accepting an
     unknown venue here would break citizen intake at insert time."""
     v = await db.scalar(
         select(VenueRegistry).where(
