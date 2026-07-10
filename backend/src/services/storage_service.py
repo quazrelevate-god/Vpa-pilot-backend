@@ -78,13 +78,18 @@ def get_file_url(storage_path: str) -> str:
     dashboard session cookie authorize them, and avoids the SigV4 fragility
     of front-proxying presigned MinIO URLs through nginx.
     """
+    from urllib.parse import quote
+
     p = storage_path.replace("\\", "/")
     # Strip a leading "uploads/" from either mode so the URL path is the same
     # bucket-relative / disk-relative key. MUST use startswith — a substring
     # match here silently ate the whole `ai_uploads/` prefix for AI-uploaded
     # petitions in MinIO mode, breaking every folder-scan / postal preview.
     rel = p[len("uploads/"):] if p.startswith("uploads/") else p
-    return "/api/files/" + rel
+    # Percent-encode spaces + non-ASCII (Tamil filenames, folder names like
+    # "direct pettition/…") while keeping "/" as the segment separator, so a
+    # <object data="…"> or <img src="…"> preview doesn't 404 on the raw path.
+    return "/api/files/" + quote(rel, safe="/")
 
 
 def get_file_bytes(storage_path: str) -> Optional[bytes]:
