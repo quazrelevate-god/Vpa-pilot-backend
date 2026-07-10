@@ -270,7 +270,46 @@ export default function AppointmentDetailDrawer({
                   <OverviewGrid>
                     <OverviewItem icon={User} label={t("petition.colName")} value={a.name} />
                     <OverviewItem icon={Phone} label={t("petition.colPhone")} value={a.mobile} mono />
-                    <OverviewItem icon={Tag} label={t("petition.colCategory")} value={categoryLabel} />
+                    <OverviewItem
+                      icon={Tag}
+                      label={t("petition.colCategory")}
+                      value={
+                        editCategory ? (
+                          // Uncontrolled — defaultOpen pops the menu once; a
+                          // choice fires onValueChange (writes to overrides via
+                          // patchDetails); dismissing without a pick closes
+                          // edit mode via onOpenChange(false).
+                          <Select
+                            defaultValue={(currentCategoryKey ?? a.category) || undefined}
+                            onValueChange={(v) => { setEditCategory(false); patchDetails({ category: v }); }}
+                            defaultOpen
+                            onOpenChange={(o) => { if (!o) setEditCategory(false); }}
+                          >
+                            <SelectTrigger className="h-8 w-full">
+                              <SelectValue placeholder={t("petition.colCategory")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {categoryOptions.map((o) => (
+                                <SelectItem key={o.value} value={o.value}>
+                                  {(lang === "ta" ? CATEGORY_DISPLAY_TA[o.value] : undefined) ?? o.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditCategory(true)}
+                            disabled={busy}
+                            className="group inline-flex items-center gap-1.5 rounded-md py-0.5 text-left hover:text-brand disabled:cursor-not-allowed disabled:opacity-60"
+                            title="Edit category"
+                          >
+                            <span>{categoryLabel ?? "—"}</span>
+                            <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-70" />
+                          </button>
+                        )
+                      }
+                    />
                     <OverviewItem
                       icon={GitBranch}
                       label={t("petition.colStatus")}

@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import select, func, and_, desc, distinct, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.utils import utc_iso
 from src.models.appointment_models import Appointment, Citizen
 from src.models.grievance_summary_record import GrievanceSummaryRecord as GSR
 from src.models.ticket_models import Ticket, TicketStatus
@@ -448,7 +449,10 @@ class AnalyticsService:
                 "source_label": "—",     # v2: column removed
                 "citizen_ask": r.citizen_ask,
                 "schedule_meeting": r.schedule_meeting,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
+                # utc_iso adds the +00:00 marker; a naive .isoformat() here
+                # would be parsed as browser-local by JS Date, shifting the
+                # displayed time by IST offset (+5:30) on the client.
+                "created_at": utc_iso(r.created_at),
             })
         return {
             "items": items, "total": total, "page": page, "page_size": page_size,

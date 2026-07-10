@@ -26,6 +26,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import AsyncSessionLocal
+from src.core.utils import utc_iso
 from src.models.ai_upload_models import (
     AiUpload,
     STATUS_QUEUED, STATUS_PROCESSING, STATUS_AWAITING_REVIEW,
@@ -288,7 +289,10 @@ class AiUploadService:
             "ticket_number": row.ticket_number,
             "appointment_id": row.appointment_id,
             "source": row.source or "ai_scan",
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            # utc_iso attaches the +00:00 marker; a naive .isoformat() here
+            # gets parsed as browser-local by JS Date, shifting the display
+            # by the local UTC offset.
+            "created_at": utc_iso(row.created_at),
         }
 
     async def list_uploads(self, db: AsyncSession, status: Optional[str] = None) -> List[Dict[str, Any]]:
