@@ -213,8 +213,16 @@ class AiUploadService:
                 row = await db.get(AiUpload, upload_id)
                 if row is None:
                     return
-                row.extracted_name    = result.citizen_name
-                row.extracted_name_ta = result.citizen_name_ta
+                # citizen_name / citizen_name_ta are Gemini's strict-confidence
+                # extraction (empty when it's unsure). But `citizen_name` is
+                # kept in the ORIGINAL script per the schema — for a Tamil
+                # petition it lands as Tamil, so it can't feed the English
+                # display column. Use the inherited bilingual pair
+                # (name_en → Latin, name_ta → Tamil) which Gemini also fills
+                # with proper transliteration; gate on the strict field so
+                # "empty = wasn't sure" still holds end-to-end.
+                row.extracted_name    = result.name_en if result.citizen_name.strip()    else ""
+                row.extracted_name_ta = result.name_ta if result.citizen_name_ta.strip() else ""
                 row.extracted_mobile  = result.mobile
                 row.grievance_category = final_category
                 row.priority           = result.urgency.value   # LLM field `urgency` -> `priority` column
