@@ -80,9 +80,10 @@ def get_file_url(storage_path: str) -> str:
     """
     p = storage_path.replace("\\", "/")
     # Strip a leading "uploads/" from either mode so the URL path is the same
-    # bucket-relative / disk-relative key.
-    idx = p.find("uploads/")
-    rel = p[idx + len("uploads/"):] if idx != -1 else p
+    # bucket-relative / disk-relative key. MUST use startswith — a substring
+    # match here silently ate the whole `ai_uploads/` prefix for AI-uploaded
+    # petitions in MinIO mode, breaking every folder-scan / postal preview.
+    rel = p[len("uploads/"):] if p.startswith("uploads/") else p
     return "/api/files/" + rel
 
 
