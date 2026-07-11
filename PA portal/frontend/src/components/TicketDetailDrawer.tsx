@@ -259,6 +259,13 @@ export default function TicketDetailDrawer({
                   {t.district_label ?? t.district}
                 </span>
               )}
+              {t?.created_at && (
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground/80">
+                  <CalendarDays className="h-3 w-3 text-brand" />
+                  <span>{tr("petition.colSubmitted")}</span>
+                  <span className="font-mono tabular-nums">{formatDateTime(t.created_at)}</span>
+                </span>
+              )}
             </div>
           </div>
           <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">

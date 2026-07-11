@@ -1109,6 +1109,16 @@ export default function AiReviewPage() {
                         <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {catLabel(review.category, lang)}
                       </span>
                     )}
+                    {review.created_at && (() => {
+                      const s = fmtSubmitted(review.created_at, lang);
+                      return (
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground/80">
+                          <CalendarDays className="h-3 w-3 text-brand" />
+                          <span>{t("petition.colSubmitted")}</span>
+                          <span className="font-mono tabular-nums">{s.date}{s.time ? `, ${s.time}` : ""}</span>
+                        </span>
+                      );
+                    })()}
                     {review.ticket_number && <span className="font-mono text-[13px] font-semibold text-emerald-600">{review.ticket_number}</span>}
                   </div>
                 </div>

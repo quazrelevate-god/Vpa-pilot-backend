@@ -156,6 +156,13 @@ export default function AppointmentDetailDrawer({
                     <StatusDot label={<span className="uppercase tracking-wide">{priorityText(a.priority)}</span>} tone={priorityTone(a.priority)} />
                   )}
                   {categoryLabel && <StatusDot label={categoryLabel} tone="slate" />}
+                  {a.created_at && (
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-foreground/80">
+                      <CalendarDays className="h-3 w-3 text-brand" />
+                      <span>{t("petition.colSubmitted")}</span>
+                      <span className="font-mono tabular-nums">{formatDateTime(a.created_at)}</span>
+                    </span>
+                  )}
                 </div>
               </div>
 
