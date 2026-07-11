@@ -1196,8 +1196,8 @@ export default function AiReviewPage() {
                     <div className="flex flex-col gap-2">
                       <Button
                         className={cn(
-                          "w-full text-white",
-                          isSchool ? "bg-green-600 hover:bg-green-700" : "bg-orange-700 hover:bg-orange-800",
+                          "w-full text-white !bg-none border-transparent",
+                          isSchool ? "!bg-green-600 hover:!bg-green-700" : "!bg-orange-700 hover:!bg-orange-800",
                         )}
                         onClick={approve}
                         disabled={busy || editing}
