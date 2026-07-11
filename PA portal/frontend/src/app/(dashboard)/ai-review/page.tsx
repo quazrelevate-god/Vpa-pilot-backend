@@ -36,7 +36,7 @@ const DISTRICTS = Object.keys(DISTRICT_DISPLAY);
 
 interface Upload {
   id: number; filename: string; mime_type: string; file_url: string | null;
-  status: "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED";
+  status: StatusKey;
   name: string | null; name_ta: string | null; mobile: string | null;
   category: string | null; priority: string | null; ministry: string | null; district: string | null;
   summary: string | null; summary_ta: string | null;
