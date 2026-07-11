@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   ArrowRight, MessageSquare, CheckCircle2, Lock, RotateCcw, Send, Building2,
   Clock, User, Phone, Hash, CalendarDays, X, Sparkles, MapPin,
@@ -152,6 +153,14 @@ export default function TicketDetailDrawer({
   const [closeNotes, setCloseNotes] = useState("");
   const [reopenReason, setReopenReason] = useState("");
 
+  // Assignment is now click-to-confirm rather than click-to-save.
+  // Selecting a department or due date only stages the change; the PA
+  // clicks the "Assign ticket" button below to commit both at once.
+  const [pendingDept, setPendingDept] = useState<string | null>(null);
+  const [pendingDue, setPendingDue]   = useState<string | null>(null); // ISO string or ""
+  const [assigning, setAssigning]     = useState(false);
+  const dueDateRef = useRef<HTMLInputElement | null>(null);
+
   const open = ticketId != null;
 
   useEffect(() => {
@@ -159,6 +168,7 @@ export default function TicketDetailDrawer({
     setLoading(true);
     setTab("details");
     setActiveAction(null);
+    setPendingDept(null); setPendingDue(null); setAssigning(false);
     fetchTicket(ticketId)
       .then(setData)
       .catch((e) => alert(`Failed to load ticket: ${e.message}`))
@@ -173,19 +183,34 @@ export default function TicketDetailDrawer({
     finally { setBusy(false); }
   }
 
-  async function routeToDepartment(dept: string) {
-    if (ticketId == null || !dept || dept === t?.assigned_department) return;
-    setBusy(true);
+  async function handleAssign() {
+    if (ticketId == null || !t) return;
+    const dept = pendingDept ?? t.assigned_department ?? "";
+    const due  = pendingDue  ?? (t.due_date ?? "");
+    if (!dept || !due) return; // guarded by disabled state; belt-and-braces
+
+    setAssigning(true);
     try {
-      const r = await fetch(`/api/tickets/${ticketId}/route`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ department: dept }),
-      });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Routing failed");
-      setData(await fetchTicket(ticketId));
+      // Route first (server logs "routed" event).
+      if (dept !== t.assigned_department) {
+        const r = await fetch(`/api/tickets/${ticketId}/route`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          credentials: "include", body: JSON.stringify({ department: dept }),
+        });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Routing failed");
+      }
+      // Then persist the SLA if it changed.
+      if (due !== (t.due_date ?? "")) {
+        await patchTicket(ticketId, { due_date: due });
+      }
+      toast.success(tr("tkt.assignedToast"));
       onMutated?.();
-    } catch (e) { alert((e as Error).message); }
-    finally { setBusy(false); }
+      onClose();
+    } catch (e) {
+      toast.error((e as Error).message || "Assignment failed");
+    } finally {
+      setAssigning(false);
+    }
   }
 
   async function runAction(action: Action | "comment", body: Record<string, unknown>) {
@@ -336,73 +361,108 @@ export default function TicketDetailDrawer({
                 {/* Assignment & SLA — the only editable fields, pinned to the top;
                     editable only while the ticket is still open. */}
                 <Panel icon={UserCheck} title={tr("tkt.assignmentSla")}>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {/* Assign — routes to a school department (logs "routed").
-                        Once a department accepts, ownership is locked here. */}
-                    <div className="space-y-1.5">
-                      <Label>{tr("tkt.assign")}</Label>
-                      {t.accepted_at ? (
-                        <div className="flex h-9 items-center gap-2">
-                          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                            <Building2 className="h-3.5 w-3.5" />
-                            {t.assigned_department_label ?? t.assigned_department}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">{tr("tkt.accepted")}</span>
+                  {(() => {
+                    // Effective (staged if the PA has picked something, otherwise persisted).
+                    const effDept = pendingDept ?? t.assigned_department ?? "";
+                    const effDue  = pendingDue  ?? (t.due_date ?? "");
+                    const dirty   = (effDept !== (t.assigned_department ?? "")) || (effDue !== (t.due_date ?? ""));
+                    const ready   = !!effDept && !!effDue;
+                    const showBtn = canEdit && !t.accepted_at;
+                    return (
+                      <>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          {/* Assign — routes to a school department (logs "routed").
+                              Once a department accepts, ownership is locked here. */}
+                          <div className="space-y-1.5">
+                            <Label>{tr("tkt.assign")}</Label>
+                            {t.accepted_at ? (
+                              <div className="flex h-9 items-center gap-2">
+                                <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                  <Building2 className="h-3.5 w-3.5" />
+                                  {t.assigned_department_label ?? t.assigned_department}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground">{tr("tkt.accepted")}</span>
+                              </div>
+                            ) : (
+                              <Select value={effDept || undefined} onValueChange={(v) => setPendingDept(v)} disabled={!canEdit || assigning}>
+                                <SelectTrigger className="h-10"><SelectValue placeholder={tr("tkt.assignPlaceholder")} /></SelectTrigger>
+                                <SelectContent>
+                                  {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>{tr("tkt.dueDate")}</Label>
+                            {/* Button wraps the input so clicking anywhere in the
+                                cell fires showPicker(). The old bare <input> only
+                                responded to clicks on the tiny native calendar
+                                glyph. */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const el = dueDateRef.current;
+                                if (!el) return;
+                                el.focus();
+                                try { (el as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* ignore */ }
+                              }}
+                              disabled={!canEdit || assigning}
+                              className={cn(
+                                "flex h-10 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm transition-colors",
+                                "hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-ring",
+                                "disabled:cursor-not-allowed disabled:opacity-60",
+                              )}
+                            >
+                              <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <span className={cn("truncate", effDue ? "font-mono text-foreground" : "text-muted-foreground")}>
+                                {effDue ? formatDateTime(effDue) : tr("tkt.dueDatePlaceholder")}
+                              </span>
+                              <Input
+                                ref={dueDateRef}
+                                type="datetime-local"
+                                value={toLocalDateTimeInput(effDue) || ""}
+                                onChange={(e) => setPendingDue(fromLocalDateTimeInput(e.target.value) || "")}
+                                className="pointer-events-none absolute h-0 w-0 border-0 p-0 opacity-0"
+                                tabIndex={-1} aria-hidden="true"
+                              />
+                            </button>
+                          </div>
                         </div>
-                      ) : (
-                        <Select value={t.assigned_department || undefined} onValueChange={routeToDepartment} disabled={!canEdit}>
-                          <SelectTrigger className="h-9"><SelectValue placeholder={tr("tkt.assignPlaceholder")} /></SelectTrigger>
-                          <SelectContent>
-                            {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>{tr("tkt.dueDate")}</Label>
-                      <Input type="datetime-local" defaultValue={toLocalDateTimeInput(t.due_date)} disabled={!canEdit} className="h-9"
-                        onBlur={(e) => { const v = e.target.value; patch({ due_date: fromLocalDateTimeInput(v) }); }} />
-                    </div>
-                    {/* District — AI extracts when confident; PA can override
-                        or clear from the dropdown. Empty selection sends
-                        district="" which the backend maps to NULL. */}
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="flex items-center gap-1.5">
-                        <MapPin className="h-3.5 w-3.5" />
-                        {tr("tkt.district")}
-                        {!t.district && (
-                          <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-                            {tr("tkt.districtNotIdentified")}
-                          </span>
+
+                        {showBtn && (
+                          <div className="mt-4 flex flex-col gap-2">
+                            <Button
+                              size="sm"
+                              onClick={handleAssign}
+                              disabled={!ready || !dirty || assigning}
+                              className="w-full sm:w-auto sm:self-end"
+                            >
+                              {assigning ? (
+                                <><Clock className="mr-1.5 h-3.5 w-3.5 animate-spin" /> {tr("tkt.assigning")}</>
+                              ) : (
+                                <><Send className="mr-1.5 h-3.5 w-3.5" /> {tr("tkt.assignCta")}</>
+                              )}
+                            </Button>
+                            {!ready && (
+                              <p className="text-[11px] text-muted-foreground sm:text-right">{tr("tkt.assignHint")}</p>
+                            )}
+                          </div>
                         )}
-                      </Label>
-                      <Select
-                        value={t.district ?? DISTRICT_CLEAR}
-                        onValueChange={(v) => patch({ district: v === DISTRICT_CLEAR ? "" : v })}
-                        disabled={!canEdit}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder={tr("tkt.districtPlaceholder")} />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-72">
-                          <SelectItem value={DISTRICT_CLEAR}>
-                            <span className="text-muted-foreground">{tr("tkt.districtNone")}</span>
-                          </SelectItem>
-                          {TN_DISTRICTS.map((d) => (
-                            <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  {!isOpen && (
-                    <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      <Lock className="h-3 w-3" /> {tr("tkt.editOnlyOpen")}
-                    </p>
-                  )}
+
+                        {!isOpen && (
+                          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <Lock className="h-3 w-3" /> {tr("tkt.editOnlyOpen")}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </Panel>
 
-                {/* Overview — read-only case facts, incl. status + priority */}
+                {/* Overview — read-only case facts, incl. status + priority.
+                    District lives here (moved out of the Assignment panel) so
+                    it doesn't get mixed up with the workflow-critical
+                    department + SLA fields the PA has to fill in. */}
                 <SectionCard icon={ClipboardList} title={tr("petition.grpOverview")}>
                   <OverviewGrid>
                     <OverviewItem icon={User} label={tr("petition.colName")} value={t.citizen_name} />
@@ -423,6 +483,39 @@ export default function TicketDetailDrawer({
                     )}
                     <OverviewItem icon={CalendarDays} label={tr("tickets.dateRange")} value={formatDate(t.created_at)} />
                   </OverviewGrid>
+
+                  {/* District — moved here from Assignment. Still editable while
+                      the ticket is Open (AI extracts when confident; PA can
+                      override or clear).  Empty selection sends "" which the
+                      backend maps to NULL. */}
+                  <div className="mt-4 space-y-1.5">
+                    <Label className="flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {tr("tkt.district")}
+                      {!t.district && (
+                        <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                          {tr("tkt.districtNotIdentified")}
+                        </span>
+                      )}
+                    </Label>
+                    <Select
+                      value={t.district ?? DISTRICT_CLEAR}
+                      onValueChange={(v) => patch({ district: v === DISTRICT_CLEAR ? "" : v })}
+                      disabled={!canEdit}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder={tr("tkt.districtPlaceholder")} />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        <SelectItem value={DISTRICT_CLEAR}>
+                          <span className="text-muted-foreground">{tr("tkt.districtNone")}</span>
+                        </SelectItem>
+                        {TN_DISTRICTS.map((d) => (
+                          <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </SectionCard>
 
                 {/* Summary — the briefing */}
