@@ -1197,7 +1197,7 @@ export default function AiReviewPage() {
                       <Button
                         className={cn(
                           "w-full text-white !bg-none border-transparent",
-                          isSchool ? "!bg-green-600 hover:!bg-green-700" : "!bg-orange-700 hover:!bg-orange-800",
+                          isSchool ? "!bg-emerald-600 hover:!bg-emerald-700" : "!bg-amber-600 hover:!bg-amber-700",
                         )}
                         onClick={approve}
                         disabled={busy || editing}
