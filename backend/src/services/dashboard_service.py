@@ -69,6 +69,8 @@ _STATUS_DISPLAY = {
     # Terminal state for invitation/greetings visitors who came in person to
     # hand over the card/message — no review, no ticket, nothing pending.
     "COURTESY_DONE":   "Courtesy Done",
+    # PA marked reviewed without creating a ticket (see _DISPLAY_TO_DB_STATUS).
+    "DISMISSED":       "Dismissed",
 }
 
 
@@ -887,6 +889,10 @@ _DISPLAY_TO_DB_STATUS = {
     "Rescheduled":     "RESCHEDULED",
     "Awaiting Review": "AWAITING_REVIEW",
     "Courtesy Done":   "COURTESY_DONE",
+    # PA marked reviewed WITHOUT creating a ticket — courtesy audio, blank
+    # postal envelope, obvious duplicate. Row stays in the "All" list but
+    # hides from Awaiting / Reviewed for queue cleanliness.
+    "Dismissed":       "DISMISSED",
 }
 
 async def update_appointment_status(db: AsyncSession, appointment_id: int, new_status: str) -> dict:
@@ -1044,6 +1050,29 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         "name": name,
         "status": new_status,
     }
+
+
+async def dismiss_petition(db: AsyncSession, appointment_id: int, actor: str = "pa_admin") -> dict:
+    """Mark an AWAITING_REVIEW petition Dismissed — reviewed by the PA with
+    no ticket / department routing. Used for courtesy audio, blank postal
+    envelopes, or obvious duplicates that the PA doesn't want to spawn a
+    ticket for. The row stays visible in "All" only.
+
+    Refuses if the petition is already past AWAITING_REVIEW so we don't
+    accidentally reopen or double-count anything.
+    """
+    appt = await db.get(Appointment, appointment_id)
+    if appt is None:
+        raise ValueError("Petition not found.")
+    if appt.status != "AWAITING_REVIEW":
+        raise ValueError("Only awaiting-review petitions can be dismissed.")
+    old_status = appt.status
+    appt.status = "DISMISSED"
+    appt.status_id = v2.appointment_status_id_or_none("DISMISSED")
+    _log_appt_event(db, appointment_id, "status_changed",
+                    payload={"from": old_status, "to": "DISMISSED", "via": "pa_dismiss", "actor": actor})
+    await db.commit()
+    return {"status": "Dismissed", "appointment_id": appointment_id}
 
 
 async def approve_petition(db: AsyncSession, appointment_id: int, actor: str = "pa_admin") -> dict:

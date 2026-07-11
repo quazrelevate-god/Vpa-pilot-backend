@@ -23,6 +23,9 @@ import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-previ
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchAppointments } from "@/lib/api";
@@ -143,7 +146,9 @@ const pretty = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpp
 const api = (p: string) => `/api/ai-uploads${p}`;
 
 function petitionStatusKey(status: string): StatusKey {
-  return status === "Reviewed" ? "REVIEWED" : "AWAITING_REVIEW";
+  if (status === "Reviewed")  return "REVIEWED";
+  if (status === "Dismissed") return "DISMISSED";
+  return "AWAITING_REVIEW";
 }
 
 /** Category label in the active language (falls back to a prettified key). */
@@ -381,6 +386,9 @@ export default function AiReviewPage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Upload>>({});
   const [busy, setBusy] = useState(false);
+  // Dismiss confirmation — pretty Radix dialog instead of the browser's
+  // native window.confirm() (which some engines style like an "alert").
+  const [dismissOpen, setDismissOpen] = useState(false);
 
   // Default to Awaiting Review — that's the actionable queue PAs care about on
   // open. They can widen to All via the tabs if they want history.
@@ -634,22 +642,25 @@ export default function AiReviewPage() {
   }
 
   // Dismiss — mark reviewed WITHOUT creating a ticket / citizen / appointment.
-  // Uploads only; the corresponding path for citizen-submitted petitions is
-  // a status flip we haven't wired yet, so surface a clear error there for now.
-  async function dismiss() {
+  // Works for both AI uploads and citizen/staff petitions; each has its own
+  // backend endpoint but the UX is identical.
+  async function dismissConfirmed() {
     if (!review) return;
-    if (review._kind === "petition") {
-      toast.error("Dismiss is only available for AI Uploads right now.");
-      return;
-    }
-    if (!confirm("Dismiss this petition without creating a ticket? It stays in the All list for reference.")) return;
+    setDismissOpen(false);
     setBusy(true);
     try {
-      const r = await fetch(api(`/${review.id}/dismiss`), { method: "POST", credentials: "include" });
+      const url = review._kind === "petition"
+        ? `/api/appointments/${review.id}/dismiss`
+        : api(`/${review.id}/dismiss`);
+      const r = await fetch(url, { method: "POST", credentials: "include" });
       const d = await r.json().catch(() => ({}));
-      if (r.ok) { toast.success("Dismissed — no ticket created"); setReview(null); load(); }
-      else toast.error(d.error || "Dismiss failed");
-    } catch { toast.error("Network error"); } finally { setBusy(false); }
+      if (r.ok) { toast.success(t("petition.dismissedToast")); setReview(null); load(); }
+      else toast.error(d.error || t("petition.dismissFailed"));
+    } catch { toast.error(t("petition.networkError")); } finally { setBusy(false); }
+  }
+  function dismiss() {
+    if (!review) return;
+    setDismissOpen(true);
   }
 
   const retry = useCallback(async (ids: number[]) => {
@@ -1243,6 +1254,33 @@ export default function AiReviewPage() {
           </motion.div>
         </div>
       )}
+
+      {/* Dismiss confirmation dialog — replaces the browser's native
+          window.confirm() so the modal matches the rest of the app. */}
+      <Dialog open={dismissOpen} onOpenChange={setDismissOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="h-4 w-4 text-amber-600" />
+              {t("petition.dismissDialogTitle")}
+            </DialogTitle>
+            <DialogDescription>{t("petition.dismissDialogBody")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" onClick={() => setDismissOpen(false)} disabled={busy}>
+              {t("petition.cancel")}
+            </Button>
+            <Button
+              className="bg-amber-600 text-white hover:bg-amber-700 !bg-none"
+              onClick={dismissConfirmed}
+              disabled={busy}
+            >
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+              {t("petition.dismissConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

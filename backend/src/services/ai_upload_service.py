@@ -51,6 +51,18 @@ class AiUploadService:
 
     def __init__(self) -> None:
         self._worker_active = False   # single sequential worker guard
+        # Guards _worker_active + the check/spawn / check/exit windows to
+        # close the TOCTOU race where a new create_batch runs while a
+        # worker is finishing its last row — the client would find
+        # _worker_active=True and skip spawning, then the worker would
+        # exit, orphaning every row created in that gap. See _worker().
+        self._worker_lock: Optional[asyncio.Lock] = None
+
+    def _get_worker_lock(self) -> asyncio.Lock:
+        # Lazy so the lock binds to whatever event loop first calls in.
+        if self._worker_lock is None:
+            self._worker_lock = asyncio.Lock()
+        return self._worker_lock
 
     # ── Batch upload ────────────────────────────────────────────────────────────
     async def create_batch(self, files: List[UploadFile], db: AsyncSession,
@@ -122,21 +134,35 @@ class AiUploadService:
 
     # ── Background worker (sequential, one at a time) ───────────────────────────
     async def _ensure_worker(self) -> None:
-        if self._worker_active:
-            return
-        self._worker_active = True
+        async with self._get_worker_lock():
+            if self._worker_active:
+                return
+            self._worker_active = True
         asyncio.create_task(self._worker())
 
     async def _worker(self) -> None:
+        # The classic single-worker TOCTOU: if the worker sees "no more
+        # QUEUED" and starts to exit, a caller adding a new batch in that
+        # gap finds _worker_active=True and skips spawning, then the
+        # worker sets active=False — orphaning the new rows. Fix: on empty
+        # queue, take the lock and re-check under it before exiting.
         try:
             await self.recover_stale()   # re-queue anything left PROCESSING by a crash
             while True:
                 upload_id = await self._claim_next_queued()
                 if upload_id is None:
-                    break
+                    async with self._get_worker_lock():
+                        upload_id = await self._claim_next_queued()
+                        if upload_id is None:
+                            self._worker_active = False
+                            return
                 await self._process_one(upload_id)
-        finally:
-            self._worker_active = False
+        except Exception:
+            # Ensure the guard clears even on unexpected worker crash so a
+            # subsequent create_batch can restart the pipeline.
+            async with self._get_worker_lock():
+                self._worker_active = False
+            raise
 
     async def recover_stale(self, max_minutes: int = _STALE_PROCESSING_MIN) -> int:
         """

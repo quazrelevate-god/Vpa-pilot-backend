@@ -395,6 +395,23 @@ async def api_approve_petition(
     return JSONResponse(result)
 
 
+@router.post("/api/appointments/{appointment_id}/dismiss")
+async def api_dismiss_petition(
+    appointment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Dismiss a QR/staff/postal petition — mark it reviewed WITHOUT creating a
+    ticket / department routing. Used for courtesy audio, blank envelopes,
+    obvious duplicates. Row stays visible in the "All" segment only."""
+    try:
+        result = await dashboard_service.dismiss_petition(db, appointment_id, actor=user)
+        return JSONResponse(result)
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
 @router.get("/api/appointments/{appointment_id}/activity")
 async def api_appointment_activity(
     appointment_id: int,
