@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { FileText, Film, Mic, Paperclip, ExternalLink, ImageIcon } from "lucide-react";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
+import { AudioPlayer } from "@/components/ui/audio-player";
 import { cn } from "@/lib/utils";
 
 export interface GalleryAttachment {
@@ -76,10 +77,8 @@ export function AttachmentGallery({ attachments, audioTranscript, className }: A
           </SubHead>
           <div className="space-y-2">
             {audios.map((a) => (
-              <div key={a.url} className="rounded-xl border border-border bg-card p-3 shadow-card">
-                <audio controls preload="metadata" className="h-9 w-full">
-                  <source src={a.url} />
-                </audio>
+              <div key={a.url} className="space-y-2">
+                <AudioPlayer src={a.url} />
                 {audioTranscript && (
                   <details className="mt-2 group" open>
                     <summary className="flex cursor-pointer items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground">

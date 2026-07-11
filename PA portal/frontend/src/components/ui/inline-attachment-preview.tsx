@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
+import { AudioPlayer } from "@/components/ui/audio-player";
 
 interface InlineAttachmentPreviewProps {
   attachments: GalleryAttachment[];
@@ -123,20 +124,7 @@ function PreviewBody({ attachment, audioTranscript }: { attachment: GalleryAttac
   if (attachment.type === "AUDIO") {
     return (
       <div className="flex h-full min-h-0 flex-col gap-3 p-4">
-        <div className="flex flex-shrink-0 items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-3">
-          <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-brand/10 text-brand">
-            <Mic className="h-5 w-5" />
-          </span>
-          <audio
-            controls
-            controlsList="nodownload noplaybackrate"
-            preload="metadata"
-            className="h-10 min-w-0 flex-1"
-            onContextMenu={(e) => e.preventDefault()}
-          >
-            <source src={attachment.url} />
-          </audio>
-        </div>
+        <AudioPlayer src={attachment.url} className="flex-shrink-0" />
         {audioTranscript && (
           <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-muted/60 p-3">
             <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Transcript</div>

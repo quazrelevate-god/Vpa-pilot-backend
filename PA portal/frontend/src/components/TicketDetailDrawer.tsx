@@ -607,10 +607,15 @@ export default function TicketDetailDrawer({
                   <Lock className="h-4 w-4" /> {tr("tkt.close")}
                 </Button>
               )}
-              {/* Reopen is always available — closed/resolved tickets need this to come back, and even active tickets may need to be reopened after wrong closure. */}
-              <Button variant="outline" size="sm" disabled={busy} className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand" onClick={() => setActiveAction(activeAction === "reopen" ? null : "reopen")}>
-                <RotateCcw className="h-4 w-4" /> {tr("tkt.reopen")}
-              </Button>
+              {/* Reopen only shows on already-closed tickets — an open ticket has
+                  nothing to reopen, and showing the button next to Close was
+                  causing PAs to mis-click and immediately reopen what they just
+                  closed. */}
+              {isClosed && (
+                <Button variant="outline" size="sm" disabled={busy} className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand" onClick={() => setActiveAction(activeAction === "reopen" ? null : "reopen")}>
+                  <RotateCcw className="h-4 w-4" /> {tr("tkt.reopen")}
+                </Button>
+              )}
               <Button variant="outline" size="sm" className="ml-auto border-brand/40 text-brand hover:bg-brand/5 hover:text-brand" onClick={() => setTab("activity")}>
                 <MessageSquare className="h-4 w-4" /> {tr("tkt.comment")}
               </Button>
