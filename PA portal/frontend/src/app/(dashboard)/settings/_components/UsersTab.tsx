@@ -171,6 +171,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
               <Plus className="mr-1.5 h-3.5 w-3.5" /> Add user
             </Button>
           </DialogTrigger>
+          {openCreate && (
           <UserFormDialog
             title="Add new user"
             requirePassword
@@ -195,6 +196,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
               }
             }}
           />
+          )}
         </Dialog>
       }
     >
