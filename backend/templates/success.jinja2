@@ -437,10 +437,36 @@
                 if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
                 var card = document.getElementById('success-card');
                 var canvas = await html2canvas(card, {
-                    backgroundColor: '#f1f5f9',
+                    backgroundColor: '#ffffff',
                     scale: Math.min(window.devicePixelRatio || 1, 3),
                     useCORS: true,
-                    logging: false
+                    logging: false,
+                    onclone: function(clonedDoc) {
+                        // html2canvas 1.4.1 renders this card's large soft
+                        // `box-shadow` as a grey haze that fills the whole card,
+                        // AND it can't render `backdrop-filter`, so the frosted
+                        // panels collapse to muddy translucent grey. Fix BOTH in
+                        // the CLONE only — the on-screen design is untouched:
+                        // strip box-shadow + backdrop-filter and give each surface
+                        // a solid background. Also whiten the page behind the card
+                        // (clears the body's #f1f5f9 + radial-gradient tints).
+                        clonedDoc.documentElement.style.background = '#ffffff';
+                        clonedDoc.body.style.background = '#ffffff';
+
+                        var solidify = function(sel, bg) {
+                            var els = clonedDoc.querySelectorAll(sel);
+                            for (var i = 0; i < els.length; i++) {
+                                els[i].style.boxShadow = 'none';            // kills the grey haze
+                                els[i].style.backdropFilter = 'none';
+                                els[i].style.webkitBackdropFilter = 'none';
+                                els[i].style.background = bg;
+                            }
+                        };
+                        solidify('#success-card',  '#ffffff');  // main card → solid white
+                        solidify('.time-highlight', '#ffffff');  // green border differentiates it
+                        solidify('.info-card',     '#f8fafc');   // faint grey so panels read as distinct
+                        solidify('.steps-card',    '#f8fafc');
+                    }
                 });
                 var link = document.createElement('a');
                 link.download = 'grievance-' + tokenDisplay + '.png';
