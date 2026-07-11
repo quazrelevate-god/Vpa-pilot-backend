@@ -92,6 +92,58 @@ def get_file_url(storage_path: str) -> str:
     return "/api/files/" + quote(rel, safe="/")
 
 
+def get_file_size(storage_path: str) -> Optional[int]:
+    """Return the total byte size of a stored file, or None if missing.
+
+    Used by the range-aware file server to build Content-Range / Content-Length
+    headers without reading the whole object into memory first."""
+    client = _get_client()
+    if client:
+        key = storage_path.replace("\\", "/")
+        if key.startswith("uploads/"):
+            key = key[len("uploads/"):]
+        try:
+            obj = client.head_object(Bucket=_bucket(), Key=key)
+            return int(obj["ContentLength"])
+        except Exception as e:
+            logger.warning(
+                "get_file_size MinIO head failed | bucket=%s key=%s err=%s",
+                _bucket(), key, repr(e),
+            )
+            return None
+    p = Path(storage_path)
+    return p.stat().st_size if p.exists() else None
+
+
+def get_file_range_bytes(storage_path: str, start: int, end: int) -> Optional[bytes]:
+    """Return bytes [start, end] (inclusive) of a stored file, or None if missing.
+
+    On MinIO the range is delegated to get_object so only the requested slice is
+    transferred; on local disk we seek + read the slice directly."""
+    client = _get_client()
+    if client:
+        key = storage_path.replace("\\", "/")
+        if key.startswith("uploads/"):
+            key = key[len("uploads/"):]
+        try:
+            obj = client.get_object(
+                Bucket=_bucket(), Key=key, Range=f"bytes={start}-{end}"
+            )
+            return obj["Body"].read()
+        except Exception as e:
+            logger.warning(
+                "get_file_range_bytes MinIO fetch failed | bucket=%s key=%s range=%s-%s err=%s",
+                _bucket(), key, start, end, repr(e),
+            )
+            return None
+    p = Path(storage_path)
+    if not p.exists():
+        return None
+    with p.open("rb") as f:
+        f.seek(start)
+        return f.read(end - start + 1)
+
+
 def get_file_bytes(storage_path: str) -> Optional[bytes]:
     """Fetch raw bytes for a stored file. Logs the underlying error on failure
     so 404s from the file-serving endpoint can be traced back to a real cause

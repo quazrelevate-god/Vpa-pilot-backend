@@ -3,7 +3,7 @@ Staff dashboard routes — login, chart stats, appointments table, status update
 All page routes require cookie-based auth. API routes (/api/*) also require auth.
 """
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -699,38 +699,107 @@ async def api_ticket_reopen(
 _UPLOADS_ROOT = (Path.cwd() / "uploads").resolve()
 
 
+def _parse_range(range_header: str, total: int):
+    """Parse a single-range 'bytes=start-end' header against a known total size.
+
+    Returns (start, end) inclusive, or None if the header is absent/unsatisfiable
+    so the caller can fall back to a full 200 (absent) or emit a 416 (bad range).
+    Only the first range of a multi-range request is honoured — enough for media
+    seeking, which never sends multi-range."""
+    if not range_header or not range_header.startswith("bytes="):
+        return None
+    spec = range_header[len("bytes="):].split(",")[0].strip()
+    start_s, _, end_s = spec.partition("-")
+    try:
+        if start_s == "":
+            # Suffix range: last N bytes.
+            length = int(end_s)
+            if length <= 0:
+                return False
+            start = max(0, total - length)
+            end = total - 1
+        else:
+            start = int(start_s)
+            end = int(end_s) if end_s else total - 1
+    except ValueError:
+        return False
+    end = min(end, total - 1)
+    if start > end or start >= total:
+        return False
+    return start, end
+
+
 @router.get("/api/files/{file_path:path}")
 async def serve_upload(
     file_path: str,
+    request: Request,
     user: str = Depends(require_auth),
 ):
     """Serve uploaded files — requires dashboard auth. Prevents public access.
 
+    Supports HTTP Range requests so audio/video is seekable and browsers can
+    discover the true duration of header-less WebM/Opus clips (recorded by the
+    citizen-intake MediaRecorder). Without Range support such clips report an
+    Infinity duration and the player shows a bogus "0:01".
+
     Handles both storage backends transparently:
-      - MinIO configured  → fetch the object via boto3 and stream bytes back.
-      - No FILE_STORAGE_ENDPOINT → read from local uploads/ directory.
+      - MinIO configured  → head for size, fetch the requested byte range.
+      - No FILE_STORAGE_ENDPOINT → serve from local uploads/ via FileResponse,
+        which handles Range/Accept-Ranges/206 natively.
     """
     import mimetypes
-    from src.services.storage_service import get_file_bytes
+    from src.services.storage_service import (
+        get_file_bytes, get_file_size, get_file_range_bytes,
+    )
     from pathlib import PurePosixPath
 
     filename = PurePosixPath(file_path).name or "file"
     mime, _ = mimetypes.guess_type(filename)
+    media_type = mime or "application/octet-stream"
+    disposition = f'inline; filename="{filename}"'
+    range_header = request.headers.get("range")
 
     endpoint = getattr(settings, "FILE_STORAGE_ENDPOINT", None)
     if endpoint:
-        # MinIO: the key is the incoming path as-is. get_file_bytes strips a
+        # MinIO: the key is the incoming path as-is. Storage helpers strip a
         # leading "uploads/" defensively if callers still pass one.
+        total = get_file_size(file_path)
+        if total is None:
+            return JSONResponse({"error": "Not found"}, status_code=404)
+
+        base_headers = {"Content-Disposition": disposition, "Accept-Ranges": "bytes"}
+        parsed = _parse_range(range_header, total) if range_header else None
+        if parsed is False:
+            return Response(
+                status_code=416,
+                headers={**base_headers, "Content-Range": f"bytes */{total}"},
+            )
+        if parsed:
+            start, end = parsed
+            data = get_file_range_bytes(file_path, start, end)
+            if data is None:
+                return JSONResponse({"error": "Not found"}, status_code=404)
+            return Response(
+                content=data,
+                status_code=206,
+                media_type=media_type,
+                headers={
+                    **base_headers,
+                    "Content-Range": f"bytes {start}-{end}/{total}",
+                    "Content-Length": str(end - start + 1),
+                },
+            )
         data = get_file_bytes(file_path)
         if data is None:
             return JSONResponse({"error": "Not found"}, status_code=404)
         return Response(
             content=data,
-            media_type=mime or "application/octet-stream",
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+            media_type=media_type,
+            headers={**base_headers, "Content-Length": str(total)},
         )
 
-    # Local disk: keep the traversal-safe path resolution.
+    # Local disk: keep the traversal-safe path resolution. FileResponse handles
+    # Range requests, Accept-Ranges and 206 partial responses on its own.
     try:
         full_path = (_UPLOADS_ROOT / file_path).resolve()
         full_path.relative_to(_UPLOADS_ROOT.resolve())
@@ -740,8 +809,8 @@ async def serve_upload(
     if not full_path.exists() or not full_path.is_file():
         return JSONResponse({"error": "Not found"}, status_code=404)
 
-    return Response(
-        content=full_path.read_bytes(),
-        media_type=mime or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{full_path.name}"'},
+    return FileResponse(
+        path=str(full_path),
+        media_type=media_type,
+        headers={"Content-Disposition": disposition},
     )
