@@ -12,6 +12,7 @@ import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SingleDatePill } from "@/components/ui/date-range-pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -331,8 +332,8 @@ export default function SchedulingPage() {
               <Card className="flex flex-col gap-4 p-5 shadow-card-md">
                 <div>
                   <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("sched.selectDate")}</label>
-                  <Input type="date" value={selectedDate} min={todayIso()}
-                    onChange={(e) => setSelectedDate(e.target.value)} className="h-11 rounded-xl text-sm" />
+                  <SingleDatePill value={selectedDate} min={todayIso()}
+                    onChange={setSelectedDate} ariaLabel={t("sched.selectDate")} />
                 </div>
 
                 <div>

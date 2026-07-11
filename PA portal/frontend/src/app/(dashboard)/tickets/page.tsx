@@ -14,6 +14,7 @@ import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateRangePill } from "@/components/ui/date-range-pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -778,15 +779,13 @@ export default function TicketsPage() {
                       <FilterSectionLabel label={t("tickets.dateRange")}
                         onReset={(dateFrom || dateTo || dateChip) ? () => { setPage(1); setDateFrom(""); setDateTo(""); setDateChip(null); } : undefined}
                         resetLabel={t("tickets.reset")} />
-                      <div className="flex h-11 w-full items-center gap-1.5 rounded-xl border border-border bg-card px-3">
-                        <Input type="date" value={dateFrom}
-                          onChange={(e) => { setPage(1); setDateFrom(e.target.value); setDateChip("custom"); }}
-                          className="h-7 min-w-0 flex-1 border-0 p-0 text-sm shadow-none focus-visible:ring-0" aria-label={`${t("tickets.dateRange")} from`} />
-                        <span className="shrink-0 px-0.5 text-sm text-muted-foreground">→</span>
-                        <Input type="date" value={dateTo}
-                          onChange={(e) => { setPage(1); setDateTo(e.target.value); setDateChip("custom"); }}
-                          className="h-7 min-w-0 flex-1 border-0 p-0 text-sm shadow-none focus-visible:ring-0" aria-label={`${t("tickets.dateRange")} to`} />
-                      </div>
+                      <DateRangePill
+                        from={dateFrom} to={dateTo}
+                        onFrom={(v) => { setPage(1); setDateFrom(v); setDateChip("custom"); }}
+                        onTo={(v) => { setPage(1); setDateTo(v); setDateChip("custom"); }}
+                        ariaFromLabel={`${t("tickets.dateRange")} from`}
+                        ariaToLabel={`${t("tickets.dateRange")} to`}
+                      />
                     </div>
                   </div>
                 </Card>

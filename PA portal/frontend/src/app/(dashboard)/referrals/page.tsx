@@ -11,6 +11,7 @@ import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SingleDatePill } from "@/components/ui/date-range-pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
@@ -90,7 +91,11 @@ export default function ReferralsPage() {
   const [cancelling, setCancelling] = useState(false);
 
   const qrBoxRef = useRef<HTMLDivElement | null>(null);
-  const dateInputRef = useRef<HTMLInputElement | null>(null);
+  // Ref on the container div — used by the "Open a new date" empty-state
+  // CTA to scroll the picker into view. We keep the ref at the container
+  // level (rather than the internal <input>) because the input inside
+  // SingleDatePill is visually hidden (size 0).
+  const dateInputRef = useRef<HTMLDivElement | null>(null);
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
   const loadGrid = useCallback(async (d: string) => {
@@ -177,8 +182,9 @@ export default function ReferralsPage() {
   }
 
   function focusOpenDate() {
-    dateInputRef.current?.focus();
     dateInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Focus the underlying hidden <input> so keyboard flow lands there next.
+    dateInputRef.current?.querySelector<HTMLInputElement>('input[type="date"]')?.focus();
   }
 
   function exportBookings() {
@@ -261,10 +267,10 @@ export default function ReferralsPage() {
             <Card className="flex flex-col p-5 shadow-card-md">
               <CardHead icon={CalendarDays} title={t("ref.openDate")} sub={t("ref.openDateSub")} />
               <div className="flex flex-1 flex-col gap-4 pt-4">
-                <div>
+                <div ref={dateInputRef}>
                   <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("ref.date")}</label>
-                  <Input ref={dateInputRef} type="date" value={selectedDate} min={todayIso()}
-                    onChange={e => setSelectedDate(e.target.value)} className="h-11 rounded-xl text-sm" />
+                  <SingleDatePill value={selectedDate} min={todayIso()}
+                    onChange={setSelectedDate} ariaLabel={t("ref.date")} />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("ref.personsPerSlot")}</label>

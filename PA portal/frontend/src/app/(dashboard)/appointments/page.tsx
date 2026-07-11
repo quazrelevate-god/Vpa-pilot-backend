@@ -20,6 +20,7 @@ import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateRangePill as SharedDateRangePill } from "@/components/ui/date-range-pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import {
@@ -1004,56 +1005,16 @@ function DateRangePill({
   from: string; to: string;
   onFrom: (v: string) => void; onTo: (v: string) => void; onClear?: () => void;
 }) {
-  // Clicking anywhere in the pill (not just the browser's tiny calendar
-  // glyph) should pop the native date picker. showPicker() is the modern
-  // API for this; if the browser doesn't support it, focus + click still
-  // fall back to normal behavior.
-  const openPicker = (el: HTMLInputElement | null) => {
-    if (!el) return;
-    el.focus();
-    // showPicker throws in some contexts (autofocus, cross-origin, etc.) —
-    // swallow the error, focus is enough of a fallback.
-    try { (el as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* ignore */ }
-  };
-  const fromRef = useRef<HTMLInputElement>(null);
-  const toRef   = useRef<HTMLInputElement>(null);
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{label}</label>
-      <div className="grid h-11 w-full grid-cols-[1fr_auto_1fr] items-stretch overflow-hidden rounded-xl border border-border bg-card">
-        <button
-          type="button"
-          onClick={() => openPicker(fromRef.current)}
-          className="group flex items-center gap-2 px-3 text-left transition-colors hover:bg-muted/50 focus:bg-muted/60 focus:outline-none"
-          aria-label={`${label} from`}
-        >
-          <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-brand" />
-          <span className={cn("truncate text-sm", from ? "font-mono text-foreground" : "text-muted-foreground")}>
-            {from || t_from}
-          </span>
-          <Input ref={fromRef} type="date" value={from} onChange={(e) => onFrom(e.target.value)}
-            className="pointer-events-none absolute h-0 w-0 border-0 p-0 opacity-0" tabIndex={-1} aria-hidden="true" />
-        </button>
-        <span className="grid place-items-center px-1 text-sm text-muted-foreground">→</span>
-        <button
-          type="button"
-          onClick={() => openPicker(toRef.current)}
-          className="group flex items-center gap-2 px-3 text-left transition-colors hover:bg-muted/50 focus:bg-muted/60 focus:outline-none"
-          aria-label={`${label} to`}
-        >
-          <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-brand" />
-          <span className={cn("truncate text-sm", to ? "font-mono text-foreground" : "text-muted-foreground")}>
-            {to || t_to}
-          </span>
-          <Input ref={toRef} type="date" value={to} onChange={(e) => onTo(e.target.value)}
-            className="pointer-events-none absolute h-0 w-0 border-0 p-0 opacity-0" tabIndex={-1} aria-hidden="true" />
-        </button>
-      </div>
+      <SharedDateRangePill
+        from={from} to={to} onFrom={onFrom} onTo={onTo}
+        ariaFromLabel={`${label} from`} ariaToLabel={`${label} to`}
+      />
     </div>
   );
 }
-const t_from = "From";
-const t_to   = "To";
 
 function SortButton({
   active, direction, label, onClick,
