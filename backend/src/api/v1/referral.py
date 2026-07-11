@@ -14,6 +14,7 @@ Admin (auth — PA portal):
   POST /api/v1/referral/admin/slots/{slot_id}/block|unblock|close|reopen
   GET  /api/v1/referral/admin/dates
   GET  /api/v1/referral/admin/bookings?target_date=YYYY-MM-DD
+  POST /api/v1/referral/admin/cancel-all-bookings?target_date=YYYY-MM-DD
 """
 from pathlib import Path
 from datetime import date as date_type, datetime as datetime_type
@@ -244,6 +245,27 @@ async def admin_slot_action(
 async def admin_dates(db: AsyncSession = Depends(get_db), user: str = Depends(require_auth)):
     try:
         return JSONResponse(await referral_service.get_open_dates(db))
+    except Exception as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Admin: cancel every booking on a date ────────────────────────────────────
+
+@router.post("/admin/cancel-all-bookings")
+async def admin_cancel_all_bookings(
+    target_date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Executive can't make it on `target_date` (defaults to today): mark all
+    PENDING bookings CANCELLED and close that date's availability. Mirror of
+    the scheduling section's cancel-all — but referrals don't have a waiting
+    queue so bookings are simply cancelled, not requeued.
+    """
+    try:
+        parsed = datetime_type.strptime(target_date, "%Y-%m-%d").date() if target_date else date_type.today()
+        return JSONResponse(await referral_service.cancel_all_bookings(db, parsed))
     except Exception as e:
         await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=500)

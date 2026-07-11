@@ -335,6 +335,60 @@ class ReferralService:
         await db.commit()
         return {"slot_id": slot_id, "status": "AVAILABLE"}
 
+    # ── Admin: cancel every booking on a date (executive unavailable) ────────
+
+    async def cancel_all_bookings(self, db: AsyncSession, target_date: date) -> Dict:
+        """Executive can't make it on `target_date`: mark every PENDING booking
+        as CANCELLED, reset each slot's booked_count to 0, close the day's
+        availability (status='CANCELLED') so no new bookings can come in.
+
+        CAME / NOT_CAME rows are preserved as-is — floor attendance already
+        happened for those, so history stays accurate. Only forward-looking
+        PENDING bookings are cancelled.
+        """
+        avail = await db.scalar(
+            select(ReferralAvailability)
+            .where(ReferralAvailability.date   == target_date)
+            .where(ReferralAvailability.status == "ACTIVE")
+        )
+        if not avail:
+            return {"cancelled_bookings": 0, "cancelled_date": False,
+                    "date": target_date.isoformat(),
+                    "message": "No open referral date to cancel."}
+
+        slots_result = await db.execute(
+            select(ReferralSlot).where(ReferralSlot.availability_id == avail.id)
+        )
+        slots = slots_result.scalars().all()
+        slot_ids = [s.id for s in slots]
+
+        cancelled = 0
+        if slot_ids:
+            bookings_result = await db.execute(
+                select(ReferralBooking)
+                .where(ReferralBooking.slot_id.in_(slot_ids))
+                .where(ReferralBooking.status == "PENDING")
+            )
+            for b in bookings_result.scalars().all():
+                b.status = "CANCELLED"
+                cancelled += 1
+
+        for s in slots:
+            s.booked_count = 0
+            if s.status == "FULL":
+                s.status = "AVAILABLE"
+
+        avail.status = "CANCELLED"
+        await db.commit()
+
+        return {
+            "cancelled_bookings": cancelled,
+            "cancelled_date":     True,
+            "date":               target_date.isoformat(),
+            "date_label":         target_date.strftime("%d %b %Y"),
+            "message":            f"Cancelled {cancelled} booking(s) for {target_date.strftime('%d %b %Y')}.",
+        }
+
     # ── Admin: slot grid for a date ──────────────────────────────────────────
 
     async def get_slots_for_date(self, db: AsyncSession, target_date: date) -> Dict:

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   UserPlus, RefreshCw, Plus, QrCode, Lock, Unlock, Users, CalendarDays,
-  ExternalLink, ChevronRight, Download, CalendarPlus,
+  ExternalLink, ChevronRight, Download, CalendarPlus, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -67,9 +67,10 @@ function barColor(s: Slot): string {
 
 function bookingStatus(status: string | undefined, t: (k: string) => string): { label: string; cls: string } {
   switch ((status || "").toUpperCase()) {
-    case "CAME":     return { label: t("ref.stCame"),    cls: "bg-emerald-100 text-emerald-700" };
-    case "NOT_CAME": return { label: t("ref.stNotCame"), cls: "bg-red-100 text-red-700" };
-    default:         return { label: t("ref.stPending"), cls: "bg-slate-100 text-slate-600" };
+    case "CAME":      return { label: t("ref.stCame"),      cls: "bg-emerald-100 text-emerald-700" };
+    case "NOT_CAME":  return { label: t("ref.stNotCame"),   cls: "bg-red-100 text-red-700" };
+    case "CANCELLED": return { label: t("ref.stCancelled"), cls: "bg-slate-200 text-slate-600" };
+    default:          return { label: t("ref.stPending"),   cls: "bg-slate-100 text-slate-600" };
   }
 }
 
@@ -85,6 +86,8 @@ export default function ReferralsPage() {
   const [maxCapacity, setMaxCapacity] = useState(12);
   const [confirmSlot, setConfirmSlot] = useState<Slot | null>(null);
   const [busyId, setBusyId]     = useState<number | null>(null);
+  const [showCancel, setShowCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const qrBoxRef = useRef<HTMLDivElement | null>(null);
   const dateInputRef = useRef<HTMLInputElement | null>(null);
@@ -108,7 +111,7 @@ export default function ReferralsPage() {
     try { const r = await fetch("/api/v1/referral/admin/qr"); const d = await r.json(); if (!d.error) setQr(d); } catch {}
   }, []);
 
-  useEffect(() => { loadGrid(selectedDate); loadBookings(selectedDate); }, [selectedDate, loadGrid, loadBookings]);
+  useEffect(() => { loadGrid(selectedDate); loadBookings(selectedDate); setShowCancel(false); }, [selectedDate, loadGrid, loadBookings]);
   useEffect(() => { loadOpenDates(); loadQr(); }, [loadOpenDates, loadQr]);
 
   // ── Render QR client-side via qrcodejs CDN ──────────────────────────────────
@@ -156,6 +159,21 @@ export default function ReferralsPage() {
       else toast.error(d.error || `Failed to ${action}.`);
     } catch { toast.error("Network error."); }
     finally { setBusyId(null); }
+  }
+
+  async function handleCancelAll() {
+    setCancelling(true);
+    try {
+      const url = `/api/v1/referral/admin/cancel-all-bookings?target_date=${encodeURIComponent(selectedDate)}`;
+      const res = await fetch(url, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(t("ref.cancelAllToast"), { description: data.message });
+        setShowCancel(false);
+        loadGrid(selectedDate); loadBookings(selectedDate); loadOpenDates();
+      } else toast.error(data.error || "Failed to cancel bookings.");
+    } catch { toast.error("Network error."); }
+    finally { setCancelling(false); }
   }
 
   function focusOpenDate() {
@@ -312,10 +330,31 @@ export default function ReferralsPage() {
                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{t("ref.openBadge")}</span>
                 )}
               </div>
-              <button onClick={() => loadGrid(selectedDate)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                <RefreshCw className={cn("h-3.5 w-3.5", loadingGrid && "animate-spin")} /> {t("ref.refresh")}
-              </button>
+              <div className="flex items-center gap-2">
+                {grid?.has_availability && (
+                  showCancel ? (
+                    <>
+                      <span className="text-sm font-semibold text-destructive">
+                        {t("ref.cancelAllConfirmFor").replace("{date}", dateLabel)}
+                      </span>
+                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setShowCancel(false)}>{t("ref.no")}</Button>
+                      <Button size="sm" className="rounded-xl bg-red-600 text-white hover:bg-red-700" onClick={handleCancelAll} disabled={cancelling}>
+                        {cancelling ? t("ref.cancelling") : t("ref.yesCancelAll")}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline"
+                      className="h-9 rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                      onClick={() => setShowCancel(true)}>
+                      <Trash2 className="h-4 w-4" /> {t("ref.cancelAllFor").replace("{date}", dateLabel)}
+                    </Button>
+                  )
+                )}
+                <button onClick={() => loadGrid(selectedDate)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                  <RefreshCw className={cn("h-3.5 w-3.5", loadingGrid && "animate-spin")} /> {t("ref.refresh")}
+                </button>
+              </div>
             </div>
 
             <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px]">
