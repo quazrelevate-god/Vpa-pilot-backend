@@ -102,7 +102,11 @@ class AiUploadService:
                 mime_type=mime,
                 status=STATUS_QUEUED,
                 forced_category=forced_category,
-                grievance_category=forced_category,   # show the chosen category up-front
+                # NOTE: grievance_category is left blank until Gemini writes
+                # it during processing. The PA-forced batch category used to
+                # be shown as a QUEUED-state preview, but the override is now
+                # ignored (see process_upload) so this preview would be
+                # misleading — the row would flip categories after extraction.
                 source=(source or "ai_scan").strip() or "ai_scan",
                 created_at=datetime.utcnow(),
             )
@@ -202,8 +206,14 @@ class AiUploadService:
             )
             latency_ms = int((time.monotonic() - t0) * 1000)
 
-            # PA's batch category overrides the AI one (unless none was chosen)
-            final_category = forced_category or result.category.value
+            # Category is always what Gemini classified. The PA-set
+            # forced_category on the batch is DEPRECATED — kept on the row
+            # only as an audit of what the PA thought the batch was — because
+            # PAs were frequently picking the wrong category and stomping the
+            # (more accurate) AI value. The PA can still fix an individual
+            # row from the drawer if the AI genuinely gets it wrong.
+            _ = forced_category  # intentionally unused — see comment above
+            final_category = result.category.value
 
             payload = result.model_dump(mode="json")
             payload["category"] = final_category
