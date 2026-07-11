@@ -1420,15 +1420,14 @@ function DocPreview({ review, t }: { review: Upload; t: (k: string) => string })
       // Chrome/Edge's built-in PDF viewer is treated as a plugin and gets
       // silently blocked inside a `sandbox` iframe — you'd see either a
       // blank pane or the 🚫 no-entry glyph. Serve without sandbox and
-      // hide the toolbar via the #toolbar=0 fragment. <object> is the
-      // preferred renderer; <iframe> is the fallback for browsers that
-      // don't wire up <object type="application/pdf">. Matches the
-      // pattern used by @/components/ui/inline-attachment-preview.tsx.
+      // hide the toolbar via the #toolbar=0 fragment.
+      // Single <iframe> only — we used to wrap in <object> with iframe as
+      // fallback, but Chromium loads BOTH concurrently which surfaces the
+      // "This site attempted to download multiple files automatically"
+      // browser warning whenever the inline PDF viewer can't take over.
       const src = `${review.file_url}#toolbar=0&navpanes=0&view=FitH`;
       return (
-        <object data={src} type="application/pdf" className="h-full min-h-[240px] w-full rounded-lg border border-border bg-white">
-          <iframe src={src} title="document" className="h-full min-h-[240px] w-full rounded-lg border border-border bg-white" />
-        </object>
+        <iframe src={src} title="document" className="h-full min-h-[240px] w-full rounded-lg border border-border bg-white" />
       );
     }
     // eslint-disable-next-line @next/next/no-img-element

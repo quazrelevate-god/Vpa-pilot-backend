@@ -159,11 +159,13 @@ function PreviewBody({ attachment, audioTranscript }: { attachment: GalleryAttac
   const isPdf = /\.pdf(\?|$)/i.test(attachment.url) || /\.pdf$/i.test(attachment.name);
   if (isPdf) {
     const src = `${attachment.url}#toolbar=0&navpanes=0&view=FitH`;
-    return (
-      <object data={src} type="application/pdf" className="h-full w-full">
-        <iframe src={src} title={attachment.name} className="h-full w-full" />
-      </object>
-    );
+    // Single <iframe> only — previously wrapped in <object> with iframe as
+    // fallback, but Chromium loads BOTH concurrently and if the browser
+    // can't render the PDF inline (missing plugin, restricted context) it
+    // counts each as an auto-download → the "This site attempted to
+    // download multiple files automatically" prompt.  One iframe = one
+    // fetch, no false-positive multi-download warning.
+    return <iframe src={src} title={attachment.name} className="h-full w-full" />;
   }
 
   // Non-PDF documents — render an info card with no link out.
