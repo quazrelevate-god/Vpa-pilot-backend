@@ -557,7 +557,11 @@ class AppointmentService:
             relative_path = f"attachments/{token_number}/{filename}"
             
             from src.services.storage_service import save_file
-            storage_url = save_file(audio_bytes, relative_path, content_type="audio/webm")
+            # Offload the blocking write to a worker thread so the audio upload can
+            # run concurrently with the image/PDF uploads and never stalls the loop.
+            storage_url = await asyncio.to_thread(
+                save_file, audio_bytes, relative_path, content_type="audio/webm"
+            )
             # Return the size from the bytes we just wrote — Path().stat() only
             # works on local disk and silently reported 0 on MinIO.
             return storage_url, len(audio_bytes)
@@ -772,11 +776,10 @@ class AppointmentService:
                     # Update name in case citizen re-submitted with a different name
                     citizen.encrypted_name = encrypted_name
                 
-                # Step 9: Save audio recording if provided
+                # Step 9: Audio is uploaded in Step 11, concurrently with the
+                # image/PDF attachments (keyed by token, which we already have).
                 audio_url = None
                 audio_size = 0
-                if audio_recording:
-                    audio_url, audio_size = await self._save_audio_recording(audio_recording, token_assigned)
                 
                 # Step 10: Create appointment record.
                 # Direct-submit petitions land in AWAITING_REVIEW so the PA can
@@ -794,7 +797,7 @@ class AppointmentService:
                 # Courtesy + audio → PENDING so the durable STT worker will
                 # retry if the initial async call fails. NULL for everything
                 # else so the poll stays cheap.
-                initial_transcript_status = 'PENDING' if (is_courtesy and audio_url) else None
+                initial_transcript_status = 'PENDING' if (is_courtesy and audio_recording) else None
 
                 # Resolve status/category/priority to admin FK ids (v2)
                 appt_ids = v2.new_appointment_ids(
@@ -845,10 +848,27 @@ class AppointmentService:
                             db, appointment, 'NO_SLOT_SELECTED', commit=False
                         )
                 
-                # Step 11: Save uploaded files and create attachment records
+                # Step 11: Upload media + create attachment records.
+                # Audio AND every image/PDF upload CONCURRENTLY in one gather (each
+                # blocking write runs in a worker thread), so total upload time is
+                # max(...) instead of the sum, and the loop is never stalled.
                 attachments_created = []
-                
-                # Add audio recording as attachment if present
+                upload_files = [f for f in files if f.filename][:self.MAX_ATTACHMENTS]
+
+                audio_coro = (
+                    self._save_audio_recording(audio_recording, token_assigned)
+                    if audio_recording else None
+                )
+                file_coros = [self._save_uploaded_file(f, token_assigned) for f in upload_files]
+
+                results = await asyncio.gather(*(([audio_coro] if audio_coro else []) + file_coros))
+                if audio_coro:
+                    audio_url, audio_size = results[0]
+                    file_metadatas = list(results[1:])
+                else:
+                    file_metadatas = list(results)
+
+                # Audio recording as an attachment
                 if audio_url:
                     audio_attachment = AppointmentAttachment(
                         appointment_id=appointment.id,
@@ -860,26 +880,19 @@ class AppointmentService:
                     )
                     db.add(audio_attachment)
                     attachments_created.append(audio_attachment)
-                
-                # Save all uploaded files concurrently (each save runs its blocking
-                # I/O in a worker thread). Doing them in parallel instead of one
-                # after another is what keeps a multi-image submission fast.
-                upload_files = [f for f in files if f.filename][:self.MAX_ATTACHMENTS]
-                if upload_files:
-                    file_metadatas = await asyncio.gather(
-                        *[self._save_uploaded_file(f, token_assigned) for f in upload_files]
+
+                # Image/PDF attachments
+                for file_metadata in file_metadatas:
+                    attachment = AppointmentAttachment(
+                        appointment_id=appointment.id,
+                        attachment_type=file_metadata['attachment_type'],
+                        storage_url=file_metadata['storage_url'],
+                        file_size_bytes=file_metadata['file_size_bytes'],
+                        mime_type=file_metadata['mime_type'],
+                        created_at=current_time
                     )
-                    for file_metadata in file_metadatas:
-                        attachment = AppointmentAttachment(
-                            appointment_id=appointment.id,
-                            attachment_type=file_metadata['attachment_type'],
-                            storage_url=file_metadata['storage_url'],
-                            file_size_bytes=file_metadata['file_size_bytes'],
-                            mime_type=file_metadata['mime_type'],
-                            created_at=current_time
-                        )
-                        db.add(attachment)
-                        attachments_created.append(attachment)
+                    db.add(attachment)
+                    attachments_created.append(attachment)
             
             # Step 11: Mark gatekeeper session as used and carry venue to appointment
             session_stmt = select(GatekeeperSession).where(
