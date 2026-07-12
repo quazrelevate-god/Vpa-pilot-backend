@@ -108,6 +108,10 @@ const DICT: Record<Lang, Record<string, string>> = {
     "form.remarks":     "Resolution remarks (required)",
     "form.attachProof": "Attach proof (required)",
     "form.filesSelected":"file(s) selected",
+    "attach.cta":        "Attach",
+    "attach.tooLarge":   "File exceeds the 5 MB limit.",
+    "attach.added":      "Attachment added.",
+    "attach.failed":     "Could not add the attachment.",
 
     "state.done":       "This ticket is",
     "state.doneAfter":  "No action needed from your department.",
@@ -212,6 +216,10 @@ const DICT: Record<Lang, Record<string, string>> = {
     "form.remarks":     "தீர்வுக் குறிப்புகள் (கட்டாயம்)",
     "form.attachProof": "ஆதாரம் இணை (கட்டாயம்)",
     "form.filesSelected":"கோப்பு(கள்) தேர்ந்தெடுக்கப்பட்டன",
+    "attach.cta":        "இணைப்பு",
+    "attach.tooLarge":   "கோப்பு 5 MB வரம்பை மீறுகிறது.",
+    "attach.added":      "இணைப்பு சேர்க்கப்பட்டது.",
+    "attach.failed":     "இணைப்பைச் சேர்க்க முடியவில்லை.",
 
     "state.done":       "இந்த டிக்கெட்",
     "state.doneAfter":  "உங்கள் துறையிடமிருந்து மேலும் நடவடிக்கை தேவையில்லை.",

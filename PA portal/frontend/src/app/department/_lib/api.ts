@@ -139,6 +139,16 @@ export async function resolveTicket(id: number, remarks: string, files: File[]):
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
 }
 
+/** Attach a supporting file (≤5 MB, image/PDF) to a ticket's case. */
+export async function uploadDeptTicketAttachment(id: number, file: File): Promise<void> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(base(`/tickets/${id}/attachment`), {
+    method: "POST", credentials: "include", body: fd,
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
+}
+
 // ── SLA compute — purely client-side, derived from priority + created_at ────
 // Targets mirror backend defaults: critical=3d, high=7d, medium=14d, low=28d.
 export const SLA_TARGET_DAYS: Record<string, number> = {

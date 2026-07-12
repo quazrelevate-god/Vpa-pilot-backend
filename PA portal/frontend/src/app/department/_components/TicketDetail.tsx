@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import {
   X, Hash, User, Phone, Flag, Building2, Landmark, ShieldCheck, CalendarClock,
@@ -23,7 +23,7 @@ import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-previ
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useDeptLang } from "../_lib/i18n";
 import {
-  acceptTicket, forwardTicket, progressTicket, resolveTicket,
+  acceptTicket, forwardTicket, progressTicket, resolveTicket, uploadDeptTicketAttachment,
   slaFor, formatRemaining,
   type DeptTicketDetail, type DeptOption,
 } from "../_lib/api";
@@ -324,6 +324,7 @@ function ActionBar({
   const { t } = useDeptLang();
   const [mode, setMode] = useState<Mode>("");
   const [busy, setBusy] = useState(false);
+  const attachRef = useRef<HTMLInputElement>(null);
 
   const s = detail.status;
   const ownedByOther = detail.department !== myDept;
@@ -355,10 +356,40 @@ function ActionBar({
     }
   }
 
+  async function handleAttach(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";               // allow re-picking the same file
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error(t("attach.tooLarge")); return; }
+    setBusy(true);
+    try {
+      await uploadDeptTicketAttachment(detail.id, file);
+      toast.success(t("attach.added"));
+      onDone();                        // refresh so the new file shows
+    } catch (err) {
+      toast.error((err as Error).message || t("attach.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="border-t border-border bg-card px-6 py-4">
       {mode === "" && (
         <>
+          <input
+            ref={attachRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            className="hidden"
+            onChange={handleAttach}
+          />
+          <div className="mb-2 flex justify-end">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => attachRef.current?.click()}>
+              <Paperclip className="mr-1.5 h-3.5 w-3.5" /> {t("attach.cta")}
+            </Button>
+          </div>
+
           {(s === "assigned" || s === "awaiting_department") && (
             <div className="flex flex-wrap items-center gap-2">
               <Button className="aurora-primary flex-1 text-white" disabled={busy} onClick={() => run(() => acceptTicket(detail.id), "Accepted")}>

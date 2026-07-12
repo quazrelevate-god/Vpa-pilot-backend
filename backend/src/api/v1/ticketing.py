@@ -58,29 +58,19 @@ async def list_departments():
 @dept_router.get("/api/files/{file_path:path}")
 async def dept_serve_upload(
     file_path: str,
+    request: Request,
     department: str = Depends(require_department),
 ):
-    """Serve an uploaded file scoped by the dept session cookie."""
-    from src.services.storage_service import get_file_bytes
+    """Serve an uploaded file scoped by the dept session cookie.
 
-    filename = PurePosixPath(file_path).name or "file"
-    mime, _ = mimetypes.guess_type(filename)
+    Delegates to the shared streamer so the dept workspace gets the same
+    behaviour as the PA portal: worker-thread MinIO fetches (no event-loop
+    stalls), hard browser caching + 304, Range/audio-seek support, and the
+    traversal-safe local-disk path resolution.
+    """
+    from src.api.v1.dashboard import serve_stored_file
 
-    # storage_service.get_file_url strips the leading `uploads/` when
-    # generating the URL, so the incoming file_path is bucket-relative. On
-    # local-disk mode get_file_bytes reads via Path(storage_path) — that's
-    # CWD-relative, so we prepend `uploads/` back on. In MinIO mode
-    # get_file_bytes already strips the prefix again, so this is safe either
-    # way.
-    key = file_path if file_path.startswith("uploads/") else f"uploads/{file_path}"
-    data = get_file_bytes(key)
-    if data is None:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-    return Response(
-        content=data,
-        media_type=mime or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
-    )
+    return await serve_stored_file(file_path, request)
 
 
 # ── Department auth ────────────────────────────────────────────────────────────
@@ -165,6 +155,24 @@ async def dept_resolve(ticket_id: int, remarks: str = Form(...),
         metas.append({"storage_url": url, "mime_type": mime,
                       "file_size_bytes": len(raw), "original_filename": f.filename})
     return JSONResponse(await department_service.dept_resolve(db, ticket_id, department, remarks, metas))
+
+
+@dept_router.post("/api/tickets/{ticket_id}/attachment")
+async def dept_add_ticket_attachment(ticket_id: int, file: UploadFile = File(...),
+                                     department: str = Depends(require_department),
+                                     db: AsyncSession = Depends(get_db)):
+    """Attach a supporting file (≤5 MB, image/PDF) to a ticket's case from the dept detail."""
+    raw = await file.read()
+    try:
+        result = await department_service.dept_add_attachment(
+            db, ticket_id, department, file.filename or "file", raw,
+            file.content_type or "application/octet-stream",
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if result is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse(result)
 
 
 # ── PA (monitoring) — NEW actions only ────────────────────────────────────────

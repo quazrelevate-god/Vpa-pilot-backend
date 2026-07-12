@@ -803,6 +803,66 @@ async def get_appointment_detail(db: AsyncSession, appointment_id: int) -> Optio
     return build_appointment_row(appt) if appt else None
 
 
+# ── PA-added attachments (petition review + ticket detail) ────────────────────
+_ATTACH_ALLOWED_MIMES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+_ATTACH_MAX_BYTES = 5 * 1024 * 1024   # 5 MB
+
+
+async def appointment_id_for_ticket(db: AsyncSession, ticket_id: int) -> Optional[int]:
+    """Resolve a ticket to its underlying appointment (tickets are 1:1 with appointments)."""
+    from src.models.ticket_models import Ticket
+    return await db.scalar(select(Ticket.appointment_id).where(Ticket.id == ticket_id))
+
+
+async def add_case_attachment(
+    db: AsyncSession, appointment_id: int, filename: str, raw: bytes, mime: str,
+) -> Optional[Dict[str, Any]]:
+    """Attach a PA-uploaded file (≤5 MB, image/PDF) to a case's appointment.
+
+    Stored in the same per-token folder as the citizen's own media so the
+    petition review and the ticket detail both surface it. Raises ValueError on
+    a bad type/size; returns None if the appointment doesn't exist.
+    """
+    import asyncio
+    import re
+    import secrets
+    from pathlib import Path
+    from datetime import datetime as _dt
+    from src.services.storage_service import save_file, get_file_url
+
+    if mime not in _ATTACH_ALLOWED_MIMES:
+        raise ValueError(f"Unsupported file type '{mime}'. Allowed: JPG, PNG, WEBP, PDF.")
+    if len(raw) > _ATTACH_MAX_BYTES:
+        raise ValueError("File exceeds the 5 MB limit.")
+
+    appt = await db.get(Appointment, appointment_id)
+    if appt is None:
+        return None
+
+    attachment_type = "IMAGE" if mime.startswith("image/") else "DOCUMENT"
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename or "file")
+    ts = _dt.utcnow().strftime("%Y%m%d_%H%M%S")
+    # Same unified folder as citizen uploads: attachments/{token}/...
+    rel = f"attachments/{appt.token_assigned}/pa_{ts}_{secrets.token_hex(6)}_{safe}"
+    storage_url = await asyncio.to_thread(save_file, raw, rel, mime)
+
+    att = AppointmentAttachment(
+        appointment_id=appt.id,
+        attachment_type=attachment_type,
+        storage_url=storage_url,
+        file_size_bytes=len(raw),
+        mime_type=mime,
+    )
+    db.add(att)
+    await db.commit()
+    return {
+        "url": get_file_url(storage_url),
+        "type": attachment_type,
+        "mime": mime,
+        "name": Path(storage_url).name,
+    }
+
+
 async def update_appointment_derived_fields(
     db: AsyncSession,
     appointment_id: int,

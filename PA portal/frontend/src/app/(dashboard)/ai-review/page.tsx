@@ -1,13 +1,13 @@
 "use client";
 
-import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { memo, useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from "react";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, ShieldAlert,
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
   ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
   CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2, MapPin,
-  Mail, Landmark, Archive,
+  Mail, Landmark, Archive, Paperclip,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
-import { fetchAppointments } from "@/lib/api";
+import { fetchAppointments, uploadAppointmentAttachment } from "@/lib/api";
 import { MINISTRY_DISPLAY, DISTRICT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
 import type { AppointmentRow, AppointmentAttachment } from "@/lib/types";
 
@@ -384,6 +384,7 @@ export default function AiReviewPage() {
   const [loading, setLoading] = useState(true);
   const [review, setReview] = useState<Upload | null>(null);
   const [editing, setEditing] = useState(false);
+  const reviewAttachRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<Partial<Upload>>({});
   const [busy, setBusy] = useState(false);
   // Dismiss confirmation — pretty Radix dialog instead of the browser's
@@ -621,6 +622,28 @@ export default function AiReviewPage() {
         else toast.error(d.error || "Save failed");
       }
     } catch (e) { toast.error((e as Error).message || "Network error"); } finally { setBusy(false); }
+  }
+
+  async function handleReviewAttach(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";               // allow re-picking the same file
+    if (!file || !review) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error(t("attach.tooLarge")); return; }
+    setBusy(true);
+    try {
+      const att = await uploadAppointmentAttachment(review.id, file);
+      setReview({
+        ...review,
+        attachments: [...(review.attachments ?? []),
+          { name: att.name, url: att.url, type: att.type as AppointmentAttachment["type"] }],
+      });
+      toast.success(t("attach.added"));
+      load();
+    } catch (err) {
+      toast.error((err as Error).message || t("attach.failed"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function approve() {
@@ -1166,6 +1189,25 @@ export default function AiReviewPage() {
                     <SelectField label={t("petition.fDistrict")} icon={MapPin} editing={editing} value={form.district} fallback={review.district} options={DISTRICTS} labels={DISTRICT_DISPLAY} onChange={v => setForm(f => ({ ...f, district: v }))} />
                   </div>
                 </section>
+
+                {/* Add attachment — available while editing a petition */}
+                {editing && review._kind === "petition" && (
+                  <section className="rounded-2xl border border-dashed border-border bg-card p-4 shadow-card">
+                    <input
+                      ref={reviewAttachRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      className="hidden"
+                      onChange={handleReviewAttach}
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[13px] text-muted-foreground">{t("attach.help")}</span>
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => reviewAttachRef.current?.click()}>
+                        <Paperclip className="mr-1.5 h-3.5 w-3.5" /> {t("attach.cta")}
+                      </Button>
+                    </div>
+                  </section>
+                )}
 
                 {/* Summary */}
                 <section className="rounded-2xl border border-border bg-card p-5 shadow-card">

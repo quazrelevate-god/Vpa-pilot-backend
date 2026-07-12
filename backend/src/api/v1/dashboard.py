@@ -2,7 +2,7 @@
 Staff dashboard routes — login, chart stats, appointments table, status updates.
 All page routes require cookie-based auth. API routes (/api/*) also require auth.
 """
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -412,6 +412,28 @@ async def api_dismiss_petition(
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
+@router.post("/api/appointments/{appointment_id}/attachment")
+async def api_add_appointment_attachment(
+    appointment_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Attach a PA-uploaded file (≤5 MB, image/PDF) to a petition from the review drawer."""
+    raw = await file.read()
+    try:
+        result = await dashboard_service.add_case_attachment(
+            db, appointment_id, file.filename or "file", raw,
+            file.content_type or "application/octet-stream",
+        )
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if result is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse(result)
+
+
 @router.get("/api/appointments/{appointment_id}/activity")
 async def api_appointment_activity(
     appointment_id: int,
@@ -630,6 +652,33 @@ async def api_ticket_comment(
     return JSONResponse(data)
 
 
+@router.post("/api/tickets/{ticket_id}/attachment")
+async def api_add_ticket_attachment(
+    ticket_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(get_current_login),
+):
+    """Attach a PA-uploaded file (≤5 MB, image/PDF) to a ticket's case, from the ticket drawer."""
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    appointment_id = await dashboard_service.appointment_id_for_ticket(db, ticket_id)
+    if appointment_id is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    raw = await file.read()
+    try:
+        result = await dashboard_service.add_case_attachment(
+            db, appointment_id, file.filename or "file", raw,
+            file.content_type or "application/octet-stream",
+        )
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if result is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse(result)
+
+
 @router.post("/api/tickets/{ticket_id}/resolve")
 async def api_ticket_resolve(
     ticket_id: int,
@@ -747,6 +796,19 @@ async def serve_upload(
       - No FILE_STORAGE_ENDPOINT → serve from local uploads/ via FileResponse,
         which handles Range/Accept-Ranges/206 natively.
     """
+    return await serve_stored_file(file_path, request)
+
+
+async def serve_stored_file(file_path: str, request: Request) -> Response:
+    """Shared, auth-agnostic file streamer for the /dashboard and /department
+    `/api/files` routes — each caller enforces its own auth before delegating.
+
+    - MinIO: size / range / full fetch, each offloaded to a worker thread
+      (boto3 is blocking); hard browser caching with an ETag 304 short-circuit.
+    - Local disk: traversal-safe FileResponse (native Range / ETag / 304).
+    """
+    import asyncio
+    import hashlib
     import mimetypes
     from src.services.storage_service import (
         get_file_bytes, get_file_size, get_file_range_bytes,
@@ -763,11 +825,29 @@ async def serve_upload(
     if endpoint:
         # MinIO: the key is the incoming path as-is. Storage helpers strip a
         # leading "uploads/" defensively if callers still pass one.
-        total = get_file_size(file_path)
+        # boto3 is blocking — run every storage call in a worker thread so it
+        # never stalls the async event loop (one slow fetch used to freeze the
+        # whole portal).
+        total = await asyncio.to_thread(get_file_size, file_path)
         if total is None:
             return JSONResponse({"error": "Not found"}, status_code=404)
 
-        base_headers = {"Content-Disposition": disposition, "Accept-Ranges": "bytes"}
+        # Attachments have unique, immutable filenames (token_hex), so the
+        # browser can cache them hard and skip the re-fetch that made repeat
+        # views + audio seeks slow. `private` keeps them out of shared/CDN
+        # caches — they're auth-gated citizen PII. A stable ETag lets a repeat
+        # request 304 without ever touching MinIO.
+        etag = '"%s"' % hashlib.md5(("%s:%d" % (file_path, total)).encode()).hexdigest()
+        cache_headers = {
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "ETag": etag,
+        }
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=cache_headers)
+
+        base_headers = {
+            "Content-Disposition": disposition, "Accept-Ranges": "bytes", **cache_headers,
+        }
         parsed = _parse_range(range_header, total) if range_header else None
         if parsed is False:
             return Response(
@@ -776,7 +856,7 @@ async def serve_upload(
             )
         if parsed:
             start, end = parsed
-            data = get_file_range_bytes(file_path, start, end)
+            data = await asyncio.to_thread(get_file_range_bytes, file_path, start, end)
             if data is None:
                 return JSONResponse({"error": "Not found"}, status_code=404)
             return Response(
@@ -789,7 +869,7 @@ async def serve_upload(
                     "Content-Length": str(end - start + 1),
                 },
             )
-        data = get_file_bytes(file_path)
+        data = await asyncio.to_thread(get_file_bytes, file_path)
         if data is None:
             return JSONResponse({"error": "Not found"}, status_code=404)
         return Response(
@@ -812,5 +892,10 @@ async def serve_upload(
     return FileResponse(
         path=str(full_path),
         media_type=media_type,
-        headers={"Content-Disposition": disposition},
+        headers={
+            "Content-Disposition": disposition,
+            # FileResponse already sends ETag/Last-Modified and handles
+            # If-None-Match / Range / 304 itself; just make it cacheable.
+            "Cache-Control": "private, max-age=31536000, immutable",
+        },
     )

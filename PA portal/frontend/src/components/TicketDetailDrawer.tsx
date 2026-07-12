@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import {
   ArrowRight, MessageSquare, CheckCircle2, Lock, RotateCcw, Send, Building2,
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/detail-primitives";
 import type { TicketDetail } from "@/lib/types";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
-import { fetchTicket, patchTicket, ticketAction } from "@/lib/api";
+import { fetchTicket, patchTicket, ticketAction, uploadTicketAttachment } from "@/lib/api";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR,
   MINISTRY_DISPLAY, CATEGORY_DISPLAY, CATEGORY_DISPLAY_TA, CLOSURE_REASON_DISPLAY,
@@ -149,6 +149,7 @@ export default function TicketDetailDrawer({
   const { lang, t: tr } = useLang();
 
   const [commentText, setCommentText] = useState("");
+  const attachRef = useRef<HTMLInputElement>(null);
   const [closureReason, setClosureReason] = useState("");
   const [closeNotes, setCloseNotes] = useState("");
   const [reopenReason, setReopenReason] = useState("");
@@ -223,6 +224,24 @@ export default function TicketDetailDrawer({
       setCommentText(""); setClosureReason(""); setCloseNotes(""); setReopenReason("");
     } catch (e) { alert((e as Error).message); }
     finally { setBusy(false); }
+  }
+
+  async function handleAttach(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";               // allow re-picking the same file
+    if (!file || ticketId == null) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error(tr("attach.tooLarge")); return; }
+    setBusy(true);
+    try {
+      await uploadTicketAttachment(ticketId, file);
+      setData(await fetchTicket(ticketId));   // refresh so the new file shows
+      onMutated?.();
+      toast.success(tr("attach.added"));
+    } catch (err) {
+      toast.error((err as Error).message || tr("attach.failed"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const t = data;
@@ -618,7 +637,17 @@ export default function TicketDetailDrawer({
                     rows={3}
                     className="border-0 p-1 shadow-none focus-visible:ring-0"
                   />
-                  <div className="mt-2 flex justify-end">
+                  <div className="mt-2 flex justify-end gap-2">
+                    <input
+                      ref={attachRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      className="hidden"
+                      onChange={handleAttach}
+                    />
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => attachRef.current?.click()}>
+                      <Paperclip className="h-3.5 w-3.5" /> {tr("attach.cta")}
+                    </Button>
                     <Button size="sm" disabled={busy || !commentText.trim()} onClick={() => runAction("comment", { text: commentText })}>
                       <Send className="h-3.5 w-3.5" /> Comment
                     </Button>

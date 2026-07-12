@@ -169,6 +169,18 @@ async def _get_owned(db: AsyncSession, ticket_id: int, department: str) -> Ticke
     return t
 
 
+async def dept_add_attachment(db: AsyncSession, ticket_id: int, department: str,
+                              filename: str, raw: bytes, mime: str) -> Optional[dict]:
+    """Attach a PA/dept-uploaded file (≤5 MB, image/PDF) to the ticket's case.
+
+    Scoped to the acting department (403 if the ticket isn't theirs); reuses the
+    shared appointment-attachment logic so it surfaces everywhere the case does.
+    """
+    t = await _get_owned(db, ticket_id, department)
+    from src.services.dashboard_service import add_case_attachment
+    return await add_case_attachment(db, t.appointment_id, filename, raw, mime)
+
+
 async def dept_accept(db: AsyncSession, ticket_id: int, department: str) -> dict:
     t = await _get_owned(db, ticket_id, department)
     # New assigns land at ASSIGNED; legacy rows may still be AWAITING_DEPARTMENT.

@@ -176,6 +176,35 @@ export async function ticketAction(
   return r.json();
 }
 
+export interface UploadedAttachment {
+  url: string;
+  type: string;
+  mime: string;
+  name: string;
+}
+
+/** Attach a PA-uploaded file (≤5 MB, image/PDF) to a ticket's case. */
+export async function uploadTicketAttachment(id: number, file: File): Promise<UploadedAttachment> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(`/api/tickets/${id}/attachment`, {
+    method: "POST", credentials: "include", body: fd,
+  });
+  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+/** Attach a PA-uploaded file (≤5 MB, image/PDF) to a petition/appointment. */
+export async function uploadAppointmentAttachment(id: number, file: File): Promise<UploadedAttachment> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(`/api/appointments/${id}/attachment`, {
+    method: "POST", credentials: "include", body: fd,
+  });
+  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
 export async function updateAppointmentStatus(
   id: number,
   status: AppointmentStatus,
