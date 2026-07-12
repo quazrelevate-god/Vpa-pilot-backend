@@ -51,6 +51,25 @@ function galleryType(mime?: string): GalleryAttachment["type"] {
 export default function TicketDetail({ detail, departments, myDept, onClose, onDone }: Props) {
   const { t, lang } = useDeptLang();
   const [tab, setTab] = useState("details");
+  const attachRef = useRef<HTMLInputElement>(null);
+  const [attaching, setAttaching] = useState(false);
+
+  async function handleAttach(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";               // allow re-picking the same file
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error(t("attach.tooLarge")); return; }
+    setAttaching(true);
+    try {
+      await uploadDeptTicketAttachment(detail.id, file);
+      toast.success(t("attach.added"));
+      onDone();                        // refresh so the new file shows
+    } catch (err) {
+      toast.error((err as Error).message || t("attach.failed"));
+    } finally {
+      setAttaching(false);
+    }
+  }
 
   const toGallery = (a: DeptTicketDetail["attachments"][number]): GalleryAttachment => ({
     name: a.name || "attachment", url: a.url, type: galleryType(a.mime),
@@ -87,6 +106,16 @@ export default function TicketDetail({ detail, departments, myDept, onClose, onD
             </div>
           </div>
 
+          <input
+            ref={attachRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            className="hidden"
+            onChange={handleAttach}
+          />
+          <Button variant="outline" size="sm" disabled={attaching} className="flex-shrink-0" onClick={() => attachRef.current?.click()}>
+            <Paperclip className="mr-1.5 h-4 w-4" /> {t("attach.cta")}
+          </Button>
           <button
             onClick={onClose}
             className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -324,7 +353,6 @@ function ActionBar({
   const { t } = useDeptLang();
   const [mode, setMode] = useState<Mode>("");
   const [busy, setBusy] = useState(false);
-  const attachRef = useRef<HTMLInputElement>(null);
 
   const s = detail.status;
   const ownedByOther = detail.department !== myDept;
@@ -356,40 +384,10 @@ function ActionBar({
     }
   }
 
-  async function handleAttach(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";               // allow re-picking the same file
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error(t("attach.tooLarge")); return; }
-    setBusy(true);
-    try {
-      await uploadDeptTicketAttachment(detail.id, file);
-      toast.success(t("attach.added"));
-      onDone();                        // refresh so the new file shows
-    } catch (err) {
-      toast.error((err as Error).message || t("attach.failed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="border-t border-border bg-card px-6 py-4">
       {mode === "" && (
         <>
-          <input
-            ref={attachRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,application/pdf"
-            className="hidden"
-            onChange={handleAttach}
-          />
-          <div className="mb-2 flex justify-end">
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => attachRef.current?.click()}>
-              <Paperclip className="mr-1.5 h-3.5 w-3.5" /> {t("attach.cta")}
-            </Button>
-          </div>
-
           {(s === "assigned" || s === "awaiting_department") && (
             <div className="flex flex-wrap items-center gap-2">
               <Button className="aurora-primary flex-1 text-white" disabled={busy} onClick={() => run(() => acceptTicket(detail.id), "Accepted")}>

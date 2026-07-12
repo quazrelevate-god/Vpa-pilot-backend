@@ -312,6 +312,20 @@ export default function TicketDetailDrawer({
               )}
             </div>
           </div>
+          {t && (
+            <>
+              <input
+                ref={attachRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="hidden"
+                onChange={handleAttach}
+              />
+              <Button variant="outline" size="sm" disabled={busy} className="shrink-0" onClick={() => attachRef.current?.click()}>
+                <Paperclip className="h-4 w-4" /> {tr("attach.cta")}
+              </Button>
+            </>
+          )}
           <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
             <X className="h-5 w-5" />
           </SheetClose>
@@ -637,17 +651,7 @@ export default function TicketDetailDrawer({
                     rows={3}
                     className="border-0 p-1 shadow-none focus-visible:ring-0"
                   />
-                  <div className="mt-2 flex justify-end gap-2">
-                    <input
-                      ref={attachRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      className="hidden"
-                      onChange={handleAttach}
-                    />
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => attachRef.current?.click()}>
-                      <Paperclip className="h-3.5 w-3.5" /> {tr("attach.cta")}
-                    </Button>
+                  <div className="mt-2 flex justify-end">
                     <Button size="sm" disabled={busy || !commentText.trim()} onClick={() => runAction("comment", { text: commentText })}>
                       <Send className="h-3.5 w-3.5" /> Comment
                     </Button>
