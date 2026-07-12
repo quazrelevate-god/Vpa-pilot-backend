@@ -69,6 +69,12 @@ function todayIso(): string {
   return now.toISOString().split("T")[0];
 }
 
+function nowTimeIst(): string {
+  // Current IST wall-clock as "HH:MM" — used to block past times when opening today.
+  const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return now.toISOString().slice(11, 16);
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SchedulingPage() {
@@ -264,6 +270,13 @@ export default function SchedulingPage() {
   const cfg = confirmSlot ? getSlotDialog(confirmSlot) : null;
   const dateLabel = grid?.date_label ?? selectedDate;
 
+  // When opening TODAY, past times can't be booked — restrict the pickers to
+  // "now" onward and block a window that has already fully passed. Future dates
+  // are unrestricted. Mirrors the server-side guard in set_mla_availability.
+  const isToday       = selectedDate === todayIso();
+  const minTime       = isToday ? nowTimeIst() : undefined;
+  const windowPast    = isToday && availTo <= nowTimeIst();
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -339,11 +352,15 @@ export default function SchedulingPage() {
                 <div>
                   <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("sched.availableWindow")}</label>
                   <div className="flex items-center gap-2">
-                    <Input type="time" value={availFrom} onChange={(e) => setAvailFrom(e.target.value)} className="h-11 flex-1 rounded-xl text-sm" />
+                    <Input type="time" min={minTime} value={availFrom} onChange={(e) => setAvailFrom(e.target.value)} className="h-11 flex-1 rounded-xl text-sm" />
                     <span className="text-sm text-muted-foreground">–</span>
-                    <Input type="time" value={availTo} onChange={(e) => setAvailTo(e.target.value)} className="h-11 flex-1 rounded-xl text-sm" />
+                    <Input type="time" min={minTime} value={availTo} onChange={(e) => setAvailTo(e.target.value)} className="h-11 flex-1 rounded-xl text-sm" />
                   </div>
-                  <p className="mt-2 rounded-lg bg-muted/40 px-3 py-2 text-[12px] text-muted-foreground">{t("sched.windowHint")}</p>
+                  {windowPast ? (
+                    <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-[12px] font-medium text-red-600">{t("sched.windowPast")}</p>
+                  ) : (
+                    <p className="mt-2 rounded-lg bg-muted/40 px-3 py-2 text-[12px] text-muted-foreground">{t("sched.windowHint")}</p>
+                  )}
                 </div>
 
                 <div>
@@ -359,7 +376,7 @@ export default function SchedulingPage() {
                 </div>
 
                 <Button className="aurora-primary h-11 w-full rounded-xl" onClick={handleOpenDate}
-                  disabled={openingDate || !selectedDate || availFrom >= availTo}>
+                  disabled={openingDate || !selectedDate || availFrom >= availTo || windowPast}>
                   <Plus className="mr-1.5 h-4 w-4" /> {openingDate ? t("sched.opening") : t("sched.openThisDate")}
                 </Button>
               </Card>

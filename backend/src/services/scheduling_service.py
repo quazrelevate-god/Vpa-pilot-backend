@@ -79,11 +79,37 @@ class SchedulingService:
             available_to = time(16, 0)
         if available_from >= available_to:
             raise ValueError("available_from must be before available_to.")
-        if target_date < (datetime.utcnow() + timedelta(hours=5, minutes=30)).date():
+        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        today_ist = now_ist.date()
+        if target_date < today_ist:
             raise ValueError(
                 f"Cannot open a past date ({target_date.strftime('%d %b %Y')}). "
                 "Only today or future dates are allowed."
             )
+
+        # For today, a slot whose start time has already passed can never be
+        # booked. Plan availability up front so we (a) block those past slots and
+        # (b) refuse a window that is entirely behind us (e.g. opening 2–4 PM at
+        # 6 PM). Future dates keep every in-window slot.
+        past_cutoff = now_ist.time() if target_date == today_ist else None
+
+        def _slot_bookable(start: time) -> bool:
+            if not (available_from <= start < available_to):
+                return False
+            if past_cutoff is not None and start <= past_cutoff:
+                return False
+            return True
+
+        planned = [(n, s, e, _slot_bookable(s)) for n, s, e in _slot_times()]
+        if not any(is_open for *_, is_open in planned):
+            if past_cutoff is not None:
+                raise ValueError(
+                    f"Cannot open {available_from.strftime('%I:%M %p').lstrip('0')}–"
+                    f"{available_to.strftime('%I:%M %p').lstrip('0')} for today — that "
+                    f"time window has already passed (it is "
+                    f"{now_ist.strftime('%I:%M %p').lstrip('0')} now)."
+                )
+            raise ValueError("The selected time window has no bookable slots.")
 
         existing_result = await db.execute(
             select(MLADailyAvailability)
@@ -115,10 +141,9 @@ class SchedulingService:
         await db.flush()
 
         available_slots_count = 0
-        for slot_num, start, end in _slot_times():
-            in_window = available_from <= start < available_to
-            slot_status = "AVAILABLE" if in_window else "BLOCKED"
-            if in_window:
+        for slot_num, start, end, is_open in planned:
+            slot_status = "AVAILABLE" if is_open else "BLOCKED"
+            if is_open:
                 available_slots_count += 1
             db.add(AppointmentSlot(
                 availability_id = avail.id,
