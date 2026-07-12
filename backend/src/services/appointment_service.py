@@ -519,7 +519,7 @@ class AppointmentService:
         from src.core.config import settings
         return settings.MAX_FILE_SIZE_MB
 
-    async def _save_audio_recording(self, audio_base64: str, token_number: int) -> str:
+    async def _save_audio_recording(self, audio_base64: str, token_number: int) -> tuple[Optional[str], int]:
         """
         Save base64 encoded audio recording to disk.
         
@@ -550,28 +550,34 @@ class AppointmentService:
                     detail=f"Audio recording too long. Maximum allowed is {settings.AUDIO_MAX_DURATION_SECONDS // 60} minutes."
                 )
             
-            # Generate filename and save via storage_service
-            filename = f"audio_{token_number}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.webm"
-            relative_path = f"audio/{filename}"
+            # Generate filename and save via storage_service. All media for one
+            # submission lives in a single folder keyed by the token (the only id
+            # available before appointment.id exists): attachments/{token}/...
+            filename = f"audio_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.webm"
+            relative_path = f"attachments/{token_number}/{filename}"
             
             from src.services.storage_service import save_file
-            return save_file(audio_bytes, relative_path, content_type="audio/webm")
-            
+            storage_url = save_file(audio_bytes, relative_path, content_type="audio/webm")
+            # Return the size from the bytes we just wrote — Path().stat() only
+            # works on local disk and silently reported 0 on MinIO.
+            return storage_url, len(audio_bytes)
+
         except Exception as e:
             logger.info(f"[AUDIO SAVE ERROR] Failed to save audio: {e}")
-            return None
+            return None, 0
     
     async def _save_uploaded_file(
         self,
         file: UploadFile,
-        appointment_id: int
+        folder_id: int
     ) -> Dict[str, Any]:
         """
         Save uploaded file to disk and return metadata.
         
         Args:
             file: FastAPI UploadFile object
-            appointment_id: ID of the appointment this file belongs to
+            folder_id: token that groups this submission's media
+                       (stored under attachments/{folder_id}/...)
         
         Returns:
             Dict containing file metadata:
@@ -609,10 +615,10 @@ class AppointmentService:
             
             # Generate unique filename
             timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-            safe_filename = f"{appointment_id}_{timestamp}_{secrets.token_hex(8)}_{self._sanitize_filename(file.filename)}"
-            
+            safe_filename = f"{folder_id}_{timestamp}_{secrets.token_hex(8)}_{self._sanitize_filename(file.filename)}"
+
             # Save via storage_service (MinIO on VPS if configured, else local disk)
-            relative_path = f"attachments/{appointment_id}/{safe_filename}"
+            relative_path = f"attachments/{folder_id}/{safe_filename}"
             
             from src.services.storage_service import save_file
             # save_file is blocking (local disk write or MinIO/boto3 network put).
@@ -768,8 +774,9 @@ class AppointmentService:
                 
                 # Step 9: Save audio recording if provided
                 audio_url = None
+                audio_size = 0
                 if audio_recording:
-                    audio_url = await self._save_audio_recording(audio_recording, token_assigned)
+                    audio_url, audio_size = await self._save_audio_recording(audio_recording, token_assigned)
                 
                 # Step 10: Create appointment record.
                 # Direct-submit petitions land in AWAITING_REVIEW so the PA can
@@ -843,10 +850,6 @@ class AppointmentService:
                 
                 # Add audio recording as attachment if present
                 if audio_url:
-                    from pathlib import Path
-                    audio_path = Path(audio_url)
-                    audio_size = audio_path.stat().st_size if audio_path.exists() else 0
-                    
                     audio_attachment = AppointmentAttachment(
                         appointment_id=appointment.id,
                         attachment_type='AUDIO',
@@ -864,7 +867,7 @@ class AppointmentService:
                 upload_files = [f for f in files if f.filename][:self.MAX_ATTACHMENTS]
                 if upload_files:
                     file_metadatas = await asyncio.gather(
-                        *[self._save_uploaded_file(f, appointment.id) for f in upload_files]
+                        *[self._save_uploaded_file(f, token_assigned) for f in upload_files]
                     )
                     for file_metadata in file_metadatas:
                         attachment = AppointmentAttachment(
