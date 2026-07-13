@@ -103,18 +103,24 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
   // Settings nav — visible only to super_admin when the feature flag is on.
   const [showSettings, setShowSettings] = useState(false);
   const [role, setRole] = useState<string | null>(null);
+  const [me, setMe] = useState<{ full_name?: string; login_name?: string; role?: string } | null>(null);
   useEffect(() => {
     (async () => {
       try {
-        const [flags, me] = await Promise.all([
+        const [flags, meRes] = await Promise.all([
           fetch("/api/v1/features", { credentials: "include" }).then((r) => r.ok ? r.json() : null),
           fetch("/api/v1/me", { credentials: "include" }).then((r) => r.ok ? r.json() : null),
         ]);
-        setShowSettings(Boolean(flags?.superadmin_ui) && me?.role === "super_admin");
-        setRole(me?.role ?? null);
+        setShowSettings(Boolean(flags?.superadmin_ui) && meRes?.role === "super_admin");
+        setRole(meRes?.role ?? null);
+        setMe(meRes ?? null);
       } catch { /* soft-fail — Settings just stays hidden */ }
     })();
   }, [pathname]);
+
+  // Signed-in display name for the footer card (falls back gracefully).
+  const displayName = me?.full_name || me?.login_name || user;
+  const displaySub = me?.login_name && me?.full_name ? `@${me.login_name}` : t("nav.paOffice");
 
   // Roles that only get a slice of the portal. Everyone else (super_admin / pa
   // / auditor) sees every room.
@@ -161,7 +167,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
             "flex min-w-0 flex-1 items-center gap-3 rounded-xl transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             expanded ? "px-2" : "justify-center px-0",
           )}
-          title="NamKural — Petition Desk"
+          title={`${t("brand.name")} — ${t("brand.tagline")}`}
         >
           <span className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-2xl border border-[#CFE0FB] bg-gradient-to-br from-white to-[#EAF1FE] text-[#1E40AF] shadow-[0_2px_8px_rgba(47,111,237,0.12)]">
             <OpsLogo className="h-[22px] w-[22px]" />
@@ -169,9 +175,9 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
           {expanded && (
             <span className="min-w-0 leading-tight">
               <span className="block truncate text-[15px] font-bold leading-snug tracking-tight text-foreground">
-                NamKural
+                {t("brand.name")}
               </span>
-              <span className="mt-0.5 block truncate text-[11px] font-medium text-muted-foreground">Petition Desk</span>
+              <span className="mt-0.5 block truncate text-[11px] font-medium text-muted-foreground">{t("brand.tagline")}</span>
             </span>
           )}
         </Link>
@@ -316,8 +322,8 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
               <Landmark className="h-[18px] w-[18px]" />
             </div>
             <div className="min-w-0 flex-1 leading-tight">
-              <div className="truncate text-sm font-semibold text-foreground">{t("nav.paOffice")}</div>
-              <div className="truncate text-[11px] text-muted-foreground">Secretariat, Chennai</div>
+              <div className="truncate text-sm font-semibold text-foreground">{displayName}</div>
+              <div className="truncate text-[11px] text-muted-foreground">{displaySub}</div>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -330,7 +336,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="top" className="w-52">
                 <DropdownMenuLabel className="text-[12px] text-muted-foreground">
-                  Signed in as <span className="font-semibold text-foreground">{user}</span>
+                  Signed in as <span className="font-semibold text-foreground">{displayName}</span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -350,8 +356,8 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                aria-label={`Account: ${t("nav.paOffice")}`}
-                title={`${t("nav.paOffice")} · Secretariat, Chennai`}
+                aria-label={`Account: ${displayName}`}
+                title={displayName}
                 className="mx-auto grid h-10 w-10 place-items-center rounded-xl border border-border bg-card text-accent-foreground shadow-card transition-colors hover:bg-sidebar-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Landmark className="h-[18px] w-[18px]" />
@@ -359,7 +365,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" side="right" className="w-52">
               <DropdownMenuLabel className="text-[12px] text-muted-foreground">
-                Signed in as <span className="font-semibold text-foreground">{user}</span>
+                Signed in as <span className="font-semibold text-foreground">{displayName}</span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem
