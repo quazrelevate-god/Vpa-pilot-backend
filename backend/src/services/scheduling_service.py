@@ -207,13 +207,19 @@ class SchedulingService:
         )
         slots = result.scalars().all()
 
+        # For today, a slot whose start time has passed can't be booked.
+        now_ist  = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        is_today = target_date == now_ist.date()
+        now_t    = now_ist.time()
+
         slot_list = []
         any_available = False
         for s in slots:
             if s.status == "BLOCKED":
                 continue
             remaining   = s.max_capacity - s.booked_count
-            is_bookable = s.status == "AVAILABLE" and remaining > 0
+            is_past     = is_today and s.start_time <= now_t
+            is_bookable = s.status == "AVAILABLE" and remaining > 0 and not is_past
             if is_bookable:
                 any_available = True
             slot_list.append({
@@ -304,6 +310,13 @@ class SchedulingService:
             raise ValueError("That slot has been blocked by the PA office.")
         if slot.booked_count >= slot.max_capacity:
             raise ValueError("Slot full, kindly select another slot.")
+        # Reject a slot whose time has already passed today.
+        avail_date = await db.scalar(
+            select(MLADailyAvailability.date).where(MLADailyAvailability.id == slot.availability_id)
+        )
+        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        if avail_date == now_ist.date() and slot.start_time <= now_ist.time():
+            raise ValueError("That time slot has already passed. Please pick a later one.")
 
         sub_index        = slot.booked_count
         interval_minutes = max(1, SLOT_DURATION // slot.max_capacity)

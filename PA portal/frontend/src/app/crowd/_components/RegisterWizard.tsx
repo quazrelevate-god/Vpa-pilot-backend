@@ -42,10 +42,18 @@ export default function RegisterWizard({
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files) return;
+    const MAX_TOTAL = 5 * 1024 * 1024;   // 5 MB total across ALL attachments
+    let used = photosRef.current.reduce((sum, p) => sum + p.file.size, 0);
     const next: Photo[] = [];
-    for (let i = 0; i < files.length; i++) next.push({ file: files[i], url: URL.createObjectURL(files[i]) });
-    setPhotos((p) => [...p, ...next]);
-  }, []);
+    let rejected = 0;
+    for (let i = 0; i < files.length; i++) {
+      if (used + files[i].size > MAX_TOTAL) { rejected++; continue; }
+      used += files[i].size;
+      next.push({ file: files[i], url: URL.createObjectURL(files[i]) });
+    }
+    if (rejected) toast.error(t("Total attachments must be under 5 MB", "மொத்த இணைப்புகள் 5 MB க்குள் இருக்க வேண்டும்"));
+    if (next.length) setPhotos((p) => [...p, ...next]);
+  }, [t]);
   const removeFile = useCallback((idx: number) => {
     setPhotos((p) => {
       const target = p[idx];

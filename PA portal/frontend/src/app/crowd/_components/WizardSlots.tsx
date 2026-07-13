@@ -18,8 +18,9 @@ export default function WizardSlots({
   onPickSlot: (id: number) => void;
   onPersons: (n: number) => void;
 }) {
-  const { t } = useT();
-  const dateLabel = date ? new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }) : "";
+  const { t, lang } = useT();
+  const locale = lang === "ta" ? "ta-IN" : "en-GB";
+  const dateLabel = date ? new Date(date + "T00:00:00").toLocaleDateString(locale, { weekday: "short", day: "2-digit", month: "short", year: "numeric" }) : "";
 
   return (
     <div>
@@ -40,9 +41,9 @@ export default function WizardSlots({
               <button key={d.date} onClick={() => onPickDate(d.date)}
                 className={cn("min-w-[68px] shrink-0 rounded-xl border p-2 text-center transition-colors",
                   on ? "border-[#1E40AF] bg-[#1E40AF] text-white" : "border-slate-200 bg-white")}>
-                <div className={cn("text-[0.66rem] font-bold uppercase", on ? "text-white/85" : "text-slate-500")}>{dt.toLocaleDateString("en-US", { weekday: "short" })}</div>
+                <div className={cn("text-[0.66rem] font-bold uppercase", on ? "text-white/85" : "text-slate-500")}>{dt.toLocaleDateString(locale, { weekday: "short" })}</div>
                 <div className="text-[1.1rem] font-black leading-tight">{dt.getDate()}</div>
-                <div className={cn("text-[0.62rem] font-bold", on ? "text-white/85" : "text-slate-400")}>{dt.toLocaleDateString("en-US", { month: "short" })}</div>
+                <div className={cn("text-[0.62rem] font-bold", on ? "text-white/85" : "text-slate-400")}>{dt.toLocaleDateString(locale, { month: "short" })}</div>
                 {d.open != null && <div className={cn("mt-0.5 text-[0.6rem] font-bold", on ? "text-white" : "text-emerald-600")}>{d.open} {t("slots", "இடம்")}</div>}
               </button>
             );
@@ -55,16 +56,17 @@ export default function WizardSlots({
       ) : !slots ? (
         <Skeleton className="mt-4 h-32 rounded-xl" />
       ) : (
-        <SlotGrid slots={slots} dateLabel={dateLabel} slot={slot} persons={persons} onPickSlot={onPickSlot} onPersons={onPersons} />
+        <SlotGrid slots={slots} date={date} dateLabel={dateLabel} slot={slot} persons={persons} onPickSlot={onPickSlot} onPersons={onPersons} />
       )}
     </div>
   );
 }
 
 function SlotGrid({
-  slots, dateLabel, slot, persons, onPickSlot, onPersons,
+  slots, date, dateLabel, slot, persons, onPickSlot, onPersons,
 }: {
   slots: Slot[];
+  date: string | null;
   dateLabel: string;
   slot: number | null;
   persons: number;
@@ -72,7 +74,14 @@ function SlotGrid({
   onPersons: (n: number) => void;
 }) {
   const { t } = useT();
-  const openCount = slots.filter((s) => s.available && s.remaining > 0).length;
+  // A slot on today whose start time has passed can't be booked (device is IST,
+  // matching the server's slot times) — mirrors the citizen form.
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const nowHM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const isToday = date === todayStr;
+  const isPast = (s: Slot) => isToday && s.start <= nowHM;
+  const openCount = slots.filter((s) => s.available && s.remaining > 0 && !isPast(s)).length;
 
   return (
     <>
@@ -89,7 +98,8 @@ function SlotGrid({
 
       <div className="grid grid-cols-2 gap-2.5">
         {slots.map((s) => {
-          const ok = s.available && s.remaining > 0;
+          const past = isPast(s);
+          const ok = s.available && s.remaining > 0 && !past;
           const sel = slot === s.id;
           const blocked = s.status === "BLOCKED";
           return (
@@ -102,7 +112,10 @@ function SlotGrid({
               <div className={cn("text-[0.84rem] font-bold", ok || sel ? "text-slate-900" : "text-slate-400")}>{s.label}</div>
               <div className={cn("mt-0.5 text-[0.7rem] font-bold",
                 ok ? "text-emerald-600" : "uppercase text-slate-400")}>
-                {ok ? `${s.remaining}/${s.max_capacity} ${t("seats", "இடம்")}` : blocked ? t("Blocked", "மூடியது") : t("Full", "நிரம்பியது")}
+                {ok ? `${s.remaining}/${s.max_capacity} ${t("seats", "இடம்")}`
+                  : past ? t("Passed", "முடிந்தது")
+                    : blocked ? t("Blocked", "மூடியது")
+                      : t("Full", "நிரம்பியது")}
               </div>
             </button>
           );

@@ -9,21 +9,21 @@ import { useT } from "../_lib/i18n";
 import { Camera, FileText, X } from "../_lib/icons";
 import type { Photo } from "./RegisterWizard";
 
-// 13 grievance categories (value = backend key, label = display).
-export const CATS: [string, string][] = [
-  ["action_required", "Action Required"],
-  ["proposals", "Proposals"],
-  ["transfer_requests", "Transfer Request"],
-  ["pension_requests", "Pension Request"],
-  ["school_admission", "School Admission"],
-  ["job_requests", "Job Request"],
-  ["rti", "RTI"],
-  ["associations_unions", "Associations / Unions"],
-  ["school_upgradation", "School Upgradation"],
-  ["invitation", "Invitation"],
-  ["greetings", "Greetings"],
-  ["general", "General"],
-  ["other", "Other"],
+// 13 grievance categories (value = backend key, then EN + தமிழ் display).
+export const CATS: [string, string, string][] = [
+  ["action_required", "Action Required", "உடனடி நடவடிக்கை தேவை"],
+  ["proposals", "Proposals", "முன்மொழிவுகள்"],
+  ["transfer_requests", "Transfer Request", "பணியிட மாற்றக் கோரிக்கைகள்"],
+  ["pension_requests", "Pension Request", "ஓய்வூதியக் கோரிக்கைகள்"],
+  ["school_admission", "School Admission", "பள்ளி சேர்க்கை"],
+  ["job_requests", "Job Request", "வேலைவாய்ப்பு கோரிக்கைகள்"],
+  ["rti", "RTI", "தகவல் அறியும் உரிமை"],
+  ["associations_unions", "Associations / Unions", "சங்கங்கள் / தொழிற்சங்கங்கள்"],
+  ["school_upgradation", "School Upgradation", "பள்ளி தரம் உயர்த்துதல்"],
+  ["invitation", "Invitation", "அழைப்பிதழ்"],
+  ["greetings", "Greetings", "வாழ்த்து செய்திகள்"],
+  ["general", "General", "பொது மனுக்கள்"],
+  ["other", "Other", "பிற"],
 ];
 
 function FieldLabel({ children, required, optional }: { children: React.ReactNode; required?: boolean; optional?: boolean }) {
@@ -53,7 +53,7 @@ export default function WizardDetails({
   onAddFiles: (files: FileList | null) => void;
   onRemoveFile: (idx: number) => void;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   return (
@@ -75,7 +75,7 @@ export default function WizardDetails({
             <SelectValue placeholder={t("— Select —", "— தேர்வு —")} />
           </SelectTrigger>
           <SelectContent>
-            {CATS.map(([val, label]) => <SelectItem key={val} value={val}>{label}</SelectItem>)}
+            {CATS.map(([val, en, ta]) => <SelectItem key={val} value={val}>{lang === "ta" ? ta : en}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>

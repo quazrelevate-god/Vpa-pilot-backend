@@ -30,8 +30,9 @@ export default function WizardReview({
   slots: Slot[] | null;
   persons: number;
 }) {
-  const { t } = useT();
-  const catLabel = CATS.find((c) => c[0] === category)?.[1] || "—";
+  const { t, lang } = useT();
+  const cat = CATS.find((c) => c[0] === category);
+  const catLabel = cat ? (lang === "ta" ? cat[2] : cat[1]) : "—";
   const chosen = slot && slots ? slots.find((s) => s.id === slot) : null;
 
   return (
@@ -47,7 +48,7 @@ export default function WizardReview({
           <div className="text-[0.72rem] font-bold uppercase tracking-wide text-emerald-700">{t("Appointment", "சந்திப்பு")}</div>
           <div className="mt-2 flex items-center gap-2.5 font-bold text-slate-800">
             <Calendar className="h-[18px] w-[18px] text-emerald-700" />
-            {new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+            {new Date(date + "T00:00:00").toLocaleDateString(lang === "ta" ? "ta-IN" : "en-GB", { day: "2-digit", month: "short", year: "numeric" })}
           </div>
           <div className="mt-1.5 flex items-center gap-2.5 font-bold text-slate-800">
             <Clock className="h-[18px] w-[18px] text-emerald-700" />
