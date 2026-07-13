@@ -10,6 +10,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Writes the real Duration into MediaRecorder WebM (Android/Chrome omit it,
+         so players mis-report length + can't seek). Optional — the recorder
+         gracefully falls back to the raw blob if this can't load. -->
+    <script defer src="https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.5/fix-webm-duration.js"></script>
 
     <style>
         * {
@@ -2380,29 +2384,46 @@
                             _stopActiveTracks();
                             return;
                         }
-                        var audioBlob = new Blob(audioChunks, { type: blobMime });
-                        var audioUrl  = URL.createObjectURL(audioBlob);
+                        var rawBlob    = new Blob(audioChunks, { type: blobMime });
+                        var durationMs = Date.now() - recordingStartTime;
 
-                        document.getElementById('audioPlayer').src              = audioUrl;
-                        document.getElementById('audioPreview').style.display   = 'block';
+                        // Finalise once we have the (possibly duration-fixed) blob.
+                        function finish(audioBlob) {
+                            var audioUrl = URL.createObjectURL(audioBlob);
+                            document.getElementById('audioPlayer').src            = audioUrl;
+                            document.getElementById('audioPreview').style.display = 'block';
 
-                        var totalElapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-                        var totalMin = Math.floor(totalElapsed / 60);
-                        var totalSec = totalElapsed % 60;
-                        var durEl = document.getElementById('recordingDuration');
-                        if (durEl) {
-                            durEl.textContent = totalMin + ':' + totalSec.toString().padStart(2, '0');
+                            var totalElapsed = Math.floor(durationMs / 1000);
+                            var totalMin = Math.floor(totalElapsed / 60);
+                            var totalSec = totalElapsed % 60;
+                            var durEl = document.getElementById('recordingDuration');
+                            if (durEl) {
+                                durEl.textContent = totalMin + ':' + totalSec.toString().padStart(2, '0');
+                            }
+
+                            var reader = new FileReader();
+                            reader.readAsDataURL(audioBlob);
+                            reader.onloadend = function() {
+                                document.getElementById('audioRecordingData').value = reader.result;
+                                validateFormForOTP();
+                            };
+
+                            _stopActiveTracks();
+                            _smoothScrollTo(document.getElementById('phaseVerify'));
                         }
 
-                        var reader = new FileReader();
-                        reader.readAsDataURL(audioBlob);
-                        reader.onloadend = function() {
-                            document.getElementById('audioRecordingData').value = reader.result;
-                            validateFormForOTP();
-                        };
-
-                        _stopActiveTracks();
-                        _smoothScrollTo(document.getElementById('phaseVerify'));
+                        // MediaRecorder omits the WebM Duration (streamed header), so
+                        // players show a bogus length (e.g. 444s) and can't seek past
+                        // the real audio. Write the real duration in. Any failure —
+                        // library not loaded, not webm, parse error — falls back to
+                        // the raw blob (i.e. today's behaviour, never worse).
+                        if (/webm/i.test(blobMime) && typeof window.ysFixWebmDuration === 'function') {
+                            window.ysFixWebmDuration(rawBlob, durationMs)
+                                .then(finish)
+                                .catch(function (e) { console.warn('[Audio] duration fix failed', e); finish(rawBlob); });
+                        } else {
+                            finish(rawBlob);
+                        }
                     }, 150);
                 };
 
