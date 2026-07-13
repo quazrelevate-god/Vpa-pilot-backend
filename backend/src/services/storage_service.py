@@ -35,7 +35,8 @@ def _get_client():
                 s3={"addressing_style": "path"},
             ),
         )
-    except Exception:
+    except Exception as e:
+        logger.warning("MinIO client init failed (endpoint=%s): %s", endpoint, repr(e))
         return None
 
 
@@ -45,27 +46,31 @@ def _bucket() -> str:
 
 def save_file(data: bytes, relative_path: str, content_type: str = None) -> str:
     """
-    Save file bytes. Returns the storage key/path.
-    Uses MinIO if FILE_STORAGE_ENDPOINT is set, otherwise saves to local disk.
+    Save file bytes to MinIO and return the object key.
+
+    Writes ALWAYS go to MinIO — in every environment (dev, local, prod). There
+    is no local-disk fallback: silently writing to disk is what left uploads
+    unviewable (stored on the app server, absent from MinIO). If object storage
+    isn't configured/reachable, this raises so the misconfiguration is obvious
+    instead of corrupting data onto local disk.
     """
     client = _get_client()
-    if client:
-        # Ensure bucket exists (create if missing)
-        try:
-            client.head_bucket(Bucket=_bucket())
-        except Exception:
-            client.create_bucket(Bucket=_bucket())
-        kwargs = {"Bucket": _bucket(), "Key": relative_path, "Body": data}
-        if content_type:
-            kwargs["ContentType"] = content_type
-        client.put_object(**kwargs)
-        return relative_path  # stored as MinIO object key
-    else:
-        # Local disk
-        full_path = Path("uploads") / relative_path
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(data)
-        return str(full_path)
+    if client is None:
+        raise RuntimeError(
+            "File storage (MinIO) is not configured — set FILE_STORAGE_ENDPOINT, "
+            "FILE_STORAGE_ACCESS_KEY, FILE_STORAGE_SECRET_KEY and FILE_STORAGE_BUCKET. "
+            "Refusing to write uploads to local disk."
+        )
+    # Ensure bucket exists (create if missing)
+    try:
+        client.head_bucket(Bucket=_bucket())
+    except Exception:
+        client.create_bucket(Bucket=_bucket())
+    kwargs = {"Bucket": _bucket(), "Key": relative_path, "Body": data}
+    if content_type:
+        kwargs["ContentType"] = content_type
+    client.put_object(**kwargs)
+    return relative_path  # stored as MinIO object key
 
 
 def get_file_url(storage_path: str) -> str:

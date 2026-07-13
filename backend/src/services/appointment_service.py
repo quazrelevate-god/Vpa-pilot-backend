@@ -1316,27 +1316,33 @@ class AppointmentService:
             db.add(appointment)
             await db.flush()
 
-            # ── Save files to disk + create attachment records ────────────────
-            upload_dir = Path("uploads/manual_petitions") / str(appointment.id)
-            upload_dir.mkdir(parents=True, exist_ok=True)
+            # ── Save files + create attachment records ────────────────────────
+            # Via storage_service (MinIO in prod, local disk in dev), into the
+            # unified per-token folder, so they're retrievable via /api/files.
+            from src.services.storage_service import save_file
 
+            async def _store_manual(idx: int, raw: bytes, mime: str, fname: str):
+                safe_name = f"{idx}_{secrets.token_hex(6)}_{self._sanitize_filename(fname)}"
+                rel = f"attachments/{token_assigned}/{safe_name}"
+                url = await asyncio.to_thread(save_file, raw, rel, content_type=mime)
+                return url, mime, fname, len(raw)
+
+            stored = await asyncio.gather(*[
+                _store_manual(i, raw, mime, fname)
+                for i, (raw, mime, fname) in enumerate(file_contents, 1)
+            ])
             attachment_snapshots: List[Dict[str, Any]] = []
-            for raw, mime, fname in file_contents:
-                safe_name = f"{appointment.id}_{len(attachment_snapshots)+1}_{self._sanitize_filename(fname)}"
-                fpath = upload_dir / safe_name
-                with open(fpath, "wb") as fh:
-                    fh.write(raw)
-                att = AppointmentAttachment(
+            for url, mime, fname, size in stored:
+                db.add(AppointmentAttachment(
                     appointment_id=appointment.id,
                     attachment_type="IMAGE" if mime.startswith("image/") else "DOCUMENT",
-                    storage_url=str(fpath),
-                    file_size_bytes=len(raw),
+                    storage_url=url,
+                    file_size_bytes=size,
                     mime_type=mime,
                     created_at=current_time,
-                )
-                db.add(att)
+                ))
                 attachment_snapshots.append({
-                    "storage_url": str(fpath),
+                    "storage_url": url,
                     "mime_type":   mime,
                     "filename":    fname,
                 })
@@ -1397,7 +1403,7 @@ class AppointmentService:
         grievance description (a pure appointment has nothing to summarise).
         """
         MAX_FILES = 10
-        MAX_BYTES = 10 * 1024 * 1024
+        MAX_TOTAL_BYTES = 5 * 1024 * 1024   # 5 MB total across all attachments
         ALLOWED_MIMES = {
             "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
             "image/bmp", "image/heic", "image/heif", "application/pdf",
@@ -1408,14 +1414,17 @@ class AppointmentService:
         # ── Validate files (optional) ─────────────────────────────────────────
         valid_files = [f for f in (files or []) if f.filename][:MAX_FILES]
         file_contents: List[tuple] = []
+        total_bytes = 0
         for f in valid_files:
             mime = f.content_type or "application/octet-stream"
             if mime not in ALLOWED_MIMES:
                 raise HTTPException(status_code=400,
                                     detail=f"Unsupported file type '{mime}' ({f.filename}).")
             raw = await f.read()
-            if len(raw) > MAX_BYTES:
-                raise HTTPException(status_code=400, detail=f"'{f.filename}' exceeds 10 MB.")
+            total_bytes += len(raw)
+            if total_bytes > MAX_TOTAL_BYTES:
+                raise HTTPException(status_code=400,
+                                    detail="Total attachments must be under 5 MB.")
             file_contents.append((raw, mime, f.filename))
 
         if not (name or "").strip():
@@ -1511,19 +1520,29 @@ class AppointmentService:
                         db, appointment, "NO_SLOT_SELECTED", commit=False)
 
             # ── Save photos (optional) ────────────────────────────────────────
+            # Route through storage_service (MinIO in prod, local disk in dev) —
+            # same as every other upload path — into the unified per-token folder,
+            # so walk-in photos are actually retrievable via /api/files. Uploads
+            # run in worker threads, in parallel.
             if file_contents:
-                upload_dir = Path("uploads/manual_petitions") / str(appointment.id)
-                upload_dir.mkdir(parents=True, exist_ok=True)
-                for i, (raw, mime, fname) in enumerate(file_contents, 1):
-                    safe_name = f"{appointment.id}_{i}_{self._sanitize_filename(fname)}"
-                    fpath = upload_dir / safe_name
-                    with open(fpath, "wb") as fh:
-                        fh.write(raw)
+                from src.services.storage_service import save_file
+
+                async def _store(idx: int, raw: bytes, mime: str, fname: str):
+                    safe_name = f"{idx}_{secrets.token_hex(6)}_{self._sanitize_filename(fname)}"
+                    rel = f"attachments/{token_assigned}/{safe_name}"
+                    url = await asyncio.to_thread(save_file, raw, rel, content_type=mime)
+                    return url, mime, len(raw)
+
+                stored = await asyncio.gather(*[
+                    _store(i, raw, mime, fname)
+                    for i, (raw, mime, fname) in enumerate(file_contents, 1)
+                ])
+                for url, mime, size in stored:
                     db.add(AppointmentAttachment(
                         appointment_id=appointment.id,
                         attachment_type="IMAGE" if mime.startswith("image/") else "DOCUMENT",
-                        storage_url=str(fpath),
-                        file_size_bytes=len(raw),
+                        storage_url=url,
+                        file_size_bytes=size,
                         mime_type=mime,
                         created_at=current_time,
                     ))
