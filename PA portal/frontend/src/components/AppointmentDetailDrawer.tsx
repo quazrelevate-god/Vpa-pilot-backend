@@ -78,7 +78,12 @@ export default function AppointmentDetailDrawer({
   // Fetch activity events when row opens
   useEffect(() => {
     if (row?.id == null) return;
-    fetchAppointmentActivity(row.id).then((r) => setActivity(r.items)).catch(() => setActivity([]));
+    setActivity([]);   // clear the previous row's events while the new ones load
+    let cancelled = false;
+    fetchAppointmentActivity(row.id)
+      .then((r) => { if (!cancelled) setActivity(r.items); })
+      .catch(() => { if (!cancelled) setActivity([]); });
+    return () => { cancelled = true; };
   }, [row?.id]);
 
   const currentPriority = overrides.priority !== undefined ? overrides.priority : a?.priority ?? null;

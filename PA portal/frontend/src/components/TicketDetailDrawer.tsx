@@ -167,13 +167,16 @@ export default function TicketDetailDrawer({
   useEffect(() => {
     if (ticketId == null) return; // keep last data during the close animation
     setLoading(true);
+    setData(null);   // drop the previous ticket so the loader shows, not stale data
     setTab("details");
     setActiveAction(null);
     setPendingDept(null); setPendingDue(null); setAssigning(false);
+    let cancelled = false;   // guard against a slow earlier fetch overwriting a newer one
     fetchTicket(ticketId)
-      .then(setData)
-      .catch((e) => alert(`Failed to load ticket: ${e.message}`))
-      .finally(() => setLoading(false));
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) alert(`Failed to load ticket: ${e.message}`); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [ticketId]);
 
   async function patch(p: Parameters<typeof patchTicket>[1]) {
