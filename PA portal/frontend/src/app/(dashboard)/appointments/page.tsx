@@ -452,14 +452,6 @@ function AppointmentsPageInner() {
 
   // Chart scope — same filters WITHOUT category, so the distribution keeps
   // showing every category even while one is selected to filter the table.
-  const chartScope = useMemo(() => ({
-    kind: "meeting" as const,
-    search: search || undefined,
-    priority: priority || undefined, ministry: ministry || undefined,
-    dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
-    apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
-  }), [search, priority, ministry, dateFrom, dateTo, apptDateFrom, apptDateTo]);
-
   const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
     try {
@@ -899,8 +891,8 @@ function AppointmentsPageInner() {
               </div>
             </Card>
             <CategoryDistributionCard
-              tab={tab}
-              secondary={chartScope}
+              rows={rows}
+              loading={loading}
               activeCategory={category}
               onSelect={(key) => { setPage(1); setCategory((c) => (c === key ? "" : key)); }}
               className="xl:min-h-0 xl:flex-1"
@@ -1047,37 +1039,26 @@ function SortButton({
 // Bar palette — cycled across the category list.
 const DONUT_PALETTE = ["#1E40AF", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#35839B"];
 
-/** Category Distribution — donut over the CURRENT tab's meeting appointments
- *  only (not tickets/petitions). Rescopes when the tab or filters change. */
+/** Category Distribution — donut aggregated from the CURRENT list view's rows
+ *  (no separate fetch). Reflects exactly what's loaded in the table. */
 function CategoryDistributionCard({
-  tab, secondary, className, activeCategory, onSelect,
+  rows, loading, className, activeCategory, onSelect,
 }: {
-  tab: Tab; secondary: AppointmentListOpts; className?: string;
+  rows: AppointmentRow[]; loading?: boolean; className?: string;
   activeCategory?: string; onSelect?: (key: string) => void;
 }) {
   const { lang, t } = useLang();
-  const [cats, setCats] = useState<{ key: string; count: number }[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const ctrl = new AbortController();
-    setLoading(true);
-    // Pull every appointment in the current scope (tab + active filters) and
-    // aggregate by category KEY client-side — keeps the donut appointment-scoped,
-    // in lockstep with the visible tab, and language-agnostic (labels render live).
-    fetchAppointments({ status: tab, page: 1, pageSize: 2000, ...secondary }, ctrl.signal)
-      .then((d) => {
-        const m = new Map<string, number>();
-        for (const r of d.items) {
-          const key = (r.category || "—").toLowerCase();
-          m.set(key, (m.get(key) ?? 0) + 1);
-        }
-        setCats(Array.from(m, ([key, count]) => ({ key, count })));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-    return () => ctrl.abort();
-  }, [tab, secondary]);
+  // Aggregate by category KEY from the rows already loaded for the table —
+  // language-agnostic (labels render live).
+  const cats = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows) {
+      const key = (r.category || "—").toLowerCase();
+      m.set(key, (m.get(key) ?? 0) + 1);
+    }
+    return Array.from(m, ([key, count]) => ({ key, count }));
+  }, [rows]);
 
   const catLabel = (key: string) =>
     (lang === "ta" ? CATEGORY_DISPLAY_TA[key] : CATEGORY_DISPLAY_EN[key]) ?? key;

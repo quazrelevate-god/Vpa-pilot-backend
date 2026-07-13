@@ -521,7 +521,10 @@ export default function AiReviewPage() {
       if (fPriority && r.priority !== fPriority) return false;
       if (fSource && r.source !== fSource) return false;
       if (fromKey || toKey) {
-        const day = (r.created_at || "").slice(0, 10);
+        // created_at is a UTC timestamp; bucket by LOCAL (IST) calendar day so a
+        // petition submitted late in the IST evening isn't pushed to the wrong
+        // day — matches how the Today/This-week chips compute their range.
+        const day = r.created_at ? toISODate(new Date(r.created_at)) : "";
         if (!day) return false;
         if (fromKey && day < fromKey) return false;
         if (toKey && day > toKey) return false;

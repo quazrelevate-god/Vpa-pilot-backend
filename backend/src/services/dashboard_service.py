@@ -418,12 +418,21 @@ async def get_appointments(
     if date_to:
         stmt = stmt.where(Appointment.created_at < _ist_end(date_to))
 
-    # Appointment date filter (when the meeting slot is scheduled)
-    from datetime import date as date_type
-    if appt_date_from:
-        stmt = stmt.where(Appointment.created_at >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
-    if appt_date_to:
-        stmt = stmt.where(Appointment.created_at <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+    # Appointment date filter (the scheduled MEETING date). This lives on the
+    # booked slot's availability, NOT created_at — filtering created_at made the
+    # Today/Tomorrow chips match the SUBMISSION date, so "tomorrow" was always
+    # empty. Filter by slot membership so the main query's eager-loads are
+    # untouched; rows with no booked slot are correctly excluded.
+    if appt_date_from or appt_date_to:
+        _appt_slot_ids = (
+            select(AppointmentSlot.id)
+            .join(MLADailyAvailability, AppointmentSlot.availability_id == MLADailyAvailability.id)
+        )
+        if appt_date_from:
+            _appt_slot_ids = _appt_slot_ids.where(MLADailyAvailability.date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+        if appt_date_to:
+            _appt_slot_ids = _appt_slot_ids.where(MLADailyAvailability.date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+        stmt = stmt.where(Appointment.slot_id.in_(_appt_slot_ids))
 
     if status_filter and status_filter != "All":
         if status_filter == "Scheduled":
@@ -603,10 +612,19 @@ async def get_appointment_counts(
         base = base.where(Appointment.created_at >= _ist_start(date_from))
     if date_to:
         base = base.where(Appointment.created_at < _ist_end(date_to))
-    if appt_date_from:
-        base = base.where(Appointment.created_at >= _ist_start(appt_date_from))
-    if appt_date_to:
-        base = base.where(Appointment.created_at < _ist_end(appt_date_to))
+    # Appointment-date chips filter the scheduled MEETING date (slot availability),
+    # not created_at — keep in lock-step with get_appointments so the tab counts
+    # match the list.
+    if appt_date_from or appt_date_to:
+        _cnt_slot_ids = (
+            select(AppointmentSlot.id)
+            .join(MLADailyAvailability, AppointmentSlot.availability_id == MLADailyAvailability.id)
+        )
+        if appt_date_from:
+            _cnt_slot_ids = _cnt_slot_ids.where(MLADailyAvailability.date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+        if appt_date_to:
+            _cnt_slot_ids = _cnt_slot_ids.where(MLADailyAvailability.date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+        base = base.where(Appointment.slot_id.in_(_cnt_slot_ids))
 
     if priority or ministry or category:
         gsr_sub = (
