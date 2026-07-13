@@ -3,6 +3,7 @@ import { Fraunces, IBM_Plex_Mono, Noto_Sans_Tamil, Plus_Jakarta_Sans } from "nex
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import SentryInit from "@/components/SentryInit";
+import GlobalLoadingBar from "@/components/GlobalLoadingBar";
 
 // UI / body (Latin) — crisp geometric sans (Aurora type spec)
 const jakarta = Plus_Jakarta_Sans({
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={fontVars}>
       <body className="bg-background text-foreground">
         <SentryInit />
+        <GlobalLoadingBar />
         {children}
         <Toaster />
       </body>

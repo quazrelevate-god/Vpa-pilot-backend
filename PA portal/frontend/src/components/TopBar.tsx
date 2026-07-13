@@ -1,8 +1,25 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { ShieldCheck } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
+import { subscribeLoading, getLoadingSnapshot } from "@/lib/loading-bar";
+
+/** Indeterminate loading bar pinned to the header's bottom border. Shows while
+ *  any API request is in flight (see lib/loading-bar). */
+function HeaderLoadingBar() {
+  const loading = useSyncExternalStore(subscribeLoading, getLoadingSnapshot, () => false);
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] overflow-hidden transition-opacity duration-200"
+      style={{ opacity: loading ? 1 : 0 }}
+    >
+      <div className="loading-bar-indeterminate" />
+    </div>
+  );
+}
 
 interface TopBarProps {
   rightSlot?: React.ReactNode;
@@ -25,7 +42,8 @@ export default function TopBar({ rightSlot, searchSlot, title, subtitle, icon }:
   const headerIcon = icon ?? <ShieldCheck className="h-4 w-4" />;
 
   return (
-    <header className="sticky top-0 z-30 h-20 flex-shrink-0 border-b border-border bg-card">
+    <header className="sticky top-0 z-30 h-20 flex-shrink-0 border-b border-border bg-card relative">
+      <HeaderLoadingBar />
       <div className="flex h-full items-center gap-4 px-6">
         {/* Left — page identity */}
         <div className="flex min-w-0 items-center gap-3">
