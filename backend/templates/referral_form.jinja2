@@ -363,6 +363,9 @@
             if (k === 'no_slots') {
                 msg.innerHTML = '<span style="color:#b45309;"><i class="fa-solid fa-circle-exclamation"></i> ' +
                     (ta ? 'இந்த தேதிக்கு நேரங்கள் இல்லை.' : 'No slots open for this date.') + '</span>';
+            } else if (k === 'all_full') {
+                msg.innerHTML = '<span style="color:#b45309;"><i class="fa-solid fa-circle-exclamation"></i> ' +
+                    (ta ? 'இந்த தேதிக்கு அனைத்து நேரங்களும் நிரம்பிவிட்டன.' : 'All slots are full for this date.') + '</span>';
             } else if (k === 'slot_error') {
                 msg.textContent = ta ? 'நேரங்களை ஏற்ற முடியவில்லை.' : 'Failed to load slots.';
             }
@@ -382,8 +385,9 @@
             var data = await res.json();
             if (!Array.isArray(data) || data.length === 0) {
                 chips.innerHTML = '';
-                msg.textContent = '';
-                msg.dataset.key = '';
+                msg.textContent = ta ? _dateMsgKeys.none.ta : _dateMsgKeys.none.en;
+                msg.dataset.key = 'none';
+                document.getElementById('slotSection').style.display = 'none';
                 return;
             }
             msg.textContent = '';
@@ -451,6 +455,7 @@
             msg.dataset.key = '';
             grid.innerHTML = '';
 
+            var bookableCount = 0;
             data.slots.forEach(function(slot) {
                 var sh = parseInt(slot.start.split(':')[0], 10);
                 var sm = parseInt(slot.start.split(':')[1], 10);
@@ -459,6 +464,7 @@
                 var isPartial = !isPast && !isFull && slot.available && slot.booked_count > 0;
                 var isOpen = !isPast && !isFull && slot.available && slot.booked_count === 0;
                 var bookable = isPartial || isOpen;
+                if (bookable) bookableCount++;
                 var isSel = String(slot.id) === String(selId);
 
                 var stateClass, statusText, slotState;
@@ -488,6 +494,14 @@
                 }
                 grid.appendChild(card);
             });
+
+            // Slots exist but none can be booked (all full or already passed) —
+            // tell the citizen instead of leaving a silent grid of greyed cards.
+            if (bookableCount === 0) {
+                msg.dataset.key = 'all_full';
+                msg.innerHTML = '<span style="color:#b45309;"><i class="fa-solid fa-circle-exclamation"></i> ' +
+                    (ta ? 'இந்த தேதிக்கு அனைத்து நேரங்களும் நிரம்பிவிட்டன.' : 'All slots are full for this date.') + '</span>';
+            }
         } catch(e) {
             msg.textContent = ta ? 'நேரங்களை ஏற்ற முடியவில்லை.' : 'Failed to load slots.';
             msg.dataset.key = 'slot_error';
