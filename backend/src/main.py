@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 
 from src.core.config import settings
 from src.core.logging_config import setup_logging, init_sentry
@@ -80,18 +81,39 @@ app.add_middleware(
 )
 
 
-@app.middleware("http")
-async def _security_headers(request, call_next):
-    resp = await call_next(request)
-    resp.headers["X-Content-Type-Options"] = "nosniff"
-    # Authenticated attachment endpoint is embedded as <iframe> in the PA portal,
-    # which runs on a different origin. Skip the frame-block header there.
-    # if not request.url.path.startswith("/dashboard/api/files/"):
-    #     resp.headers["X-Frame-Options"] = "SAMEORIGIN"
-    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    if settings.COOKIE_SECURE:  # only meaningful over HTTPS
-        resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return resp
+class _SecurityHeadersMiddleware:
+    """Pure-ASGI security-header injector.
+
+    Deliberately NOT a BaseHTTPMiddleware (`@app.middleware("http")`): that
+    wrapper runs the endpoint as a child task and raises
+    `RuntimeError: No response returned.` on any cancellation race — e.g. a
+    citizen's walk-in submit where the crowd PWA aborts (or re-fires) the
+    upload — turning a benign client disconnect into a 500 traceback and, in
+    the racy case, dropping a response the endpoint actually produced. A pure
+    ASGI middleware passes send/receive straight through, so the real response
+    reaches the client and disconnects propagate cleanly.
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                if settings.COOKIE_SECURE:  # only meaningful over HTTPS
+                    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(_SecurityHeadersMiddleware)
 
 
 _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
