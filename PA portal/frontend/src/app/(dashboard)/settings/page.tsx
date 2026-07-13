@@ -26,6 +26,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { useLang } from "@/lib/lang-context";
 import { fetchMe, fetchFeatures, type SessionUser } from "./_lib/adminApi";
 
 import UsersTab from "./_components/UsersTab";
@@ -42,6 +43,7 @@ type GateState =
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { t } = useLang();
   const [gate, setGate] = useState<GateState>({ kind: "loading" });
   const [tab, setTab] = useState<string>("users");
 
@@ -59,7 +61,7 @@ export default function SettingsPage() {
         setGate({ kind: "ok", me });
       } catch (e) {
         if (!ac.signal.aborted) {
-          toast.error("Couldn't load settings", { description: (e as Error).message });
+          toast.error(t("set.loadError"), { description: (e as Error).message });
           setGate({ kind: "not_super_admin", me: null });
         }
       }
@@ -70,8 +72,8 @@ export default function SettingsPage() {
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden">
       <TopBar
-        title="Settings"
-        subtitle="Users, departments, ministry emails, and department logins"
+        title={t("set.title")}
+        subtitle={t("set.subtitle")}
         icon={<CogIcon className="h-4 w-4" />}
       />
 
@@ -85,11 +87,11 @@ export default function SettingsPage() {
               <HeaderCard me={gate.me} />
               <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="h-11 gap-1 rounded-xl bg-card p-1 shadow-card">
-                  <TabTrigger value="users"       icon={Users}     label="Users" />
-                  <TabTrigger value="departments" icon={Building2} label="Departments" />
-                  <TabTrigger value="venues"      icon={MapPin}    label="Venues" />
-                  <TabTrigger value="ministries"  icon={Landmark}  label="Ministry emails" />
-                  <TabTrigger value="dept-logins" icon={KeyRound}  label="Department logins" />
+                  <TabTrigger value="users"       icon={Users}     label={t("set.tabUsers")} />
+                  <TabTrigger value="departments" icon={Building2} label={t("set.tabDepartments")} />
+                  <TabTrigger value="venues"      icon={MapPin}    label={t("set.tabVenues")} />
+                  <TabTrigger value="ministries"  icon={Landmark}  label={t("set.tabMinistries")} />
+                  <TabTrigger value="dept-logins" icon={KeyRound}  label={t("set.tabDeptLogins")} />
                 </TabsList>
 
                 <TabsContent value="users" className="mt-6">
@@ -135,19 +137,19 @@ function TabTrigger({
 // ── States ────────────────────────────────────────────────────────────────
 
 function HeaderCard({ me }: { me: SessionUser }) {
+  const { t } = useLang();
   return (
     <Card className="flex items-start gap-4 rounded-2xl border-border p-5 shadow-card">
       <div className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-xl bg-brand/10 text-brand">
         <ShieldCheck className="h-6 w-6" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand">Super admin</div>
+        <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand">{t("set.superAdmin")}</div>
         <div className="mt-0.5 text-lg font-bold text-foreground">
           {me.full_name || me.login_name}
         </div>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          You can manage staff logins, department metadata, ministry contact emails, and
-          the shared credentials handed to each department team. Every change is logged.
+          {t("set.headerDesc")}
         </p>
       </div>
     </Card>
@@ -155,27 +157,28 @@ function HeaderCard({ me }: { me: SessionUser }) {
 }
 
 function FeatureDisabled() {
+  const { t } = useLang();
   return (
     <Card className="rounded-2xl border-amber-200 bg-amber-50/50 p-8 text-center shadow-card">
       <CogIcon className="mx-auto h-8 w-8 text-amber-600" />
-      <h2 className="mt-3 text-lg font-bold text-foreground">Settings is disabled</h2>
+      <h2 className="mt-3 text-lg font-bold text-foreground">{t("set.disabledTitle")}</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        The <code className="font-mono text-xs">FEATURE_SUPERADMIN_UI</code> flag is off
-        for this deployment. Ask the platform operator to enable it in backend/.env.
+        {t("set.disabledDesc")}
       </p>
     </Card>
   );
 }
 
 function NotAuthorized({ user }: { user: SessionUser | null }) {
+  const { t } = useLang();
   return (
     <Card className="rounded-2xl border-border p-8 text-center shadow-card">
       <ShieldCheck className="mx-auto h-8 w-8 text-muted-foreground" />
-      <h2 className="mt-3 text-lg font-bold text-foreground">Not authorised</h2>
+      <h2 className="mt-3 text-lg font-bold text-foreground">{t("set.notAuthTitle")}</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         {user
-          ? <>Your role is <span className="font-mono text-xs">{user.role}</span>. Only super admins can access Settings.</>
-          : "You need to sign in as a super admin to access Settings."}
+          ? <>{t("set.yourRoleIs")} <span className="font-mono text-xs">{user.role}</span>. {t("set.notAuthRole")}</>
+          : t("set.notAuthSignin")}
       </p>
     </Card>
   );

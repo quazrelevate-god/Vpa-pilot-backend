@@ -13,16 +13,18 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 
+import { useLang } from "@/lib/lang-context";
 import { listMinistries, updateMinistry, type MinistryRow } from "../_lib/adminApi";
 
 export default function MinistriesTab() {
+  const { t, lang } = useLang();
   const [rows, setRows] = useState<MinistryRow[] | null>(null);
   const [editing, setEditing] = useState<MinistryRow | null>(null);
   const [q, setQ] = useState("");
 
   const load = async () => {
     try { setRows(await listMinistries()); }
-    catch (e) { toast.error("Load failed", { description: (e as Error).message }); }
+    catch (e) { toast.error(t("set.loadFailed"), { description: (e as Error).message }); }
   };
 
   useEffect(() => { load(); }, []);
@@ -44,11 +46,11 @@ export default function MinistriesTab() {
   return (
     <SectionCard
       icon={Landmark}
-      title="Ministry contact emails"
+      title={t("set.minTitle")}
       right={
         totalCount ? (
           <StatusDot
-            label={`${emailedCount} / ${totalCount} configured`}
+            label={`${emailedCount} / ${totalCount} ${t("set.minConfigured")}`}
             tone={emailedCount === totalCount ? "emerald" : "amber"}
           />
         ) : undefined
@@ -59,7 +61,7 @@ export default function MinistriesTab() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search ministries…"
+          placeholder={t("set.minSearch")}
           className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
         />
       </div>
@@ -69,7 +71,7 @@ export default function MinistriesTab() {
           {[1, 2, 3, 4].map((k) => <Skeleton key={k} className="h-14 w-full rounded-xl" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No matches.</p>
+        <p className="py-8 text-center text-sm text-muted-foreground">{t("set.noMatches")}</p>
       ) : (
         <div className="divide-y divide-border rounded-xl border border-border bg-card">
           {filtered.map((m) => (
@@ -79,8 +81,8 @@ export default function MinistriesTab() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">{m.display_en}</span>
-                  {!m.is_active && <StatusDot label="Inactive" tone="slate" />}
+                  <span className="text-sm font-semibold text-foreground">{lang === "ta" && m.display_ta ? m.display_ta : m.display_en}</span>
+                  {!m.is_active && <StatusDot label={t("set.inactive")} tone="slate" />}
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
                   <span className="font-mono">{m.key}</span>
@@ -89,31 +91,31 @@ export default function MinistriesTab() {
                       <MailIcon className="h-3 w-3" /> {m.email}
                     </span>
                   ) : (
-                    <span className="italic">no email set</span>
+                    <span className="italic">{t("set.minNoEmail")}</span>
                   )}
-                  {m.display_ta && <span>· {m.display_ta}</span>}
+                  {lang === "ta" ? <span>· {m.display_en}</span> : (m.display_ta && <span>· {m.display_ta}</span>)}
                 </div>
               </div>
               <div className="flex flex-shrink-0 items-center gap-1.5">
                 <Button size="sm" variant="outline" onClick={() => setEditing(m)}>
-                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> {t("set.edit")}
                 </Button>
                 <Button
                   size="sm" variant="outline"
-                  title={m.is_active ? "Hide from AI routing" : "Bring back into AI routing"}
+                  title={m.is_active ? t("set.minHideTitle") : t("set.minShowTitle")}
                   onClick={async () => {
                     try {
                       await updateMinistry(m.id, { is_active: !m.is_active });
-                      toast.success(m.is_active ? "Disabled" : "Enabled");
+                      toast.success(m.is_active ? t("set.disabledTag") : t("set.enabledTag"));
                       load();
                     } catch (e) {
-                      toast.error("Update failed", { description: (e as Error).message });
+                      toast.error(t("set.updateFailed"), { description: (e as Error).message });
                     }
                   }}
                 >
                   {m.is_active
-                    ? <><PowerOff className="mr-1 h-3.5 w-3.5" /> Disable</>
-                    : <><Power className="mr-1 h-3.5 w-3.5" /> Enable</>}
+                    ? <><PowerOff className="mr-1 h-3.5 w-3.5" /> {t("set.disable")}</>
+                    : <><Power className="mr-1 h-3.5 w-3.5" /> {t("set.enable")}</>}
                 </Button>
               </div>
             </div>
@@ -128,11 +130,11 @@ export default function MinistriesTab() {
             onSubmit={async (patch) => {
               try {
                 await updateMinistry(editing.id, patch);
-                toast.success("Saved");
+                toast.success(t("set.saved"));
                 setEditing(null);
                 load();
               } catch (e) {
-                toast.error("Save failed", { description: (e as Error).message });
+                toast.error(t("set.saveFailed"), { description: (e as Error).message });
               }
             }}
           />
@@ -148,39 +150,44 @@ function MinistryDialog({
   row: MinistryRow;
   onSubmit: (patch: { email?: string; display_ta?: string; is_active?: boolean }) => Promise<void>;
 }) {
+  const { t, lang } = useLang();
   const [email, setEmail] = useState(row.email ?? "");
   const [ta, setTa]       = useState(row.display_ta ?? "");
   const [active, setActive] = useState(row.is_active);
   const [busy, setBusy]   = useState(false);
+  const emailInvalid = !!email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>{row.display_en}</DialogTitle>
+        <DialogTitle>{lang === "ta" && row.display_ta ? row.display_ta : row.display_en}</DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <Label>Email</Label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ministry@tn.gov.in" />
+          <Label>{t("set.email")}</Label>
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ministry@tn.gov.in"
+            aria-invalid={emailInvalid}
+            className={emailInvalid ? "border-red-400 focus-visible:ring-red-400" : ""} />
+          {emailInvalid && <p className="text-xs text-red-600">{t("set.emailInvalid")}</p>}
           <p className="text-[11px] text-muted-foreground">
-            Petitions marked with this ministry auto-forward here once the email workflow ships.
+            {t("set.minEmailHint")}
           </p>
         </div>
         <div className="space-y-1.5">
-          <Label>Display name (Tamil)</Label>
+          <Label>{t("set.minDisplayTa")}</Label>
           <Input value={ta} onChange={(e) => setTa(e.target.value)} placeholder="தமிழ் பெயர்" />
         </div>
         <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          <span className="font-medium">Active</span>
+          <span className="font-medium">{t("set.active")}</span>
           <span className="text-xs text-muted-foreground">
-            Uncheck to hide from AI routing without touching historical data.
+            {t("set.minActiveHint")}
           </span>
         </label>
       </div>
       <DialogFooter>
         <Button
           className="aurora-primary text-white"
-          disabled={busy}
+          disabled={busy || emailInvalid}
           onClick={async () => {
             setBusy(true);
             try {
@@ -192,7 +199,7 @@ function MinistryDialog({
             } finally { setBusy(false); }
           }}
         >
-          <Check className="mr-1.5 h-3.5 w-3.5" /> Save
+          <Check className="mr-1.5 h-3.5 w-3.5" /> {t("set.save")}
         </Button>
       </DialogFooter>
     </DialogContent>

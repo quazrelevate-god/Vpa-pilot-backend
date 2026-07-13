@@ -20,17 +20,19 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { InitialsAvatar } from "@/components/ui/avatar";
 
+import { useLang } from "@/lib/lang-context";
 import {
   listUsers, createUser, updateUser, deleteUser, listDepartments,
   type UserRow, type Role, type DepartmentRow,
 } from "../_lib/adminApi";
 
-const ROLE_LABELS: Record<Role, string> = {
-  super_admin:       "Super admin",
-  pa:                "PA officer",
-  petition_reviewer: "Petition reviewer",
-  dept_officer:      "Department officer",
-  auditor:           "Auditor (read-only)",
+// Role → translation key (the "user type" badge/select label).
+const ROLE_KEY: Record<Role, string> = {
+  super_admin:       "set.roleSuperAdmin",
+  pa:                "set.rolePa",
+  petition_reviewer: "set.rolePetitionReviewer",
+  dept_officer:      "set.roleDeptOfficer",
+  auditor:           "set.roleAuditor",
 };
 
 const ROLE_TONE: Record<Role, Parameters<typeof StatusDot>[0]["tone"]> = {
@@ -119,16 +121,17 @@ const ROLE_CAPABILITIES: Record<Role, {
 };
 
 function RolePreview({ role }: { role: Role }) {
+  const { t } = useLang();
   const info = ROLE_CAPABILITIES[role];
   return (
     <div className="rounded-xl border border-border bg-muted/40 p-3">
       <div className="mb-1.5 flex items-center gap-2">
-        <StatusDot label={ROLE_LABELS[role]} tone={ROLE_TONE[role]} />
+        <StatusDot label={t(ROLE_KEY[role])} tone={ROLE_TONE[role]} />
         <span className="text-[12px] font-medium text-muted-foreground">{info.scope}</span>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Can do</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">{t("set.canDo")}</div>
           <ul className="mt-1 space-y-0.5 text-[12px] text-foreground/85">
             {info.can.map((c) => (
               <li key={c} className="flex gap-1.5"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-emerald-500" /><span>{c}</span></li>
@@ -136,7 +139,7 @@ function RolePreview({ role }: { role: Role }) {
           </ul>
         </div>
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Can't do</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">{t("set.cantDo")}</div>
           <ul className="mt-1 space-y-0.5 text-[12px] text-muted-foreground">
             {info.cannot.map((c) => (
               <li key={c} className="flex gap-1.5"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-slate-400" /><span>{c}</span></li>
@@ -149,13 +152,14 @@ function RolePreview({ role }: { role: Role }) {
 }
 
 export default function UsersTab({ currentUserId }: { currentUserId: number }) {
+  const { t } = useLang();
   const [rows, setRows] = useState<UserRow[] | null>(null);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
 
   const load = async () => {
     try { setRows(await listUsers()); }
-    catch (e) { toast.error("Load failed", { description: (e as Error).message }); }
+    catch (e) { toast.error(t("set.loadFailed"), { description: (e as Error).message }); }
   };
 
   useEffect(() => { load(); }, []);
@@ -163,21 +167,21 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
   return (
     <SectionCard
       icon={Users}
-      title="Staff logins"
+      title={t("set.usersTitle")}
       right={
         <Dialog open={openCreate} onOpenChange={setOpenCreate}>
           <DialogTrigger asChild>
             <Button size="sm" className="aurora-primary text-white">
-              <Plus className="mr-1.5 h-3.5 w-3.5" /> Add user
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> {t("set.usersAdd")}
             </Button>
           </DialogTrigger>
           {openCreate && (
           <UserFormDialog
-            title="Add new user"
+            title={t("set.usersAddTitle")}
             requirePassword
             onSubmit={async (values) => {
               if (!values.password) {
-                toast.error("Password required"); return;
+                toast.error(t("set.passwordRequired")); return;
               }
               try {
                 await createUser({
@@ -188,11 +192,11 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                   role: values.role,
                   department: values.department,
                 });
-                toast.success("User created");
+                toast.success(t("set.userCreated"));
                 setOpenCreate(false);
                 load();
               } catch (e) {
-                toast.error("Create failed", { description: (e as Error).message });
+                toast.error(t("set.createFailed"), { description: (e as Error).message });
               }
             }}
           />
@@ -205,7 +209,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
           {[1, 2, 3].map((k) => <Skeleton key={k} className="h-14 w-full rounded-xl" />)}
         </div>
       ) : rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No users yet.</p>
+        <p className="py-8 text-center text-sm text-muted-foreground">{t("set.usersNone")}</p>
       ) : (
         <div className="divide-y divide-border rounded-xl border border-border bg-card">
           {rows.map((u) => (
@@ -216,9 +220,9 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                   <span className="text-sm font-semibold text-foreground">
                     {u.full_name || u.login_name}
                   </span>
-                  <StatusDot label={ROLE_LABELS[u.role]} tone={ROLE_TONE[u.role]} />
-                  {!u.is_active && <StatusDot label="Disabled" tone="red" />}
-                  {u.id === currentUserId && <StatusDot label="You" tone="brand" />}
+                  <StatusDot label={t(ROLE_KEY[u.role])} tone={ROLE_TONE[u.role]} />
+                  {!u.is_active && <StatusDot label={t("set.disabledTag")} tone="red" />}
+                  {u.id === currentUserId && <StatusDot label={t("set.you")} tone="brand" />}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
                   <span className="font-mono">@{u.login_name}</span>
@@ -229,7 +233,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
               </div>
               <div className="flex flex-shrink-0 items-center gap-1.5">
                 <Button size="sm" variant="outline" onClick={() => setEditing(u)}>
-                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> {t("set.edit")}
                 </Button>
                 {u.is_active && u.id !== currentUserId && (
                   <Button
@@ -237,14 +241,14 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                     onClick={async () => {
                       try {
                         await deleteUser(u.id);
-                        toast.success(`Disabled ${u.login_name}`);
+                        toast.success(`${t("set.disabledPrefix")} ${u.login_name}`);
                         load();
                       } catch (e) {
-                        toast.error("Disable failed", { description: (e as Error).message });
+                        toast.error(t("set.disableFailed"), { description: (e as Error).message });
                       }
                     }}
                   >
-                    <ShieldOff className="mr-1 h-3.5 w-3.5" /> Disable
+                    <ShieldOff className="mr-1 h-3.5 w-3.5" /> {t("set.disable")}
                   </Button>
                 )}
               </div>
@@ -257,7 +261,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         {editing && (
           <UserFormDialog
-            title={`Edit ${editing.login_name}`}
+            title={`${t("set.edit")} ${editing.login_name}`}
             initial={editing}
             onSubmit={async (values) => {
               try {
@@ -268,11 +272,11 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                   department: values.department,
                   ...(values.password ? { password: values.password } : {}),
                 });
-                toast.success("Saved");
+                toast.success(t("set.saved"));
                 setEditing(null);
                 load();
               } catch (e) {
-                toast.error("Save failed", { description: (e as Error).message });
+                toast.error(t("set.saveFailed"), { description: (e as Error).message });
               }
             }}
           />
@@ -299,6 +303,7 @@ function UserFormDialog({
   }) => Promise<void>;
   requirePassword?: boolean;
 }) {
+  const { t, lang } = useLang();
   const [loginName, setLoginName] = useState(initial?.login_name ?? "");
   const [fullName, setFullName]   = useState(initial?.full_name ?? "");
   const [email, setEmail]         = useState(initial?.email ?? "");
@@ -310,6 +315,7 @@ function UserFormDialog({
 
   const isEdit = !!initial;
   const needsDept = role === "dept_officer";
+  const emailInvalid = !!email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   useEffect(() => {
     listDepartments().then((d) => setDepartments(d.filter((x) => x.is_active))).catch(() => {});
@@ -322,7 +328,7 @@ function UserFormDialog({
       </DialogHeader>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5 sm:col-span-2">
-          <Label>Username</Label>
+          <Label>{t("set.username")}</Label>
           <Input
             value={loginName}
             onChange={(e) => setLoginName(e.target.value)}
@@ -331,44 +337,47 @@ function UserFormDialog({
           />
         </div>
         <div className="space-y-1.5">
-          <Label>Full name</Label>
+          <Label>{t("set.fullName")}</Label>
           <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />
         </div>
         <div className="space-y-1.5">
-          <Label>Email</Label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@office.gov.in" />
+          <Label>{t("set.email")}</Label>
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@office.gov.in"
+            aria-invalid={emailInvalid}
+            className={emailInvalid ? "border-red-400 focus-visible:ring-red-400" : ""} />
+          {emailInvalid && <p className="text-xs text-red-600">{t("set.emailInvalid")}</p>}
         </div>
         <div className="space-y-1.5">
-          <Label>Role</Label>
+          <Label>{t("set.role")}</Label>
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {(Object.entries(ROLE_LABELS) as [Role, string][])
+              {(Object.keys(ROLE_KEY) as Role[])
                 // dept_officer is deprecated in the UI — only surface it when
                 // editing a user who already has that role.
-                .filter(([k]) => k !== "dept_officer" || initial?.role === "dept_officer")
-                .map(([k, v]) =>
-                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                .filter((k) => k !== "dept_officer" || initial?.role === "dept_officer")
+                .map((k) =>
+                  <SelectItem key={k} value={k}>{t(ROLE_KEY[k])}</SelectItem>
                 )}
             </SelectContent>
           </Select>
         </div>
         {needsDept && (
           <div className="space-y-1.5">
-            <Label>Department</Label>
+            <Label>{t("set.department")}</Label>
             <Select value={department} onValueChange={setDepartment}>
-              <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("set.selectDepartment")} /></SelectTrigger>
               <SelectContent>
                 {departments.map((d) =>
-                  <SelectItem key={d.key} value={d.key}>{d.display_en}</SelectItem>
+                  <SelectItem key={d.key} value={d.key}>{lang === "ta" && d.display_ta ? d.display_ta : d.display_en}</SelectItem>
                 )}
               </SelectContent>
             </Select>
-            <p className="text-[11px] text-muted-foreground">This officer will only see tickets routed to this department.</p>
+            <p className="text-[11px] text-muted-foreground">{t("set.deptOfficerHint")}</p>
           </div>
         )}
         <div className="space-y-1.5">
-          <Label>{isEdit ? "New password (leave blank to keep)" : "Password"}</Label>
+          <Label>{isEdit ? t("set.newPassword") : t("set.password")}</Label>
           <Input
             type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             placeholder={isEdit ? "•••••• (unchanged)" : "min 6 characters"}
@@ -381,7 +390,7 @@ function UserFormDialog({
       <DialogFooter>
         <Button
           className="aurora-primary text-white"
-          disabled={busy || !loginName || (requirePassword && !password) || (needsDept && !department)}
+          disabled={busy || !loginName || emailInvalid || (requirePassword && !password) || (needsDept && !department)}
           onClick={async () => {
             setBusy(true);
             try {
@@ -396,7 +405,7 @@ function UserFormDialog({
             } finally { setBusy(false); }
           }}
         >
-          <Check className="mr-1.5 h-3.5 w-3.5" /> Save
+          <Check className="mr-1.5 h-3.5 w-3.5" /> {t("set.save")}
         </Button>
       </DialogFooter>
     </DialogContent>

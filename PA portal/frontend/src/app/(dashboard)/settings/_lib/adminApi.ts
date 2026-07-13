@@ -64,6 +64,29 @@ export interface VenueRow {
   is_builtin: boolean;
 }
 
+// ── Error parsing ──────────────────────────────────────────────────────────
+/**
+ * Turn a failed Response into a readable Error. FastAPI's 422 validation errors
+ * return `detail` as an ARRAY of objects ([{loc, msg, type}]) — passing that to
+ * `new Error()` stringifies to "[object Object]". Flatten it to the message(s).
+ */
+export async function apiError(r: Response): Promise<Error> {
+  let data: unknown = null;
+  try { data = await r.json(); } catch { /* non-JSON body */ }
+  const d = (data as { detail?: unknown })?.detail;
+  let msg: string;
+  if (typeof d === "string") {
+    msg = d;
+  } else if (Array.isArray(d)) {
+    msg = d.map((x) => (x as { msg?: string })?.msg).filter(Boolean).join("; ") || "Invalid input.";
+  } else if (d && typeof d === "object") {
+    msg = (d as { msg?: string }).msg ?? JSON.stringify(d);
+  } else {
+    msg = String((data as { error?: string })?.error ?? r.statusText ?? `HTTP ${r.status}`);
+  }
+  return new Error(msg);
+}
+
 // ── Session helpers ────────────────────────────────────────────────────────
 export async function fetchMe(signal?: AbortSignal): Promise<SessionUser | null> {
   const r = await fetch("/api/v1/me", { credentials: "include", cache: "no-store", signal });
@@ -81,7 +104,7 @@ export async function fetchFeatures(signal?: AbortSignal): Promise<FeatureFlags>
 // ── Users ──────────────────────────────────────────────────────────────────
 export async function listUsers(): Promise<UserRow[]> {
   const r = await fetch("/api/v1/admin/users", { credentials: "include", cache: "no-store" });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -93,7 +116,7 @@ export async function createUser(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -105,19 +128,19 @@ export async function updateUser(id: number, patch: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
 export async function deleteUser(id: number): Promise<void> {
   const r = await fetch(`/api/v1/admin/users/${id}`, { method: "DELETE", credentials: "include" });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
 }
 
 // ── Departments ────────────────────────────────────────────────────────────
 export async function listDepartments(): Promise<DepartmentRow[]> {
   const r = await fetch("/api/v1/admin/departments", { credentials: "include", cache: "no-store" });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -129,7 +152,7 @@ export async function createDepartment(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -141,7 +164,7 @@ export async function updateDepartment(id: number, patch: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -149,13 +172,13 @@ export async function deleteDepartment(id: number): Promise<void> {
   const r = await fetch(`/api/v1/admin/departments/${id}`, {
     method: "DELETE", credentials: "include",
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
 }
 
 // ── Venues ─────────────────────────────────────────────────────────────────
 export async function listVenues(): Promise<VenueRow[]> {
   const r = await fetch("/api/v1/admin/venues", { credentials: "include", cache: "no-store" });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -167,7 +190,7 @@ export async function createVenue(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -179,14 +202,14 @@ export async function updateVenue(id: number, patch: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
 // ── Ministries ─────────────────────────────────────────────────────────────
 export async function listMinistries(): Promise<MinistryRow[]> {
   const r = await fetch("/api/v1/admin/ministries", { credentials: "include", cache: "no-store" });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -198,14 +221,14 @@ export async function updateMinistry(id: number, patch: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
 // ── Department shared accounts ─────────────────────────────────────────────
 export async function listDeptAccounts(): Promise<DeptAccountRow[]> {
   const r = await fetch("/api/v1/admin/dept-accounts", { credentials: "include", cache: "no-store" });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -217,7 +240,7 @@ export async function createDeptAccount(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }
 
@@ -225,7 +248,7 @@ export async function deleteDeptAccount(id: number): Promise<void> {
   const r = await fetch(`/api/v1/admin/dept-accounts/${id}`, {
     method: "DELETE", credentials: "include",
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
 }
 
 export async function resetDeptPassword(deptKey: string, password?: string): Promise<{
@@ -236,6 +259,6 @@ export async function resetDeptPassword(deptKey: string, password?: string): Pro
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(password ? { password } : {}),
   });
-  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  if (!r.ok) throw await apiError(r);
   return r.json();
 }

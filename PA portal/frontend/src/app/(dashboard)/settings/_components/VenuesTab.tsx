@@ -13,40 +13,41 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
+import { useLang } from "@/lib/lang-context";
 import { listVenues, createVenue, updateVenue, type VenueRow } from "../_lib/adminApi";
 
 export default function VenuesTab() {
+  const { t } = useLang();
   const [rows, setRows] = useState<VenueRow[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<VenueRow | null>(null);
 
   const load = async () => {
     try { setRows(await listVenues()); }
-    catch (e) { toast.error("Load failed", { description: (e as Error).message }); }
+    catch (e) { toast.error(t("set.loadFailed"), { description: (e as Error).message }); }
   };
   useEffect(() => { load(); }, []);
 
   const toggleActive = async (v: VenueRow) => {
     try {
       await updateVenue(v.id, { is_active: !v.is_active });
-      toast.success(v.is_active ? "Venue disabled" : "Venue enabled");
+      toast.success(v.is_active ? t("set.venuesDisabledToast") : t("set.venuesEnabledToast"));
       load();
-    } catch (e) { toast.error("Update failed", { description: (e as Error).message }); }
+    } catch (e) { toast.error(t("set.updateFailed"), { description: (e as Error).message }); }
   };
 
   return (
     <SectionCard
       icon={MapPin}
-      title="Scan venues"
+      title={t("set.venuesTitle")}
       right={
         <Button size="sm" className="aurora-primary text-white" onClick={() => setShowCreate(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add venue
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> {t("set.venuesAdd")}
         </Button>
       }
     >
       <p className="mb-4 text-[13px] text-muted-foreground">
-        The offices / camps where citizens scan the QR. A QR display&apos;s <code className="font-mono text-xs">?venue_id=</code>
-        {" "}must match a venue id here — appointments &amp; petitions are attributed to it. Disable a venue to stop new scans without losing history.
+        {t("set.venuesDesc")}
       </p>
 
       {rows === null ? (
@@ -54,8 +55,8 @@ export default function VenuesTab() {
       ) : rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
           <MapPin className="mx-auto h-6 w-6 text-muted-foreground" />
-          <p className="mt-2 text-sm font-medium">No venues yet</p>
-          <p className="mt-1 text-xs text-muted-foreground">Add one, then point a QR display at it.</p>
+          <p className="mt-2 text-sm font-medium">{t("set.venuesNone")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("set.venuesNoneHint")}</p>
         </div>
       ) : (
         <div className="divide-y divide-border rounded-xl border border-border bg-card">
@@ -67,8 +68,8 @@ export default function VenuesTab() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-foreground">{v.display_en}</span>
-                  {v.is_builtin && <StatusDot label="Built-in" tone="slate" />}
-                  {!v.is_active && <StatusDot label="Disabled" tone="red" />}
+                  {v.is_builtin && <StatusDot label={t("set.builtin")} tone="slate" />}
+                  {!v.is_active && <StatusDot label={t("set.disabledTag")} tone="red" />}
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
                   <span className="font-mono">{v.key}</span>
@@ -77,14 +78,14 @@ export default function VenuesTab() {
               </div>
               <div className="flex flex-shrink-0 items-center gap-1.5">
                 <Button size="sm" variant="outline" onClick={() => setEditing(v)}>
-                  <Pencil className="mr-1 h-3.5 w-3.5" /> Rename
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> {t("set.venuesRename")}
                 </Button>
                 <Button
                   size="sm" variant="outline"
                   className={v.is_active ? "border-red-200 text-red-700 hover:bg-red-50 hover:text-red-700" : ""}
                   onClick={() => toggleActive(v)}
                 >
-                  <Power className="mr-1 h-3.5 w-3.5" /> {v.is_active ? "Disable" : "Enable"}
+                  <Power className="mr-1 h-3.5 w-3.5" /> {v.is_active ? t("set.disable") : t("set.enable")}
                 </Button>
               </div>
             </div>
@@ -94,10 +95,10 @@ export default function VenuesTab() {
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <VenueFormDialog
-          title="Add venue"
+          title={t("set.venuesAdd")}
           onSubmit={async (vals) => {
             await createVenue({ key: vals.key, display_en: vals.display_en, display_ta: vals.display_ta, address: vals.address });
-            toast.success("Venue added");
+            toast.success(t("set.venuesAddedToast"));
             setShowCreate(false);
             load();
           }}
@@ -107,11 +108,11 @@ export default function VenuesTab() {
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         {editing && (
           <VenueFormDialog
-            title={`Rename ${editing.display_en}`}
+            title={`${t("set.venuesRenamePrefix")} ${editing.display_en}`}
             initial={editing}
             onSubmit={async (vals) => {
               await updateVenue(editing.id, { display_en: vals.display_en, display_ta: vals.display_ta, address: vals.address });
-              toast.success("Saved");
+              toast.success(t("set.saved"));
               setEditing(null);
               load();
             }}
@@ -129,6 +130,7 @@ function VenueFormDialog({
   initial?: VenueRow;
   onSubmit: (vals: { key: string; display_en: string; display_ta?: string; address?: string }) => Promise<void>;
 }) {
+  const { t } = useLang();
   const isEdit = !!initial;
   const [key, setKey] = useState(initial?.key ?? "");
   const [displayEn, setDisplayEn] = useState(initial?.display_en ?? "");
@@ -143,29 +145,27 @@ function VenueFormDialog({
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
-          {isEdit
-            ? "Update the display name and address. The venue id can't change — it's referenced by existing records and QR displays."
-            : "The id goes in the QR display URL (?venue_id=…) and can't change later. Lowercase letters, numbers and underscores."}
+          {isEdit ? t("set.venuesEditDesc") : t("set.venuesAddDesc")}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
         {!isEdit && (
           <div className="space-y-1.5">
-            <Label>Venue id</Label>
+            <Label>{t("set.venueId")}</Label>
             <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="ward5_office" className="font-mono" />
-            {key && !keyValid && <p className="text-xs text-red-600">Lowercase letters, numbers and underscores only.</p>}
+            {key && !keyValid && <p className="text-xs text-red-600">{t("set.venueKeyErr")}</p>}
           </div>
         )}
         <div className="space-y-1.5">
-          <Label>Display name</Label>
+          <Label>{t("set.displayName")}</Label>
           <Input value={displayEn} onChange={(e) => setDisplayEn(e.target.value)} placeholder="Ward 5 Office" />
         </div>
         <div className="space-y-1.5">
-          <Label>Tamil name <span className="font-normal text-muted-foreground">(optional)</span></Label>
+          <Label>{t("set.tamilName")} <span className="font-normal text-muted-foreground">({t("set.optional")})</span></Label>
           <Input value={displayTa} onChange={(e) => setDisplayTa(e.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <Label>Address <span className="font-normal text-muted-foreground">(optional)</span></Label>
+          <Label>{t("set.address")} <span className="font-normal text-muted-foreground">({t("set.optional")})</span></Label>
           <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, city" />
         </div>
       </div>
@@ -178,11 +178,11 @@ function VenueFormDialog({
             try {
               await onSubmit({ key, display_en: displayEn, display_ta: displayTa || undefined, address: address || undefined });
             } catch (e) {
-              toast.error("Failed", { description: (e as Error).message });
+              toast.error(t("set.failed"), { description: (e as Error).message });
             } finally { setBusy(false); }
           }}
         >
-          <Check className="mr-1.5 h-3.5 w-3.5" /> {isEdit ? "Save" : "Add venue"}
+          <Check className="mr-1.5 h-3.5 w-3.5" /> {isEdit ? t("set.save") : t("set.venuesAdd")}
         </Button>
       </DialogFooter>
     </DialogContent>

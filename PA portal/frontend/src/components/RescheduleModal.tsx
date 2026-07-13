@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { CalendarDays, Loader2, ExternalLink } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useLang } from "@/lib/lang-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +37,8 @@ export default function RescheduleModal({
   /** Called with the new date + time when the reschedule succeeds. */
   onRebooked: (info: { scheduled_date: string; scheduled_time: string }) => void;
 }) {
+  const { t, lang } = useLang();
+  const locale = lang === "ta" ? "ta-IN" : undefined;
   const [dates, setDates] = useState<OpenDate[] | null>(null);
   const [date, setDate] = useState<string | null>(null);
   const [slots, setSlots] = useState<Slot[] | null>(null);
@@ -91,7 +94,7 @@ export default function RescheduleModal({
         // the Rescheduled tab; PA needs to pick again. Refresh the grid so
         // any newly-full slots are visible immediately.
         if (resp.status === 409) {
-          toast.error((body as { error?: string }).error || "That slot just became unavailable. Pick another.");
+          toast.error((body as { error?: string }).error || t("rsx.slotGone"));
           try {
             const rr = await fetch(`/api/v1/scheduling/slots/available?target_date=${date}`, { credentials: "include" });
             const dd = await rr.json() as { slots?: Slot[] };
@@ -100,21 +103,21 @@ export default function RescheduleModal({
           } catch {}
           return;
         }
-        toast.error((body as { error?: string }).error || `Reschedule failed (${resp.status})`);
+        toast.error((body as { error?: string }).error || `${t("rsx.failed")} (${resp.status})`);
         return;
       }
-      toast.success("Rescheduled", { description: `${date}, ${slot.label}` });
+      toast.success(t("rsx.done"), { description: `${date}, ${slot.label}` });
       onRebooked({
         scheduled_date: (body as { scheduled_date?: string }).scheduled_date || date,
         scheduled_time: (body as { scheduled_time?: string }).scheduled_time || slot.start,
       });
       onClose();
     } catch (e) {
-      toast.error("Network error", { description: (e as Error).message });
+      toast.error(t("rsx.networkError"), { description: (e as Error).message });
     } finally {
       setBusy(false);
     }
-  }, [appointmentId, date, slot, onRebooked, onClose]);
+  }, [appointmentId, date, slot, onRebooked, onClose, t]);
 
   const openCount = (slots ?? []).filter((s) => s.available && s.remaining > 0).length;
   const noDates = dates !== null && dates.length === 0;
@@ -125,19 +128,19 @@ export default function RescheduleModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <CalendarDays className="h-5 w-5 text-brand" />
-            Reschedule to a new slot
+            {t("rsx.title")}
           </DialogTitle>
         </DialogHeader>
 
         {noDates ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            <p className="font-semibold">No days are open for bookings.</p>
+            <p className="font-semibold">{t("rsx.noDatesTitle")}</p>
             <p className="mt-1 text-amber-700">
-              Open a new date on the Scheduling page, then come back here to rebook.
+              {t("rsx.noDatesDesc")}
             </p>
             <a href="/scheduling"
                className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline">
-              <ExternalLink className="h-3.5 w-3.5" /> Go to Scheduling
+              <ExternalLink className="h-3.5 w-3.5" /> {t("rsx.goScheduling")}
             </a>
           </div>
         ) : (
@@ -145,7 +148,7 @@ export default function RescheduleModal({
             {/* Date chips */}
             <div>
               <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Select a date
+                {t("rsx.selectDate")}
               </div>
               {!dates ? (
                 <div className="flex gap-2">
@@ -163,11 +166,11 @@ export default function RescheduleModal({
                         className={cn("min-w-[76px] shrink-0 rounded-lg border p-2 text-center transition-colors",
                           on ? "border-brand bg-brand text-brand-foreground" : "border-border bg-card hover:bg-muted")}>
                         <div className={cn("text-[10px] font-bold uppercase", on ? "text-white/85" : "text-muted-foreground")}>
-                          {dt.toLocaleDateString(undefined, { weekday: "short" })}
+                          {dt.toLocaleDateString(locale, { weekday: "short" })}
                         </div>
                         <div className="text-lg font-black leading-tight">{dt.getDate()}</div>
                         <div className={cn("text-[10px] font-bold", on ? "text-white/85" : "text-muted-foreground")}>
-                          {dt.toLocaleDateString(undefined, { month: "short" })}
+                          {dt.toLocaleDateString(locale, { month: "short" })}
                         </div>
                       </button>
                     );
@@ -180,12 +183,12 @@ export default function RescheduleModal({
             <div>
               <div className="mb-1.5 flex items-baseline justify-between">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Select a time slot
+                  {t("rsx.selectSlot")}
                 </div>
                 {slots && (
                   <span className={cn("text-[11px] font-bold uppercase",
                     openCount > 0 ? "text-emerald-600" : "text-amber-600")}>
-                    {openCount > 0 ? `${openCount} open` : "All full"}
+                    {openCount > 0 ? `${openCount} ${t("rsx.open")}` : t("rsx.allFull")}
                   </span>
                 )}
               </div>
@@ -207,8 +210,8 @@ export default function RescheduleModal({
                         </div>
                         <div className={cn("mt-0.5 text-[11px] font-bold",
                           ok ? "text-emerald-600" : "uppercase text-muted-foreground")}>
-                          {ok ? `${s.remaining}/${s.max_capacity} seats`
-                            : s.status === "BLOCKED" ? "Blocked" : "Full"}
+                          {ok ? `${s.remaining}/${s.max_capacity} ${t("rsx.seats")}`
+                            : s.status === "BLOCKED" ? t("rsx.blocked") : t("rsx.full")}
                         </div>
                       </button>
                     );
@@ -220,11 +223,11 @@ export default function RescheduleModal({
         )}
 
         <div className="mt-2 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={busy}>{t("rsx.cancel")}</Button>
           <Button onClick={submit} disabled={busy || !slot || noDates}
             className="min-w-[9rem]">
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {busy ? "Booking…" : "Confirm reschedule"}
+            {busy ? t("rsx.booking") : t("rsx.confirm")}
           </Button>
         </div>
       </DialogContent>

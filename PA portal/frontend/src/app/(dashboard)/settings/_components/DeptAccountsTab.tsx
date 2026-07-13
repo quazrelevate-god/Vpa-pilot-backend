@@ -21,8 +21,10 @@ import {
   deleteDeptAccount,
   type DeptAccountRow, type DepartmentRow,
 } from "../_lib/adminApi";
+import { useLang } from "@/lib/lang-context";
 
 export default function DeptAccountsTab() {
+  const { lang } = useLang();
   const [rows, setRows]         = useState<DeptAccountRow[] | null>(null);
   const [depts, setDepts]       = useState<DepartmentRow[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -40,8 +42,11 @@ export default function DeptAccountsTab() {
   };
   useEffect(() => { load(); }, []);
 
-  const deptLabel = (key: string) =>
-    depts?.find((d) => d.key === key)?.display_en ?? key;
+  const deptLabel = (key: string) => {
+    const d = depts?.find((x) => x.key === key);
+    if (!d) return key;
+    return lang === "ta" && d.display_ta ? d.display_ta : d.display_en;
+  };
 
   const deptsWithoutAccount = (depts ?? []).filter(
     (d) => d.is_active && !rows?.some((r) => r.department === d.key),
@@ -195,6 +200,7 @@ function CreateDeptAccountDialog({
   departments: DepartmentRow[];
   onCreated: (row: DeptAccountRow, initialPassword: string) => void;
 }) {
+  const { lang } = useLang();
   const [dept, setDept] = useState<string>(departments[0]?.key ?? "");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -215,7 +221,7 @@ function CreateDeptAccountDialog({
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {departments.map((d) =>
-                <SelectItem key={d.key} value={d.key}>{d.display_en}</SelectItem>
+                <SelectItem key={d.key} value={d.key}>{lang === "ta" && d.display_ta ? d.display_ta : d.display_en}</SelectItem>
               )}
             </SelectContent>
           </Select>

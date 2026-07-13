@@ -7,8 +7,10 @@ import { toast } from "sonner";
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useLang } from "@/lib/lang-context";
 
 export default function CrowdQrPage() {
+  const { t } = useLang();
   const [url, setUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -41,9 +43,9 @@ export default function CrowdQrPage() {
 
   function copy() {
     navigator.clipboard.writeText(url).then(() => {
-      setCopied(true); toast.success("Link copied");
+      setCopied(true); toast.success(t("qr.linkCopied"));
       setTimeout(() => setCopied(false), 1800);
-    }).catch(() => toast.error("Copy failed"));
+    }).catch(() => toast.error(t("qr.copyFailed")));
   }
 
   function download() {
@@ -52,7 +54,7 @@ export default function CrowdQrPage() {
     const canvas = box.querySelector("canvas") as HTMLCanvasElement | null;
     const img = box.querySelector("img") as HTMLImageElement | null;
     const src = canvas ? canvas.toDataURL("image/png") : img?.src;
-    if (!src) { toast.error("QR not ready"); return; }
+    if (!src) { toast.error(t("qr.qrNotReady")); return; }
     const a = document.createElement("a");
     a.href = src; a.download = "crowd-management-qr.png"; a.click();
   }
@@ -64,10 +66,10 @@ export default function CrowdQrPage() {
         <div className="mx-auto max-w-[900px] space-y-6 p-6 animate-in-up">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
-              <QrCode className="h-6 w-6 text-indigo-600" /> Crowd Management QR
+              <QrCode className="h-6 w-6 text-indigo-600" /> {t("qr.title")}
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              The crowd-management team scans this to open the live board and install it on their phone. Print it, or re-share the link any time.
+              {t("qr.subtitle")}
             </p>
           </div>
 
@@ -78,15 +80,15 @@ export default function CrowdQrPage() {
                 {loading && <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />}
               </div>
               <div className="flex w-full flex-wrap justify-center gap-2">
-                <Button variant="outline" onClick={download} disabled={!url}><Download className="mr-1.5 h-4 w-4" /> Download</Button>
-                <Button variant="outline" onClick={() => window.print()} disabled={!url}><QrCode className="mr-1.5 h-4 w-4" /> Print</Button>
+                <Button variant="outline" onClick={download} disabled={!url}><Download className="mr-1.5 h-4 w-4" /> {t("qr.download")}</Button>
+                <Button variant="outline" onClick={() => window.print()} disabled={!url}><QrCode className="mr-1.5 h-4 w-4" /> {t("qr.print")}</Button>
               </div>
             </Card>
 
             {/* Link + instructions */}
             <div className="space-y-4">
               <Card className="p-5">
-                <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Board link</div>
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t("qr.boardLink")}</div>
                 <div className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 truncate rounded-lg bg-muted px-3 py-2 text-sm">{url || "…"}</code>
                   <Button size="sm" variant="outline" onClick={copy} disabled={!url}>
@@ -95,23 +97,18 @@ export default function CrowdQrPage() {
                 </div>
                 {url && (
                   <a href={url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline">
-                    <ExternalLink className="h-3.5 w-3.5" /> Open the board
+                    <ExternalLink className="h-3.5 w-3.5" /> {t("qr.openBoard")}
                   </a>
                 )}
-                <p className="mt-3 text-xs text-muted-foreground">Lost the app? Just scan again or open this link, then re-install.</p>
+                <p className="mt-3 text-xs text-muted-foreground">{t("qr.lostApp")}</p>
               </Card>
 
               <Card className="p-5">
                 <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  <Smartphone className="h-3.5 w-3.5" /> How the team installs it
+                  <Smartphone className="h-3.5 w-3.5" /> {t("qr.installTitle")}
                 </div>
                 <ol className="space-y-2 text-sm text-foreground/85">
-                  {[
-                    "Scan the QR with the phone camera (or open the link).",
-                    "Log in with the crowd-team's display credentials.",
-                    "Tap “Install” (Android) — or Share → Add to Home Screen (iPhone).",
-                    "Open it from the home screen like a normal app.",
-                  ].map((s, i) => (
+                  {[t("qr.step1"), t("qr.step2"), t("qr.step3"), t("qr.step4")].map((s, i) => (
                     <li key={i} className="flex gap-2.5">
                       <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-700">{i + 1}</span>
                       <span>{s}</span>
