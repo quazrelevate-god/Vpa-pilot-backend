@@ -741,6 +741,41 @@ async def api_ticket_close(
     return JSONResponse(data)
 
 
+@router.post("/api/tickets/{ticket_id}/revert")
+async def api_ticket_revert(
+    ticket_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(get_current_login),
+):
+    """Revert an OPEN ticket back to Petition Review.
+
+    Only allowed while the ticket is still in `open`. Anything past that
+    already has a department's work invested. The revert is soft — the
+    ticket row and its audit trail are preserved — and the linked
+    appointment moves back to AWAITING_REVIEW so the PA can dismiss it,
+    correct it, or re-approve it from the review queue.
+
+    On re-approve, the same ticket row is reused (see
+    dashboard_service.update_appointment_status) so ticket numbers never
+    duplicate across revert/re-approve cycles.
+    """
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    body = await request.json() if await request.body() else {}
+    reason = (body or {}).get("reason", "")
+    try:
+        data = await ticket_service.revert_ticket(
+            db, ticket_id, actor=current.login_name, reason=reason,
+        )
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)
+
+
 @router.post("/api/tickets/{ticket_id}/reopen")
 async def api_ticket_reopen(
     ticket_id: int,

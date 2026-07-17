@@ -132,6 +132,7 @@ export const TICKET_STATUS_DISPLAY: Record<string, string> = {
   resolved:           "Resolved",
   closed:             "Closed",
   reopened:           "Reopened",
+  reverted:           "Reverted to review",
 };
 
 export const TICKET_STATUS_COLOR: Record<string, string> = {
@@ -144,6 +145,7 @@ export const TICKET_STATUS_COLOR: Record<string, string> = {
   resolved:           "bg-green-100 text-green-700 border-green-200",
   closed:             "bg-slate-200 text-slate-700 border-slate-300",
   reopened:           "bg-red-100 text-red-700 border-red-200",
+  reverted:           "bg-amber-100 text-amber-700 border-amber-200",
 };
 
 // Priority is driven by the AI review (low | medium | high | critical).

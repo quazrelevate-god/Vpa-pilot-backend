@@ -71,6 +71,13 @@ class TicketStatus(str, Enum):
     RESOLVED            = "resolved"              # department resolved (with proof); awaiting PA close
     CLOSED              = "closed"                # PA closed — no further action
     REOPENED            = "reopened"              # reopened post-close
+    # PA created the ticket by mistake (wrong summary, noise, misclick).
+    # Reverting sends it back to Petition Review (Appointment → AWAITING_REVIEW)
+    # and hides the ticket from every workflow tab. Only allowed while status
+    # is OPEN — a department may not have touched it yet.
+    # On re-approve, the SAME ticket row is reused (status flips back to OPEN,
+    # reverted_* fields cleared) so ticket numbers never duplicate.
+    REVERTED            = "reverted"
 
 
 class TicketPriority(str, Enum):
@@ -293,6 +300,26 @@ class Ticket(Base):
         default=0,
         server_default="0",
         comment="Number of times this ticket has been reopened",
+    )
+
+    # ── Revert-to-review tracking ──────────────────────────────────────────────
+    # Only populated when the PA reverts an OPEN ticket back to Petition Review
+    # (see ticket_service.revert_ticket). Cleared when the ticket is re-approved
+    # so the row can be reused for the next lifecycle without ghost data.
+    reverted_at = Column(
+        DateTime,
+        nullable=True,
+        comment="When the ticket was reverted back to Petition Review (NULL otherwise)",
+    )
+    reverted_by = Column(
+        VARCHAR(100),
+        nullable=True,
+        comment="PA username who reverted",
+    )
+    revert_reason = Column(
+        Text,
+        nullable=True,
+        comment="Why the PA reverted (required at revert time, ≥4 chars)",
     )
 
     # ── Progress % (department-reported) ────────────────────────────────────────
