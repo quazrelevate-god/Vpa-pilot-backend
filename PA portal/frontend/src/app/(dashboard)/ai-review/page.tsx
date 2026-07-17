@@ -1182,7 +1182,7 @@ export default function AiReviewPage() {
                 <section className="rounded-2xl border border-border bg-card p-5 shadow-card">
                   <SectionHeader icon={LayoutGrid} title={t("petition.grpOverview")} />
                   <div className="grid grid-cols-2 gap-x-8 gap-y-5">
-                    <Field label={t("petition.colName")} labelIcon={User} editing={editing} value={form.name} fallback={lang === "ta" && review.name_ta?.trim() ? review.name_ta : review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
+                    <Field label={editing ? t("petition.fNameEn") : t("petition.colName")} labelIcon={User} editing={editing} value={form.name} fallback={lang === "ta" && review.name_ta?.trim() ? review.name_ta : review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
                     {/* Phone stays read-only for petitions — it's the OTP-verified, uniquely-indexed citizen mobile. */}
                     <Field label={t("petition.colPhone")} labelIcon={Phone} editing={editing && review._kind !== "petition"} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} />
                     {editing && <Field label={t("petition.fNameTa")} editing value={form.name_ta} fallback={review.name_ta} onChange={v => setForm(f => ({ ...f, name_ta: v }))} />}

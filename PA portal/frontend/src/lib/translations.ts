@@ -470,6 +470,9 @@ export const translations = {
     "petition.approvedAs":       "Approved as",
     "petition.saveBeforeApprove":"Save your edits before approving.",
     "petition.noPreview":        "No preview",
+    // Only used while editing, where it sits beside "Name (Tamil)". The
+    // read-only view keeps the plain `petition.colName` ("Name").
+    "petition.fNameEn":          "Name (English)",
     "petition.fNameTa":          "Name (Tamil)",
     "petition.fDept":            "Dept",
     "petition.fMinistry":        "Ministry",
@@ -1306,6 +1309,7 @@ export const translations = {
     "petition.approvedAs":       "அங்கீகரிக்கப்பட்டது:",
     "petition.saveBeforeApprove":"அங்கீகரிக்கும் முன் திருத்தங்களை சேமிக்கவும்.",
     "petition.noPreview":        "முன்னோட்டம் இல்லை",
+    "petition.fNameEn":          "பெயர் (ஆங்கிலம்)",
     "petition.fNameTa":          "பெயர் (தமிழ்)",
     "petition.fDept":            "துறை",
     "petition.fMinistry":        "அமைச்சகம்",

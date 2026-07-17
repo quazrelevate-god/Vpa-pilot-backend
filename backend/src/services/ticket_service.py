@@ -87,6 +87,13 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         # Priority is driven by the AI review (no manual P0-P3 override).
         "priority":        summary_rec.priority if summary_rec else None,
         "assigned_to_pa":  t.assigned_to_pa,
+        # Routed school department (Ticket.department) — distinct from the AI
+        # ministry. Drives both the list's "Assigned" column and the drawer's
+        # "Assign" control, so they can't drift. A ticket is auto-set to status
+        # `assigned` when routed to a dept. Once a department accepts
+        # (accepted_at set), re-assignment is locked.
+        "assigned_department":       t.department,
+        "assigned_department_label": school_department_label(t.department) if t.department else None,
         "due_date":        utc_iso(t.due_date),
         "forwarded_to_dept": t.forwarded_to_dept,
         "forwarded_to_dept_label": (
@@ -203,11 +210,7 @@ def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None)
         "ai_name_en":         summary_rec.name_en if summary_rec else None,
         "ai_name_ta":         summary_rec.name_ta if summary_rec else None,
         "audio_transcript":   summary_rec.audio_transcript if summary_rec else None,
-        # Routed school department (Ticket.department) — distinct from the AI
-        # ministry above. Drives the drawer's "Assign" control. Once a department
-        # accepts (accepted_at set), re-assignment is locked.
-        "assigned_department":       t.department,
-        "assigned_department_label": school_department_label(t.department) if t.department else None,
+        # assigned_department/_label come from _serialize_ticket_row above.
         "accepted_at":        utc_iso(t.accepted_at),
         "accepted_by":        t.accepted_by,
         "resolution_notes":   t.resolution_notes,

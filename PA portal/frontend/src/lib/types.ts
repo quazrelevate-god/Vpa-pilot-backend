@@ -151,6 +151,10 @@ export interface TicketRow {
   status: TicketStatus;
   priority?: Priority | null;   // from the AI review (low|medium|high|critical)
   assigned_to_pa?: string | null;
+  // Routed school department — what the "Assigned" column shows (status
+  // `assigned` is auto-set when a ticket is routed to a department).
+  assigned_department?: string | null;
+  assigned_department_label?: string | null;
   due_date?: string | null;
   forwarded_to_dept?: string | null;
   forwarded_to_dept_label?: string | null;

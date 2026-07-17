@@ -56,6 +56,10 @@ const NAV_ITEMS: { href: string; tKey: string; icon: typeof CalendarDays; badge?
   { href: "/crowd-qr",      tKey: "nav.crowdQr",      icon: QrCode },
 ];
 
+// Rooms reserved for super_admin. Everyone else — including pa/auditor, who
+// otherwise see every room — never gets these in the nav.
+const SUPER_ADMIN_ONLY: string[] = ["/overview", "/referrals"];
+
 // Settings is a real page; only visible to super_admin with the feature
 // flag on. When neither condition holds it disappears from the nav entirely
 // rather than showing a "Coming soon" placeholder.
@@ -129,9 +133,13 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
     petition_reviewer: ["/appointments", "/ai-review", "/tickets"],
   };
   const allowedHrefs = role ? ROLE_NAV[role] : undefined;
-  const navItems = allowedHrefs
+  const navItems = (allowedHrefs
     ? NAV_ITEMS.filter((i) => allowedHrefs.includes(i.href))
-    : NAV_ITEMS;
+    : NAV_ITEMS
+  // Overview + Executive Queue are super_admin-only. `role` is null until /me
+  // resolves, so these stay hidden while loading rather than flashing in for
+  // someone who isn't allowed to see them.
+  ).filter((i) => !SUPER_ADMIN_ONLY.includes(i.href) || role === "super_admin");
 
   // Alt+1…9 — jump to the Nth room from anywhere in the portal.
   useEffect(() => {

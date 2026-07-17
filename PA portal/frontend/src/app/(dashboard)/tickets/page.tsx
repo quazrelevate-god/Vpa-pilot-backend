@@ -87,9 +87,14 @@ function priorityText(p: string, t: (k: string) => string): string {
   return k ? t(k) : (PRIORITY_DISPLAY[p] ?? p);
 }
 
-/** Who a ticket is assigned to — the PA who owns it (not the forwarded dept). */
+/**
+ * Who a ticket is assigned to. Routing to a school department is what flips a
+ * ticket to status `assigned`, so the department is the primary answer here —
+ * matching what the detail drawer's "Assign" field shows. Falls back to the PA
+ * owner when a ticket is held by a person rather than routed on.
+ */
 function assigneeLabel(row: TicketRow): string | null {
-  return row.assigned_to_pa || null;
+  return row.assigned_department_label || row.assigned_department || row.assigned_to_pa || null;
 }
 function isBreached(row: TicketRow): boolean {
   if (row.status === "resolved" || row.status === "closed") return false;

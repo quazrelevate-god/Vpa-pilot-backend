@@ -152,6 +152,16 @@ class DeptAccountRow(BaseModel):
     display_name: Optional[str] = None
 
 
+class DeptAccountCreated(DeptAccountRow):
+    """Create response — the row plus the one-time plaintext password.
+
+    This needs its own model: FastAPI filters the handler's return value
+    through `response_model`, so declaring `DeptAccountRow` there silently
+    dropped the `initial_password` key and the UI showed "undefined".
+    """
+    initial_password: str
+
+
 class DeptAccountCreate(BaseModel):
     department: str
     username: str = Field(min_length=3, max_length=60)
@@ -460,7 +470,7 @@ async def list_dept_accounts(db: AsyncSession = Depends(get_db)):
     return [DeptAccountRow.model_validate(r, from_attributes=True) for r in rows]
 
 
-@router.post("/dept-accounts", response_model=DeptAccountRow, status_code=201)
+@router.post("/dept-accounts", response_model=DeptAccountCreated, status_code=201)
 async def create_dept_account(
     body: DeptAccountCreate,
     db: AsyncSession = Depends(get_db),
