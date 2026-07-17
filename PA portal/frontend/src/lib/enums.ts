@@ -185,3 +185,34 @@ export const ticketManualStatusOptions = ticketStatusOptions.filter(
 );
 export const priorityOptions = Object.entries(PRIORITY_DISPLAY).map(([value, label]) => ({ value, label }));
 export const closureReasonOptions = Object.entries(CLOSURE_REASON_DISPLAY).map(([value, label]) => ({ value, label }));
+
+/** School Education departments a ticket can be routed to. Shared between the
+ *  TicketDetailDrawer assignment select and the tickets-page department filter
+ *  so the two never drift. */
+export const SCHOOL_DEPARTMENTS: { key: string; label: string }[] = [
+  { key: "director_school_education",   label: "Director of School Education" },
+  { key: "private_schools",             label: "Directorate of Private Schools" },
+  { key: "elementary_education",        label: "Elementary Education" },
+  { key: "govt_examination",            label: "Government Examinations" },
+  { key: "non_formal_adult_education",  label: "Non-Formal & Adult Education" },
+  { key: "public_libraries",            label: "Public Libraries" },
+  { key: "scert",                       label: "SCERT" },
+  { key: "teacher_recruitment_board",   label: "Teacher Recruitment Board (TRB)" },
+  { key: "tn_education_service_corp",   label: "TN Education Service Corporation" },
+  { key: "samagra_shiksha",             label: "Samagra Shiksha" },
+];
+export const SCHOOL_DEPT_LABEL: Record<string, string> =
+  Object.fromEntries(SCHOOL_DEPARTMENTS.map((d) => [d.key, d.label]));
+export const schoolDepartmentOptions =
+  SCHOOL_DEPARTMENTS.map((d) => ({ value: d.key, label: d.label }));
+
+/** Intake channel a petition came in through — shown as a Source pill on rows
+ *  and used as a Source filter in the tickets and petition-review pages. */
+export const SOURCE_DISPLAY: Record<string, string> = {
+  qr_citizen:   "Citizen QR",
+  ai_scan:      "Scanned petition",
+  postal:       "Postal",
+  manual_staff: "Staff entry",
+  cm_office:    "CM Office",
+};
+export const sourceOptions = Object.entries(SOURCE_DISPLAY).map(([value, label]) => ({ value, label }));

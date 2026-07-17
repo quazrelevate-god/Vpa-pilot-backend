@@ -500,6 +500,11 @@ class AiUploadService:
             category_id=ai_ids.get("category_id"),
             schedule_meeting=False,
             summary_status="DONE",  # ai_scan summarises inline below; keep the worker off it
+            # Carry the intake channel from the ai_upload row so the ticket
+            # source filter reflects how the petition was actually submitted
+            # (ai_scan / postal / cm_office) instead of always looking like a
+            # citizen QR walk-in.
+            source=(row.source or "ai_scan"),
             created_at=now,
         )
         db.add(appt)

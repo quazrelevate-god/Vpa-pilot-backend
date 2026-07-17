@@ -164,9 +164,13 @@ class Ticket(Base):
     )
 
     priority = Column(
-        VARCHAR(5),
+        VARCHAR(20),
         nullable=True,
-        comment="TicketPriority enum (P0/P1/P2/P3). Auto-suggested from AI urgency, PA can override.",
+        comment=(
+            "AI-review priority: low | medium | high | critical. Was VARCHAR(5) for "
+            "the legacy P0-P3 enum; widened in migration 031 so 'medium' and "
+            "'critical' fit."
+        ),
     )
 
     status_id = Column(

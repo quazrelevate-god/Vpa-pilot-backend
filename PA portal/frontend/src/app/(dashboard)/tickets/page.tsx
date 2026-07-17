@@ -24,6 +24,7 @@ import type { TicketRow } from "@/lib/types";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR, PRIORITY_DISPLAY,
   priorityOptions, ministryOptions, categoryOptions, MINISTRY_DISPLAY,
+  schoolDepartmentOptions, sourceOptions,
   CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA,
 } from "@/lib/enums";
 
@@ -298,6 +299,14 @@ export default function TicketsPage() {
   const [status, setStatus] = useState("open");
   const [priority, setPriority] = useState("");
   const [deptValue, setDeptValue] = useState("");   // AI ministry | forwarded_to_dept per tab
+  // Assigned school department (Ticket.department). Only shown on the
+  // Assigned / In Progress / Closed / Resolved tabs since those are the
+  // only states where a department has actually taken ownership.
+  const [assignedDept, setAssignedDept] = useState("");
+  // Intake channel (Appointment.source). Shown on every tab except
+  // Forwarded — forwarded tickets are filtered by target ministry, not by
+  // how the citizen originally submitted.
+  const [sourceValue, setSourceValue] = useState("");
   const [category, setCategory] = useState("");   // driven by the distribution chart
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -333,10 +342,22 @@ export default function TicketsPage() {
     forwardedToDept: deptFilter.field === "forwarded_to_dept" ? (deptValue || undefined) : undefined,
   }), [deptFilter, deptValue]);
 
+  // Assigned-department filter is only meaningful once a ticket has been
+  // routed to a department, i.e. Assigned / In Progress / Closed / Resolved.
+  const showAssignedDeptFilter =
+    status === "assigned" || status === "in_progress" || status === "closed" || status === "resolved";
+  // Source (intake channel) filter is meaningful everywhere except the
+  // Forwarded tab, where the operator is thinking about ministry routing,
+  // not how the citizen submitted.
+  const showSourceFilter = status !== "forwarded_to_dept";
+
   // Filters sent to the backend (table + counts). Category is chart-driven.
   const secondary = useMemo<Omit<TicketListFilters, "status" | "page">>(() => ({
-    priority, ...deptParams, category, search, dateFrom, dateTo,
-  }), [priority, deptParams, category, search, dateFrom, dateTo]);
+    priority, ...deptParams,
+    department: showAssignedDeptFilter ? (assignedDept || undefined) : undefined,
+    source: showSourceFilter ? (sourceValue || undefined) : undefined,
+    category, search, dateFrom, dateTo,
+  }), [priority, deptParams, showAssignedDeptFilter, assignedDept, showSourceFilter, sourceValue, category, search, dateFrom, dateTo]);
 
   // The distribution chart shows category bars on most tabs, but ministry bars
   // on the Forwarded tab (where it also drives the ministry filter).
@@ -351,10 +372,18 @@ export default function TicketsPage() {
   ), [isForwarded, priority, deptParams, search, dateFrom, dateTo]);
 
   const advancedFilterCount =
-    (priority ? 1 : 0) + (deptValue ? 1 : 0) + (category ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
+    (priority ? 1 : 0)
+    + (deptValue ? 1 : 0)
+    + (showAssignedDeptFilter && assignedDept ? 1 : 0)
+    + (showSourceFilter && sourceValue ? 1 : 0)
+    + (category ? 1 : 0)
+    + ((dateFrom || dateTo) ? 1 : 0);
 
   const anyFilterActive = Boolean(
-    search || priority || deptValue || category || dateFrom || dateTo || breachedOnly,
+    search || priority || deptValue
+      || (showAssignedDeptFilter && assignedDept)
+      || (showSourceFilter && sourceValue)
+      || category || dateFrom || dateTo || breachedOnly,
   );
 
   const load = useCallback(async (signal: AbortSignal) => {
@@ -432,7 +461,7 @@ export default function TicketsPage() {
   }, [dateChip]);
 
   const clearAll = useCallback(() => {
-    setPriority(""); setDeptValue(""); setCategory("");
+    setPriority(""); setDeptValue(""); setAssignedDept(""); setSourceValue(""); setCategory("");
     setDateFrom(""); setDateTo(""); setDateChip(null); setSearch("");
     setBreachedOnly(false); setPage(1);
   }, []);
@@ -775,6 +804,31 @@ export default function TicketsPage() {
                         <FilterSectionLabel label={t(deptFilter.label)} onReset={deptValue ? () => { setPage(1); setDeptValue(""); } : undefined} resetLabel={t("tickets.reset")} />
                         <FilterSelect label={t(deptFilter.label)} value={deptValue}
                           onChange={(v) => { setPage(1); setDeptValue(v); }} options={ministryOptions} />
+                      </div>
+                    )}
+
+                    {/* Assigned department — Assigned / In Progress / Closed /
+                        Resolved only. Filters by the school department the PA
+                        routed the ticket to (Ticket.department). */}
+                    {showAssignedDeptFilter && (
+                      <div className="flex flex-col gap-2">
+                        <FilterSectionLabel label={t("tickets.assignedDepartment")}
+                          onReset={assignedDept ? () => { setPage(1); setAssignedDept(""); } : undefined}
+                          resetLabel={t("tickets.reset")} />
+                        <FilterSelect label={t("tickets.assignedDepartment")} value={assignedDept}
+                          onChange={(v) => { setPage(1); setAssignedDept(v); }} options={schoolDepartmentOptions} />
+                      </div>
+                    )}
+
+                    {/* Source — everywhere except the Forwarded tab. Intake
+                        channel the petition came in through. */}
+                    {showSourceFilter && (
+                      <div className="flex flex-col gap-2">
+                        <FilterSectionLabel label={t("tickets.source")}
+                          onReset={sourceValue ? () => { setPage(1); setSourceValue(""); } : undefined}
+                          resetLabel={t("tickets.reset")} />
+                        <FilterSelect label={t("tickets.source")} value={sourceValue}
+                          onChange={(v) => { setPage(1); setSourceValue(v); }} options={sourceOptions} />
                       </div>
                     )}
 

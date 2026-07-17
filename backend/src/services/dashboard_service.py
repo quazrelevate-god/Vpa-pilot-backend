@@ -762,7 +762,7 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "ministry": (summary_rec.ministry if summary_rec else None),
         "status_db": appt.status,
         "status": _resolve_display_status(appt),
-        "source": "qr_citizen",  # v2: source column removed; default for now
+        "source": appt.source or "qr_citizen",
         "venue": appt.venue_id,  # physical location / event where the QR was scanned
         "venue_label": None,     # filled from the venue registry by _attach_venue_labels
         "created_at": utc_iso(appt.created_at),

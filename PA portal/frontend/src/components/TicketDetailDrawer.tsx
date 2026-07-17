@@ -17,7 +17,8 @@ import { fetchTicket, patchTicket, ticketAction, uploadTicketAttachment } from "
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR,
   MINISTRY_DISPLAY, CATEGORY_DISPLAY, CATEGORY_DISPLAY_TA, CLOSURE_REASON_DISPLAY,
-  closureReasonOptions,
+  closureReasonOptions, priorityOptions,
+  SCHOOL_DEPARTMENTS, SCHOOL_DEPT_LABEL,
 } from "@/lib/enums";
 import { useLang } from "@/lib/lang-context";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
@@ -59,23 +60,6 @@ const EVENT_ICON: Record<string, React.ElementType> = {
   resolved: CheckCircle2, closed: Lock, reopened: RotateCcw,
 };
 
-// The 10 School Education departments a ticket can be routed to.
-const SCHOOL_DEPARTMENTS: { key: string; label: string }[] = [
-  { key: "director_school_education", label: "Director of School Education" },
-  { key: "private_schools", label: "Directorate of Private Schools" },
-  { key: "elementary_education", label: "Elementary Education" },
-  { key: "govt_examination", label: "Government Examinations" },
-  { key: "non_formal_adult_education", label: "Non-Formal & Adult Education" },
-  { key: "public_libraries", label: "Public Libraries" },
-  { key: "scert", label: "SCERT" },
-  { key: "teacher_recruitment_board", label: "Teacher Recruitment Board (TRB)" },
-  { key: "tn_education_service_corp", label: "TN Education Service Corporation" },
-  { key: "samagra_shiksha", label: "Samagra Shiksha" },
-];
-
-const SCHOOL_DEPT_LABEL: Record<string, string> = Object.fromEntries(
-  SCHOOL_DEPARTMENTS.map((d) => [d.key, d.label]),
-);
 // Department actions log the department key as the actor — show its full name.
 const prettyActor = (a: string) => SCHOOL_DEPT_LABEL[a] ?? a;
 
@@ -406,6 +390,30 @@ export default function TicketDetailDrawer({
                     const showBtn = canEdit && !t.accepted_at;
                     return (
                       <>
+                        {/* Priority — live-save Select. Editable while the ticket
+                            is Open; kept separate from the staged Assign flow
+                            because PA may correct priority independently of
+                            routing (e.g. after seeing the citizen's uploads). */}
+                        <div className="mb-4 space-y-1.5">
+                          <Label>{tr("petition.colUrgency")}</Label>
+                          <Select
+                            value={t.priority ?? undefined}
+                            onValueChange={(v) => patch({ priority: v })}
+                            disabled={!canEdit || assigning}
+                          >
+                            <SelectTrigger className="h-10">
+                              <SelectValue placeholder={tr("tkt.priorityPlaceholder")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {priorityOptions.map((o) => (
+                                <SelectItem key={o.value} value={o.value}>
+                                  <span className="uppercase tracking-wide">{tr(`petition.urgency${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`) || o.label}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           {/* Assign — routes to a school department (logs "routed").
                               Once a department accepts, ownership is locked here. */}

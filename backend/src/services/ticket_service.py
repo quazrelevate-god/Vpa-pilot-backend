@@ -84,8 +84,12 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         "citizen_name":    name,
         "citizen_mobile":  mobile,
         "status":          t.status,
-        # Priority is driven by the AI review (no manual P0-P3 override).
-        "priority":        summary_rec.priority if summary_rec else None,
+        # Priority: AI review value where present, else the ticket-level
+        # override set by the PA from the drawer. Falling back to the ticket
+        # column matters because ai_upload-approved tickets don't always
+        # have a GrievanceSummaryRecord — the serializer used to return
+        # None there and the PA's edits looked lost.
+        "priority":        (summary_rec.priority if summary_rec and summary_rec.priority else t.priority),
         "assigned_to_pa":  t.assigned_to_pa,
         # Routed school department (Ticket.department) — distinct from the AI
         # ministry. Drives both the list's "Assigned" column and the drawer's
@@ -240,6 +244,7 @@ async def list_tickets(
     assigned_to: Optional[str] = None,
     forwarded_to_dept: Optional[str] = None,
     department: Optional[str] = None,   # routed school department (Ticket.department) — scopes dept officers
+    source: Optional[str] = None,       # intake channel on the source Appointment
     search: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -266,6 +271,11 @@ async def list_tickets(
         clauses.append(Ticket.forwarded_to_dept == forwarded_to_dept)
     if department:
         clauses.append(Ticket.department == department)
+    if source:
+        # Source lives on the source Appointment. Scope tickets to
+        # appointments whose intake channel matches.
+        source_sub = select(Appointment.id).where(Appointment.source == source)
+        clauses.append(Ticket.appointment_id.in_(source_sub))
     if date_from:
         clauses.append(Ticket.created_at >= _ist_start(date_from))
     if date_to:
@@ -322,6 +332,7 @@ async def get_ticket_counts(
     assigned_to: Optional[str] = None,
     forwarded_to_dept: Optional[str] = None,
     department: Optional[str] = None,   # routed school department — scopes dept officers
+    source: Optional[str] = None,       # intake channel on the source Appointment
     search: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -337,6 +348,11 @@ async def get_ticket_counts(
         clauses.append(Ticket.forwarded_to_dept == forwarded_to_dept)
     if department:
         clauses.append(Ticket.department == department)
+    if source:
+        # Source lives on the source Appointment. Scope tickets to
+        # appointments whose intake channel matches.
+        source_sub = select(Appointment.id).where(Appointment.source == source)
+        clauses.append(Ticket.appointment_id.in_(source_sub))
     if date_from:
         clauses.append(Ticket.created_at >= _ist_start(date_from))
     if date_to:
@@ -487,6 +503,18 @@ async def update_ticket_fields(
              payload={"from": t.priority, "to": priority})
         t.priority = priority
         t.priority_id = v2.priority_id_or_none(priority)
+        # The list/detail serializers read priority from the AI review
+        # (GrievanceSummaryRecord.priority), so mirror the change there too
+        # or the edit will "vanish" on next fetch. This is also what the
+        # distribution chart + tickets filter aggregate against.
+        summary_rec = await db.scalar(
+            select(GrievanceSummaryRecord).where(
+                GrievanceSummaryRecord.appointment_id == t.appointment_id,
+                GrievanceSummaryRecord.is_latest == True,  # noqa: E712
+            )
+        )
+        if summary_rec is not None:
+            summary_rec.priority = priority
 
     if assigned_to_pa is not None and assigned_to_pa != t.assigned_to_pa:
         if assigned_to_pa == "":

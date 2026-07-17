@@ -501,6 +501,17 @@ async def api_tickets_open_count(
     return JSONResponse({"open": await ticket_service.get_open_count(db, department=_officer_dept(current))})
 
 
+def _effective_department(current: Login, requested: str) -> str | None:
+    """A dept officer is always pinned to their own scope — their request
+    parameter is ignored. Full-access roles (PA / auditor / super_admin) can
+    pass a `department` query param to filter by the routed school
+    department; empty means no filter."""
+    officer = _officer_dept(current)
+    if officer is not None:
+        return officer
+    return requested or None
+
+
 @router.get("/api/tickets")
 async def api_tickets_list(
     request: Request,
@@ -510,6 +521,8 @@ async def api_tickets_list(
     category: str = "",
     assigned_to: str = "",
     forwarded_to_dept: str = "",
+    department: str = "",
+    source: str = "",
     search: str = "",
     date_from: str = "",
     date_to: str = "",
@@ -525,7 +538,8 @@ async def api_tickets_list(
         category=category or None,
         assigned_to=assigned_to or None,
         forwarded_to_dept=forwarded_to_dept or None,
-        department=_officer_dept(current),
+        department=_effective_department(current, department),
+        source=source or None,
         search=search or None,
         date_from=date_from or None,
         date_to=date_to or None,
@@ -542,6 +556,8 @@ async def api_ticket_counts(
     category: str = "",
     assigned_to: str = "",
     forwarded_to_dept: str = "",
+    department: str = "",
+    source: str = "",
     search: str = "",
     date_from: str = "",
     date_to: str = "",
@@ -558,7 +574,8 @@ async def api_ticket_counts(
         category=category or None,
         assigned_to=assigned_to or None,
         forwarded_to_dept=forwarded_to_dept or None,
-        department=_officer_dept(current),
+        department=_effective_department(current, department),
+        source=source or None,
         search=search or None,
         date_from=date_from or None,
         date_to=date_to or None,

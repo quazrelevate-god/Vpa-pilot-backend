@@ -215,6 +215,13 @@ class Appointment(Base):
 
     num_persons = Column(Integer, nullable=False, default=1)
 
+    # Intake channel the petition came in through. Restored in migration 030
+    # (was dropped in the v2 cutover). Values match SOURCE_DISPLAY on the
+    # frontend: qr_citizen | ai_scan | postal | manual_staff | cm_office.
+    source = Column(
+        String(50), nullable=False, default="qr_citizen", server_default="qr_citizen",
+    )
+
     # v1 attr → v2 DB column "venue"
     venue_id = Column("venue", String(100), nullable=True)
 

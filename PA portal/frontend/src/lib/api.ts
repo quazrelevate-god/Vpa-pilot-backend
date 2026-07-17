@@ -96,6 +96,11 @@ export interface TicketListFilters {
   category?: string;
   assignedTo?: string;
   forwardedToDept?: string;
+  /** Assigned school-department key (Ticket.department) — filters
+   *  Assigned / In Progress / Closed / Resolved tabs. */
+  department?: string;
+  /** Intake channel key (qr_citizen | ai_scan | postal | manual_staff | cm_office). */
+  source?: string;
   search?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -110,6 +115,8 @@ function _ticketParams(f: TicketListFilters, includeStatus: boolean): URLSearchP
   if (f.category) p.set("category", f.category);
   if (f.assignedTo) p.set("assigned_to", f.assignedTo);
   if (f.forwardedToDept) p.set("forwarded_to_dept", f.forwardedToDept);
+  if (f.department) p.set("department", f.department);
+  if (f.source) p.set("source", f.source);
   if (f.search) p.set("search", f.search);
   if (f.dateFrom) p.set("date_from", f.dateFrom);
   if (f.dateTo) p.set("date_to", f.dateTo);
