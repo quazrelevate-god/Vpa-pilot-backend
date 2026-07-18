@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Sparkles, UploadCloud, Loader2, FolderUp, Files, Check, CheckCircle2,
   AlertTriangle, MoreVertical, Layers, Tag, ClipboardCheck, FileText,
-  FileCheck2, Flag, ArrowRight, RefreshCw, Mail, Landmark, ScanLine,
+  FileCheck2, Flag, ArrowRight, RefreshCw, Mail, Landmark, ScanLine, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,6 +16,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA } from "@/lib/enums";
@@ -93,6 +96,33 @@ export default function AiUploadsPage() {
       else toast.error("Retry failed");
     } catch { toast.error("Network error"); }
   }, [load]);
+
+  // Batch delete — soft-guarded by a confirm dialog so accidental clicks
+  // on the dropdown don't nuke a folder. The backend refuses if any row
+  // is REVIEWED (would 404 the appointment's attachments); surface that
+  // message directly in a toast.
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string; count: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      const r = await fetch(`/api/ai-uploads/batch/${encodeURIComponent(pendingDelete.id)}`, {
+        method: "DELETE", credentials: "include",
+      });
+      const body = await r.json().catch(() => ({}));
+      if (r.ok) {
+        toast.success(`${pendingDelete.name} deleted`, {
+          description: `${body.deleted ?? 0} file(s) removed from storage.`,
+        });
+        setPendingDelete(null);
+        load();
+      } else {
+        toast.error(body.error || "Delete failed");
+      }
+    } catch { toast.error("Network error"); }
+    finally { setDeleting(false); }
+  }, [pendingDelete, load]);
 
   // Upload in small chunks (concurrency-limited) under one shared batch id, so a
   // folder of hundreds of files streams in as many small requests instead of one
@@ -269,7 +299,8 @@ export default function AiUploadsPage() {
               ) : (
                 <div className="flex flex-col divide-y divide-border">
                   {shownBatches.map((b) => (
-                    <BatchRow key={b.id} batch={b} t={t} lang={lang} onRetry={retry} />
+                    <BatchRow key={b.id} batch={b} t={t} lang={lang} onRetry={retry}
+                      onDelete={() => setPendingDelete({ id: b.id, name: b.name, count: b.items.length })} />
                   ))}
                 </div>
               )}
@@ -381,14 +412,50 @@ export default function AiUploadsPage() {
           </aside>
         </div>
       </main>
+
+      {/* Batch delete confirmation. The backend refuses if any row in the
+          batch is already REVIEWED (would break the appointment's
+          attachments), so the dialog copy makes the destructive intent
+          explicit — this purges the DB rows AND the underlying files. */}
+      <Dialog open={pendingDelete !== null} onOpenChange={(o) => { if (!o) setPendingDelete(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-4 w-4" />
+              {t("uploads.deleteConfirmTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("uploads.deleteConfirmBody")
+                .replace("{name}", pendingDelete?.name ?? "")
+                .replace("{count}", String(pendingDelete?.count ?? 0))}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" onClick={() => setPendingDelete(null)} disabled={deleting}>
+              {t("uploads.no")}
+            </Button>
+            <Button
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 !bg-none"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting
+                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t("uploads.deleting")}</>
+                : <><Trash2 className="mr-2 h-4 w-4" /> {t("uploads.yesDelete")}</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
 /* ── Local components ─────────────────────────────────────────────────── */
 
-function BatchRow({ batch, t, lang, onRetry }: {
-  batch: Batch; t: (k: string) => string; lang: string; onRetry: (ids: number[]) => void;
+function BatchRow({ batch, t, lang, onRetry, onDelete }: {
+  batch: Batch; t: (k: string) => string; lang: string;
+  onRetry: (ids: number[]) => void;
+  onDelete: () => void;
 }) {
   const items = batch.items;
   const total = items.length;
@@ -448,7 +515,7 @@ function BatchRow({ batch, t, lang, onRetry }: {
             <MoreVertical className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent align="end" className="w-48">
           {failedIds.length > 0 && (
             <DropdownMenuItem onSelect={() => onRetry(failedIds)}>
               <RefreshCw className="h-3.5 w-3.5" /> {t("uploads.retryFailed")} ({failedIds.length})
@@ -456,6 +523,12 @@ function BatchRow({ batch, t, lang, onRetry }: {
           )}
           <DropdownMenuItem asChild>
             <Link href="/ai-review"><ClipboardCheck className="h-3.5 w-3.5" /> {t("uploads.openReview")}</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={onDelete}
+            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> {t("uploads.deleteBatch")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

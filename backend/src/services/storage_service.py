@@ -149,6 +149,39 @@ def get_file_range_bytes(storage_path: str, start: int, end: int) -> Optional[by
         return f.read(end - start + 1)
 
 
+def delete_file(storage_path: str) -> bool:
+    """Delete a single stored object. Returns True on success (or if the file
+    was already absent — deletion is idempotent), False on a real backend
+    error the caller may want to surface. Never raises.
+
+    Used by the AI-Uploads batch delete flow to physically purge wrong or
+    noisy uploads so they don't linger in MinIO / local disk after the DB
+    rows are dropped.
+    """
+    client = _get_client()
+    if client:
+        key = storage_path.replace("\\", "/")
+        if key.startswith("uploads/"):
+            key = key[len("uploads/"):]
+        try:
+            client.delete_object(Bucket=_bucket(), Key=key)
+            return True
+        except Exception as e:
+            logger.warning(
+                "delete_file MinIO delete failed | bucket=%s key=%s err=%s",
+                _bucket(), key, repr(e),
+            )
+            return False
+    p = Path(storage_path)
+    try:
+        if p.exists():
+            p.unlink()
+        return True
+    except Exception as e:
+        logger.warning("delete_file local unlink failed | path=%s err=%s", p, repr(e))
+        return False
+
+
 def get_file_bytes(storage_path: str) -> Optional[bytes]:
     """Fetch raw bytes for a stored file. Logs the underlying error on failure
     so 404s from the file-serving endpoint can be traced back to a real cause

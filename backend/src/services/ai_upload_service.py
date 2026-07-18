@@ -577,5 +577,60 @@ class AiUploadService:
         await self._ensure_worker()
         return {"requeued": [r.id for r in rows]}
 
+    # ── Batch delete (purge wrong / noisy uploads) ─────────────────────────────
+    async def delete_batch(self, db: AsyncSession, batch_id: str) -> Dict[str, Any]:
+        """Delete every AiUpload row in `batch_id` and the underlying storage
+        files. Used when a PA uploaded the wrong folder or a batch of noise
+        that should never enter the review queue.
+
+        Refuses if any row in the batch is already REVIEWED — those rows have
+        an approved Appointment + Ticket whose AppointmentAttachment reuses
+        the same storage_url. Deleting the file would 404 the ticket's
+        attachment and there's no clean way to un-approve it here.
+
+        Deletion is atomic at the DB level (one commit). Storage deletes are
+        best-effort — a MinIO failure is logged but doesn't roll back the DB
+        purge; the row is what mattered to the PA, an orphaned object can
+        be swept later.
+        """
+        from src.services.storage_service import delete_file
+
+        rows = (await db.execute(
+            select(AiUpload).where(AiUpload.batch_id == batch_id)
+        )).scalars().all()
+
+        if not rows:
+            return {"batch_id": batch_id, "deleted": 0, "message": "Batch not found."}
+
+        reviewed = [r for r in rows if r.status == STATUS_REVIEWED]
+        if reviewed:
+            raise ValueError(
+                f"Cannot delete batch — {len(reviewed)} row(s) already approved into "
+                "tickets. Their attachments are referenced by live appointments; "
+                "dismiss or handle those separately first."
+            )
+
+        storage_ok = 0
+        storage_fail = 0
+        for r in rows:
+            if r.storage_url and delete_file(r.storage_url):
+                storage_ok += 1
+            elif r.storage_url:
+                storage_fail += 1
+
+        deleted_ids = [r.id for r in rows]
+        await db.execute(
+            AiUpload.__table__.delete().where(AiUpload.id.in_(deleted_ids))
+        )
+        await db.commit()
+
+        return {
+            "batch_id":     batch_id,
+            "deleted":      len(deleted_ids),
+            "storage_ok":   storage_ok,
+            "storage_fail": storage_fail,
+            "message":      f"Deleted {len(deleted_ids)} row(s) from batch {batch_id}.",
+        }
+
 
 ai_upload_service = AiUploadService()
