@@ -767,7 +767,11 @@ export default function TicketDetailDrawer({
             {/* Resolve + Forward belong to the department workspace, not the PA
                 monitor — the PA only assigns, closes, reopens, and comments. */}
             <div className="flex flex-wrap items-center gap-2 border-t border-border bg-card px-6 py-3">
-              {!isClosed && (
+              {/* Close is a PA-only sign-off after the department has already
+                  resolved the ticket. Showing it on open / assigned /
+                  in_progress led PAs to close tickets that hadn't been worked
+                  yet — Revert or Forward is the right action for those. */}
+              {isResolved && (
                 <Button size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "close" ? null : "close")}>
                   <Lock className="h-4 w-4" /> {tr("tkt.close")}
                 </Button>
