@@ -94,7 +94,12 @@ function priorityText(p: string, t: (k: string) => string): string {
  * matching what the detail drawer's "Assign" field shows. Falls back to the PA
  * owner when a ticket is held by a person rather than routed on.
  */
-function assigneeLabel(row: TicketRow): string | null {
+function assigneeLabel(row: TicketRow, tab?: string): string | null {
+  // On the Forwarded tab, the meaningful destination is the ministry the
+  // ticket was forwarded out to, not the (usually empty) school department.
+  if (tab === "forwarded_to_dept") {
+    return row.forwarded_to_dept_label || row.forwarded_to_dept || null;
+  }
   return row.assigned_department_label || row.assigned_department || row.assigned_to_pa || null;
 }
 function isBreached(row: TicketRow): boolean {
@@ -171,15 +176,17 @@ function pageList(current: number, last: number): (number | "…")[] {
 
 /** Memoized row — re-renders only when its own data changes. */
 const TicketTableRow = memo(function TicketTableRow({
-  row, active, onOpen, t, lang,
+  row, active, onOpen, t, lang, tab, showAssigned,
 }: {
   row: TicketRow;
   active: boolean;
   onOpen: (id: number) => void;
   t: (k: string) => string;
   lang: string;
+  tab: string;              // status key of the active tab (drives the assignee source)
+  showAssigned: boolean;    // false on the Open tab — no ticket is assigned yet
 }) {
-  const assignee = assigneeLabel(row);
+  const assignee = assigneeLabel(row, tab);
   return (
     <tr
       onClick={() => onOpen(row.id)}
@@ -216,11 +223,13 @@ const TicketTableRow = memo(function TicketTableRow({
           ? <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide", PRIORITY_PILL[row.priority] ?? "bg-muted text-muted-foreground")}>{priorityText(row.priority, t)}</span>
           : <span className="text-muted-foreground/40">—</span>}
       </td>
-      <td className="px-4 py-4">
-        {assignee
-          ? <span className="text-sm text-foreground">{assignee}</span>
-          : <span className="text-sm italic text-muted-foreground/50">{t("tickets.unassigned")}</span>}
-      </td>
+      {showAssigned && (
+        <td className="px-4 py-4">
+          {assignee
+            ? <span className="text-sm text-foreground">{assignee}</span>
+            : <span className="text-sm italic text-muted-foreground/50">{t("tickets.unassigned")}</span>}
+        </td>
+      )}
       <td className="px-4 py-4 text-right">
         <div className={cn("text-sm tabular-nums", slaColor(row.created_at, row.status, row.priority))}>
           {formatAge(row.created_at)}
@@ -235,12 +244,14 @@ const TicketTableRow = memo(function TicketTableRow({
 
 /** Mobile/tablet card. */
 const TicketCard = memo(function TicketCard({
-  row, onOpen, t, lang,
+  row, onOpen, t, lang, tab, showAssigned,
 }: {
   row: TicketRow;
   onOpen: (id: number) => void;
   t: (k: string) => string;
   lang: string;
+  tab: string;
+  showAssigned: boolean;
 }) {
   return (
     <div
@@ -280,7 +291,9 @@ const TicketCard = memo(function TicketCard({
       )}
       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
         <span>{catLabel(row.category, lang)}</span>
-        <span>{assigneeLabel(row) ?? t("tickets.unassigned")}</span>
+        {showAssigned && (
+          <span>{assigneeLabel(row, tab) ?? t("tickets.unassigned")}</span>
+        )}
       </div>
     </div>
   );
@@ -499,11 +512,14 @@ export default function TicketsPage() {
       }
       let exportRows = all;
       if (breachedOnly) exportRows = exportRows.filter(isBreached);
-      const headers = ["Ticket", "Citizen", "Mobile", "Category", "Priority", "Status", "Assigned", "Created"];
+      // CSV header for the assigned column mirrors the on-screen label so a
+      // Forwarded-tab export reads "Forwarded to" instead of "Assigned".
+      const assignedHeader = status === "forwarded_to_dept" ? "Forwarded to" : "Assigned";
+      const headers = ["Ticket", "Citizen", "Mobile", "Category", "Priority", "Status", assignedHeader, "Created"];
       const lines = exportRows.map((r) => [
         r.ticket_number, r.citizen_name ?? "", r.citizen_mobile ?? "",
         catLabel(r.category, "en"), r.priority ?? "",
-        TICKET_STATUS_DISPLAY[r.status] ?? r.status, assigneeLabel(r) ?? "", r.created_at,
+        TICKET_STATUS_DISPLAY[r.status] ?? r.status, assigneeLabel(r, status) ?? "", r.created_at,
       ]);
       const csv = [headers, ...lines].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
       const a = document.createElement("a");
@@ -647,6 +663,12 @@ export default function TicketsPage() {
             <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
               {/* Desktop table — fills to the bottom of the page; body scrolls */}
               <Card className="hidden overflow-hidden p-0 shadow-card-md md:block xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+                {/* The Assigned column is meaningless on the Open tab (no
+                    ticket is assigned yet — that's what "open" means) so
+                    it's hidden there. On the Forwarded tab it renders the
+                    ministry the ticket was forwarded out to instead of
+                    the (empty) school department; header label switches
+                    too. */}
                 <div className="overflow-x-auto xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
                   <table className="w-full min-w-[980px] text-base">
                     <thead className="sticky top-0 z-10 bg-card">
@@ -656,7 +678,13 @@ export default function TicketsPage() {
                         <th className={th}>{t("tickets.colSummary")}</th>
                         <th className={cn(th, "w-40")}>{t("label.category")}</th>
                         <th className={cn(th, "w-24")}>{t("tickets.colPriority")}</th>
-                        <th className={cn(th, "w-40")}>{t("tickets.colAssigned")}</th>
+                        {status !== "open" && (
+                          <th className={cn(th, "w-40")}>
+                            {status === "forwarded_to_dept"
+                              ? t("tickets.colForwardedTo")
+                              : t("tickets.colAssigned")}
+                          </th>
+                        )}
                         <th className={cn(th, "w-32 text-right")}>{t("tickets.colOpenFor")}</th>
                       </tr>
                     </thead>
@@ -669,13 +697,14 @@ export default function TicketsPage() {
                             <td className="px-4 py-4"><div className="space-y-1.5"><Skeleton className="h-3.5 w-full max-w-[260px]" /><Skeleton className="h-3.5 w-3/4 max-w-[200px]" /></div></td>
                             <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
                             <td className="px-4 py-4"><Skeleton className="h-5 w-14 rounded" /></td>
-                            <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
+                            {status !== "open" && (
+                              <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
+                            )}
                             <td className="px-4 py-4"><Skeleton className="ml-auto h-4 w-12" /></td>
-                            <td />
                           </tr>
                         ))
                       ) : displayRows.length === 0 ? (
-                        <tr><td colSpan={7} className="px-4 py-16 text-center">
+                        <tr><td colSpan={status === "open" ? 6 : 7} className="px-4 py-16 text-center">
                           <TicketIcon className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
                           <div className="text-base font-semibold text-foreground">{t("tickets.noTickets")}</div>
                           {anyFilterActive ? (
@@ -693,7 +722,8 @@ export default function TicketsPage() {
                           )}
                         </td></tr>
                       ) : displayRows.map((r) => (
-                        <TicketTableRow key={r.id} row={r} active={openId === r.id} onOpen={setOpenId} t={t} lang={lang} />
+                        <TicketTableRow key={r.id} row={r} active={openId === r.id} onOpen={setOpenId} t={t} lang={lang}
+                          tab={status} showAssigned={status !== "open"} />
                       ))}
                     </tbody>
                   </table>
@@ -757,7 +787,8 @@ export default function TicketsPage() {
                   </Card>
                 ) : (
                   <>
-                    {displayRows.map((r) => <TicketCard key={r.id} row={r} onOpen={setOpenId} t={t} lang={lang} />)}
+                    {displayRows.map((r) => <TicketCard key={r.id} row={r} onOpen={setOpenId} t={t} lang={lang}
+                      tab={status} showAssigned={status !== "open"} />)}
                     {!clientNarrowed && lastPage > 1 && (
                       <div className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2 text-base">
                         <span className="text-muted-foreground">{lo}–{hi} {t("tickets.of")} {total}</span>
