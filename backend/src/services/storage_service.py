@@ -120,6 +120,40 @@ def get_file_size(storage_path: str) -> Optional[int]:
     return p.stat().st_size if p.exists() else None
 
 
+def get_file_content_type(storage_path: str) -> Optional[str]:
+    """Return the Content-Type recorded on the stored object, or None.
+
+    `save_file` writes the browser-supplied MIME as the object's ContentType, so
+    this is authoritative even when the key carries no usable extension. That
+    happens for filenames whose stem is entirely non-ASCII (e.g. Tamil):
+    historically the sanitiser reduced "<tamil>.pdf" to the key "pdf", and
+    mimetypes.guess_type() then fell back to octet-stream — which browsers
+    refuse to render inline and hand to the download manager instead.
+
+    Returns None when the object has no meaningful type (a generic
+    octet-stream default is no better than guessing), so callers can fall back.
+    """
+    client = _get_client()
+    if client is None:
+        return None
+    key = storage_path.replace("\\", "/")
+    if key.startswith("uploads/"):
+        key = key[len("uploads/"):]
+    try:
+        ctype = client.head_object(Bucket=_bucket(), Key=key).get("ContentType")
+    except Exception as e:
+        logger.warning(
+            "get_file_content_type MinIO head failed | bucket=%s key=%s err=%s",
+            _bucket(), key, repr(e),
+        )
+        return None
+    if not ctype or ctype.split(";")[0].strip().lower() in (
+        "application/octet-stream", "binary/octet-stream",
+    ):
+        return None
+    return ctype
+
+
 def get_file_range_bytes(storage_path: str, start: int, end: int) -> Optional[bytes]:
     """Return bytes [start, end] (inclusive) of a stored file, or None if missing.
 

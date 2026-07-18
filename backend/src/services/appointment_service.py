@@ -104,15 +104,37 @@ class AppointmentService:
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
         """
-        Strip any path components and unsafe characters from a client-supplied
-        filename before it is used to build a storage path. Prevents path
-        traversal (e.g. '../../etc/passwd') on the local-disk storage backend.
+        Make a client-supplied filename safe to embed in a storage key, without
+        destroying it. Prevents path traversal (e.g. '../../etc/passwd').
+
+        Unicode is deliberately preserved. This is a Tamil-first product, object
+        keys are UTF-8, and get_file_url() already percent-encodes them for the
+        URL. The previous ASCII-only whitelist collapsed every Tamil character
+        to '_' and then stripped the leading run — so "<tamil>.pdf" became the
+        key "pdf", losing the extension entirely. mimetypes could then no longer
+        type the file, it was served as octet-stream, and the review page's PDF
+        <iframe> handed it to the download manager instead of rendering it.
+
+        Only genuinely unsafe characters are removed: path separators, Windows
+        reserved characters and control characters. The stem and the extension
+        are cleaned separately so the extension always survives.
         """
         # Drop any directory component (handles both / and \ separators)
         base = os.path.basename((filename or "").replace("\\", "/"))
-        # Keep only a conservative whitelist; collapse everything else to '_'
-        cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", base).strip("._") or "file"
-        return cleaned[:120]  # cap length
+
+        def _clean(part: str) -> str:
+            # Path separators, Windows-reserved and control chars -> '_'
+            part = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]+', "_", part)
+            part = re.sub(r"\s+", "_", part)      # no raw whitespace in keys
+            part = part.replace("..", "_")        # traversal can't survive
+            return part.strip("._-")              # no leading/trailing dots
+
+        stem, dot, suffix = base.rpartition(".")
+        if not dot:                                # no extension at all
+            stem, suffix = base, ""
+        stem = _clean(stem)[:100] or "file"
+        suffix = _clean(suffix)[:20]
+        return f"{stem}.{suffix}" if suffix else stem
 
     @staticmethod
     async def _assign_daily_token(db: AsyncSession, utc_now: datetime) -> tuple[int, int]:

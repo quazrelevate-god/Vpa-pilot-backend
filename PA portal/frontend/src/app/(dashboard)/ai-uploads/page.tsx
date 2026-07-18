@@ -50,7 +50,9 @@ export default function AiUploadsPage() {
   const [dragOver, setDragOver] = useState(false);
   const [category, setCategory] = useState("");            // "" = Auto
   const [source, setSource] = useState("ai_scan");
-  const [dupMode, setDupMode] = useState<"skip" | "allow">("skip");
+  // DISABLED — see the commented duplicate filter in handleFiles() and the
+  // hidden "Duplicate Handling" Select in the upload panel.
+  // const [dupMode, setDupMode] = useState<"skip" | "allow">("skip");
   const [rows, setRows] = useState<Row[]>([]);
   const [showAll, setShowAll] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -131,22 +133,27 @@ export default function AiUploadsPage() {
     let arr = Array.from(fileList).filter(f => ACCEPT.test(f.name));
     if (!arr.length) { toast.error("No PDF/image files found"); return; }
 
-    // Client-side duplicate handling — the backend has no dedup, so "Skip
-    // duplicates" drops files whose name already exists (uploaded earlier or
-    // repeated within this drop).
-    if (dupMode === "skip") {
-      const existing = new Set(rows.map(r => r.filename.toLowerCase()));
-      const seen = new Set<string>();
-      const before = arr.length;
-      arr = arr.filter(f => {
-        const k = f.name.toLowerCase();
-        if (existing.has(k) || seen.has(k)) return false;
-        seen.add(k); return true;
-      });
-      const skipped = before - arr.length;
-      if (skipped) toast.info(`${skipped} duplicate file(s) skipped`);
-      if (!arr.length) { toast.error("All files were duplicates — nothing to upload"); return; }
-    }
+    // DISABLED — client-side duplicate handling.
+    // Matched on filename only, which blocked legitimate re-uploads: scanner
+    // output reuses names (scan001.pdf), and a file that failed processing
+    // could never be sent again. The backend has no dedup, so nothing filters
+    // duplicates now — every selected file is uploaded.
+    // To re-enable, restore this block plus the dupMode state and the
+    // "Duplicate Handling" Select below. Prefer hashing the bytes over
+    // comparing names if it comes back.
+    // if (dupMode === "skip") {
+    //   const existing = new Set(rows.map(r => r.filename.toLowerCase()));
+    //   const seen = new Set<string>();
+    //   const before = arr.length;
+    //   arr = arr.filter(f => {
+    //     const k = f.name.toLowerCase();
+    //     if (existing.has(k) || seen.has(k)) return false;
+    //     seen.add(k); return true;
+    //   });
+    //   const skipped = before - arr.length;
+    //   if (skipped) toast.info(`${skipped} duplicate file(s) skipped`);
+    //   if (!arr.length) { toast.error("All files were duplicates — nothing to upload"); return; }
+    // }
 
     const batchId = (crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`);
     const CHUNK = 6, CONCURRENCY = 2;
@@ -364,6 +371,10 @@ export default function AiUploadsPage() {
                 {category ? t("uploads.categoryHelpForced") : t("uploads.categoryHelp")}
               </p>
 
+              {/* DISABLED — "Duplicate Handling" control. Name-based skipping
+                  blocked legitimate re-uploads, so the filter is commented out
+                  in handleFiles() above and this option is hidden. Restore both
+                  together (the uploads.dup* translation keys are still in place).
               <label className="mb-1.5 mt-5 block text-sm font-semibold text-foreground">{t("uploads.dupLabel")}</label>
               <Select value={dupMode} onValueChange={(v) => setDupMode(v as "skip" | "allow")}>
                 <SelectTrigger className="h-11 rounded-xl text-sm"><SelectValue /></SelectTrigger>
@@ -375,6 +386,7 @@ export default function AiUploadsPage() {
               <p className="mt-1.5 text-[13px] text-muted-foreground">
                 {dupMode === "skip" ? t("uploads.dupHelp") : t("uploads.dupHelpAllow")}
               </p>
+              */}
 
               <div className="mt-4 flex items-start gap-2 rounded-xl bg-accent/60 p-3 text-[13px] text-brand">
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
