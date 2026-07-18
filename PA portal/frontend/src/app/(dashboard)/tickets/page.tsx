@@ -313,6 +313,12 @@ export default function TicketsPage() {
   const [dateTo, setDateTo] = useState("");
   const [dateChip, setDateChip] = useState<DateChip | null>(null);
   const [breachedOnly, setBreachedOnly] = useState(false);
+  // Bumped from onMutated so the list + counts always refetch after a drawer
+  // action, even when no other filter changed. The previous approach
+  // (`setPage((p) => p)`) is a no-op — React skips state updates that
+  // resolve to Object.is-equal values, so the effect chain wouldn't re-run
+  // and reverted/closed/reopened tickets stayed visible until manual refresh.
+  const [refreshTick, setRefreshTick] = useState(0);
   const [showRail, setShowRail] = useState(true);
 
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -396,7 +402,9 @@ export default function TicketsPage() {
       if ((e as Error).name === "AbortError") return;
       console.error(e);
     } finally { if (!signal.aborted) setLoading(false); }
-  }, [status, page, secondary]);
+    // refreshTick intentionally in deps — see onMutated below.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, page, secondary, refreshTick]);
 
   // Counts: the /counts endpoint only aggregates the five main statuses, so the
   // "assigned" tab count comes from a parallel filtered list call (total only).
@@ -408,7 +416,8 @@ export default function TicketsPage() {
       ]);
       if (!signal.aborted) setCounts({ ...data, assigned: assignedRes.total });
     } catch { /* aborts + transient errors are non-fatal */ }
-  }, [secondary]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondary, refreshTick]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -872,9 +881,12 @@ export default function TicketsPage() {
         ticketId={openId}
         onClose={() => setOpenId(null)}
         onMutated={() => {
-          // Triggered by drawer mutations — reload list + counts via the
-          // effect chain by bouncing the page (lightweight).
-          setPage((p) => p);
+          // Triggered by drawer mutations (close / reopen / revert / priority
+          // edit / assign). Bump refreshTick — load() and loadCounts() both
+          // depend on it, so the list + counts refetch. The previous
+          // `setPage((p) => p)` was a no-op because React skips state
+          // updates that resolve to the same value.
+          setRefreshTick((t) => t + 1);
         }}
       />
     </>
