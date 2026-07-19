@@ -144,12 +144,14 @@ export default function OverviewPage() {
     setLoading(true);
     try {
       const r = await fetch(`/api/analytics?${qs()}`, { credentials: "include" });
-      if (!r.ok) { setError(`Analytics request failed (HTTP ${r.status}). If this is a fresh deploy, run "alembic upgrade head".`); return; }
+      if (!r.ok) { setError(`${t("ov.errRequest")} (HTTP ${r.status}).`); return; }
       setError(null); setData(await r.json());
       setLastUpdated(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
-    } catch (e) { setError(`Could not reach the analytics API: ${(e as Error).message}`); }
+    } catch (e) { setError(`${t("ov.errUnreachable")}: ${(e as Error).message}`); }
     finally { setLoading(false); }
-  }, [qs]);
+    // `t` matters: lang hydrates from localStorage AFTER first render, so a
+    // callback cached without it would keep formatting errors in English.
+  }, [qs, t]);
 
   const loadPetitions = useCallback(async () => {
     try {
@@ -216,7 +218,7 @@ export default function OverviewPage() {
                   <span className="absolute inline-flex h-full w-full rounded-full bg-[#34A26C] opacity-60" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-[#34A26C]" />
                 </span>
-                Live System
+                {t("ov.liveSystem")}
               </span>
               {lastUpdated && <span className="text-muted-foreground">Last updated: <span className="tabular-nums">{lastUpdated}</span></span>}
             </div>
@@ -311,9 +313,9 @@ export default function OverviewPage() {
           {/* Recent petitions */}
           <Card className="overflow-hidden p-0">
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
-              <h2 className="type-card-heading">Recent Petitions {pets && <span className="text-muted-foreground tabular-nums">· {pets.total.toLocaleString("en-IN")}</span>}</h2>
+              <h2 className="type-card-heading">{t("ov.recentPetitions")} {pets && <span className="text-muted-foreground tabular-nums">· {pets.total.toLocaleString("en-IN")}</span>}</h2>
               <a href={`/api/analytics/export?${qs()}`} className="ml-auto">
-                <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV</Button>
+                <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" /> {t("ov.exportCsv")}</Button>
               </a>
             </div>
             <div className="overflow-x-auto">
@@ -329,7 +331,7 @@ export default function OverviewPage() {
                   {!pets ? (
                     <tr><td colSpan={3} className="px-4 py-10 text-center text-muted-foreground">Loading…</td></tr>
                   ) : pets.items.length === 0 ? (
-                    <tr><td colSpan={3} className="px-4 py-10 text-center text-muted-foreground">No petitions match the filters.</td></tr>
+                    <tr><td colSpan={3} className="px-4 py-10 text-center text-muted-foreground">{t("ov.noMatch")}</td></tr>
                   ) : pets.items.map(p => (
                     <tr key={p.id} onClick={() => openDetail(p.id)} className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#EFF3FB]">
                       <td className="px-4 py-3">
@@ -446,15 +448,15 @@ function VolumeTrend({ trend, loading }: { trend: TrendPoint[] | null; loading: 
     <>
       <div className="mb-3 flex items-start justify-between">
         <div>
-          <div className="type-card-heading inline-flex items-center gap-2"><TrendingUp className="h-4 w-4 text-brand" /> Petition Volume Trend</div>
+          <div className="type-card-heading inline-flex items-center gap-2"><TrendingUp className="h-4 w-4 text-brand" /> {t("ov.volumeTrend")}</div>
           <div className="type-caption text-muted-foreground">{t("ov.trendSub")}</div>
         </div>
         <div className="flex rounded-lg border border-border bg-muted/40 p-0.5">
           {(["daily", "weekly", "monthly"] as Gran[]).map(g => (
             <button key={g} onClick={() => setGran(g)}
-              className={cn("rounded-md px-2.5 py-1 text-[11px] font-semibold capitalize transition-colors",
+              className={cn("rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors",
                 gran === g ? "bg-card text-brand shadow-card" : "text-muted-foreground hover:text-foreground")}>
-              {g}
+              {t(`ov.gran${g[0].toUpperCase()}${g.slice(1)}`)}
             </button>
           ))}
         </div>

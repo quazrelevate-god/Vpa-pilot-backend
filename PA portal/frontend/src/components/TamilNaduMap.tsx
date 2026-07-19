@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
+import { useLang } from "@/lib/lang-context";
 
 // Each polygon is coloured, labelled, and filtered by its OWN district key, so
 // the number on a district always equals what clicking it filters to. The
@@ -31,6 +32,7 @@ const W = 420, H = 480;
 export default function TamilNaduMap({ data, activeKey, onSelect }: {
   data: DistrictCount[] | null; activeKey?: string; onSelect?: (key: string) => void;
 }) {
+  const { t } = useLang();
   const [geo, setGeo] = useState<any>(null);
   const [failed, setFailed] = useState(false);
   const [hover, setHover] = useState<{ name: string; count: number; x: number; y: number } | null>(null);
@@ -153,9 +155,9 @@ export default function TamilNaduMap({ data, activeKey, onSelect }: {
 
       {/* Legend */}
       <div className="mt-2 flex items-center justify-center gap-2 text-[10.5px] text-muted-foreground">
-        <span>Fewer</span>
+        <span>{t("ov.mapFewer")}</span>
         <span className="h-2 w-28 rounded-full" style={{ background: `linear-gradient(to right, ${RAMP_LO}, ${RAMP_HI})` }} />
-        <span>More</span>
+        <span>{t("ov.mapMore")}</span>
       </div>
     </div>
   );
