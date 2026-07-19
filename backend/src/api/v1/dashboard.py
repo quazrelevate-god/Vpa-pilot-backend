@@ -64,6 +64,20 @@ async def api_analytics_operations(
     return JSONResponse(await analytics_service.get_operations(db, f))
 
 
+@router.get("/api/analytics/tickets")
+async def api_analytics_tickets(
+    date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
+    ministry: str = None, channel: str = None, status: str = None, district: str = None,
+    db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
+):
+    """Ticket-only KPIs for the PA team's Ticket Insights room: status mix, SLA
+    health, priority split, per-department performance and a raised-vs-resolved
+    trend. No district breakdown — that stays on the petition overview."""
+    from src.services.analytics_service import analytics_service
+    f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status, district)
+    return JSONResponse(await analytics_service.get_ticket_dashboard(db, f))
+
+
 @router.get("/api/analytics/petitions")
 async def api_analytics_petitions(
     date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
@@ -391,7 +405,13 @@ async def api_approve_petition(
 ):
     """Approve a QR/staff petition from the unified review drawer — creates the
     ticket (School → open) or forwards it out (non-school ministry)."""
-    result = await dashboard_service.approve_petition(db, appointment_id, actor=user)
+    try:
+        result = await dashboard_service.approve_petition(db, appointment_id, actor=user)
+    except ValueError as e:
+        # Business rule refusal (e.g. audio-only petition) — the drawer renders
+        # `error`, so surface it as a readable 400 instead of a bare 500.
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
     return JSONResponse(result)
 
 

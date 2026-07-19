@@ -1,13 +1,14 @@
 "use client";
 
 import { memo, useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, ShieldAlert,
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
   ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
   CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2, MapPin,
-  Mail, Landmark, Archive, Paperclip,
+  Mail, Landmark, Archive, Paperclip, Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -40,6 +41,9 @@ const DISTRICTS = Object.keys(DISTRICT_DISPLAY);
 
 interface Upload {
   id: number; filename: string; mime_type: string; file_url: string | null;
+  // Groups one upload batch. Already returned by the API; typed here so the
+  // "?batch=" deep link from AI Uploads can scope this queue to one batch.
+  batch_id?: string | null;
   status: StatusKey;
   name: string | null; name_ta: string | null; mobile: string | null;
   category: string | null; priority: string | null; ministry: string | null; district: string | null;
@@ -382,6 +386,11 @@ const InboxCard = memo(function InboxCard({
 
 export default function AiReviewPage() {
   const { t, lang } = useLang();
+  // "?batch=<id>" deep link from the AI Uploads tab — scopes this queue to the
+  // files of one upload batch. Absent/empty means the normal, full queue.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const batchFilter = searchParams.get("batch") ?? "";
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [petitions, setPetitions] = useState<AppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -396,7 +405,10 @@ export default function AiReviewPage() {
 
   // Default to Awaiting Review — that's the actionable queue PAs care about on
   // open. They can widen to All via the tabs if they want history.
-  const [fStatus, setFStatus] = useState<"" | StatusKey>("AWAITING_REVIEW");
+  // Arriving from a batch link starts on "All": a batch that is already fully
+  // reviewed would otherwise open on an empty "Awaiting Review" tab and look
+  // just as broken as the unfiltered queue it replaced.
+  const [fStatus, setFStatus] = useState<"" | StatusKey>(batchFilter ? "" : "AWAITING_REVIEW");
   const [fPriority, setFPriority] = useState("");
   const [fSource, setFSource] = useState("");
   const [fCategory, setFCategory] = useState("");   // driven by the distribution chart
@@ -502,9 +514,14 @@ export default function AiReviewPage() {
 
   // Rows the PA can actually act on — QUEUED / PROCESSING are hidden from
   // the whole surface (feed + counts + tabs) so nothing "processing" shows.
+  // Scoped here (not in `scoped`) so the segment counts, the category chart and
+  // the list all agree — a batch-scoped "Awaiting Review 3" must mean 3 in THIS
+  // batch. Petitions carry no batch_id, so a batch filter naturally drops them.
   const visibleRows = useMemo(
-    () => rows.filter(r => r.statusKey !== "QUEUED" && r.statusKey !== "PROCESSING"),
-    [rows],
+    () => rows.filter(r =>
+      r.statusKey !== "QUEUED" && r.statusKey !== "PROCESSING" &&
+      (!batchFilter || r.upload?.batch_id === batchFilter)),
+    [rows, batchFilter],
   );
 
   const counts = useMemo(() => {
@@ -774,6 +791,27 @@ export default function AiReviewPage() {
       />
       <main className="flex-1 overflow-y-auto bg-background xl:overflow-hidden">
         <div className="flex flex-col gap-4 px-4 py-6 animate-in-up xl:h-full">
+          {/* Batch scope banner — makes it obvious the queue is showing one
+              upload batch (and not the whole inbox), with a way back out. */}
+          {batchFilter && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3.5 py-2.5">
+              <Layers className="h-4 w-4 shrink-0 text-brand" />
+              <span className="text-[13px] text-foreground">
+                {t("petition.batchScope")}{" "}
+                <span className="font-mono text-[12.5px] font-bold text-brand">{batchFilter.slice(0, 8)}</span>
+              </span>
+              <span className="font-mono text-[12.5px] font-semibold text-muted-foreground">
+                ({visibleRows.length})
+              </span>
+              <button
+                onClick={() => router.replace("/ai-review")}
+                className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                <X className="h-3.5 w-3.5" /> {t("petition.batchScopeClear")}
+              </button>
+            </div>
+          )}
+
           {/* Tabs (left) · Filters toggle + Export (right) */}
           <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -1262,15 +1300,27 @@ export default function AiReviewPage() {
                   // blank scan) that marks the row reviewed without creating a case.
                   const isSchool = (review.ministry ?? SCHOOL_MINISTRY) === SCHOOL_MINISTRY;
                   const ministryLabel = review.ministry ? (MINISTRY_DISPLAY[review.ministry] ?? review.ministry) : "";
+                  // Audio-only petitions can't become tickets: a recording is not
+                  // readable evidence for the department that receives it. Blocked
+                  // server-side too — this just explains it before they click.
+                  // No attachments at all is fine (a typed description carries it).
+                  const attTypes = new Set((review.attachments ?? []).map(a => a.type));
+                  const audioOnly = attTypes.has("AUDIO") && !attTypes.has("IMAGE") && !attTypes.has("DOCUMENT");
                   return (
                     <div className="flex flex-col gap-2">
+                      {audioOnly && (
+                        <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] leading-relaxed text-amber-900">
+                          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span>{t("petition.audioOnlyBlock")}</span>
+                        </div>
+                      )}
                       <Button
                         className={cn(
                           "w-full text-white !bg-none border-transparent",
                           isSchool ? "!bg-emerald-600 hover:!bg-emerald-700" : "!bg-amber-600 hover:!bg-amber-700",
                         )}
                         onClick={approve}
-                        disabled={busy || editing}
+                        disabled={busy || editing || audioOnly}
                       >
                         {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           : isSchool ? <Check className="mr-2 h-4 w-4" /> : <Forward className="mr-2 h-4 w-4" />}

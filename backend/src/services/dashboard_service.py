@@ -1195,6 +1195,23 @@ async def approve_petition(db: AsyncSession, appointment_id: int, actor: str = "
     non-school. Mirrors the scanned-upload approve so every source behaves the
     same (School → Accept/open, other ministry → Forward)."""
     from src.models.ticket_models import Ticket
+    from src.models.appointment_models import AppointmentAttachment
+
+    # An audio-only petition can't be approved into a ticket. The recording is
+    # not readable evidence on its own — the department receiving the ticket
+    # needs the written grievance or a scanned/photographed document to act on.
+    # A petition with no attachments at all is fine (it carries a typed
+    # description); this blocks only the "audio, and nothing else" case.
+    types = set((await db.execute(
+        select(AppointmentAttachment.attachment_type)
+        .where(AppointmentAttachment.appointment_id == appointment_id)
+    )).scalars().all())
+    if "AUDIO" in types and not (types & {"IMAGE", "DOCUMENT"}):
+        raise ValueError(
+            "This petition has only a voice recording. Add a photo or document "
+            "of the grievance before approving it into a ticket."
+        )
+
     result = await update_appointment_status(db, appointment_id, "Reviewed")
     ticket = await db.scalar(select(Ticket).where(Ticket.appointment_id == appointment_id))
     summary = await db.scalar(
