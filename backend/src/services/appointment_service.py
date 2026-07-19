@@ -1433,6 +1433,19 @@ class AppointmentService:
 
         user_desc = (description or "").strip()
 
+        # ── Validate mobile (optional) ────────────────────────────────────────
+        # This path has no OTP, so nothing else proves the number is real. It is
+        # still the Citizen dedup key (crypto.blind_index below) and the address
+        # for SMS/WhatsApp updates: a malformed value silently forks a duplicate
+        # citizen and sends notifications nowhere. Empty stays allowed — serving
+        # phone-less citizens is why this flow exists.
+        mobile = (mobile or "").strip()
+        if mobile and not re.fullmatch(r"[6-9][0-9]{9}", mobile):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid mobile number. Enter a 10-digit Indian mobile number.",
+            )
+
         # ── Validate files (optional) ─────────────────────────────────────────
         valid_files = [f for f in (files or []) if f.filename][:MAX_FILES]
         file_contents: List[tuple] = []
@@ -1519,6 +1532,11 @@ class AppointmentService:
                 category_id=walkin_ids.get("category_id"),
                 schedule_meeting=take_slot_path,
                 num_persons=max(1, min(4, num_persons)),
+                # Walk-ins are keyed in by floor staff, not submitted by the
+                # citizen's own phone. Without this the column falls back to its
+                # `qr_citizen` default and the portal mislabels every walk-in as
+                # "Citizen QR" — wrong channel in the source filter and reports.
+                source="manual_staff",
                 # Courtesy items skip AI regardless of image; other floor
                 # petitions still summarise when an image is attached.
                 summary_status=("DONE" if is_courtesy else ("PENDING" if has_image else "DONE")),

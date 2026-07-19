@@ -65,7 +65,19 @@ export default function WizardDetails({
 
       <div>
         <FieldLabel optional>{t("Mobile", "கைபேசி")}</FieldLabel>
-        <Input value={mobile} inputMode="numeric" autoComplete="off" onChange={(e) => onMobile(e.target.value)} className="h-11 rounded-xl" />
+        {/* Digits only, capped at 10 — mirrors the QR form's mobile field.
+            Optional (phone-less citizens are the reason this flow exists), but
+            when given it must be a real 10-digit number: it's the blind-index
+            dedup key for Citizen and the address for SMS/WhatsApp updates. */}
+        <Input
+          value={mobile}
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={10}
+          placeholder={t("10 digit mobile number", "10 இலக்க கைபேசி எண்")}
+          onChange={(e) => onMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+          className="h-11 rounded-xl"
+        />
       </div>
 
       <div>
