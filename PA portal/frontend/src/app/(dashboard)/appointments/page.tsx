@@ -413,6 +413,9 @@ function AppointmentsPageInner() {
   const [apptDateTo, setApptDateTo] = useState("");
   const [activeChip, setActiveChip] = useState<QuickChip | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  // Filters rail visibility — open by default (this page has always shown its
+  // filters), but collapsible now so it matches Tickets / Petition Review.
+  const [showRail, setShowRail] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   const [rescheduleFor, setRescheduleFor] = useState<{ id: number; name: string } | null>(null);
@@ -674,6 +677,26 @@ function AppointmentsPageInner() {
                   <X className="h-3.5 w-3.5" /> {t("appts.clearAll")}
                 </button>
               )}
+              {/* Filters toggle — matches Tickets / Petition Review. Below xl the
+                  rail stacks under the table, so without this button the filters
+                  were only reachable by scrolling past the whole list. */}
+              <button
+                onClick={() => setShowRail((s) => !s)}
+                className={cn(
+                  "inline-flex h-[38px] items-center gap-1.5 rounded-xl border px-3.5 text-sm font-semibold transition-colors",
+                  showRail || advancedFilterCount > 0
+                    ? "border-[#CFE0FB] bg-accent text-brand"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                {t("appts.filters")}
+                {advancedFilterCount > 0 && (
+                  <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-brand-foreground">
+                    {advancedFilterCount}
+                  </span>
+                )}
+              </button>
               <Button variant="outline" onClick={() => setShowExportDialog(true)} className="h-[38px] rounded-xl">
                 <Download className="h-4 w-4 text-brand" /> {t("action.export")}
               </Button>
@@ -681,7 +704,10 @@ function AppointmentsPageInner() {
           </div>
 
           {/* Two-column workspace: table (left) · filters + insights rail (right) */}
-          <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className={cn(
+            "grid gap-4 xl:min-h-0 xl:flex-1",
+            showRail ? "xl:grid-cols-[minmax(0,1fr)_360px]" : "xl:grid-cols-1",
+          )}>
           <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
           {/* Desktop table — fills to the bottom of the page; body scrolls */}
           <Card className="hidden overflow-hidden p-0 shadow-card-md md:block xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
@@ -849,9 +875,11 @@ function AppointmentsPageInner() {
           </div>
           </div>{/* left column */}
 
-          {/* Right rail — Filters + Category Distribution */}
+          {/* Right rail — Filters + Category Distribution (toggled by the
+              Filters button in the toolbar) */}
+          {showRail && (
           <aside className="flex flex-col gap-4 xl:min-h-0">
-            {/* Filters — persistent panel, drives the table */}
+            {/* Filters — drives the table */}
             <Card className="flex flex-col p-5 shadow-card-md xl:min-h-0 xl:flex-1">
               <div className="mb-4 flex shrink-0 items-center justify-between">
                 <h3 className="type-card-heading flex items-center gap-2 text-foreground">
@@ -898,6 +926,7 @@ function AppointmentsPageInner() {
               className="xl:min-h-0 xl:flex-1"
             />
           </aside>
+          )}
           </div>{/* two-column grid */}
         </div>
       </main>

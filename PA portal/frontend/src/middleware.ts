@@ -5,6 +5,9 @@ import { NextRequest, NextResponse } from "next/server";
 // back to us by Next.js rewrites, so it sits on the same origin as the app.
 const PROTECTED_PREFIXES = [
   "/overview", "/appointments", "/tickets",
+  // Distinct prefix on purpose: "/ticket-insights" does NOT start with
+  // "/tickets", so it needs its own entry to be session-guarded.
+  "/ticket-insights",
   "/referrals", "/scheduling",
 ];
 
@@ -83,6 +86,7 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/overview/:path*", "/appointments/:path*", "/tickets/:path*",
+    "/ticket-insights/:path*",
     "/referrals/:path*", "/scheduling/:path*",
     "/department", "/department/:path*",
     "/crowd", "/crowd/:path*",

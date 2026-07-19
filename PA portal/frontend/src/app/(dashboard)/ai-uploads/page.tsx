@@ -534,7 +534,11 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
             </DropdownMenuItem>
           )}
           <DropdownMenuItem asChild>
-            <Link href="/ai-review"><ClipboardCheck className="h-3.5 w-3.5" /> {t("uploads.openReview")}</Link>
+            {/* Carry the batch so Review opens scoped to just these files —
+                without it the queue opened unfiltered and looked "wrong". */}
+            <Link href={`/ai-review?batch=${encodeURIComponent(batch.id)}`}>
+              <ClipboardCheck className="h-3.5 w-3.5" /> {t("uploads.openReview")}
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={onDelete}

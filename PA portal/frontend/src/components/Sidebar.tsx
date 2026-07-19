@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CalendarDays, ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Clock, Ticket, Landmark, UserPlus, Sparkles, ClipboardCheck, QrCode,
+  BarChart3,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -50,6 +51,7 @@ const NAV_ITEMS: { href: string; tKey: string; icon: typeof CalendarDays; badge?
   { href: "/appointments",  tKey: "nav.appointments", icon: CalendarDays },
   { href: "/ai-review",     tKey: "nav.aiReview",     icon: ClipboardCheck, badge: "awaitingReview", badgeTone: "red" },
   { href: "/tickets",       tKey: "nav.tickets",      icon: Ticket, badge: "openTickets", badgeTone: "orange" },
+  { href: "/ticket-insights", tKey: "nav.ticketInsights", icon: BarChart3 },
   { href: "/scheduling",    tKey: "nav.scheduling",   icon: Clock },
   { href: "/ai-uploads",    tKey: "nav.aiUploads",    icon: Sparkles },
   { href: "/referrals",     tKey: "nav.referrals",    icon: UserPlus },

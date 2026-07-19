@@ -39,6 +39,15 @@ _CLOSED_TICKET_STATUSES = [TicketStatus.RESOLVED.value, TicketStatus.CLOSED.valu
 # sla_targets_days so "on-time %" means the same thing across the app.
 _SLA_TARGET_DAYS = {"critical": 3, "high": 7, "medium": 14, "low": 28}
 
+# Display labels for the ticket status mix on the Ticket Insights dashboard.
+# Mirrors TICKET_STATUS_DISPLAY on the frontend so both surfaces read the same.
+_TICKET_STATUS_LABEL = {
+    "open": "Open", "triaged": "Triaged", "assigned": "Assigned",
+    "awaiting_department": "Awaiting Department", "in_progress": "In Progress",
+    "forwarded_to_dept": "Forwarded to Dept", "pending_citizen": "Pending Citizen",
+    "resolved": "Resolved", "closed": "Closed", "reopened": "Reopened",
+}
+
 
 # ── Filter model ────────────────────────────────────────────────────────────────
 class Filters:
@@ -221,6 +230,101 @@ class AnalyticsService:
             "departments": await self._department_performance(db, f),
             "districts":   await self._district_breakdown(db, f),
         }
+
+    async def get_ticket_dashboard(self, db: AsyncSession, f: Filters) -> Dict[str, Any]:
+        """Ticket-only view for the PA team's Ticket Insights room.
+
+        Everything here is derived from the ticket system: live status mix, SLA
+        health, priority split and per-department performance. Deliberately no
+        district breakdown — that lives on the petition overview.
+        """
+        build = self._ticket_base(f)
+
+        # ── Status mix (live queue shape) ────────────────────────────────────
+        status_rows = (await db.execute(
+            build(Ticket.status, func.count(Ticket.id)).group_by(Ticket.status)
+        )).all()
+        by_status = [
+            {"key": s, "label": _TICKET_STATUS_LABEL.get(s, (s or "").replace("_", " ").title()),
+             "count": int(n or 0)}
+            for s, n in status_rows if s
+        ]
+        by_status.sort(key=lambda r: r["count"], reverse=True)
+        total = sum(r["count"] for r in by_status)
+        resolved = sum(r["count"] for r in by_status if r["key"] in _CLOSED_TICKET_STATUSES)
+
+        # ── Priority split (AI review priority, via GSR) ─────────────────────
+        prio_rows = (await db.execute(
+            build(GSR.priority, func.count(Ticket.id), need_gsr=True).group_by(GSR.priority)
+        )).all()
+        prio_counts = {(p or "").lower(): int(n or 0) for p, n in prio_rows if p}
+        by_priority = [
+            {"key": k, "label": k.title(), "count": prio_counts.get(k, 0)}
+            for k in ("critical", "high", "medium", "low")
+        ]
+
+        # ── SLA health on the OPEN set ───────────────────────────────────────
+        # Breached = still open past its priority's target. Due soon = inside the
+        # last 25% of the budget. Same targets the ticket list and drawer use, so
+        # the numbers here agree with what a PA sees on a row.
+        open_rows = (await db.execute(
+            build(Ticket.created_at, GSR.priority, need_gsr=True)
+            .where(Ticket.status.notin_(_CLOSED_TICKET_STATUSES))
+        )).all()
+        now = datetime.utcnow()
+        breached = due_soon = on_track = 0
+        for created_at, prio in open_rows:
+            if not created_at:
+                continue
+            target_days = _SLA_TARGET_DAYS.get((prio or "").lower(), 14)
+            used = (now - created_at).total_seconds() / 86400.0
+            if used >= target_days:
+                breached += 1
+            elif used >= target_days * 0.75:
+                due_soon += 1
+            else:
+                on_track += 1
+
+        case_kpis = await self._case_kpis(db, f)
+        open_total = breached + due_soon + on_track
+        return {
+            "kpis": {
+                "total": total,
+                "open": open_total,
+                "resolved": resolved,
+                "breached": breached,
+                "due_soon": due_soon,
+                "on_track": on_track,
+                "resolution_rate": case_kpis["resolution_rate"],
+                "avg_response_hours": case_kpis["avg_response_hours"],
+                "on_time_pct": case_kpis["on_time_pct"],
+            },
+            "by_status": by_status,
+            "by_priority": by_priority,
+            "departments": await self._department_performance(db, f),
+            "trend": await self._ticket_trend(db, f),
+        }
+
+    async def _ticket_trend(self, db, f: Filters) -> List[Dict[str, Any]]:
+        """Per-day tickets raised vs resolved over the scoped window."""
+        build = self._ticket_base(f)
+        day = func.date(Ticket.created_at)
+        raised = dict((await db.execute(
+            build(day, func.count(Ticket.id)).group_by(day).order_by(day)
+        )).all())
+        rday = func.date(func.coalesce(Ticket.resolved_at, Ticket.updated_at))
+        closed = dict((await db.execute(
+            build(rday, func.count(Ticket.id))
+            .where(Ticket.status.in_(_CLOSED_TICKET_STATUSES))
+            .group_by(rday).order_by(rday)
+        )).all())
+        days = sorted({d for d in list(raised) + list(closed) if d})
+        return [
+            {"date": d.isoformat() if hasattr(d, "isoformat") else str(d),
+             "raised": int(raised.get(d, 0) or 0),
+             "resolved": int(closed.get(d, 0) or 0)}
+            for d in days
+        ]
 
     def _ticket_base(self, f: Filters):
         """A SELECT over tickets joined to their appointment, with the active
