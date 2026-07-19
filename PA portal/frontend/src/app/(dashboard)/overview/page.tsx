@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AppointmentRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useLang } from "@/lib/lang-context";
 
 // ── Aurora chart palette (matches globals.css tokens) ────────────────────────
 const C = {
@@ -70,10 +71,12 @@ type Filters = { category?: string; priority?: string; ministry?: string; channe
 
 // ── Date presets ─────────────────────────────────────────────────────────────
 type Preset = "today" | "7d" | "30d" | "90d" | "month" | "lastmonth" | "quarter" | "year" | "all";
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: "today", label: "Today" }, { key: "7d", label: "7 days" }, { key: "30d", label: "30 days" },
-  { key: "90d", label: "90 days" }, { key: "month", label: "This month" }, { key: "lastmonth", label: "Last month" },
-  { key: "quarter", label: "This quarter" }, { key: "year", label: "This year" }, { key: "all", label: "All time" },
+// Labels are translation KEYS — resolved at render, so the picker switches
+// language with the rest of the page.
+const PRESETS: { key: Preset; tKey: string }[] = [
+  { key: "today", tKey: "ov.rToday" }, { key: "7d", tKey: "ov.r7d" }, { key: "30d", tKey: "ov.r30d" },
+  { key: "90d", tKey: "ov.r90d" }, { key: "month", tKey: "ov.rMonth" }, { key: "lastmonth", tKey: "ov.rLastmonth" },
+  { key: "quarter", tKey: "ov.rQuarter" }, { key: "year", tKey: "ov.rYear" }, { key: "all", tKey: "ov.rAll" },
 ];
 const iso = (d: Date) => d.toISOString().split("T")[0];
 function presetDates(p: Preset): { from?: string; to?: string } {
@@ -97,6 +100,7 @@ function fmtDuration(hours: number | undefined | null): string {
 }
 
 export default function OverviewPage() {
+  const { t } = useLang();
   const [preset, setPreset] = useState<Preset>("30d");
   const [filters, setFilters] = useState<Filters>({});
   const [data, setData] = useState<Analytics | null>(null);
@@ -176,7 +180,7 @@ export default function OverviewPage() {
 
   return (
     <>
-      <TopBar title="Voice of the People" subtitle="Overview Dashboard" icon={<AudioLines className="h-5 w-5" />} />
+      <TopBar title={t("ov.title")} subtitle={t("ov.subtitle")} icon={<AudioLines className="h-5 w-5" />} />
       <main className="flex-1 overflow-y-auto bg-background">
         <div className="mx-auto max-w-[1440px] space-y-3 px-3 py-4 animate-in-up">
           {/* Live · period · refresh */}
@@ -194,7 +198,7 @@ export default function OverviewPage() {
             <div className="flex items-center gap-2">
               <select value={preset} onChange={e => setPreset(e.target.value as Preset)}
                 className="h-9 rounded-xl border border-input bg-card px-3 text-xs font-semibold shadow-card focus:border-brand focus:outline-none">
-                {PRESETS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                {PRESETS.map(p => <option key={p.key} value={p.key}>{t(p.tKey)}</option>)}
               </select>
               <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => { loadAnalytics(); loadPetitions(); loadOps(); }} disabled={loading}>
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
@@ -212,7 +216,7 @@ export default function OverviewPage() {
                   {dim}: {chipLabel(dim, v)} <X className="h-3 w-3" />
                 </button>
               ))}
-              <button onClick={() => setFilters({})} className="text-xs font-medium text-muted-foreground hover:text-foreground">Clear all</button>
+              <button onClick={() => setFilters({})} className="text-xs font-medium text-muted-foreground hover:text-foreground">{t("ov.clearAll")}</button>
             </div>
           )}
 
@@ -225,14 +229,14 @@ export default function OverviewPage() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[116px] rounded-2xl" />)}</div>
           ) : (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <KpiCard icon={Users} tone="brand" label="Citizens Served" value={fmt(k!.citizens)} caption="unique people" />
-              <KpiCard icon={Megaphone} tone="violet" label="Petitions Received" value={fmt(k!.received)}
-                caption="in this period" delta={k!.growth_pct} series={data.trend.map(t => t.received)} />
-              <KpiCard icon={Gauge} tone="mint" label="Resolution Rate" value={`${k!.resolution_rate}%`}
-                caption={`${fmt(k!.resolved)} resolved`} series={data.trend.map(t => t.resolved)} seriesColor={C.mint} />
-              <KpiCard icon={Timer} tone="amber" label="Avg Response Time" value={fmtDuration(k!.avg_response_hours)} caption="resolved cases" />
-              <KpiCard icon={Handshake} tone="brand" label="Citizens Met" value={fmt(k!.meeting_persons)} caption={`${fmt(k!.meetings)} appointments`} />
-              <KpiCard icon={CheckCircle2} tone="mint" label="On-Time Resolution" value={`${k!.on_time_pct}%`} caption="within SLA target" />
+              <KpiCard icon={Users} tone="brand" label={t("ov.kpiCitizens")} value={fmt(k!.citizens)} caption={t("ov.capUnique")} />
+              <KpiCard icon={Megaphone} tone="violet" label={t("ov.kpiReceived")} value={fmt(k!.received)}
+                caption={t("ov.capPeriod")} delta={k!.growth_pct} series={data.trend.map(t => t.received)} />
+              <KpiCard icon={Gauge} tone="mint" label={t("ov.kpiResolution")} value={`${k!.resolution_rate}%`}
+                caption={`${fmt(k!.resolved)} ${t("ov.capResolved")}`} series={data.trend.map(t => t.resolved)} seriesColor={C.mint} />
+              <KpiCard icon={Timer} tone="amber" label={t("ov.kpiAvgResponse")} value={fmtDuration(k!.avg_response_hours)} caption={t("ov.capResolvedCases")} />
+              <KpiCard icon={Handshake} tone="brand" label={t("ov.kpiCitizensMet")} value={fmt(k!.meeting_persons)} caption={`${fmt(k!.meetings)} ${t("ov.capAppointments")}`} />
+              <KpiCard icon={CheckCircle2} tone="mint" label={t("ov.kpiOnTime")} value={`${k!.on_time_pct}%`} caption={t("ov.capWithinSla")} />
             </div>
           )}
 
@@ -242,7 +246,7 @@ export default function OverviewPage() {
               <VolumeTrend trend={data?.trend ?? null} loading={!data} />
             </Card>
             <Card className="p-4">
-              <ChartHead icon={Flame} title="Priority Mix" sub="Click a level to filter" />
+              <ChartHead icon={Flame} title={t("ov.priorityMix")} sub={t("ov.priorityMixSub")} />
               <PriorityDonut priority={data?.priority ?? null} total={priorityTotal}
                 active={filters.priority} onSlice={(key) => toggle("priority", key)} loading={!data} />
             </Card>
@@ -251,12 +255,12 @@ export default function OverviewPage() {
           {/* Category (2/3) + Ministry (1/3) */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <Card className="p-4 lg:col-span-2">
-              <ChartHead icon={Megaphone} title="Petitions by Category" sub="Click a bar to filter" />
+              <ChartHead icon={Megaphone} title={t("ov.byCategory")} sub={t("ov.byCategorySub")} />
               <CategoryBars data={data?.categories ?? null} activeKey={filters.category}
                 onBar={(key) => toggle("category", key)} loading={!data} />
             </Card>
             <Card className="p-4">
-              <ChartHead icon={Landmark} title="Ministry Distribution" sub="Where the load falls" />
+              <ChartHead icon={Landmark} title={t("ov.ministryDist")} sub={t("ov.ministryDistSub")} />
               <MinistryBars data={data?.ministries ?? null} activeKey={filters.ministry}
                 onBar={(key) => toggle("ministry", key)} loading={!data} />
             </Card>
@@ -265,14 +269,14 @@ export default function OverviewPage() {
           {/* Department performance */}
           <Card className="overflow-hidden p-0">
             <div className="border-b border-border p-4">
-              <ChartHead icon={Building2} title="Department Performance" sub="Case load and resolution health per routed department" />
+              <ChartHead icon={Building2} title={t("ov.deptPerf")} sub={t("ov.deptPerfSub")} />
             </div>
             <DeptTable rows={ops?.departments ?? null} />
           </Card>
 
           {/* Geographic district distribution — counts on the map; click to filter */}
           <Card className="p-4">
-            <ChartHead icon={MapPin} title="Petitions by District" sub="Click a district to filter the dashboard" />
+            <ChartHead icon={MapPin} title={t("ov.byDistrict")} sub={t("ov.byDistrictSub")} />
             <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
               <TamilNaduMap data={ops?.districts ?? null} activeKey={filters.district} onSelect={(key) => toggle("district", key)} />
               <DistrictLeaders data={ops?.districts ?? null} loading={ops == null} activeKey={filters.district} onSelect={(key) => toggle("district", key)} />
@@ -291,9 +295,9 @@ export default function OverviewPage() {
               <table className="w-full min-w-[620px] text-left text-sm">
                 <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.09em] text-muted-foreground/80">
                   <tr>
-                    <th className="px-4 py-3">Citizen</th>
-                    <th className="px-4 py-3">Citizen Ask</th>
-                    <Th label="Category" col="category" sort={sort} onSort={setSort} />
+                    <th className="px-4 py-3">{t("ov.colCitizen")}</th>
+                    <th className="px-4 py-3">{t("ov.colAsk")}</th>
+                    <Th label={t("ov.colCategory")} col="category" sort={sort} onSort={setSort} />
                   </tr>
                 </thead>
                 <tbody>
@@ -313,7 +317,7 @@ export default function OverviewPage() {
                         </div>
                       </td>
                       <td className="max-w-[460px] px-4 py-3 text-[13px] text-foreground/85">
-                        <span className="line-clamp-2">{p.citizen_ask || <span className="italic text-muted-foreground">No summary yet</span>}</span>
+                        <span className="line-clamp-2">{p.citizen_ask || <span className="italic text-muted-foreground">{t("ov.noSummary")}</span>}</span>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{p.category_label}</td>
                     </tr>
@@ -323,7 +327,7 @@ export default function OverviewPage() {
             </div>
             {pets && pets.pages > 1 && (
               <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs">
-                <span className="text-muted-foreground">Page <span className="tabular-nums">{pets.page}</span> of <span className="tabular-nums">{pets.pages}</span></span>
+                <span className="text-muted-foreground">{t("ov.page")} <span className="tabular-nums">{pets.page}</span> {t("ov.pageOf")} <span className="tabular-nums">{pets.pages}</span></span>
                 <div className="flex gap-1">
                   <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
                   <Button size="sm" variant="outline" disabled={page >= pets.pages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
@@ -410,6 +414,7 @@ function rollup(trend: TrendPoint[], gran: Gran) {
   }));
 }
 function VolumeTrend({ trend, loading }: { trend: TrendPoint[] | null; loading: boolean }) {
+  const { t } = useLang();
   const [gran, setGran] = useState<Gran>("daily");
   const rows = useMemo(() => (trend ? rollup(trend, gran) : []), [trend, gran]);
   return (
@@ -417,7 +422,7 @@ function VolumeTrend({ trend, loading }: { trend: TrendPoint[] | null; loading: 
       <div className="mb-3 flex items-start justify-between">
         <div>
           <div className="type-card-heading inline-flex items-center gap-2"><TrendingUp className="h-4 w-4 text-brand" /> Petition Volume Trend</div>
-          <div className="type-caption text-muted-foreground">Received vs resolved over the period</div>
+          <div className="type-caption text-muted-foreground">{t("ov.trendSub")}</div>
         </div>
         <div className="flex rounded-lg border border-border bg-muted/40 p-0.5">
           {(["daily", "weekly", "monthly"] as Gran[]).map(g => (
@@ -452,8 +457,8 @@ function VolumeTrend({ trend, loading }: { trend: TrendPoint[] | null; loading: 
         )}
       </div>
       <div className="mt-2 flex items-center justify-center gap-5 text-[11px] text-muted-foreground">
-        <Legend color={C.brand} label="Received" />
-        <Legend color={C.mint} label="Resolved" />
+        <Legend color={C.brand} label={t("ov.received")} />
+        <Legend color={C.mint} label={t("ov.resolved")} />
       </div>
     </>
   );
@@ -464,6 +469,7 @@ function PriorityDonut({ priority, total, active, onSlice, loading }: {
   priority: Analytics["priority"] | null; total: number; active?: string;
   onSlice: (key: string) => void; loading: boolean;
 }) {
+  const { t } = useLang();
   if (loading) return <div className="h-[240px]"><Skeleton className="h-full w-full" /></div>;
   const slices = PRIORITY_META.map(p => ({ ...p, value: priority?.[p.key] ?? 0 })).filter(s => s.value > 0);
   return (
@@ -483,7 +489,7 @@ function PriorityDonut({ priority, total, active, onSlice, loading }: {
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="font-mono text-2xl font-bold tabular-nums text-foreground">{total.toLocaleString("en-IN")}</span>
-              <span className="type-caption text-muted-foreground">Total</span>
+              <span className="type-caption text-muted-foreground">{t("ov.total")}</span>
             </div>
           </>
         )}
@@ -537,22 +543,23 @@ function MinistryBars(props: Omit<Parameters<typeof HBars>[0], "color" | "height
 
 // ── Department performance table (Phase 2) ───────────────────────────────────
 function DeptTable({ rows }: { rows: DeptPerf[] | null }) {
+  const { t } = useLang();
   if (rows == null) return <div className="p-4"><Skeleton className="h-40 w-full" /></div>;
-  if (rows.length === 0) return <div className="grid h-32 place-items-center text-[12px] italic text-muted-foreground">No routed departments in this scope</div>;
+  if (rows.length === 0) return <div className="grid h-32 place-items-center text-[12px] italic text-muted-foreground">{t("ov.noDepts")}</div>;
   const rateTone = (r: number) => r >= 80 ? "text-[#0F8B4C]" : r >= 50 ? "text-[#B45309]" : "text-[#C0362C]";
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[860px] text-left text-sm">
         <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
           <tr>
-            <th className="px-4 py-2.5">Department</th>
-            <th className="px-3 py-2.5 text-right">Open</th>
-            <th className="px-3 py-2.5 text-right">Resolved</th>
-            <th className="px-3 py-2.5 text-right">Resolution</th>
-            <th className="px-3 py-2.5 text-right">Avg. Time</th>
-            <th className="px-3 py-2.5 text-right">On-Time</th>
-            <th className="px-3 py-2.5 text-right">Acceptance</th>
-            <th className="px-4 py-2.5">Progress</th>
+            <th className="px-4 py-2.5">{t("ov.colDept")}</th>
+            <th className="px-3 py-2.5 text-right">{t("ov.colOpen")}</th>
+            <th className="px-3 py-2.5 text-right">{t("ov.colResolvedH")}</th>
+            <th className="px-3 py-2.5 text-right">{t("ov.colResolutionH")}</th>
+            <th className="px-3 py-2.5 text-right">{t("ov.colAvgTime")}</th>
+            <th className="px-3 py-2.5 text-right">{t("ov.colOnTimeH")}</th>
+            <th className="px-3 py-2.5 text-right">{t("ov.colAcceptance")}</th>
+            <th className="px-4 py-2.5">{t("ov.colProgress")}</th>
           </tr>
         </thead>
         <tbody>
@@ -594,13 +601,14 @@ function fmtAccept(min: number | null): string {
 function DistrictLeaders({ data, loading, activeKey, onSelect }: {
   data: Bar[] | null; loading: boolean; activeKey?: string; onSelect?: (key: string) => void;
 }) {
+  const { t } = useLang();
   if (loading) return <Skeleton className="h-[300px] w-full" />;
   if (!data || data.length === 0) {
     return (
       <div className="grid h-full min-h-[200px] place-items-center px-3 text-center">
         <div className="space-y-1">
           <MapPin className="mx-auto h-6 w-6 text-muted-foreground/40" />
-          <div className="text-[12px] font-medium text-muted-foreground">No districts yet</div>
+          <div className="text-[12px] font-medium text-muted-foreground">{t("ov.noDistricts")}</div>
           <div className="text-[11px] text-muted-foreground/80">Filled as petitions are summarised, or set on a ticket.</div>
         </div>
       </div>
@@ -608,7 +616,7 @@ function DistrictLeaders({ data, loading, activeKey, onSelect }: {
   }
   return (
     <div className="flex flex-col">
-      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ranked by volume</div>
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("ov.rankedByVolume")}</div>
       <div className="max-h-[400px] space-y-0.5 overflow-y-auto pr-1">
         {data.map((d, i) => (
           <button key={d.key} onClick={() => onSelect?.(d.key)}
@@ -646,4 +654,7 @@ function Th({ label, col, sort, onSort }: { label: string; col: string; sort: { 
     </th>
   );
 }
-function Empty() { return <div className="grid h-full min-h-[80px] place-items-center text-[12px] italic text-muted-foreground">No data in this scope</div>; }
+function Empty() {
+  const { t } = useLang();
+  return <div className="grid h-full min-h-[80px] place-items-center text-[12px] italic text-muted-foreground">{t("ov.noData")}</div>;
+}

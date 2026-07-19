@@ -52,6 +52,22 @@ const PRIORITY_CLS: Record<string, string> = {
   critical: "bg-red-500", high: "bg-orange-500", medium: "bg-amber-400", low: "bg-slate-300",
 };
 
+// The API sends English labels for status/priority. Re-label from the key using
+// the keys the rest of the portal already uses, so these bars switch with the
+// language too — otherwise only the page chrome translated. Falls back to the
+// server label for anything unmapped.
+const STATUS_TKEY: Record<string, string> = {
+  open: "tkt.stOpen", triaged: "tkt.stTriaged", assigned: "tkt.stAssigned",
+  in_progress: "tkt.stInProgress", forwarded_to_dept: "tkt.stForwarded",
+  pending_citizen: "tkt.stPendingCitizen", resolved: "tkt.stResolved",
+  closed: "tkt.stClosed", reopened: "tkt.stReopened",
+  awaiting_department: "tkt.stAssigned",
+};
+const PRIORITY_TKEY: Record<string, string> = {
+  low: "petition.urgencyLow", medium: "petition.urgencyMedium",
+  high: "petition.urgencyHigh", critical: "petition.urgencyCritical",
+};
+
 function toISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -93,6 +109,19 @@ export default function TicketInsightsPage() {
   const maxPriority = useMemo(
     () => Math.max(1, ...(data?.by_priority ?? []).map(s => s.count)),
     [data],
+  );
+  // Re-label the API's English status/priority names in the active language.
+  const statusRows = useMemo(
+    () => (data?.by_status ?? []).map(r => ({
+      ...r, label: STATUS_TKEY[r.key] ? t(STATUS_TKEY[r.key]) : r.label,
+    })),
+    [data, t],
+  );
+  const priorityRows = useMemo(
+    () => (data?.by_priority ?? []).map(r => ({
+      ...r, label: PRIORITY_TKEY[r.key] ? t(PRIORITY_TKEY[r.key]) : r.label,
+    })),
+    [data, t],
   );
 
   return (
@@ -169,13 +198,13 @@ export default function TicketInsightsPage() {
             <Panel icon={BarChart3} title={t("ti.statusMix")}>
               {loading ? <Skeleton className="h-28 w-full rounded-lg" />
                 : !data?.by_status.length ? <Empty text={t("ti.noData")} />
-                : <BarList rows={data.by_status} max={maxStatus} tone="bg-brand" />}
+                : <BarList rows={statusRows} max={maxStatus} tone="bg-brand" />}
             </Panel>
 
             {/* Priority split */}
             <Panel icon={Flag} title={t("ti.prioritySplit")}>
               {loading ? <Skeleton className="h-28 w-full rounded-lg" />
-                : <BarList rows={data?.by_priority ?? []} max={maxPriority} toneOf={r => PRIORITY_CLS[r.key] ?? "bg-brand"} />}
+                : <BarList rows={priorityRows} max={maxPriority} toneOf={r => PRIORITY_CLS[r.key] ?? "bg-brand"} />}
             </Panel>
           </div>
 
