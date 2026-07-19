@@ -504,11 +504,38 @@ export default function AiReviewPage() {
     [rows],
   );
 
+  // Counts for the status tabs — must reflect ALL active filters (source,
+  // priority, date, search, category) but NOT the active status tab itself
+  // (otherwise every inactive tab would show 0 while a tab is selected).
+  const scopedWithoutStatus = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    const fromKey = dateFrom || "";
+    const toKey = dateTo || "";
+    return visibleRows.filter(r => {
+      if (fPriority && r.priority !== fPriority) return false;
+      if (fSource && r.source !== fSource) return false;
+      if (fCategory && (r.categoryKey || "other").toLowerCase() !== fCategory) return false;
+      if (fromKey || toKey) {
+        const day = r.created_at ? toISODate(new Date(r.created_at)) : "";
+        if (!day) return false;
+        if (fromKey && day < fromKey) return false;
+        if (toKey && day > toKey) return false;
+      }
+      if (query) {
+        const inName = (r.name || "").toLowerCase().includes(query);
+        const inMobile = (r.mobile || "").includes(query);
+        const inToken = (r.token || "").toLowerCase().includes(query);
+        if (!inName && !inMobile && !inToken) return false;
+      }
+      return true;
+    });
+  }, [visibleRows, fPriority, fSource, fCategory, dateFrom, dateTo, q]);
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { "": visibleRows.length, AWAITING_REVIEW: 0, REVIEWED: 0, FAILED: 0 };
-    for (const r of visibleRows) c[r.statusKey] = (c[r.statusKey] ?? 0) + 1;
+    const c: Record<string, number> = { "": scopedWithoutStatus.length, AWAITING_REVIEW: 0, REVIEWED: 0, FAILED: 0 };
+    for (const r of scopedWithoutStatus) c[r.statusKey] = (c[r.statusKey] ?? 0) + 1;
     return c;
-  }, [visibleRows]);
+  }, [scopedWithoutStatus]);
 
   // Everything except the chart-driven category filter — the table's base
   // scope and the distribution chart's own scope (so every bar stays visible).
