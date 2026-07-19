@@ -10,6 +10,7 @@ Frontend proxy maps /api/ai-uploads/* → /dashboard/api/ai-uploads/*.
   PATCH  /dashboard/api/ai-uploads/{id}           save PA-edited fields
   POST   /dashboard/api/ai-uploads/{id}/approve   create case + ticket
   POST   /dashboard/api/ai-uploads/retry          re-queue failed rows (single/bulk)
+  DELETE /dashboard/api/ai-uploads/batch/{id}     purge a batch (rows + files); rejects if any row is REVIEWED
 """
 from typing import List, Optional
 
@@ -122,3 +123,23 @@ async def retry_uploads(
     if not isinstance(ids, list) or not ids:
         return JSONResponse({"error": "ids (list) required"}, status_code=400)
     return JSONResponse(await ai_upload_service.retry(db, [int(i) for i in ids]))
+
+
+@router.delete("/batch/{batch_id}")
+async def delete_batch(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Purge every AiUpload row in the batch and remove the underlying
+    storage files. Refuses (400) if any row is already REVIEWED because
+    those rows have a live Appointment + Ticket referencing the same
+    storage_url — see delete_batch() for details."""
+    try:
+        return JSONResponse(await ai_upload_service.delete_batch(db, batch_id))
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=500)

@@ -741,6 +741,41 @@ async def api_ticket_close(
     return JSONResponse(data)
 
 
+@router.post("/api/tickets/{ticket_id}/revert")
+async def api_ticket_revert(
+    ticket_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(get_current_login),
+):
+    """Revert an OPEN ticket back to Petition Review.
+
+    Only allowed while the ticket is still in `open`. Anything past that
+    already has a department's work invested. The revert is soft — the
+    ticket row and its audit trail are preserved — and the linked
+    appointment moves back to AWAITING_REVIEW so the PA can dismiss it,
+    correct it, or re-approve it from the review queue.
+
+    On re-approve, the same ticket row is reused (see
+    dashboard_service.update_appointment_status) so ticket numbers never
+    duplicate across revert/re-approve cycles.
+    """
+    if not await _ticket_in_scope(db, ticket_id, current):
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    body = await request.json() if await request.body() else {}
+    reason = (body or {}).get("reason", "")
+    try:
+        data = await ticket_service.revert_ticket(
+            db, ticket_id, actor=current.login_name, reason=reason,
+        )
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if data is None:
+        return JSONResponse({"error": "Ticket not found"}, status_code=404)
+    return JSONResponse(data)
+
+
 @router.post("/api/tickets/{ticket_id}/reopen")
 async def api_ticket_reopen(
     ticket_id: int,
@@ -828,14 +863,33 @@ async def serve_stored_file(file_path: str, request: Request) -> Response:
     import hashlib
     import mimetypes
     from src.services.storage_service import (
-        get_file_bytes, get_file_size, get_file_range_bytes,
+        get_file_bytes, get_file_size, get_file_range_bytes, get_file_content_type,
     )
     from pathlib import PurePosixPath
 
     filename = PurePosixPath(file_path).name or "file"
     mime, _ = mimetypes.guess_type(filename)
+    typed_by_fallback = False
+    if mime is None:
+        # No usable extension on the key. Older uploads whose filename stem was
+        # entirely non-ASCII (Tamil) were sanitised down to a bare "pdf"/"png",
+        # so guessing fails and octet-stream would make the browser download the
+        # file instead of previewing it. The object's stored ContentType is
+        # authoritative — only consulted here, so well-named files cost nothing.
+        mime = await asyncio.to_thread(get_file_content_type, file_path)
+        typed_by_fallback = mime is not None
     media_type = mime or "application/octet-stream"
     disposition = f'inline; filename="{filename}"'
+
+    # Cache policy. Well-named files are immutable (unique token_hex names), so
+    # they keep the year-long hard cache. Files typed via the fallback must NOT
+    # be `immutable`: browsers that already cached them as octet-stream would
+    # never revalidate, so the corrected Content-Type could never reach them and
+    # the PDF would keep downloading. Give those a short, revalidating cache.
+    cache_control = (
+        "private, max-age=300, must-revalidate" if typed_by_fallback
+        else "private, max-age=31536000, immutable"
+    )
     range_header = request.headers.get("range")
 
     endpoint = getattr(settings, "FILE_STORAGE_ENDPOINT", None)
@@ -854,9 +908,14 @@ async def serve_stored_file(file_path: str, request: Request) -> Response:
         # views + audio seeks slow. `private` keeps them out of shared/CDN
         # caches — they're auth-gated citizen PII. A stable ETag lets a repeat
         # request 304 without ever touching MinIO.
-        etag = '"%s"' % hashlib.md5(("%s:%d" % (file_path, total)).encode()).hexdigest()
+        # media_type is part of the ETag: the same bytes served under a corrected
+        # Content-Type must invalidate, or a cached octet-stream copy would 304
+        # forever and keep downloading instead of previewing.
+        etag = '"%s"' % hashlib.md5(
+            ("%s:%d:%s" % (file_path, total, media_type)).encode()
+        ).hexdigest()
         cache_headers = {
-            "Cache-Control": "private, max-age=31536000, immutable",
+            "Cache-Control": cache_control,
             "ETag": etag,
         }
         if request.headers.get("if-none-match") == etag:
@@ -913,6 +972,6 @@ async def serve_stored_file(file_path: str, request: Request) -> Response:
             "Content-Disposition": disposition,
             # FileResponse already sends ETag/Last-Modified and handles
             # If-None-Match / Range / 304 itself; just make it cacheable.
-            "Cache-Control": "private, max-age=31536000, immutable",
+            "Cache-Control": cache_control,
         },
     )

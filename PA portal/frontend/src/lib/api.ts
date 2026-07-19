@@ -173,13 +173,23 @@ export async function patchTicket(
 
 export async function ticketAction(
   id: number,
-  action: "forward" | "comment" | "resolve" | "close" | "reopen",
+  action: "forward" | "comment" | "resolve" | "close" | "reopen" | "revert",
   body: Record<string, unknown>,
 ): Promise<TicketDetail> {
   const r = await fetch(`/api/tickets/${id}/${action}`, {
     method: "POST", headers: J, credentials: "include", body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(`${action} ${r.status}: ${await r.text()}`);
+  if (!r.ok) {
+    const detail = await r.text();
+    // Surface the {"error": "..."} message from FastAPI 400s so the toast
+    // says something specific instead of "revert 400: {...}".
+    let msg: string | null = null;
+    try {
+      const json = JSON.parse(detail);
+      if (typeof json?.error === "string") msg = json.error;
+    } catch { /* not JSON */ }
+    throw new Error(msg ?? `${action} ${r.status}: ${detail}`);
+  }
   return r.json();
 }
 

@@ -1047,22 +1047,34 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         )
         from sqlalchemy import func as sa_func
 
-        # Check if ticket already exists for this appointment
-        existing_ticket = await db.execute(
+        # Ticket-per-appointment is unique. Three cases to handle:
+        #   1. No ticket   → mint one.
+        #   2. Ticket in REVERTED state (PA sent it back to review earlier)
+        #      → reuse the same row: flip status back to OPEN, clear the
+        #        revert-* audit fields, log a "reapproved" event.
+        #      Reusing keeps the ticket number stable across revert / re-approve
+        #      cycles, so the citizen and audit trail don't see phantom
+        #      duplicate ticket numbers.
+        #   3. Ticket already alive in any other state → no-op (this path
+        #      shouldn't fire normally; approve_petition only runs from
+        #      Awaiting Review).
+        current_time = datetime.utcnow()
+        existing_ticket = (await db.execute(
             select(Ticket).where(Ticket.appointment_id == appointment_id)
-        )
-        if not existing_ticket.scalar_one_or_none():
-            # Create new ticket. Sequence = MAX existing suffix for the year + 1.
-            # Advisory xact-lock keyed on year serialises concurrent creations.
+        )).scalar_one_or_none()
+
+        if existing_ticket is None:
+            # Case 1 — mint a fresh ticket. Sequence = MAX existing suffix
+            # for the year + 1. Advisory xact-lock keyed on year serialises
+            # concurrent creations.
             from sqlalchemy import text as _sa_text
-            year = datetime.utcnow().year
+            year = current_time.year
             await db.execute(_sa_text("SELECT pg_advisory_xact_lock(:k)"), {"k": 880000 + year})
             max_tn = await db.scalar(
                 select(sa_func.max(Ticket.ticket_number))
                 .where(Ticket.ticket_number.like(f"TKT-{year}-%"))
             )
             year_count = (int(max_tn.split("-")[-1]) if max_tn else 0) + 1
-            current_time = datetime.utcnow()
 
             ticket_ids = v2.new_ticket_ids(status="open")
             new_ticket = Ticket(
@@ -1084,6 +1096,30 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
                 action_type="created",
                 message=f"Ticket created after PA review (token {appt.token_assigned})",
                 payload={"token": appt.token_assigned, "appointment_id": appointment_id},
+            ))
+        elif existing_ticket.status == TicketStatus.REVERTED.value:
+            # Case 2 — reuse the reverted row. The revert action set status,
+            # cleared department/due_date, and stamped revert_*; undo all of
+            # that but preserve the ticket number, history, attachments, and
+            # activity trail. Log a distinct "reapproved" event so the log
+            # reads: created → reverted → reapproved.
+            prev_reason = existing_ticket.revert_reason
+            existing_ticket.status = TicketStatus.OPEN.value
+            existing_ticket.status_id = v2.ticket_status_id(TicketStatus.OPEN.value)
+            existing_ticket.reverted_at = None
+            existing_ticket.reverted_by = None
+            existing_ticket.revert_reason = None
+            existing_ticket.updated_at = current_time
+            db.add(Activity(
+                ticket_id=existing_ticket.id,
+                user="pa_admin",
+                action_type="reapproved",
+                message=f"Ticket re-approved after revert (token {appt.token_assigned})",
+                payload={
+                    "token": appt.token_assigned,
+                    "appointment_id": appointment_id,
+                    "previous_revert_reason": prev_reason,
+                },
             ))
     elif new_status == "Awaiting Review":
         # Allow moving a record back into the review queue (PA correction).

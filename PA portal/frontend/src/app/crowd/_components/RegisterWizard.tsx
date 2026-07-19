@@ -100,21 +100,49 @@ export default function RegisterWizard({
 
   useEffect(() => () => { photosRef.current.forEach((p) => URL.revokeObjectURL(p.url)); }, []);
 
+  // Optional, but a supplied number must be a real Indian mobile — same rule as
+  // the QR form (/^[6-9][0-9]{9}$/). It is the Citizen blind-index dedup key, so
+  // a typo silently creates a duplicate citizen and sends updates nowhere.
+  const MOBILE_RE = /^[6-9][0-9]{9}$/;
+  const mobileInvalid = mobile.trim().length > 0 && !MOBILE_RE.test(mobile.trim());
+
+  function validateStep1(): boolean {
+    if (!name.trim()) { toast.error(t("Name is required", "பெயர் தேவை")); return false; }
+    if (!category) { toast.error(t("Select a category", "வகை தேர்வு")); return false; }
+    if (mobileInvalid) {
+      toast.error(t("Enter a valid 10-digit mobile number", "சரியான 10 இலக்க கைபேசி எண்ணை உள்ளிடவும்"));
+      return false;
+    }
+    return true;
+  }
+
   function next() {
     if (step === 1) {
-      if (!name.trim()) return toast.error(t("Name is required", "பெயர் தேவை"));
-      if (!category) return toast.error(t("Select a category", "வகை தேர்வு"));
+      if (!validateStep1()) return;
       setStep(2);
       return;
     }
     if (step === 2) setStep(3);
   }
 
-  function submit() {
+  /**
+   * `asMeeting` picks the outcome, mirroring the QR form's two-choice ending:
+   *   false            -> petition only, lands in Petition Review
+   *   true  + slot     -> booked appointment (SCHEDULED)
+   *   true  + no slot  -> waiting queue; the backend falls back to WAITING
+   *                       when schedule_meeting is set without a slot_id
+   */
+  function submit(asMeeting: boolean) {
     if (!name.trim()) { setStep(1); return toast.error(t("Name is required", "பெயர் தேவை")); }
     if (!category) { setStep(1); return toast.error(t("Select a category", "வகை தேர்வு")); }
-    if (!slot && !desc.trim() && !photos.length) {
-      return toast.error(t("Add a grievance, photo, or slot", "குறை/படம்/நேரம் தேவை"));
+    if (mobileInvalid) {
+      setStep(1);
+      return toast.error(t("Enter a valid 10-digit mobile number", "சரியான 10 இலக்க கைபேசி எண்ணை உள்ளிடவும்"));
+    }
+    // A petition needs something to review. A meeting/waitlist request doesn't —
+    // the citizen is asking to be seen, which is the content.
+    if (!asMeeting && !desc.trim() && !photos.length) {
+      return toast.error(t("Add a grievance or photo", "குறை அல்லது படம் தேவை"));
     }
     setBusy(true);
     if (slotTimer.current) clearInterval(slotTimer.current);
@@ -124,8 +152,8 @@ export default function RegisterWizard({
     fd.append("mobile", mobile.trim());
     fd.append("category", category);
     fd.append("description", desc.trim());
-    fd.append("schedule_meeting", slot ? "true" : "false");
-    if (slot) { fd.append("slot_id", String(slot)); fd.append("num_persons", String(persons)); }
+    fd.append("schedule_meeting", asMeeting ? "true" : "false");
+    if (asMeeting && slot) { fd.append("slot_id", String(slot)); fd.append("num_persons", String(persons)); }
     photos.forEach((p) => fd.append("files", p.file));
 
     api.intake(fd)
@@ -134,6 +162,11 @@ export default function RegisterWizard({
   }
 
   const canBook = !!slot;
+  // Any capacity left today or on an upcoming open date? Drives the "all full"
+  // notice and turns the meeting button into "Join waiting list".
+  const anySlotOpen =
+    (slots ?? []).some((s) => s.available && s.remaining > 0) ||
+    (dates ?? []).some((d) => (d.open ?? 0) > 0);
 
   return (
     <div className="flex flex-col">
@@ -163,10 +196,28 @@ export default function RegisterWizard({
           </div>
         )}
         {step === 3 && (
-          <WizardReview
-            name={name} mobile={mobile} category={category} desc={desc}
-            photoCount={photos.length} date={date} slot={slot} slots={slots} persons={persons}
-          />
+          <>
+            {/* Mirrors the QR form's "all slots full" notice so the floor team
+                can explain the waiting-list option in the citizen's language. */}
+            {!canBook && !anySlotOpen && (
+              <div className="mb-3 flex gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-[13px] leading-relaxed text-amber-900">
+                <span aria-hidden className="text-base leading-none">⌛</span>
+                <div>
+                  <strong className="font-bold">
+                    {t("All meeting slots are currently full.", "தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.")}
+                  </strong>{" "}
+                  {t(
+                    "You can still submit the petition, or join the waiting list — we'll contact them as soon as a slot opens.",
+                    "நீங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் தொடர்பு கொள்வோம்.",
+                  )}
+                </div>
+              </div>
+            )}
+            <WizardReview
+              name={name} mobile={mobile} category={category} desc={desc}
+              photoCount={photos.length} date={date} slot={slot} slots={slots} persons={persons}
+            />
+          </>
         )}
       </div>
 
@@ -174,15 +225,29 @@ export default function RegisterWizard({
       <div className="fixed inset-x-0 bottom-[calc(var(--nav-h)+env(safe-area-inset-bottom))] z-30 mx-auto flex max-w-[560px] gap-2.5 border-t border-[#E1E5EB] bg-white/95 px-4 py-3 backdrop-blur">
         {step > 1 && (
           <Button variant="outline" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}
-            className="h-12 rounded-xl px-6 font-bold">{t("Back", "பின்")}</Button>
+            className={cn("h-12 shrink-0 rounded-xl font-bold", step === 3 ? "px-3" : "px-6")}>
+            {t("Back", "பின்")}
+          </Button>
         )}
         {step < 3 ? (
           <Button onClick={next} className="h-12 flex-1 rounded-xl bg-[#1E40AF] text-base font-bold text-white hover:bg-[#1A3796]">{t("Continue", "தொடரவும்")}</Button>
         ) : (
-          <Button onClick={submit} disabled={busy}
-            className={cn("h-12 flex-1 rounded-xl text-base font-bold text-white", canBook ? "bg-emerald-600 hover:bg-emerald-700" : "bg-[#1E40AF] hover:bg-[#1A3796]")}>
-            {canBook ? t("Book Appointment", "சந்திப்பு பதிவு") : t("Submit Petition", "மனு சமர்ப்பி")}
-          </Button>
+          <>
+            {/* Petition — always available, never needs a slot. */}
+            <Button onClick={() => submit(false)} disabled={busy}
+              className="h-12 flex-1 rounded-xl bg-[#1E40AF] px-2 text-[13px] font-bold leading-tight text-white hover:bg-[#1A3796]">
+              {t("Submit Petition", "மனு சமர்ப்பி")}
+            </Button>
+            {/* Meeting — books the picked slot, or joins the waiting list when
+                nothing is free (same fallback as the QR form). */}
+            <Button onClick={() => submit(true)} disabled={busy}
+              className={cn("h-12 flex-1 rounded-xl px-2 text-[13px] font-bold leading-tight text-white",
+                canBook ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}>
+              {canBook
+                ? t("Book Appointment", "சந்திப்பு பதிவு")
+                : t("Join Waiting List", "காத்திருப்பு பட்டியல்")}
+            </Button>
+          </>
         )}
       </div>
     </div>

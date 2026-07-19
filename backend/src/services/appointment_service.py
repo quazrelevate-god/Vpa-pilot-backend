@@ -104,15 +104,37 @@ class AppointmentService:
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
         """
-        Strip any path components and unsafe characters from a client-supplied
-        filename before it is used to build a storage path. Prevents path
-        traversal (e.g. '../../etc/passwd') on the local-disk storage backend.
+        Make a client-supplied filename safe to embed in a storage key, without
+        destroying it. Prevents path traversal (e.g. '../../etc/passwd').
+
+        Unicode is deliberately preserved. This is a Tamil-first product, object
+        keys are UTF-8, and get_file_url() already percent-encodes them for the
+        URL. The previous ASCII-only whitelist collapsed every Tamil character
+        to '_' and then stripped the leading run — so "<tamil>.pdf" became the
+        key "pdf", losing the extension entirely. mimetypes could then no longer
+        type the file, it was served as octet-stream, and the review page's PDF
+        <iframe> handed it to the download manager instead of rendering it.
+
+        Only genuinely unsafe characters are removed: path separators, Windows
+        reserved characters and control characters. The stem and the extension
+        are cleaned separately so the extension always survives.
         """
         # Drop any directory component (handles both / and \ separators)
         base = os.path.basename((filename or "").replace("\\", "/"))
-        # Keep only a conservative whitelist; collapse everything else to '_'
-        cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", base).strip("._") or "file"
-        return cleaned[:120]  # cap length
+
+        def _clean(part: str) -> str:
+            # Path separators, Windows-reserved and control chars -> '_'
+            part = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|]+', "_", part)
+            part = re.sub(r"\s+", "_", part)      # no raw whitespace in keys
+            part = part.replace("..", "_")        # traversal can't survive
+            return part.strip("._-")              # no leading/trailing dots
+
+        stem, dot, suffix = base.rpartition(".")
+        if not dot:                                # no extension at all
+            stem, suffix = base, ""
+        stem = _clean(stem)[:100] or "file"
+        suffix = _clean(suffix)[:20]
+        return f"{stem}.{suffix}" if suffix else stem
 
     @staticmethod
     async def _assign_daily_token(db: AsyncSession, utc_now: datetime) -> tuple[int, int]:
@@ -1411,6 +1433,19 @@ class AppointmentService:
 
         user_desc = (description or "").strip()
 
+        # ── Validate mobile (optional) ────────────────────────────────────────
+        # This path has no OTP, so nothing else proves the number is real. It is
+        # still the Citizen dedup key (crypto.blind_index below) and the address
+        # for SMS/WhatsApp updates: a malformed value silently forks a duplicate
+        # citizen and sends notifications nowhere. Empty stays allowed — serving
+        # phone-less citizens is why this flow exists.
+        mobile = (mobile or "").strip()
+        if mobile and not re.fullmatch(r"[6-9][0-9]{9}", mobile):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid mobile number. Enter a 10-digit Indian mobile number.",
+            )
+
         # ── Validate files (optional) ─────────────────────────────────────────
         valid_files = [f for f in (files or []) if f.filename][:MAX_FILES]
         file_contents: List[tuple] = []
@@ -1497,6 +1532,11 @@ class AppointmentService:
                 category_id=walkin_ids.get("category_id"),
                 schedule_meeting=take_slot_path,
                 num_persons=max(1, min(4, num_persons)),
+                # Walk-ins are keyed in by floor staff, not submitted by the
+                # citizen's own phone. Without this the column falls back to its
+                # `qr_citizen` default and the portal mislabels every walk-in as
+                # "Citizen QR" — wrong channel in the source filter and reports.
+                source="manual_staff",
                 # Courtesy items skip AI regardless of image; other floor
                 # petitions still summarise when an image is attached.
                 summary_status=("DONE" if is_courtesy else ("PENDING" if has_image else "DONE")),

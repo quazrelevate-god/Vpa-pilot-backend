@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import {
   ArrowRight, MessageSquare, CheckCircle2, Lock, RotateCcw, Send, Building2,
-  Clock, User, Phone, Hash, CalendarDays, X, Sparkles, MapPin,
+  Clock, User, Phone, Hash, CalendarDays, X, Sparkles, MapPin, Undo2,
   GitBranch, Flag, UserCheck, Paperclip, FileSignature, FileCheck2, Inbox,
   ClipboardList, Landmark, Tag, BarChart3, Image as ImageIcon,
 } from "lucide-react";
@@ -32,7 +32,7 @@ import { Label } from "@/components/ui/label";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { cn, formatDate, formatDateTime, toLocalDateTimeInput, fromLocalDateTimeInput } from "@/lib/utils";
 
-type Action = "close" | "reopen";
+type Action = "close" | "reopen" | "revert";
 
 // Localized labels for priority + ticket status (fall back to English display).
 const PRIORITY_TKEY: Record<string, string> = {
@@ -137,6 +137,7 @@ export default function TicketDetailDrawer({
   const [closureReason, setClosureReason] = useState("");
   const [closeNotes, setCloseNotes] = useState("");
   const [reopenReason, setReopenReason] = useState("");
+  const [revertReason, setRevertReason] = useState("");
 
   // Assignment is now click-to-confirm rather than click-to-save.
   // Selecting a department or due date only stages the change; the PA
@@ -205,12 +206,25 @@ export default function TicketDetailDrawer({
     if (ticketId == null) return;
     setBusy(true);
     try {
-      setData(await ticketAction(ticketId, action, body));
+      const updated = await ticketAction(ticketId, action, body);
       onMutated?.();
       setActiveAction(null);
-      setCommentText(""); setClosureReason(""); setCloseNotes(""); setReopenReason("");
-    } catch (e) { alert((e as Error).message); }
-    finally { setBusy(false); }
+      setCommentText(""); setClosureReason(""); setCloseNotes(""); setReopenReason(""); setRevertReason("");
+      if (action === "revert") {
+        // Ticket is out of every workflow tab now; close the drawer so the
+        // PA lands back on the tickets list, and toast the outcome. The
+        // appointment now shows in Petition Review.
+        toast.success(tr("tkt.revertedToast"));
+        onClose();
+        return;
+      }
+      setData(updated);
+    } catch (e) {
+      // Use a toast for revert (matches Dismiss), keep the legacy alert for
+      // close/reopen so their existing UX is unchanged.
+      if (action === "revert") toast.error((e as Error).message || tr("tkt.revertedFailed"));
+      else alert((e as Error).message);
+    } finally { setBusy(false); }
   }
 
   async function handleAttach(e: ChangeEvent<HTMLInputElement>) {
@@ -707,7 +721,9 @@ export default function TicketDetailDrawer({
               <div className="border-t border-border bg-muted/40 p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                    {activeAction === "close" ? "Close ticket" : "Reopen ticket"}
+                    {activeAction === "close" ? tr("tkt.closeTicket")
+                      : activeAction === "reopen" ? tr("tkt.reopenTicket")
+                      : tr("tkt.revertTicket")}
                   </span>
                   <button onClick={() => setActiveAction(null)} className="text-muted-foreground hover:text-foreground">
                     <X className="h-4 w-4" />
@@ -732,6 +748,18 @@ export default function TicketDetailDrawer({
                     <ActionSubmit busy={busy} label="Reopen" onClick={() => runAction("reopen", { reason: reopenReason })} />
                   </div>
                 )}
+                {activeAction === "revert" && (
+                  <div className="space-y-2">
+                    <div className="rounded-md border border-amber-200 bg-amber-50/70 p-2.5 text-[12.5px] text-amber-900">
+                      <b>{tr("tkt.revertWarnTitle")}</b> {tr("tkt.revertWarnBody")}
+                    </div>
+                    <Textarea value={revertReason} onChange={(e) => setRevertReason(e.target.value)}
+                      placeholder={tr("tkt.revertPlaceholder")} rows={3} />
+                    <ActionSubmit busy={busy} label={tr("tkt.revertCta")}
+                      disabled={revertReason.trim().length < 4}
+                      onClick={() => runAction("revert", { reason: revertReason.trim() })} />
+                  </div>
+                )}
               </div>
             )}
 
@@ -739,7 +767,11 @@ export default function TicketDetailDrawer({
             {/* Resolve + Forward belong to the department workspace, not the PA
                 monitor — the PA only assigns, closes, reopens, and comments. */}
             <div className="flex flex-wrap items-center gap-2 border-t border-border bg-card px-6 py-3">
-              {!isClosed && (
+              {/* Close is a PA-only sign-off after the department has already
+                  resolved the ticket. Showing it on open / assigned /
+                  in_progress led PAs to close tickets that hadn't been worked
+                  yet — Revert or Forward is the right action for those. */}
+              {isResolved && (
                 <Button size="sm" disabled={busy} onClick={() => setActiveAction(activeAction === "close" ? null : "close")}>
                   <Lock className="h-4 w-4" /> {tr("tkt.close")}
                 </Button>
@@ -751,6 +783,17 @@ export default function TicketDetailDrawer({
               {isClosed && (
                 <Button variant="outline" size="sm" disabled={busy} className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand" onClick={() => setActiveAction(activeAction === "reopen" ? null : "reopen")}>
                   <RotateCcw className="h-4 w-4" /> {tr("tkt.reopen")}
+                </Button>
+              )}
+              {/* Revert to Petition Review — only when the ticket is still OPEN.
+                  Past that (assigned / accepted / in progress / closed) a
+                  department may have invested work; revert would silently
+                  drop it. For those states, Close is the correct action. */}
+              {t.status === "open" && (
+                <Button variant="outline" size="sm" disabled={busy}
+                  className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                  onClick={() => setActiveAction(activeAction === "revert" ? null : "revert")}>
+                  <Undo2 className="h-4 w-4" /> {tr("tkt.revert")}
                 </Button>
               )}
               <Button variant="outline" size="sm" className="ml-auto border-brand/40 text-brand hover:bg-brand/5 hover:text-brand" onClick={() => setTab("activity")}>

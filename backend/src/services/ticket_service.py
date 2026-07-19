@@ -56,6 +56,8 @@ class _EventType:
     RESOLVED          = "resolved"
     CLOSED            = "closed"
     REOPENED          = "reopened"
+    REVERTED          = "reverted"          # PA sent an OPEN ticket back to review
+    REAPPROVED        = "reapproved"        # PA re-approved a reverted ticket
 
 
 def _decode(value: Optional[str]) -> Optional[str]:
@@ -222,6 +224,9 @@ def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None)
         "resolved_at":        utc_iso(t.resolved_at),
         "closed_at":          utc_iso(t.closed_at),
         "reopened_at":        utc_iso(t.reopened_at),
+        "reverted_at":        utc_iso(t.reverted_at),
+        "reverted_by":        t.reverted_by,
+        "revert_reason":      t.revert_reason,
         "forwarded_at":       utc_iso(t.forwarded_at),
         "forwarded_by":       t.forwarded_by,
         "forwarded_notes":    t.forwarded_notes,
@@ -664,6 +669,97 @@ async def reopen(
     t.closure_reason = None
     _log(db, t.id, _EventType.REOPENED, actor,
          note=reason, payload={"reopen_count": t.reopen_count})
+    await db.commit()
+    return await get_ticket(db, ticket_id)
+
+
+async def revert_ticket(
+    db: AsyncSession,
+    ticket_id: int,
+    actor: str,
+    *,
+    reason: str,
+) -> Optional[Dict[str, Any]]:
+    """Send an OPEN ticket back to Petition Review.
+
+    Deliberately narrow: only tickets whose status is exactly OPEN can be
+    reverted. Anything past that has already been routed, accepted or
+    resolved by a department, and undoing it would silently drop real work.
+    For those, `close` is the correct action.
+
+    The ticket is not deleted — status flips to REVERTED and the row stays
+    for audit. The linked Appointment moves back to AWAITING_REVIEW so it
+    reappears in the Petition Review queue. If the PA later re-approves,
+    the same row is reused (see update_appointment_status).
+
+    Runs under a row lock so two PAs can't race, and cross-checks status +
+    accepted_at inside the transaction to catch a "department just accepted"
+    race.
+    """
+    from sqlalchemy.orm import selectinload
+    from src.models.appointment_models import Appointment
+
+    reason = (reason or "").strip()
+    if len(reason) < 4:
+        raise ValueError("A revert reason of at least 4 characters is required.")
+
+    # Row-lock the ticket AND load its appointment in one shot.
+    row = await db.execute(
+        select(Ticket)
+        .where(Ticket.id == ticket_id)
+        .options(selectinload(Ticket.appointment))
+        .with_for_update()
+    )
+    t = row.scalar_one_or_none()
+    if t is None:
+        return None
+    if t.status != TicketStatus.OPEN.value:
+        raise ValueError(
+            f"Only OPEN tickets can be reverted (this one is {t.status}). "
+            "Close it or forward it instead."
+        )
+    if t.accepted_at is not None:
+        # Defence-in-depth: OPEN + accepted_at should never coexist, but a
+        # concurrent Accept mid-revert would land here.
+        raise ValueError("Department has just accepted this ticket — revert aborted.")
+
+    now = datetime.utcnow()
+    prev_status = t.status
+
+    # 1) Ticket → REVERTED. Keep the row + audit; wipe any accidental routing
+    #    (department = None is expected on OPEN anyway).
+    t.status = TicketStatus.REVERTED.value
+    t.status_id = v2.ticket_status_id(TicketStatus.REVERTED.value)
+    t.department = None
+    t.due_date = None
+    t.reverted_at = now
+    t.reverted_by = actor
+    t.revert_reason = reason
+    _log(db, t.id, _EventType.REVERTED, actor,
+         note=reason,
+         payload={"from_status": prev_status, "appointment_id": t.appointment_id})
+
+    # 2) Appointment → AWAITING_REVIEW (back into Petition Review queue).
+    appt = t.appointment
+    if appt is not None and appt.status != "AWAITING_REVIEW":
+        prev_appt_status = appt.status
+        appt.status = "AWAITING_REVIEW"
+        appt.status_id = v2.appointment_status_id("AWAITING_REVIEW")
+        # Reset any "reviewed_at" or similar flags via the Activity trail —
+        # we don't touch other appointment columns so the citizen record and
+        # attachments stay exactly as they were.
+        db.add(Activity(
+            appointment_id=appt.id,
+            user=actor,
+            action_type="reverted_from_ticket",
+            message=reason,
+            payload={
+                "ticket_id": t.id,
+                "ticket_number": t.ticket_number,
+                "from_status": prev_appt_status,
+            },
+        ))
+
     await db.commit()
     return await get_ticket(db, ticket_id)
 

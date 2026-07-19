@@ -92,6 +92,9 @@ const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
   { key: "AWAITING_REVIEW", tKey: "petition.segAwaiting" },
   { key: "REVIEWED",        tKey: "petition.segReviewed" },
   { key: "FAILED",          tKey: "petition.segFailed" },
+  // Dismissed rows (courtesy audio, blank scans, duplicates) used to be
+  // reachable only via "All"; they get their own tab + count now.
+  { key: "DISMISSED",       tKey: "petition.segDismissed" },
 ];
 
 const PRIORITY_CLS: Record<string, string> = {
@@ -532,7 +535,9 @@ export default function AiReviewPage() {
   }, [visibleRows, fPriority, fSource, fCategory, dateFrom, dateTo, q]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { "": scopedWithoutStatus.length, AWAITING_REVIEW: 0, REVIEWED: 0, FAILED: 0 };
+    const c: Record<string, number> = {
+      "": scopedWithoutStatus.length, AWAITING_REVIEW: 0, REVIEWED: 0, FAILED: 0, DISMISSED: 0,
+    };
     for (const r of scopedWithoutStatus) c[r.statusKey] = (c[r.statusKey] ?? 0) + 1;
     return c;
   }, [scopedWithoutStatus]);
