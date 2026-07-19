@@ -402,7 +402,10 @@ function ActionBar({
 
           {s === "in_progress" && (
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setMode("progress")}>
+              <Button
+                className="flex-1 !bg-emerald-600 text-white hover:!bg-emerald-700"
+                onClick={() => setMode("progress")}
+              >
                 <Send className="mr-1.5 h-4 w-4" /> {t("action.updateProgress")}
               </Button>
               <Button variant="outline" onClick={() => setMode("forward")}>
@@ -502,7 +505,7 @@ function ProgressForm({
     <div className="space-y-3">
       <div className="space-y-1.5">
         <Label>{t("form.note")}</Label>
-        <Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+        <Textarea rows={6} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">

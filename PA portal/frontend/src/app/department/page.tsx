@@ -19,7 +19,6 @@ import { toast } from "sonner";
 
 import DeptTopBar from "./_components/DeptTopBar";
 import KpiHero from "./_components/KpiHero";
-import CategoryCard from "./_components/CategoryCard";
 import TicketList from "./_components/TicketList";
 import TicketDetail from "./_components/TicketDetail";
 import {
@@ -147,7 +146,7 @@ export default function DepartmentPage() {
 
       <main className="min-h-0 flex-1 overflow-hidden">
         <div className="flex h-full flex-col gap-4 px-5 py-4 sm:px-6">
-          {/* Ticket list (left, scrolls) + KPI cards & category breakdown (right) */}
+          {/* Ticket list (left, scrolls) + KPI cards (right) */}
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
             <div className="min-h-0 min-w-0">
               <TicketList
@@ -170,7 +169,6 @@ export default function DepartmentPage() {
                 onJump={jumpFromKpi}
                 activeSeg={seg}
               />
-              <CategoryCard allTickets={allTickets} />
             </aside>
           </div>
         </div>

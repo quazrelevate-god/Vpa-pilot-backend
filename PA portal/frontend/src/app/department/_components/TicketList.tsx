@@ -164,7 +164,6 @@ export default function TicketList({
                   <th className={th}>{t("col.ticket")}</th>
                   <th className={th}>{t("col.subject")}</th>
                   <th className={th}>{t("col.citizen")}</th>
-                  <th className={th}>{t("col.category")}</th>
                   <th className={th}>{t("col.priority")}</th>
                   <th className={th}>{t("col.status")}</th>
                   <th className={th}>{t("col.sla")}</th>
@@ -209,15 +208,6 @@ export default function TicketList({
                             <div className="font-mono text-[11px] text-muted-foreground">{r.citizen_mobile}</div>
                           </div>
                         </div>
-                      </td>
-
-                      {/* Category */}
-                      <td className="px-3 py-3">
-                        {r.category_label ? (
-                          <span className="inline-block max-w-[150px] truncate rounded-md bg-brand/10 px-2 py-1 align-middle text-[12px] font-medium text-brand">
-                            {r.category_label}
-                          </span>
-                        ) : <span className="text-muted-foreground/50">—</span>}
                       </td>
 
                       {/* Priority */}
