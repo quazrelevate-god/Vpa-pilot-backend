@@ -237,8 +237,8 @@ export default function ReferralsPage() {
         subtitle={t("ref.topSubtitle")}
         icon={<UserPlus className="h-5 w-5" />}
       />
-      <main className="flex-1 overflow-y-auto bg-background xl:overflow-hidden">
-        <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-6 animate-in-up xl:h-full">
+      <main className="flex-1 overflow-y-auto bg-background">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-6 animate-in-up xl:min-h-full">
           <p className="shrink-0 text-sm text-muted-foreground">{t("ref.subtitle")}</p>
 
           {/* Top row — QR · Open a date · Open dates */}
@@ -417,7 +417,12 @@ export default function ReferralsPage() {
           </Card>
 
           {/* Bookings table — fills the remaining height; body scrolls */}
-          <Card className="overflow-hidden p-0 shadow-card-md xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+          {/* Bookings fill the leftover height on tall screens, but every sibling
+              above is shrink-0 — so without a floor this collapsed to 0px on
+              short laptops (1366x768) and, with the page overflow hidden, was
+              unreachable. min-h keeps the list visible; the page scrolls if it
+              no longer fits. */}
+          <Card className="overflow-hidden p-0 shadow-card-md xl:flex xl:min-h-[320px] xl:flex-1 xl:flex-col">
             <div className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-4">
               <Users className="h-4 w-4 text-brand" />
               <h2 className="type-card-heading text-foreground">{t("ref.bookingsFor")} — {dateLabel}</h2>
