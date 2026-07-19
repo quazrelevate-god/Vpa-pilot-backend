@@ -205,6 +205,91 @@ export const SCHOOL_DEPARTMENTS: { key: string; label: string }[] = [
 ];
 export const SCHOOL_DEPT_LABEL: Record<string, string> =
   Object.fromEntries(SCHOOL_DEPARTMENTS.map((d) => [d.key, d.label]));
+
+// ── Tamil display maps ───────────────────────────────────────────────────────
+// The API labels ministries, districts and departments in English only. These
+// let any surface re-label from the key so dashboards switch fully with the
+// language. Keys must stay in sync with the English maps above.
+export const MINISTRY_DISPLAY_TA: Record<string, string> = {
+  rural_development_water_resources:         "ஊரக வளர்ச்சி மற்றும் நீர்வளத் துறை",
+  public_works_sports_development:           "பொதுப்பணி மற்றும் விளையாட்டு வளர்ச்சித் துறை",
+  health_medical_education_family_welfare:   "சுகாதாரம், மருத்துவக் கல்வி மற்றும் குடும்ப நலத் துறை",
+  revenue_disaster_management:               "வருவாய் மற்றும் பேரிடர் மேலாண்மைத் துறை",
+  food_civil_supplies_consumer_protection:   "உணவு, குடிமைப் பொருள் வழங்கல் மற்றும் நுகர்வோர் பாதுகாப்புத் துறை",
+  energy_law_courts_prevention_corruption:   "மின்சாரம், சட்டம், நீதிமன்றங்கள் மற்றும் ஊழல் தடுப்புத் துறை",
+  school_education_tamil_dev_info_publicity: "பள்ளிக் கல்வி, தமிழ் வளர்ச்சி, தகவல் மற்றும் விளம்பரத் துறை",
+  natural_resources_minerals_mines:          "இயற்கை வளங்கள் (கனிமங்கள் மற்றும் சுரங்கங்கள்)",
+  industries_investment_promotion:           "தொழில் மற்றும் முதலீட்டு ஊக்குவிப்புத் துறை",
+  fisheries_fishermen_welfare:               "மீன்வளம் மற்றும் மீனவர் நலத் துறை",
+  animal_husbandry:                          "கால்நடை பராமரிப்புத் துறை",
+  milk_dairy_development:                    "பால் மற்றும் பால்வளத் துறை",
+  forests:                                   "வனத் துறை",
+  agriculture_farmers_welfare:               "வேளாண்மை மற்றும் விவசாயிகள் நலத் துறை",
+  environment_climate_change:                "சுற்றுச்சூழல் மற்றும் காலநிலை மாற்றத் துறை",
+  housing_urban_development:                 "வீட்டுவசதி மற்றும் நகர்ப்புற வளர்ச்சித் துறை",
+  cooperation:                               "கூட்டுறவுத் துறை",
+  msme:                                      "நுண், சிறு மற்றும் நடுத்தர தொழில் துறை",
+  social_welfare_women_welfare:              "சமூக நலன் மற்றும் மகளிர் நலத் துறை",
+  handlooms_textiles_khadi:                  "கைத்தறி, ஜவுளி மற்றும் கதர் துறை",
+  commercial_taxes_registration:             "வணிக வரி மற்றும் பதிவுத் துறை",
+  transport:                                 "போக்குவரத்துத் துறை",
+  hindu_religious_charitable_endowments:     "இந்து சமய அறநிலையத் துறை",
+  ai_information_technology:                 "செயற்கை நுண்ணறிவு மற்றும் தகவல் தொழில்நுட்பத் துறை",
+  welfare_non_resident_tamils:               "வெளிநாடு வாழ் தமிழர் நலத் துறை",
+  backward_classes_welfare:                  "பிற்படுத்தப்பட்டோர் நலத் துறை",
+  labour_welfare_skill_development:          "தொழிலாளர் நலன் மற்றும் திறன் மேம்பாட்டுத் துறை",
+  human_resources_management:                "மனிதவள மேலாண்மைத் துறை",
+  finance_planning_development:              "நிதி, திட்டமிடல் மற்றும் வளர்ச்சித் துறை",
+  prohibition_excise:                        "மதுவிலக்கு மற்றும் ஆயத்தீர்வைத் துறை",
+  tourism:                                   "சுற்றுலாத் துறை",
+  higher_education_technical_education:      "உயர்கல்வி மற்றும் தொழில்நுட்பக் கல்வித் துறை",
+  minorities_welfare_wakf_board:             "சிறுபான்மையினர் நலன் மற்றும் வக்பு வாரியத் துறை",
+  social_justice_adi_dravidar_welfare:       "சமூக நீதி மற்றும் ஆதிதிராவிடர் நலத் துறை",
+  other:                                     "பிற",
+};
+
+export const DISTRICT_DISPLAY_TA: Record<string, string> = {
+  ariyalur: "அரியலூர்", chengalpattu: "செங்கல்பட்டு", chennai: "சென்னை",
+  coimbatore: "கோயம்புத்தூர்", cuddalore: "கடலூர்", dharmapuri: "தர்மபுரி",
+  dindigul: "திண்டுக்கல்", erode: "ஈரோடு", kallakurichi: "கள்ளக்குறிச்சி",
+  kanchipuram: "காஞ்சிபுரம்", kanyakumari: "கன்னியாகுமரி", karur: "கரூர்",
+  krishnagiri: "கிருஷ்ணகிரி", madurai: "மதுரை", mayiladuthurai: "மயிலாடுதுறை",
+  nagapattinam: "நாகப்பட்டினம்", namakkal: "நாமக்கல்", nilgiris: "நீலகிரி",
+  perambalur: "பெரம்பலூர்", pudukkottai: "புதுக்கோட்டை", ramanathapuram: "ராமநாதபுரம்",
+  ranipet: "ராணிப்பேட்டை", salem: "சேலம்", sivaganga: "சிவகங்கை",
+  tenkasi: "தென்காசி", thanjavur: "தஞ்சாவூர்", theni: "தேனி",
+  thoothukudi: "தூத்துக்குடி", tiruchirappalli: "திருச்சிராப்பள்ளி",
+  tirunelveli: "திருநெல்வேலி", tirupattur: "திருப்பத்தூர்", tiruppur: "திருப்பூர்",
+  tiruvallur: "திருவள்ளூர்", tiruvannamalai: "திருவண்ணாமலை", tiruvarur: "திருவாரூர்",
+  vellore: "வேலூர்", viluppuram: "விழுப்புரம்", virudhunagar: "விருதுநகர்",
+};
+
+export const SCHOOL_DEPT_LABEL_TA: Record<string, string> = {
+  director_school_education:  "பள்ளிக் கல்வி இயக்குநரகம்",
+  private_schools:            "தனியார் பள்ளிகள் இயக்குநரகம்",
+  elementary_education:       "தொடக்கக் கல்வி",
+  govt_examination:           "அரசுத் தேர்வுகள்",
+  non_formal_adult_education: "முறைசாரா மற்றும் வயதுவந்தோர் கல்வி",
+  public_libraries:           "பொது நூலகங்கள்",
+  scert:                      "மாநிலக் கல்வியியல் ஆராய்ச்சி மற்றும் பயிற்சி நிறுவனம் (SCERT)",
+  teacher_recruitment_board:  "ஆசிரியர் தேர்வு வாரியம் (TRB)",
+  tn_education_service_corp:  "தமிழ்நாடு கல்விப் பணிக் கழகம்",
+  samagra_shiksha:            "சமக்ர சிக்ஷா",
+};
+
+/** Localised label for a ministry / district / school department key. */
+export function ministryText(key?: string | null, lang?: string, fallback?: string | null): string {
+  if (!key) return fallback ?? "—";
+  return (lang === "ta" ? MINISTRY_DISPLAY_TA[key] : MINISTRY_DISPLAY[key]) ?? fallback ?? key;
+}
+export function districtText(key?: string | null, lang?: string, fallback?: string | null): string {
+  if (!key) return fallback ?? "—";
+  return (lang === "ta" ? DISTRICT_DISPLAY_TA[key] : DISTRICT_DISPLAY[key]) ?? fallback ?? key;
+}
+export function schoolDeptText(key?: string | null, lang?: string, fallback?: string | null): string {
+  if (!key) return fallback ?? "—";
+  return (lang === "ta" ? SCHOOL_DEPT_LABEL_TA[key] : SCHOOL_DEPT_LABEL[key]) ?? fallback ?? key;
+}
 export const schoolDepartmentOptions =
   SCHOOL_DEPARTMENTS.map((d) => ({ value: d.key, label: d.label }));
 

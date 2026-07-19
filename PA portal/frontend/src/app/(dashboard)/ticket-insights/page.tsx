@@ -19,6 +19,7 @@ import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLang } from "@/lib/lang-context";
+import { schoolDeptText } from "@/lib/enums";
 import { cn } from "@/lib/utils";
 
 type Bucket = { key: string; label: string; count: number };
@@ -73,7 +74,7 @@ function toISODate(d: Date) {
 }
 
 export default function TicketInsightsPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [data, setData] = useState<TicketAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>("30d");
@@ -229,7 +230,7 @@ export default function TicketInsightsPage() {
                   <tbody>
                     {data.departments.map(d => (
                       <tr key={d.key} className="border-b border-border/60">
-                        <td className="px-3 py-3 text-[13px] font-semibold text-foreground">{d.label}</td>
+                        <td className="px-3 py-3 text-[13px] font-semibold text-foreground">{schoolDeptText(d.key, lang, d.label)}</td>
                         <td className="px-3 py-3 text-right font-mono text-[13px] text-foreground">{d.open}</td>
                         <td className="px-3 py-3 text-right font-mono text-[13px] text-foreground">{d.resolved}</td>
                         <td className="px-3 py-3 text-right font-mono text-[13px] text-muted-foreground">{d.total}</td>

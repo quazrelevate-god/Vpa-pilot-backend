@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { AppointmentRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
+import { CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, ministryText, districtText, schoolDeptText } from "@/lib/enums";
 
 // ── Aurora chart palette (matches globals.css tokens) ────────────────────────
 const C = {
@@ -35,11 +36,12 @@ const C = {
   medium:  "#D39412",
   low:     "#34A26C",
 };
+// Labels are translation keys — the portal already ships these in EN + TA.
 const PRIORITY_META = [
-  { key: "critical", label: "Critical", color: C.critical },
-  { key: "high",     label: "High",     color: C.high },
-  { key: "medium",   label: "Medium",   color: C.medium },
-  { key: "low",      label: "Low",      color: C.low },
+  { key: "critical", tKey: "petition.urgencyCritical", color: C.critical },
+  { key: "high",     tKey: "petition.urgencyHigh",     color: C.high },
+  { key: "medium",   tKey: "petition.urgencyMedium",   color: C.medium },
+  { key: "low",      tKey: "petition.urgencyLow",      color: C.low },
 ] as const;
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -100,7 +102,12 @@ function fmtDuration(hours: number | undefined | null): string {
 }
 
 export default function OverviewPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  // The API labels categories in English. Re-label from the key so the bars,
+  // the table column and the active-filter chip all follow the language.
+  const catText = (key: string | null | undefined, fallback?: string | null) =>
+    (key ? (lang === "ta" ? CATEGORY_DISPLAY_TA[key] : CATEGORY_DISPLAY_EN[key]) : null)
+      ?? fallback ?? key ?? "—";
   const [preset, setPreset] = useState<Preset>("30d");
   const [filters, setFilters] = useState<Filters>({});
   const [data, setData] = useState<Analytics | null>(null);
@@ -169,14 +176,32 @@ export default function OverviewPage() {
   }
   const activeChips = Object.entries(filters).filter(([, v]) => v) as [keyof Filters, string][];
   const chipLabel = (dim: keyof Filters, v: string) => {
-    if (dim === "category") return data?.categories.find(c => c.key === v)?.label ?? v;
-    if (dim === "ministry") return data?.ministries.find(c => c.key === v)?.label ?? v;
-    if (dim === "district") return ops?.districts.find(c => c.key === v)?.label ?? v;
+    if (dim === "category") return catText(v, data?.categories.find(c => c.key === v)?.label);
+    if (dim === "ministry") return ministryText(v, lang, data?.ministries.find(c => c.key === v)?.label);
+    if (dim === "district") return districtText(v, lang, ops?.districts.find(c => c.key === v)?.label);
     return v;
   };
 
   const k = data?.kpis;
   const priorityTotal = data ? PRIORITY_META.reduce((a, p) => a + (data.priority[p.key] ?? 0), 0) : 0;
+  // Bars come from the API labelled in English; re-label from the key.
+  const localisedCategories = useMemo(
+    () => (data?.categories ?? null)?.map(c => ({ ...c, label: catText(c.key, c.label) })) ?? null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, lang],
+  );
+  const localisedMinistries = useMemo(
+    () => (data?.ministries ?? null)?.map(m => ({ ...m, label: ministryText(m.key, lang, m.label) })) ?? null,
+    [data, lang],
+  );
+  const localisedDistricts = useMemo(
+    () => (ops?.districts ?? null)?.map(d => ({ ...d, label: districtText(d.key, lang, d.label) })) ?? null,
+    [ops, lang],
+  );
+  const localisedDepts = useMemo(
+    () => (ops?.departments ?? null)?.map(d => ({ ...d, label: schoolDeptText(d.key, lang, d.label) })) ?? null,
+    [ops, lang],
+  );
 
   return (
     <>
@@ -256,12 +281,12 @@ export default function OverviewPage() {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <Card className="p-4 lg:col-span-2">
               <ChartHead icon={Megaphone} title={t("ov.byCategory")} sub={t("ov.byCategorySub")} />
-              <CategoryBars data={data?.categories ?? null} activeKey={filters.category}
+              <CategoryBars data={localisedCategories} activeKey={filters.category}
                 onBar={(key) => toggle("category", key)} loading={!data} />
             </Card>
             <Card className="p-4">
               <ChartHead icon={Landmark} title={t("ov.ministryDist")} sub={t("ov.ministryDistSub")} />
-              <MinistryBars data={data?.ministries ?? null} activeKey={filters.ministry}
+              <MinistryBars data={localisedMinistries} activeKey={filters.ministry}
                 onBar={(key) => toggle("ministry", key)} loading={!data} />
             </Card>
           </div>
@@ -271,15 +296,15 @@ export default function OverviewPage() {
             <div className="border-b border-border p-4">
               <ChartHead icon={Building2} title={t("ov.deptPerf")} sub={t("ov.deptPerfSub")} />
             </div>
-            <DeptTable rows={ops?.departments ?? null} />
+            <DeptTable rows={localisedDepts} />
           </Card>
 
           {/* Geographic district distribution — counts on the map; click to filter */}
           <Card className="p-4">
             <ChartHead icon={MapPin} title={t("ov.byDistrict")} sub={t("ov.byDistrictSub")} />
             <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
-              <TamilNaduMap data={ops?.districts ?? null} activeKey={filters.district} onSelect={(key) => toggle("district", key)} />
-              <DistrictLeaders data={ops?.districts ?? null} loading={ops == null} activeKey={filters.district} onSelect={(key) => toggle("district", key)} />
+              <TamilNaduMap data={localisedDistricts} activeKey={filters.district} onSelect={(key) => toggle("district", key)} />
+              <DistrictLeaders data={localisedDistricts} loading={ops == null} activeKey={filters.district} onSelect={(key) => toggle("district", key)} />
             </div>
           </Card>
 
@@ -319,7 +344,7 @@ export default function OverviewPage() {
                       <td className="max-w-[460px] px-4 py-3 text-[13px] text-foreground/85">
                         <span className="line-clamp-2">{p.citizen_ask || <span className="italic text-muted-foreground">{t("ov.noSummary")}</span>}</span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{p.category_label}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{catText(p.category, p.category_label)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -471,7 +496,7 @@ function PriorityDonut({ priority, total, active, onSlice, loading }: {
 }) {
   const { t } = useLang();
   if (loading) return <div className="h-[240px]"><Skeleton className="h-full w-full" /></div>;
-  const slices = PRIORITY_META.map(p => ({ ...p, value: priority?.[p.key] ?? 0 })).filter(s => s.value > 0);
+  const slices = PRIORITY_META.map(p => ({ ...p, label: t(p.tKey), value: priority?.[p.key] ?? 0 })).filter(s => s.value > 0);
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="relative h-[180px] w-full">
@@ -500,7 +525,7 @@ function PriorityDonut({ priority, total, active, onSlice, loading }: {
           return (
             <button key={p.key} onClick={() => onSlice(p.key)}
               className={cn("flex w-full items-center justify-between rounded-md px-1.5 py-1 text-[12px] transition-colors hover:bg-muted", active === p.key && "bg-brand/10 ring-1 ring-brand/20")}>
-              <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: p.color }} />{p.label}</span>
+              <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: p.color }} />{t(p.tKey)}</span>
               <span className="font-semibold tabular-nums">{v.toLocaleString("en-IN")}<span className="ml-1 text-[10px] font-medium text-muted-foreground">{total ? Math.round(v / total * 100) : 0}%</span></span>
             </button>
           );
