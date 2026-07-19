@@ -31,6 +31,7 @@ import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchAppointments, uploadAppointmentAttachment } from "@/lib/api";
 import { MINISTRY_DISPLAY, DISTRICT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
+import { batchName } from "@/lib/batches";
 import type { AppointmentRow, AppointmentAttachment } from "@/lib/types";
 
 // The default School Education ministry — approve keeps it in the school
@@ -529,6 +530,14 @@ function AiReviewPageInner() {
 
   // Rows the PA can actually act on — QUEUED / PROCESSING are hidden from
   // the whole surface (feed + counts + tabs) so nothing "processing" shows.
+  // Friendly batch label ("Batch_2026_07_19_001") for the scope banner. Derived
+  // from the same unfiltered upload list AI Uploads uses, via the shared helper,
+  // so both screens name the batch identically instead of showing a raw uuid.
+  const batchLabel = useMemo(
+    () => (batchFilter ? batchName(uploads, batchFilter) : ""),
+    [uploads, batchFilter],
+  );
+
   // Scoped here (not in `scoped`) so the segment counts, the category chart and
   // the list all agree — a batch-scoped "Awaiting Review 3" must mean 3 in THIS
   // batch. Petitions carry no batch_id, so a batch filter naturally drops them.
@@ -840,7 +849,7 @@ function AiReviewPageInner() {
               <Layers className="h-4 w-4 shrink-0 text-brand" />
               <span className="text-[13px] text-foreground">
                 {t("petition.batchScope")}{" "}
-                <span className="font-mono text-[12.5px] font-bold text-brand">{batchFilter.slice(0, 8)}</span>
+                <span className="font-mono text-[12.5px] font-bold text-brand">{batchLabel}</span>
               </span>
               <span className="font-mono text-[12.5px] font-semibold text-muted-foreground">
                 ({visibleRows.length})

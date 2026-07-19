@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
-import { CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA } from "@/lib/enums";
+import { batchNames } from "@/lib/batches";
 
 interface Row {
   id: number; batch_id: string; filename: string; status: string;
@@ -30,9 +30,7 @@ interface Row {
 
 interface Batch { id: string; items: Row[]; created: string; name: string }
 
-const CATEGORIES = ["action_required","proposals","transfer_requests","pension_requests","school_admission","job_requests","rti","associations_unions","school_upgradation","invitation","greetings","general","other"];
 const ACCEPT = /\.(pdf|jpe?g|png|webp|heic|heif|gif|bmp)$/i;
-const AUTO = "__auto__";
 
 const FEATURES = [
   { icon: Sparkles,       tTitle: "uploads.feat1Title", tDesc: "uploads.feat1Desc" },
@@ -48,7 +46,6 @@ export default function AiUploadsPage() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [category, setCategory] = useState("");            // "" = Auto
   const [source, setSource] = useState("ai_scan");
   // DISABLED — see the commented duplicate filter in handleFiles() and the
   // hidden "Duplicate Handling" Select in the upload panel.
@@ -57,11 +54,6 @@ export default function AiUploadsPage() {
   const [showAll, setShowAll] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const folderRef = useRef<HTMLInputElement | null>(null);
-
-  const catLabel = useCallback(
-    (c: string) => (lang === "ta" ? CATEGORY_DISPLAY_TA : CATEGORY_DISPLAY_EN)[c] ?? c.replace(/_/g, " "),
-    [lang],
-  );
 
   const load = useCallback(async () => {
     try {
@@ -169,7 +161,6 @@ export default function AiUploadsPage() {
       chunk.forEach(f => fd.append("files", f));
       fd.append("batch_id", batchId);
       fd.append("source", source);
-      if (category) fd.append("category", category);
       try {
         const r = await fetch("/api/ai-uploads/upload", { method: "POST", body: fd, credentials: "include" });
         if (!r.ok) throw new Error();
@@ -203,14 +194,9 @@ export default function AiUploadsPage() {
       id, items,
       created: items.reduce<string>((min, r) => (r.created_at && (!min || r.created_at < min) ? r.created_at : min), ""),
     }));
-    const asc = [...list].sort((a, b) => (a.created || "").localeCompare(b.created || ""));
-    const perDay: Record<string, number> = {};
-    const nameById: Record<string, string> = {};
-    for (const b of asc) {
-      const day = (b.created || "").slice(0, 10) || "batch";
-      perDay[day] = (perDay[day] ?? 0) + 1;
-      nameById[b.id] = `Batch_${day.replace(/-/g, "_")}_${String(perDay[day]).padStart(3, "0")}`;
-    }
+    // Shared with Petition Review's batch banner so both screens label the
+    // same batch identically (see @/lib/batches).
+    const nameById = batchNames(rows);
     return list
       .map(b => ({ ...b, name: nameById[b.id] }))
       .sort((a, b) => (b.created || "").localeCompare(a.created || ""));
@@ -219,7 +205,9 @@ export default function AiUploadsPage() {
   const stats = useMemo(() => ({
     totalBatches: new Set(rows.map(r => r.batch_id)).size,
     totalFiles: rows.length,
-    extracted: rows.filter(r => r.status === "AWAITING_REVIEW" || r.status === "REVIEWED").length,
+    // Same rule as the per-batch bar: DISMISSED rows were processed too.
+    extracted: rows.filter(r =>
+      r.status === "AWAITING_REVIEW" || r.status === "REVIEWED" || r.status === "DISMISSED").length,
     flagged: rows.filter(r => r.status === "FAILED").length,
   }), [rows]);
 
@@ -357,19 +345,9 @@ export default function AiUploadsPage() {
               </div>
               <p className="mt-1.5 text-[13px] text-muted-foreground">{t("uploads.sourceHelp")}</p>
 
-              <label className="mb-1.5 mt-5 block text-sm font-semibold text-foreground">{t("uploads.categoryLabel")}</label>
-              <Select value={category === "" ? AUTO : category} onValueChange={(v) => setCategory(v === AUTO ? "" : v)}>
-                <SelectTrigger className={cn("h-11 rounded-xl text-sm", category && "border-brand/40 bg-brand/5 font-semibold text-brand")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={AUTO}>{t("uploads.categoryAuto")}</SelectItem>
-                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{catLabel(c)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <p className="mt-1.5 text-[13px] text-muted-foreground">
-                {category ? t("uploads.categoryHelpForced") : t("uploads.categoryHelp")}
-              </p>
+              {/* Category selector removed — the AI's detected category is always
+                  used. The batch override is no longer offered, so uploads send
+                  no `category` and the backend classifies each file on its own. */}
 
               {/* DISABLED — "Duplicate Handling" control. Name-based skipping
                   blocked legitimate re-uploads, so the filter is commented out
@@ -472,7 +450,10 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
   const items = batch.items;
   const total = items.length;
   const c = items.reduce((a, u) => { a[u.status] = (a[u.status] || 0) + 1; return a; }, {} as Record<string, number>);
-  const extracted = (c.AWAITING_REVIEW || 0) + (c.REVIEWED || 0);
+  // DISMISSED counts as extracted: the file was processed and then reviewed
+  // (courtesy audio, blank scan, duplicate). Omitting it left the batch stuck
+  // at e.g. "3 / 5 processed" with nothing left running.
+  const extracted = (c.AWAITING_REVIEW || 0) + (c.REVIEWED || 0) + (c.DISMISSED || 0);
   const flagged = c.FAILED || 0;
   const active = (c.QUEUED || 0) + (c.PROCESSING || 0);
   const processed = extracted + flagged;
