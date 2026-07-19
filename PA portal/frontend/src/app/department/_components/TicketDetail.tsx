@@ -403,7 +403,10 @@ function ActionBar({
           {s === "in_progress" && (
             <div className="flex flex-wrap items-center gap-2">
               <Button
-                className="flex-1 !bg-emerald-600 text-white hover:!bg-emerald-700"
+                // !bg-none kills the aurora-primary blue GRADIENT (background-image);
+                // without it a bg-* colour is painted under the gradient and the
+                // button still renders blue.
+                className="flex-1 border-transparent !bg-none !bg-emerald-600 text-white hover:!bg-emerald-700"
                 onClick={() => setMode("progress")}
               >
                 <Send className="mr-1.5 h-4 w-4" /> {t("action.updateProgress")}

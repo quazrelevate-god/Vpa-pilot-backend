@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDeptLang } from "../_lib/i18n";
-import { PriorityPill, StatusPill, SlaPill, EmptyState } from "./parts";
+import { PriorityPill, SlaPill, EmptyState } from "./parts";
 import { type DeptTicket } from "../_lib/api";
 
 interface Props {
@@ -83,6 +83,11 @@ export default function TicketList({
   const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const rangeStart = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(safePage * PAGE_SIZE, filtered.length);
+
+  // Progress only means something while work is underway, so the column exists
+  // only on the In Progress tab. Header and cell are gated on the same flag so
+  // they can never drift out of alignment.
+  const showProgress = segment === "in_progress";
 
   const th = "whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground";
 
@@ -165,10 +170,9 @@ export default function TicketList({
                   <th className={th}>{t("col.subject")}</th>
                   <th className={th}>{t("col.citizen")}</th>
                   <th className={th}>{t("col.priority")}</th>
-                  <th className={th}>{t("col.status")}</th>
                   <th className={th}>{t("col.sla")}</th>
                   <th className={th}>{t("col.updated")}</th>
-                  <th className={cn(th, "text-right")}>{t("col.progress")}</th>
+                  {showProgress && <th className={cn(th, "text-right")}>{t("col.progress")}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -215,9 +219,6 @@ export default function TicketList({
                         {r.priority ? <PriorityPill p={r.priority} /> : <span className="text-muted-foreground/50">—</span>}
                       </td>
 
-                      {/* Status */}
-                      <td className="px-3 py-3"><StatusPill s={r.status} /></td>
-
                       {/* SLA */}
                       <td className="px-3 py-3"><SlaPill created_at={r.created_at} priority={r.priority} /></td>
 
@@ -227,19 +228,21 @@ export default function TicketList({
                         <div className="text-[11px] text-muted-foreground">{fmtTime(updated)}</div>
                       </td>
 
-                      {/* Progress */}
-                      <td className="whitespace-nowrap px-3 py-3 pr-4">
-                        {r.status === "in_progress" ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-                              <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(100, r.progress_pct)}%` }} />
+                      {/* Progress — column only exists on the In Progress tab */}
+                      {showProgress && (
+                        <td className="whitespace-nowrap px-3 py-3 pr-4">
+                          {r.status === "in_progress" ? (
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+                                <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(100, r.progress_pct)}%` }} />
+                              </div>
+                              <span className="font-mono text-[11px] font-bold text-brand">{r.progress_pct}%</span>
                             </div>
-                            <span className="font-mono text-[11px] font-bold text-brand">{r.progress_pct}%</span>
-                          </div>
-                        ) : (
-                          <div className="text-right text-muted-foreground/50">—</div>
-                        )}
-                      </td>
+                          ) : (
+                            <div className="text-right text-muted-foreground/50">—</div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
