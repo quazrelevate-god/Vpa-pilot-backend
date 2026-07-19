@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from "react";
+import { memo, Suspense, useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
@@ -384,7 +384,22 @@ const InboxCard = memo(function InboxCard({
   );
 });
 
+/**
+ * useSearchParams() forces this page out of static prerendering, and Next 15
+ * FAILS `next build` unless the consumer sits under a Suspense boundary
+ * ("useSearchParams() should be wrapped in a suspense boundary"). `next dev`
+ * does not enforce it, so this only breaks the production build — same wrapper
+ * pattern AppointmentsPage already uses for exactly this reason.
+ */
 export default function AiReviewPage() {
+  return (
+    <Suspense fallback={null}>
+      <AiReviewPageInner />
+    </Suspense>
+  );
+}
+
+function AiReviewPageInner() {
   const { t, lang } = useLang();
   // "?batch=<id>" deep link from the AI Uploads tab — scopes this queue to the
   // files of one upload batch. Absent/empty means the normal, full queue.
