@@ -28,4 +28,10 @@ export {
   Handshake,
   FolderOpen,
   Building2,
+  Download,
+  Share,
+  EllipsisVertical,
+  SquarePlus,
+  Smartphone,
+  CheckCircle2,
 } from "lucide-react";

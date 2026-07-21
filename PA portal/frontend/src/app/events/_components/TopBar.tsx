@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useT } from "../_lib/i18n";
-import { CalendarDays, LogOut } from "../_lib/icons";
+import { CalendarDays, Download, LogOut } from "../_lib/icons";
+import InstallDialog from "./InstallDialog";
 
 export default function TopBar({ onLogout }: { onLogout: () => void }) {
   const { t, lang, setLang } = useT();
+  const [installOpen, setInstallOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur">
@@ -22,7 +25,7 @@ export default function TopBar({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           <div className="inline-flex items-center rounded-lg border border-[#E1E5EB] bg-[#EAEEF3] p-0.5">
             {(["en", "ta"] as const).map((l) => (
               <button key={l} type="button" onClick={() => setLang(l)} aria-pressed={lang === l}
@@ -32,12 +35,18 @@ export default function TopBar({ onLogout }: { onLogout: () => void }) {
               </button>
             ))}
           </div>
+          <button onClick={() => setInstallOpen(true)} aria-label={t("Install app", "செயலியை நிறுவு")}
+            className="grid h-10 w-10 place-items-center rounded-lg text-[#2F6FED] transition-colors hover:bg-[#2F6FED]/10">
+            <Download className="h-5 w-5" strokeWidth={1.75} />
+          </button>
           <button onClick={onLogout} aria-label={t("Sign out", "வெளியேறு")}
             className="grid h-10 w-10 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
             <LogOut className="h-5 w-5" strokeWidth={1.75} />
           </button>
         </div>
       </div>
+
+      <InstallDialog open={installOpen} onClose={() => setInstallOpen(false)} />
     </header>
   );
 }
