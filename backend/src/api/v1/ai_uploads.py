@@ -14,7 +14,7 @@ Frontend proxy maps /api/ai-uploads/* → /dashboard/api/ai-uploads/*.
 """
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Query, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,13 +42,75 @@ async def upload_batch(
 
 @router.get("")
 async def list_uploads(
-    status: Optional[str] = None,
+    # Pagination
+    page:      int = Query(1,  ge=1),
+    page_size: int = Query(50, ge=1, le=500),
+    # Filters (all server-side; the browser no longer downloads the full 3k list)
+    status:    Optional[str] = None,
+    q:         Optional[str] = None,
+    category:  Optional[str] = None,
+    priority:  Optional[str] = None,
+    source:    Optional[str] = None,
+    batch_id:  Optional[str] = None,
+    from_date: Optional[str] = Query(None, description="YYYY-MM-DD (IST)"),
+    to_date:   Optional[str] = Query(None, description="YYYY-MM-DD (IST)"),
+    sort:      str           = Query("submitted_desc"),
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    # No trailing slash: the PA-portal proxy strips it, and a 307 redirect to the
-    # slashed path would escape the proxy and lose the response.
-    return JSONResponse(await ai_upload_service.list_uploads(db, status))
+    """Paginated list of AI uploads.
+
+    Response is `{items, total, page, page_size, has_more}`. Each item omits
+    the full grievance summary + key_details — the drawer refetches those via
+    GET /{id}. This split cut a ~6 MB response at 3k rows down to ~1 MB.
+
+    No trailing slash: the PA-portal proxy strips it, and a 307 redirect to the
+    slashed path would escape the proxy and lose the response.
+    """
+    return JSONResponse(await ai_upload_service.list_uploads(
+        db,
+        page=page, page_size=page_size,
+        status=status, q=q, category=category, priority=priority,
+        source=source, batch_id=batch_id,
+        from_date=from_date, to_date=to_date, sort=sort,
+    ))
+
+
+@router.get("/aggregates")
+async def list_aggregates(
+    q:         Optional[str] = None,
+    priority:  Optional[str] = None,
+    source:    Optional[str] = None,
+    batch_id:  Optional[str] = None,
+    from_date: Optional[str] = Query(None, description="YYYY-MM-DD (IST)"),
+    to_date:   Optional[str] = Query(None, description="YYYY-MM-DD (IST)"),
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Status-tab counts, category distribution, and global badge counts.
+
+    Called by the ai-review page whenever a filter or search changes. Status
+    and category are deliberately NOT filter params here — this endpoint
+    reports the split across them under the OTHER active filters.
+    """
+    return JSONResponse(await ai_upload_service.list_aggregates(
+        db, q=q, priority=priority, source=source, batch_id=batch_id,
+        from_date=from_date, to_date=to_date,
+    ))
+
+
+@router.get("/batches")
+async def list_batches(
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Batch panel data for /ai-uploads + batch banner name lookup for /ai-review.
+
+    Unfiltered by design — the batch panel must show every batch regardless
+    of the review-page filters, and the banner must be able to name any batch
+    a user deep-links to via ?batch=<id>.
+    """
+    return JSONResponse(await ai_upload_service.list_batches(db))
 
 
 @router.get("/{upload_id}")

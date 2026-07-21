@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import AsyncSessionLocal
@@ -284,8 +284,14 @@ class AiUploadService:
                 logger.warning("ai_upload could not mark FAILED id=%s: %s", upload_id, inner)
 
     # ── Read ────────────────────────────────────────────────────────────────────
+    # Two shapes: `_light` for the list endpoint (no long narrative fields —
+    # drops summary/summary_ta/key_details*), `_full` for the detail drawer.
+    # The list at 3k+ rows was shipping several MB of JSONB per load because
+    # every row carried its full grievance summary; the drawer already
+    # re-fetches via GET /{id}, so the narrative belongs there, not in the
+    # list card. See _row_to_dict_full for the shape write paths still use.
     @staticmethod
-    def _row_to_dict(row: AiUpload) -> Dict[str, Any]:
+    def _row_to_dict_light(row: AiUpload) -> Dict[str, Any]:
         from src.services.storage_service import get_file_url
         sj = row.summary_json or {}
         try:
@@ -305,17 +311,11 @@ class AiUploadService:
             "category": row.grievance_category,
             "forced_category": row.forced_category,
             "priority": row.priority,
-            "summary": sj.get("summary"),
-            "summary_ta": sj.get("summary_ta"),
+            # citizen_ask + _ta stay in the light payload: they're the
+            # "what the citizen wants" line shown on every list row.
             "citizen_ask": sj.get("citizen_ask"),
             "citizen_ask_ta": sj.get("citizen_ask_ta"),
-            "key_details": sj.get("key_details") or [],
-            "key_details_ta": sj.get("key_details_ta") or [],
             "ministry": sj.get("ministry") or sj.get("department"),
-            # District: Gemini fills this in summary_json ("unknown" when it
-            # couldn't confidently extract). Normalise the sentinel back to
-            # null so the frontend can just check truthiness, matching how
-            # ticket + appointment drawers already treat district.
             "district": (
                 None
                 if (sj.get("district") in (None, "", "unknown"))
@@ -325,22 +325,346 @@ class AiUploadService:
             "ticket_number": row.ticket_number,
             "appointment_id": row.appointment_id,
             "source": row.source or "ai_scan",
-            # utc_iso attaches the +00:00 marker; a naive .isoformat() here
-            # gets parsed as browser-local by JS Date, shifting the display
-            # by the local UTC offset.
             "created_at": utc_iso(row.created_at),
         }
 
-    async def list_uploads(self, db: AsyncSession, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        stmt = select(AiUpload).order_by(AiUpload.created_at.desc(), AiUpload.id.desc())
+    @staticmethod
+    def _row_to_dict_full(row: AiUpload) -> Dict[str, Any]:
+        """Full detail — used by GET /{id} + returned from update / approve."""
+        light = AiUploadService._row_to_dict_light(row)
+        sj = row.summary_json or {}
+        light.update({
+            "summary": sj.get("summary"),
+            "summary_ta": sj.get("summary_ta"),
+            "key_details": sj.get("key_details") or [],
+            "key_details_ta": sj.get("key_details_ta") or [],
+        })
+        return light
+
+    # Backwards-compat alias — kept for the write paths (update/approve/dismiss)
+    # that return a hydrated row to the frontend, which still expects the full
+    # payload with summary + key_details.
+    _row_to_dict = _row_to_dict_full
+
+    # ── Filter helpers ──────────────────────────────────────────────────────────
+    _IST_OFFSET_MIN = 330   # IST = UTC+5:30
+
+    @classmethod
+    def _ist_day_to_utc_range(cls, from_date: Optional[str], to_date: Optional[str]):
+        """Convert IST calendar-day filter (YYYY-MM-DD) to a UTC (start, end).
+
+        The frontend buckets rows by LOCAL (IST) day; filtering server-side by
+        raw UTC created_at would mis-bucket late-evening IST submissions to
+        the next day. So we shift the day boundaries by 5h30m: an IST day
+        `2026-07-20` maps to UTC `[2026-07-19T18:30, 2026-07-20T18:30)`.
+        """
+        start_utc = end_utc = None
+        offset = timedelta(minutes=cls._IST_OFFSET_MIN)
+        if from_date:
+            try:
+                d = datetime.strptime(from_date, "%Y-%m-%d")
+                start_utc = d - offset
+            except ValueError:
+                pass
+        if to_date:
+            try:
+                d = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+                end_utc = d - offset
+            except ValueError:
+                pass
+        return start_utc, end_utc
+
+    @classmethod
+    def _apply_common_filters(cls, stmt, *, status=None, q=None, category=None,
+                              priority=None, source=None, batch_id=None,
+                              from_date=None, to_date=None):
+        """Attach the shared WHERE clauses used by list + aggregates queries."""
         if status:
             stmt = stmt.where(AiUpload.status == status.upper())
+        if category:
+            stmt = stmt.where(AiUpload.grievance_category == category)
+        if priority:
+            stmt = stmt.where(AiUpload.priority == priority)
+        if source:
+            stmt = stmt.where(AiUpload.source == source)
+        if batch_id:
+            stmt = stmt.where(AiUpload.batch_id == batch_id)
+        if q:
+            like = f"%{q.strip()}%"
+            stmt = stmt.where(or_(
+                AiUpload.original_filename.ilike(like),
+                AiUpload.extracted_name.ilike(like),
+                AiUpload.extracted_name_ta.ilike(like),
+                AiUpload.extracted_mobile.ilike(like),
+                AiUpload.ticket_number.ilike(like),
+            ))
+        start_utc, end_utc = cls._ist_day_to_utc_range(from_date, to_date)
+        if start_utc is not None:
+            stmt = stmt.where(AiUpload.created_at >= start_utc)
+        if end_utc is not None:
+            stmt = stmt.where(AiUpload.created_at < end_utc)
+        return stmt
+
+    _PRIORITY_RANK_CASE = case(
+        (AiUpload.priority == "critical", 4),
+        (AiUpload.priority == "high",     3),
+        (AiUpload.priority == "medium",   2),
+        (AiUpload.priority == "low",      1),
+        else_=0,
+    )
+
+    async def list_uploads(
+        self,
+        db: AsyncSession,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        status: Optional[str] = None,
+        q: Optional[str] = None,
+        category: Optional[str] = None,
+        priority: Optional[str] = None,
+        source: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+        sort: str = "submitted_desc",
+    ) -> Dict[str, Any]:
+        """Paginated list — returns {items, total, page, page_size, has_more}.
+
+        Filters, sort, and search are all applied server-side so the 3k+ live
+        petition set doesn't need to travel to the browser just to be filtered.
+        Page rows are `_row_to_dict_light` (no summary / key_details) — the
+        drawer refetches full detail via GET /{id}.
+        """
+        page = max(1, page)
+        page_size = max(1, min(page_size, 500))
+
+        stmt = self._apply_common_filters(
+            select(AiUpload),
+            status=status, q=q, category=category, priority=priority,
+            source=source, batch_id=batch_id, from_date=from_date, to_date=to_date,
+        )
+        # The review UI never wants in-flight rows in the feed — they belong
+        # to the upload batches panel. Excluding here rather than post-filtering
+        # keeps counts, offsets, and has_more all consistent.
+        if not status:
+            stmt = stmt.where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING]))
+
+        # Total row count under the current filter (same predicate — cached by
+        # PG for the current session usually). At 3k rows this is sub-100ms.
+        count_stmt = self._apply_common_filters(
+            select(func.count(AiUpload.id)),
+            status=status, q=q, category=category, priority=priority,
+            source=source, batch_id=batch_id, from_date=from_date, to_date=to_date,
+        )
+        if not status:
+            count_stmt = count_stmt.where(
+                AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING])
+            )
+        total = int((await db.execute(count_stmt)).scalar() or 0)
+
+        if sort == "submitted_asc":
+            stmt = stmt.order_by(AiUpload.created_at.asc(), AiUpload.id.asc())
+        elif sort == "priority_desc":
+            stmt = stmt.order_by(
+                self._PRIORITY_RANK_CASE.desc(),
+                AiUpload.created_at.desc(),
+                AiUpload.id.desc(),
+            )
+        else:  # submitted_desc (default)
+            stmt = stmt.order_by(AiUpload.created_at.desc(), AiUpload.id.desc())
+
+        offset = (page - 1) * page_size
+        stmt = stmt.offset(offset).limit(page_size)
         rows = (await db.execute(stmt)).scalars().all()
-        return [self._row_to_dict(r) for r in rows]
+
+        return {
+            "items": [self._row_to_dict_light(r) for r in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_more": (offset + len(rows)) < total,
+        }
+
+    async def list_aggregates(
+        self,
+        db: AsyncSession,
+        *,
+        q: Optional[str] = None,
+        priority: Optional[str] = None,
+        source: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Feeds the ai-review page's status tabs, category chart and badges.
+
+        `counts_by_status` and `distribution` are scoped by the same filters
+        as the list (except `status` and `category`, which are what we count
+        across). `total_awaiting`/`failed_count`/`active_jobs` are global —
+        they drive notification badges that must always show the true state,
+        not the filtered state.
+        """
+        # Status-tab counts (excluding QUEUED/PROCESSING — hidden from the UI).
+        stmt_status = self._apply_common_filters(
+            select(AiUpload.status, func.count(AiUpload.id)),
+            q=q, priority=priority, source=source, batch_id=batch_id,
+            from_date=from_date, to_date=to_date,
+        ).group_by(AiUpload.status)
+        rows_status = (await db.execute(stmt_status)).all()
+        counts_by_status: Dict[str, int] = {
+            STATUS_AWAITING_REVIEW: 0,
+            STATUS_REVIEWED: 0,
+            STATUS_FAILED: 0,
+            STATUS_DISMISSED: 0,
+        }
+        total_visible = 0
+        for status_val, n in rows_status:
+            n = int(n)
+            if status_val in (STATUS_QUEUED, STATUS_PROCESSING):
+                continue
+            counts_by_status[status_val] = counts_by_status.get(status_val, 0) + n
+            total_visible += n
+
+        # Category distribution — scoped like the list but ignoring status/category
+        # (matches how the chart works on the client — "how do the visible rows
+        # split across categories" so the PA can click one to filter).
+        stmt_cat = self._apply_common_filters(
+            select(AiUpload.grievance_category, func.count(AiUpload.id)),
+            q=q, priority=priority, source=source, batch_id=batch_id,
+            from_date=from_date, to_date=to_date,
+        ).where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING])
+                ).group_by(AiUpload.grievance_category)
+        rows_cat = (await db.execute(stmt_cat)).all()
+        distribution = [
+            {"key": (cat or "other"), "count": int(n)}
+            for cat, n in rows_cat
+        ]
+        distribution.sort(key=lambda r: r["count"], reverse=True)
+
+        # Global badges — independent of the current filter so users don't
+        # miss a FAILED row hiding behind an active filter.
+        total_awaiting = int((await db.execute(
+            select(func.count(AiUpload.id)).where(AiUpload.status == STATUS_AWAITING_REVIEW)
+        )).scalar() or 0)
+        failed_count = int((await db.execute(
+            select(func.count(AiUpload.id)).where(AiUpload.status == STATUS_FAILED)
+        )).scalar() or 0)
+        active_jobs = int((await db.execute(
+            select(func.count(AiUpload.id)).where(
+                AiUpload.status.in_([STATUS_QUEUED, STATUS_PROCESSING])
+            )
+        )).scalar() or 0)
+
+        return {
+            "counts_by_status": {
+                "":                     total_visible,
+                STATUS_AWAITING_REVIEW: counts_by_status.get(STATUS_AWAITING_REVIEW, 0),
+                STATUS_REVIEWED:        counts_by_status.get(STATUS_REVIEWED, 0),
+                STATUS_FAILED:          counts_by_status.get(STATUS_FAILED, 0),
+                STATUS_DISMISSED:       counts_by_status.get(STATUS_DISMISSED, 0),
+            },
+            "distribution":  distribution,
+            "total_awaiting": total_awaiting,
+            "failed_count":   failed_count,
+            "active_jobs":    active_jobs,
+        }
+
+    async def list_batches(self, db: AsyncSession) -> Dict[str, Any]:
+        """Drives the AI Uploads page batch cards + the Review page batch banner.
+
+        One query per batch derives status counts, earliest created_at (used to
+        number the batch as "Batch_YYYY_MM_DD_NNN"), and the failed-id list
+        used by the per-batch Retry menu. Unfiltered — the batch panel always
+        shows every batch, regardless of the review-page filters.
+        """
+        stmt = (
+            select(
+                AiUpload.batch_id,
+                AiUpload.status,
+                func.count(AiUpload.id),
+                func.min(AiUpload.created_at),
+            )
+            .group_by(AiUpload.batch_id, AiUpload.status)
+        )
+        rows = (await db.execute(stmt)).all()
+
+        # Aggregate rows into { batch_id: { counts: {}, earliest, ... } }.
+        per_batch: Dict[str, Dict[str, Any]] = {}
+        for batch, status_val, n, earliest in rows:
+            b = per_batch.setdefault(batch, {
+                "id": batch,
+                "counts": {
+                    STATUS_QUEUED: 0, STATUS_PROCESSING: 0,
+                    STATUS_AWAITING_REVIEW: 0, STATUS_REVIEWED: 0,
+                    STATUS_FAILED: 0, STATUS_DISMISSED: 0,
+                },
+                "earliest_created_at": None,
+            })
+            b["counts"][status_val] = int(n)
+            if b["earliest_created_at"] is None or (earliest and earliest < b["earliest_created_at"]):
+                b["earliest_created_at"] = earliest
+
+        # Per-batch failed row ids (for the "Retry N" button). One extra query
+        # only over FAILED rows — bounded by the count of failures, cheap.
+        failed_stmt = (
+            select(AiUpload.batch_id, AiUpload.id)
+            .where(AiUpload.status == STATUS_FAILED)
+        )
+        for batch, upload_id in (await db.execute(failed_stmt)).all():
+            per_batch.setdefault(batch, {
+                "id": batch,
+                "counts": {k: 0 for k in (
+                    STATUS_QUEUED, STATUS_PROCESSING, STATUS_AWAITING_REVIEW,
+                    STATUS_REVIEWED, STATUS_FAILED, STATUS_DISMISSED,
+                )},
+                "earliest_created_at": None,
+            }).setdefault("failed_ids", []).append(upload_id)
+        for b in per_batch.values():
+            b.setdefault("failed_ids", [])
+
+        # Assign friendly names ("Batch_YYYY_MM_DD_NNN") by IST calendar day
+        # of the earliest-file timestamp — matches the frontend's old client
+        # derivation in lib/batches.ts so both surfaces agree.
+        ordered = sorted(
+            per_batch.values(),
+            key=lambda b: b["earliest_created_at"] or datetime.min,
+        )
+        per_day: Dict[str, int] = {}
+        ist_offset = timedelta(minutes=self._IST_OFFSET_MIN)
+        for b in ordered:
+            ts = b["earliest_created_at"]
+            day = ((ts + ist_offset).strftime("%Y_%m_%d") if ts else "batch")
+            per_day[day] = per_day.get(day, 0) + 1
+            b["name"] = f"Batch_{day}_{per_day[day]:03d}"
+            b["earliest_created_at"] = utc_iso(ts) if ts else None
+
+        # Reverse-chron for the panel (newest batch on top, matching the old UX).
+        batches = sorted(
+            per_batch.values(),
+            key=lambda b: b["earliest_created_at"] or "",
+            reverse=True,
+        )
+
+        totals = {
+            "batches":         len(batches),
+            "files":           sum(sum(b["counts"].values()) for b in batches),
+            # Same rule as the per-batch progress bar: DISMISSED counts as
+            # extracted (the file was processed, then the PA discarded it).
+            "extracted":       sum(
+                b["counts"][STATUS_AWAITING_REVIEW]
+                + b["counts"][STATUS_REVIEWED]
+                + b["counts"][STATUS_DISMISSED]
+                for b in batches
+            ),
+            "flagged":         sum(b["counts"][STATUS_FAILED] for b in batches),
+            "awaiting_review": sum(b["counts"][STATUS_AWAITING_REVIEW] for b in batches),
+        }
+        return {"batches": batches, "totals": totals}
 
     async def get_upload(self, db: AsyncSession, upload_id: int) -> Optional[Dict[str, Any]]:
         row = await db.get(AiUpload, upload_id)
-        return self._row_to_dict(row) if row else None
+        return self._row_to_dict_full(row) if row else None
 
     # ── PA edits ────────────────────────────────────────────────────────────────
     async def update_fields(self, db: AsyncSession, upload_id: int, fields: Dict[str, Any]) -> Dict[str, Any]:

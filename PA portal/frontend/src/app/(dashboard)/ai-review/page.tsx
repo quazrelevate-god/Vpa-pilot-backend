@@ -31,8 +31,39 @@ import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchAppointments, uploadAppointmentAttachment } from "@/lib/api";
 import { MINISTRY_DISPLAY, DISTRICT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
-import { batchName } from "@/lib/batches";
 import type { AppointmentRow, AppointmentAttachment } from "@/lib/types";
+
+type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED" | "DISMISSED";
+
+// Aggregate payload from GET /api/ai-uploads/aggregates.
+// Filter-scoped (all filters except status + category); the chart bars and
+// tab counts show a "given everything else you filtered, here's the split
+// across status / category" story. Global badges (total_awaiting, failed_count,
+// active_jobs) intentionally IGNORE filters — a hidden FAILED row must
+// still poke the notification badge.
+interface AggregatesPayload {
+  counts_by_status: Record<string, number>; // "" (total_visible), AWAITING_REVIEW, REVIEWED, FAILED, DISMISSED
+  distribution: { key: string; count: number }[];
+  total_awaiting: number;
+  failed_count:   number;
+  active_jobs:    number;
+}
+
+// Batch summary — same shape as the ai-uploads page consumes. We only use
+// the id→name map here (for the "showing one batch" banner and any batch
+// deep link), so a light `Pick` would do; leaving the full shape keeps the
+// two pages symmetrical and lets us grow the banner later.
+interface BatchSummary {
+  id: string;
+  name: string;
+  earliest_created_at: string | null;
+  counts: Record<StatusKey, number>;
+  failed_ids: number[];
+}
+
+const UPLOADS_PAGE_SIZE = 500;   // page size on the server. Filters + search
+// happen server-side now, so the same 500-row window is usually enough. On
+// the pilot's 3k-row prod set a "Load older" affordance can page further.
 
 // The default School Education ministry — approve keeps it in the school
 // department workflow ("Accept"); any other ministry is "Forward"ed out.
@@ -60,8 +91,6 @@ interface Upload {
   audio_url?: string | null;
   audio_transcript?: string | null;
 }
-
-type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED" | "DISMISSED";
 
 interface InboxRow {
   kind: "upload" | "petition";
@@ -408,6 +437,10 @@ function AiReviewPageInner() {
   const searchParams = useSearchParams();
   const batchFilter = searchParams.get("batch") ?? "";
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const [uploadsTotal, setUploadsTotal] = useState(0);
+  const [uploadsHasMore, setUploadsHasMore] = useState(false);
+  const [aggregates, setAggregates] = useState<AggregatesPayload | null>(null);
+  const [batchesLookup, setBatchesLookup] = useState<Record<string, BatchSummary>>({});
   const [petitions, setPetitions] = useState<AppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [review, setReview] = useState<Upload | null>(null);
@@ -439,14 +472,55 @@ function AiReviewPageInner() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
+  // Build the querystring the paginated /ai-uploads endpoint expects.
+  // Filters and sort now run server-side — this was the whole point of the
+  // refactor: the frontend used to download every row and filter in JS
+  // (~6 MB / load at 3k rows), and now it just asks for exactly what it needs.
+  const buildUploadsQuery = useCallback((): string => {
+    const p = new URLSearchParams();
+    p.set("page", "1");
+    p.set("page_size", String(UPLOADS_PAGE_SIZE));
+    if (fStatus)     p.set("status",    fStatus);
+    if (fCategory)   p.set("category",  fCategory);
+    if (fPriority)   p.set("priority",  fPriority);
+    if (fSource)     p.set("source",    fSource);
+    if (batchFilter) p.set("batch_id",  batchFilter);
+    if (dateFrom)    p.set("from_date", dateFrom);
+    if (dateTo)      p.set("to_date",   dateTo);
+    if (q.trim())    p.set("q",         q.trim());
+    p.set("sort", sort);
+    return p.toString();
+  }, [fStatus, fCategory, fPriority, fSource, batchFilter, dateFrom, dateTo, q, sort]);
+
+  // Aggregates take the same filters EXCEPT status + category — those are
+  // what /aggregates COUNTS across (see backend `list_aggregates`).
+  const buildAggregatesQuery = useCallback((): string => {
+    const p = new URLSearchParams();
+    if (fPriority)   p.set("priority",  fPriority);
+    if (fSource)     p.set("source",    fSource);
+    if (batchFilter) p.set("batch_id",  batchFilter);
+    if (dateFrom)    p.set("from_date", dateFrom);
+    if (dateTo)      p.set("to_date",   dateTo);
+    if (q.trim())    p.set("q",         q.trim());
+    return p.toString();
+  }, [fPriority, fSource, batchFilter, dateFrom, dateTo, q]);
+
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [uploadsRes, petitionsRes] = await Promise.allSettled([
-        fetch(api(""), { credentials: "include", signal }).then(r => r.json()),
+      const [uploadsRes, aggRes, petitionsRes] = await Promise.allSettled([
+        fetch(api(`?${buildUploadsQuery()}`),   { credentials: "include", signal }).then(r => r.json()),
+        fetch(api(`/aggregates?${buildAggregatesQuery()}`), { credentials: "include", signal }).then(r => r.json()),
         fetchAppointments({ kind: "petition", status: "All", pageSize: 2000 }, signal),
       ]);
       if (signal?.aborted) return;
-      if (uploadsRes.status === "fulfilled" && Array.isArray(uploadsRes.value)) setUploads(uploadsRes.value);
+      if (uploadsRes.status === "fulfilled" && uploadsRes.value && Array.isArray(uploadsRes.value.items)) {
+        setUploads(uploadsRes.value.items);
+        setUploadsTotal(uploadsRes.value.total ?? uploadsRes.value.items.length);
+        setUploadsHasMore(Boolean(uploadsRes.value.has_more));
+      }
+      if (aggRes.status === "fulfilled" && aggRes.value) {
+        setAggregates(aggRes.value as AggregatesPayload);
+      }
       if (petitionsRes.status === "fulfilled") {
         setPetitions((petitionsRes.value.items || []).filter((p: AppointmentRow) => p.source !== "ai_scan"));
       }
@@ -455,6 +529,23 @@ function AiReviewPageInner() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
+  }, [buildUploadsQuery, buildAggregatesQuery]);
+
+  // Batches lookup — fetched once for the "showing one batch" banner and
+  // any future batch UI. Not filter-scoped: banner must be able to name any
+  // batch someone deep-links to via ?batch=<id>.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch(api("/batches"), { credentials: "include", signal: ctrl.signal })
+      .then(r => r.json())
+      .then((d: { batches?: BatchSummary[] }) => {
+        if (!Array.isArray(d.batches)) return;
+        const map: Record<string, BatchSummary> = {};
+        for (const b of d.batches) map[b.id] = b;
+        setBatchesLookup(map);
+      })
+      .catch(() => { /* non-fatal; banner falls back to raw id */ });
+    return () => ctrl.abort();
   }, []);
 
   useEffect(() => {
@@ -463,18 +554,33 @@ function AiReviewPageInner() {
     return () => ctrl.abort();
   }, [load]);
 
-  // Live poll while queued/processing rows exist
+  // Live poll while any file is still QUEUED / PROCESSING anywhere on the
+  // system — pre-refactor this checked the visible upload list, which is now
+  // paginated and would miss active jobs older than page 1. The aggregates
+  // endpoint tracks active_jobs globally.
   useEffect(() => {
-    const active = uploads.some(u => u.status === "QUEUED" || u.status === "PROCESSING");
+    const active = (aggregates?.active_jobs ?? 0) > 0;
     if (!active) return;
     const id = setInterval(() => load(), 4000);
     return () => clearInterval(id);
-  }, [uploads, load]);
+  }, [aggregates, load]);
 
   useEffect(() => {
+    // Sync the open drawer with fresh list data (e.g. after a live poll ticks).
+    // The list payload is "light" post-refactor — it doesn't carry summary /
+    // summary_ta / key_details*. Overwriting the drawer with that would blank
+    // out the narrative fetched via GET /{id} on open, so we selectively
+    // reapply the light fields on top of whatever full detail we already have.
     if (review && !editing) {
       const fresh = uploads.find(u => u.id === review.id);
-      if (fresh) setReview(fresh);
+      if (fresh) setReview({
+        ...review,
+        ...fresh,
+        summary:        review.summary,
+        summary_ta:     review.summary_ta,
+        key_details:    review.key_details,
+        key_details_ta: review.key_details_ta,
+      });
     }
   }, [uploads]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -506,6 +612,9 @@ function AiReviewPageInner() {
     debounceRef.current = setTimeout(() => { setPage(1); setQ(v); }, 300);
   }
 
+  // Merge the two data feeds. Uploads are already server-filtered / sorted /
+  // limited by fetch time; petitions still arrive as a bulk list and get
+  // client-filtered below (they're small — ~hundreds — so this is fine).
   const rows = useMemo<InboxRow[]>(() => {
     const up: InboxRow[] = uploads.map(u => ({
       kind: "upload", id: u.id, name: u.name, name_ta: u.name_ta, mobile: u.mobile,
@@ -528,34 +637,27 @@ function AiReviewPageInner() {
       (b.created_at || "").localeCompare(a.created_at || ""));
   }, [uploads, petitions]);
 
-  // Rows the PA can actually act on — QUEUED / PROCESSING are hidden from
-  // the whole surface (feed + counts + tabs) so nothing "processing" shows.
-  // Friendly batch label ("Batch_2026_07_19_001") for the scope banner. Derived
-  // from the same unfiltered upload list AI Uploads uses, via the shared helper,
-  // so both screens name the batch identically instead of showing a raw uuid.
+  // Friendly batch label — served by GET /ai-uploads/batches on mount so the
+  // banner names any deep-linked batch even if it lies outside the first
+  // page of the uploads feed.
   const batchLabel = useMemo(
-    () => (batchFilter ? batchName(uploads, batchFilter) : ""),
-    [uploads, batchFilter],
+    () => (batchFilter ? (batchesLookup[batchFilter]?.name ?? batchFilter.slice(0, 8)) : ""),
+    [batchesLookup, batchFilter],
   );
 
-  // Scoped here (not in `scoped`) so the segment counts, the category chart and
-  // the list all agree — a batch-scoped "Awaiting Review 3" must mean 3 in THIS
-  // batch. Petitions carry no batch_id, so a batch filter naturally drops them.
-  const visibleRows = useMemo(
-    () => rows.filter(r =>
-      r.statusKey !== "QUEUED" && r.statusKey !== "PROCESSING" &&
-      (!batchFilter || r.upload?.batch_id === batchFilter)),
-    [rows, batchFilter],
-  );
+  // Client-side petition filter (uploads are already filtered by the server).
+  // Kept synchronous with the filter/search state so the merged inbox stays
+  // consistent — the server-side aggregate counts for uploads add to these
+  // petition counts below.
+  const petitionRows = useMemo<InboxRow[]>(() => rows.filter(r => r.kind === "petition"), [rows]);
+  const uploadRows   = useMemo<InboxRow[]>(() => rows.filter(r => r.kind === "upload"),   [rows]);
 
-  // Counts for the status tabs — must reflect ALL active filters (source,
-  // priority, date, search, category) but NOT the active status tab itself
-  // (otherwise every inactive tab would show 0 while a tab is selected).
-  const scopedWithoutStatus = useMemo(() => {
+  const petitionsScopedWithoutStatus = useMemo(() => {
     const query = q.trim().toLowerCase();
     const fromKey = dateFrom || "";
     const toKey = dateTo || "";
-    return visibleRows.filter(r => {
+    return petitionRows.filter(r => {
+      if (batchFilter) return false;   // petitions carry no batch_id
       if (fPriority && r.priority !== fPriority) return false;
       if (fSource && r.source !== fSource) return false;
       if (fCategory && (r.categoryKey || "other").toLowerCase() !== fCategory) return false;
@@ -573,51 +675,50 @@ function AiReviewPageInner() {
       }
       return true;
     });
-  }, [visibleRows, fPriority, fSource, fCategory, dateFrom, dateTo, q]);
+  }, [petitionRows, batchFilter, fPriority, fSource, fCategory, dateFrom, dateTo, q]);
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = {
-      "": scopedWithoutStatus.length, AWAITING_REVIEW: 0, REVIEWED: 0, FAILED: 0, DISMISSED: 0,
+  const petitionsScoped = useMemo(() => {
+    return petitionsScopedWithoutStatus.filter(r => !fStatus || r.statusKey === fStatus);
+  }, [petitionsScopedWithoutStatus, fStatus]);
+
+  // Counts — merged from server (uploads) + client (petitions). The server
+  // aggregates NEVER include the currently-selected status/category (that's
+  // what they're counting across), so counts_by_status is the "if you cleared
+  // this tab, here's the split" view. Petition counts follow the same rule.
+  const counts = useMemo<Record<string, number>>(() => {
+    const upCounts = aggregates?.counts_by_status ?? {};
+    const petC: Record<string, number> = { "": petitionsScopedWithoutStatus.length,
+      AWAITING_REVIEW: 0, REVIEWED: 0, FAILED: 0, DISMISSED: 0 };
+    for (const r of petitionsScopedWithoutStatus) petC[r.statusKey] = (petC[r.statusKey] ?? 0) + 1;
+    return {
+      "":               (upCounts[""] ?? 0)                + petC[""],
+      AWAITING_REVIEW:  (upCounts.AWAITING_REVIEW ?? 0)   + petC.AWAITING_REVIEW,
+      REVIEWED:         (upCounts.REVIEWED ?? 0)          + petC.REVIEWED,
+      FAILED:           (upCounts.FAILED ?? 0)            + petC.FAILED,
+      DISMISSED:        (upCounts.DISMISSED ?? 0)         + petC.DISMISSED,
     };
-    for (const r of scopedWithoutStatus) c[r.statusKey] = (c[r.statusKey] ?? 0) + 1;
-    return c;
-  }, [scopedWithoutStatus]);
+  }, [aggregates, petitionsScopedWithoutStatus]);
 
-  // Everything except the chart-driven category filter — the table's base
-  // scope and the distribution chart's own scope (so every bar stays visible).
-  const scoped = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    const fromKey = dateFrom || "";
-    const toKey = dateTo || "";
-    return visibleRows.filter(r => {
-      if (fStatus && r.statusKey !== fStatus) return false;
-      if (fPriority && r.priority !== fPriority) return false;
-      if (fSource && r.source !== fSource) return false;
-      if (fromKey || toKey) {
-        // created_at is a UTC timestamp; bucket by LOCAL (IST) calendar day so a
-        // petition submitted late in the IST evening isn't pushed to the wrong
-        // day — matches how the Today/This-week chips compute their range.
-        const day = r.created_at ? toISODate(new Date(r.created_at)) : "";
-        if (!day) return false;
-        if (fromKey && day < fromKey) return false;
-        if (toKey && day > toKey) return false;
-      }
-      if (query) {
-        const inName = (r.name || "").toLowerCase().includes(query);
-        const inMobile = (r.mobile || "").includes(query);
-        const inToken = (r.token || "").toLowerCase().includes(query);
-        if (!inName && !inMobile && !inToken) return false;
-      }
-      return true;
-    });
-  }, [visibleRows, fStatus, fPriority, fSource, dateFrom, dateTo, q]);
+  // Distribution — bars come from server-side aggregate over uploads, plus
+  // client-side counting of petitions under the same filter set.
+  const distribution = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const d of (aggregates?.distribution ?? [])) {
+      map.set(d.key, (map.get(d.key) ?? 0) + d.count);
+    }
+    for (const r of petitionsScoped) {
+      const k = (r.categoryKey || "other").toLowerCase();
+      map.set(k, (map.get(k) ?? 0) + 1);
+    }
+    return Array.from(map, ([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [aggregates, petitionsScoped]);
 
+  // Final displayed rows — uploads are already server-sorted; we only need to
+  // merge + re-sort against petitions and apply the client-side pagination.
   const filtered = useMemo(() => {
-    const base = fCategory
-      ? scoped.filter(r => (r.categoryKey || "other").toLowerCase() === fCategory)
-      : scoped;
-    const sorted = [...base];
-    sorted.sort((a, b) => {
+    const merged = [...uploadRows, ...petitionsScoped];
+    merged.sort((a, b) => {
       if (sort === "priority_desc") {
         const d = (PRIORITY_RANK[b.priority || ""] ?? 0) - (PRIORITY_RANK[a.priority || ""] ?? 0);
         if (d) return d;
@@ -626,22 +727,8 @@ function AiReviewPageInner() {
       const cmp = (a.created_at || "").localeCompare(b.created_at || "");
       return sort === "submitted_asc" ? cmp : -cmp;
     });
-    return sorted;
-  }, [scoped, fCategory, sort]);
-
-  // Category distribution — stable axis (every category seen), counts scoped.
-  const distribution = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of visibleRows) {
-      const k = (r.categoryKey || "other").toLowerCase();
-      if (!counts.has(k)) counts.set(k, 0);
-    }
-    for (const r of scoped) {
-      const k = (r.categoryKey || "other").toLowerCase();
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-    return Array.from(counts, ([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
-  }, [visibleRows, scoped]);
+    return merged;
+  }, [uploadRows, petitionsScoped, sort]);
 
   const total = filtered.length;
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
@@ -649,11 +736,13 @@ function AiReviewPageInner() {
   const offset = (page - 1) * pageSize;
   const pageRows = filtered.slice(offset, offset + pageSize);
 
-  const failedCount = uploads.filter(u => u.status === "FAILED").length;
+  // Global counts — filter-independent (from /aggregates). The FAILED banner
+  // is a global signal: a hidden filter must not mask an active failure.
+  const failedCount = aggregates?.failed_count ?? 0;
   const advancedFilterCount = (fPriority ? 1 : 0) + (fSource ? 1 : 0) + (fCategory ? 1 : 0) + ((dateFrom || dateTo) ? 1 : 0);
   const anyFilterActive = Boolean(q || fPriority || fSource || fCategory || dateFrom || dateTo);
 
-  function openRow(r: InboxRow) {
+  async function openRow(r: InboxRow) {
     if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
     setEditing(false);
     if (r.kind === "petition" && r.petition) {
@@ -664,8 +753,20 @@ function AiReviewPageInner() {
       return;
     }
     const u = r.upload!;
+    // Show the drawer immediately from the light row so it feels instant, then
+    // hydrate summary / key_details via the detail endpoint — the list payload
+    // no longer carries the long narrative fields (that's the whole point of
+    // the pagination refactor). The subsequent setReview merges the fuller
+    // record in place without flashing the drawer.
     setReview({ ...u, _kind: "upload" });
     setForm({ name: u.name, name_ta: u.name_ta, mobile: u.mobile, category: u.category, priority: u.priority, ministry: u.ministry, district: u.district, summary: u.summary });
+    try {
+      const resp = await fetch(api(`/${u.id}`), { credentials: "include" });
+      if (!resp.ok) return;
+      const full: Upload = await resp.json();
+      setReview((prev) => (prev && prev.id === full.id) ? { ...full, _kind: "upload" } : prev);
+      setForm((prev) => ({ ...prev, summary: prev.summary ?? full.summary }));
+    } catch { /* keep the light preview */ }
   }
 
   async function saveEdits() {
@@ -868,7 +969,16 @@ function AiReviewPageInner() {
                 <span className="font-mono text-[12.5px] font-bold text-brand">{batchLabel}</span>
               </span>
               <span className="font-mono text-[12.5px] font-semibold text-muted-foreground">
-                ({visibleRows.length})
+                {(() => {
+                  // "Rows in this batch" = every non-in-flight file. Comes
+                  // straight from the /batches lookup so the number matches
+                  // regardless of which status/category tab the PA is on.
+                  const c = batchesLookup[batchFilter]?.counts;
+                  if (!c) return "";
+                  const n = (c.AWAITING_REVIEW || 0) + (c.REVIEWED || 0)
+                          + (c.FAILED || 0) + (c.DISMISSED || 0);
+                  return `(${n})`;
+                })()}
               </span>
               <button
                 onClick={() => router.replace("/ai-review")}

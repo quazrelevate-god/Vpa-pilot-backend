@@ -21,14 +21,31 @@ import {
 } from "@/components/ui/dialog";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
-import { batchNames } from "@/lib/batches";
 
-interface Row {
-  id: number; batch_id: string; filename: string; status: string;
-  name: string | null; created_at: string | null; forced_category: string | null;
+type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED" | "DISMISSED";
+
+interface Batch {
+  id: string;
+  name: string;
+  earliest_created_at: string | null;
+  counts: Record<StatusKey, number>;
+  failed_ids: number[];
 }
 
-interface Batch { id: string; items: Row[]; created: string; name: string }
+interface BatchesPayload {
+  batches: Batch[];
+  totals: {
+    batches: number;
+    files: number;
+    extracted: number;
+    flagged: number;
+    awaiting_review: number;
+  };
+}
+
+const EMPTY_TOTALS: BatchesPayload["totals"] = {
+  batches: 0, files: 0, extracted: 0, flagged: 0, awaiting_review: 0,
+};
 
 const ACCEPT = /\.(pdf|jpe?g|png|webp|heic|heif|gif|bmp)$/i;
 
@@ -50,26 +67,32 @@ export default function AiUploadsPage() {
   // DISABLED — see the commented duplicate filter in handleFiles() and the
   // hidden "Duplicate Handling" Select in the upload panel.
   // const [dupMode, setDupMode] = useState<"skip" | "allow">("skip");
-  const [rows, setRows] = useState<Row[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [totals, setTotals] = useState<BatchesPayload["totals"]>(EMPTY_TOTALS);
   const [showAll, setShowAll] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const folderRef = useRef<HTMLInputElement | null>(null);
 
+  // Pulls pre-aggregated batches from the server. Old code fetched the full
+  // /api/ai-uploads list (all 3k+ rows every load) and derived batches on the
+  // client — that endpoint is now paginated and this page only ever cared
+  // about the batch view, so it goes straight to /batches.
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/ai-uploads", { credentials: "include" });
-      const d = await r.json();
-      if (Array.isArray(d)) setRows(d);
+      const r = await fetch("/api/ai-uploads/batches", { credentials: "include" });
+      const d: BatchesPayload = await r.json();
+      if (Array.isArray(d.batches)) setBatches(d.batches);
+      if (d.totals) setTotals(d.totals);
     } catch { /* ignore */ }
   }, []);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const active = rows.some(u => u.status === "QUEUED" || u.status === "PROCESSING");
+    const active = batches.some(b => (b.counts.QUEUED || 0) > 0 || (b.counts.PROCESSING || 0) > 0);
     if (!active) return;
     const id = setInterval(load, 3000);
     return () => clearInterval(id);
-  }, [rows, load]);
+  }, [batches, load]);
 
   // make the folder input pick directories
   useEffect(() => {
@@ -183,35 +206,16 @@ export default function AiUploadsPage() {
     }
   }
 
-  // Group rows into batches with a friendly per-day sequential name.
-  const batches = useMemo<Batch[]>(() => {
-    const map = new Map<string, Row[]>();
-    for (const u of rows) {
-      if (!map.has(u.batch_id)) map.set(u.batch_id, []);
-      map.get(u.batch_id)!.push(u);
-    }
-    const list = [...map.entries()].map(([id, items]) => ({
-      id, items,
-      created: items.reduce<string>((min, r) => (r.created_at && (!min || r.created_at < min) ? r.created_at : min), ""),
-    }));
-    // Shared with Petition Review's batch banner so both screens label the
-    // same batch identically (see @/lib/batches).
-    const nameById = batchNames(rows);
-    return list
-      .map(b => ({ ...b, name: nameById[b.id] }))
-      .sort((a, b) => (b.created || "").localeCompare(a.created || ""));
-  }, [rows]);
-
+  // Batches + totals now arrive pre-aggregated from the server. The old
+  // useMemo on the full row list has moved into ai_upload_service.list_batches.
   const stats = useMemo(() => ({
-    totalBatches: new Set(rows.map(r => r.batch_id)).size,
-    totalFiles: rows.length,
-    // Same rule as the per-batch bar: DISMISSED rows were processed too.
-    extracted: rows.filter(r =>
-      r.status === "AWAITING_REVIEW" || r.status === "REVIEWED" || r.status === "DISMISSED").length,
-    flagged: rows.filter(r => r.status === "FAILED").length,
-  }), [rows]);
+    totalBatches: totals.batches,
+    totalFiles:   totals.files,
+    extracted:    totals.extracted,
+    flagged:      totals.flagged,
+  }), [totals]);
 
-  const totalAwaiting = rows.filter(u => u.status === "AWAITING_REVIEW").length;
+  const totalAwaiting = totals.awaiting_review;
   const shownBatches = showAll ? batches : batches.slice(0, 4);
 
   return (
@@ -295,7 +299,10 @@ export default function AiUploadsPage() {
                 <div className="flex flex-col divide-y divide-border">
                   {shownBatches.map((b) => (
                     <BatchRow key={b.id} batch={b} t={t} lang={lang} onRetry={retry}
-                      onDelete={() => setPendingDelete({ id: b.id, name: b.name, count: b.items.length })} />
+                      onDelete={() => setPendingDelete({
+                        id: b.id, name: b.name,
+                        count: Object.values(b.counts).reduce((a, n) => a + n, 0),
+                      })} />
                   ))}
                 </div>
               )}
@@ -447,9 +454,8 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
   onRetry: (ids: number[]) => void;
   onDelete: () => void;
 }) {
-  const items = batch.items;
-  const total = items.length;
-  const c = items.reduce((a, u) => { a[u.status] = (a[u.status] || 0) + 1; return a; }, {} as Record<string, number>);
+  const c = batch.counts;
+  const total = Object.values(c).reduce((a, n) => a + n, 0);
   // DISMISSED counts as extracted: the file was processed and then reviewed
   // (courtesy audio, blank scan, duplicate). Omitting it left the batch stuck
   // at e.g. "3 / 5 processed" with nothing left running.
@@ -460,12 +466,12 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
 
   const state: "processing" | "issues" | "completed" =
     active > 0 ? "processing" : flagged > 0 ? "issues" : "completed";
-  const when = batch.created
-    ? new Date(batch.created).toLocaleString(lang === "ta" ? "ta-IN" : undefined, {
+  const when = batch.earliest_created_at
+    ? new Date(batch.earliest_created_at).toLocaleString(lang === "ta" ? "ta-IN" : undefined, {
         day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
       })
     : "";
-  const failedIds = items.filter(u => u.status === "FAILED").map(u => u.id);
+  const failedIds = batch.failed_ids;
 
   const badge = {
     processing: { label: t("uploads.stProcessing"), cls: "bg-blue-100 text-blue-700", Icon: Loader2,      iconTint: "bg-blue-100 text-blue-600" },
