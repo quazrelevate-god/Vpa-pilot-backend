@@ -457,7 +457,6 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
   const flagged = c.FAILED || 0;
   const active = (c.QUEUED || 0) + (c.PROCESSING || 0);
   const processed = extracted + flagged;
-  const pct = total ? Math.round((processed / total) * 100) : 0;
 
   const state: "processing" | "issues" | "completed" =
     active > 0 ? "processing" : flagged > 0 ? "issues" : "completed";
@@ -486,13 +485,20 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
           <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", badge.cls)}>{badge.label}</span>
         </div>
         <div className="mt-0.5 text-[13px] text-muted-foreground">{t("uploads.uploadedOn")} {when}</div>
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className={cn("h-full rounded-full transition-all",
-            state === "processing" ? "bg-blue-500" : state === "issues" ? "bg-amber-500" : "bg-emerald-500")}
-            style={{ width: `${pct}%` }} />
+        {/* Segmented bar: green = successfully extracted, red = failed. A batch
+            with one failure now reads "80% done, 20% failed" instead of the
+            whole bar turning amber. The muted track behind is still-processing. */}
+        <div className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          {extracted > 0 && (
+            <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(extracted / total) * 100}%` }} />
+          )}
+          {flagged > 0 && (
+            <div className="h-full bg-red-500 transition-all" style={{ width: `${(flagged / total) * 100}%` }} />
+          )}
         </div>
         <div className="mt-1 text-[12px] tabular-nums text-muted-foreground">
           {processed} / {total} {t("uploads.filesProcessed")}
+          {flagged > 0 && <span className="ml-1.5 font-semibold text-red-600">· {flagged} {t("uploads.flagged")}</span>}
         </div>
       </div>
 

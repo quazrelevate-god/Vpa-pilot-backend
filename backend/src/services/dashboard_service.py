@@ -1189,6 +1189,25 @@ async def dismiss_petition(db: AsyncSession, appointment_id: int, actor: str = "
     return {"status": "Dismissed", "appointment_id": appointment_id}
 
 
+async def restore_petition(db: AsyncSession, appointment_id: int, actor: str = "pa_admin") -> dict:
+    """Undo a dismissal — send a DISMISSED petition back to AWAITING_REVIEW so
+    the PA can approve or re-dismiss it. Mirror image of dismiss_petition; only
+    dismissed rows are eligible, so an approved petition can't be dragged back
+    into the queue this way.
+    """
+    appt = await db.get(Appointment, appointment_id)
+    if appt is None:
+        raise ValueError("Petition not found.")
+    if appt.status != "DISMISSED":
+        raise ValueError("Only dismissed petitions can be restored to review.")
+    appt.status = "AWAITING_REVIEW"
+    appt.status_id = v2.appointment_status_id_or_none("AWAITING_REVIEW")
+    _log_appt_event(db, appointment_id, "status_changed",
+                    payload={"from": "DISMISSED", "to": "AWAITING_REVIEW", "via": "pa_restore", "actor": actor})
+    await db.commit()
+    return {"status": "Awaiting Review", "appointment_id": appointment_id}
+
+
 async def approve_petition(db: AsyncSession, appointment_id: int, actor: str = "pa_admin") -> dict:
     """Approve a QR/staff petition (appointment in AWAITING_REVIEW): flip to
     Reviewed — which creates the ticket — then forward out if the AI ministry is

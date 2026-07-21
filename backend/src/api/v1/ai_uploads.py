@@ -113,6 +113,23 @@ async def dismiss_upload(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@router.post("/{upload_id}/restore")
+async def restore_upload(
+    upload_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Undo a dismissal — send a DISMISSED upload back to AWAITING_REVIEW."""
+    try:
+        return JSONResponse(await ai_upload_service.restore(db, upload_id))
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @router.post("/retry")
 async def retry_uploads(
     payload: dict = Body(...),

@@ -8,7 +8,7 @@ import {
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
   ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
   CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2, MapPin,
-  Mail, Landmark, Archive, Paperclip, Layers,
+  Mail, Landmark, Archive, Paperclip, Layers, RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -762,6 +762,22 @@ function AiReviewPageInner() {
     setDismissOpen(true);
   }
 
+  // Undo a dismissal — send the row back to AWAITING_REVIEW. Same dual-endpoint
+  // shape as dismiss; no confirm dialog since it is the safe, reversible action.
+  async function restore() {
+    if (!review) return;
+    setBusy(true);
+    try {
+      const url = review._kind === "petition"
+        ? `/api/appointments/${review.id}/restore`
+        : api(`/${review.id}/restore`);
+      const r = await fetch(url, { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { toast.success(t("petition.restoredToast")); setReview(null); load(); }
+      else toast.error(d.error || t("petition.restoreFailed"));
+    } catch { toast.error(t("petition.networkError")); } finally { setBusy(false); }
+  }
+
   const retry = useCallback(async (ids: number[]) => {
     if (!ids.length) return;
     try {
@@ -1397,6 +1413,12 @@ function AiReviewPageInner() {
                 {review.status === "FAILED" && (
                   <Button className="w-full" variant="outline" onClick={() => { retry([review.id]); setReview(null); }}>
                     <RefreshCw className="mr-2 h-4 w-4" /> {t("petition.retryExtraction")}
+                  </Button>
+                )}
+                {review.status === "DISMISSED" && (
+                  <Button className="w-full" variant="outline" onClick={restore} disabled={busy}>
+                    {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+                    {t("petition.restoreCta")}
                   </Button>
                 )}
                 {editing && <p className="mt-1.5 text-center text-xs text-muted-foreground">{t("petition.saveBeforeApprove")}</p>}

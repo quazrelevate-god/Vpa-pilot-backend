@@ -432,6 +432,21 @@ async def api_dismiss_petition(
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
+@router.post("/api/appointments/{appointment_id}/restore")
+async def api_restore_petition(
+    appointment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Undo a dismissal — send a DISMISSED petition back to AWAITING_REVIEW."""
+    try:
+        result = await dashboard_service.restore_petition(db, appointment_id, actor=user)
+        return JSONResponse(result)
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
 @router.post("/api/appointments/{appointment_id}/attachment")
 async def api_add_appointment_attachment(
     appointment_id: int,

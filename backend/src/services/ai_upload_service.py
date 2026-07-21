@@ -406,6 +406,24 @@ class AiUploadService:
         row = await db.get(AiUpload, upload_id)
         return self._row_to_dict(row)
 
+    async def restore(self, db: AsyncSession, upload_id: int) -> Dict[str, Any]:
+        """Undo a dismissal — send a DISMISSED upload back to AWAITING_REVIEW.
+        Atomic claim like dismiss(); only dismissed rows are eligible, and the
+        review stamps are cleared so it re-enters the queue as if untouched.
+        """
+        claim = await db.execute(
+            update(AiUpload)
+            .where(AiUpload.id == upload_id, AiUpload.status == STATUS_DISMISSED)
+            .values(status=STATUS_AWAITING_REVIEW, reviewed_at=None, reviewed_by=None)
+        )
+        await db.commit()
+        if (claim.rowcount or 0) == 0:
+            if await db.get(AiUpload, upload_id) is None:
+                raise ValueError("Upload not found.")
+            raise ValueError("Only dismissed uploads can be restored to review.")
+        row = await db.get(AiUpload, upload_id)
+        return self._row_to_dict(row)
+
     # ── Approve → create the case + ticket ──────────────────────────────────────
     async def approve(self, db: AsyncSession, upload_id: int, reviewed_by: str) -> Dict[str, Any]:
         # Atomically claim the row: flip AWAITING_REVIEW -> REVIEWED in one UPDATE.
