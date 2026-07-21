@@ -108,8 +108,8 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
 
       {/* Source chooser */}
       <Sheet open={chooserOpen && !file} onOpenChange={(o) => { if (!o) setChooserOpen(false); }}>
-        <SheetContent side="bottom" className="mx-auto max-w-[560px] rounded-t-2xl pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
-          <SheetTitle className="text-left text-lg font-extrabold">
+        <SheetContent side="bottom" className="mx-auto max-w-[560px] rounded-t-2xl px-5 pt-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+          <SheetTitle className="pr-10 text-left text-lg font-extrabold">
             {t("Add an invitation", "அழைப்பிதழ் சேர்க்கவும்")}
           </SheetTitle>
           <p className="mt-1 text-base leading-relaxed text-slate-500">
@@ -137,8 +137,8 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
 
       {/* Preview + note + send */}
       <Sheet open={!!file} onOpenChange={(o) => { if (!o) close(); }}>
-        <SheetContent side="bottom" className="mx-auto max-h-[92vh] max-w-[560px] overflow-y-auto rounded-t-2xl pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
-          <SheetTitle className="text-left text-lg font-extrabold">
+        <SheetContent side="bottom" className="mx-auto max-h-[92vh] max-w-[560px] overflow-y-auto rounded-t-2xl px-5 pt-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+          <SheetTitle className="pr-10 text-left text-lg font-extrabold">
             {t("Send invitation", "அழைப்பிதழ் அனுப்பு")}
           </SheetTitle>
 
