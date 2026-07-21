@@ -1,7 +1,7 @@
 """events PWA: create invitation_events table
 
-Revision ID: 033
-Revises: 032
+Revision ID: 034
+Revises: 033
 Create Date: 2026-07-21
 
 New standalone table backing the /events invitation-calendar PWA. Each row is
@@ -19,8 +19,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-revision: str = "033"
-down_revision: Union[str, None] = "032"
+revision: str = "034"
+down_revision: Union[str, None] = "033"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
