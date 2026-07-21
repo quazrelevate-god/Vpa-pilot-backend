@@ -1,0 +1,25 @@
+// Single place the events app pulls its icons from (lucide-react), so swapping
+// an icon is a one-line change and tree-shaking stays tight.
+export {
+  CalendarDays,
+  Camera,
+  Inbox,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Loader2,
+  LogOut,
+  MapPin,
+  Clock,
+  StickyNote,
+  Pencil,
+  Trash2,
+  RotateCcw,
+  Check,
+  ImageIcon,
+  FileText,
+  AlertTriangle,
+  Send,
+  RefreshCw,
+  WifiOff,
+} from "lucide-react";

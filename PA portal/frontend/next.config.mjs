@@ -21,6 +21,8 @@ const nextConfig = {
       { source: "/department/api/:path*", destination: `${API_BASE}/department/api/:path*` },
       // Crowd Management PWA API (its own auth cookie: display_session).
       { source: "/crowd/api/:path*", destination: `${API_BASE}/crowd/api/:path*` },
+      // Events (invitation calendar) PWA API (its own auth cookie: events_session).
+      { source: "/events/api/:path*", destination: `${API_BASE}/events/api/:path*` },
       { source: "/auth/login", destination: `${API_BASE}/dashboard/login` },
       { source: "/auth/logout", destination: `${API_BASE}/dashboard/logout` },
       { source: "/static/:path*", destination: `${API_BASE}/static/:path*` },

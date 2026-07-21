@@ -53,6 +53,25 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone(); url.pathname = "/crowd/login"; return NextResponse.redirect(url);
   }
 
+  // ── Events (invitation calendar) PWA: its own cookie (events_session) ──────────
+  if (pathname.startsWith("/events")) {
+    // API calls proxy straight to the backend, which enforces its own auth (401).
+    // Never page-redirect them, or fetch() gets login HTML instead of JSON.
+    if (pathname.startsWith("/events/api")) return NextResponse.next();
+    // PWA static assets (manifest.json, sw.js, icon-*.png) — anything with a
+    // file extension under /events — must load without a session.
+    if (/\.[a-z0-9]+$/i.test(pathname)) return NextResponse.next();
+    const eventsSession = req.cookies.get("events_session");
+    if (pathname === "/events/login") {
+      if (eventsSession) {
+        const url = req.nextUrl.clone(); url.pathname = "/events"; return NextResponse.redirect(url);
+      }
+      return NextResponse.next();
+    }
+    if (eventsSession) return NextResponse.next();
+    const url = req.nextUrl.clone(); url.pathname = "/events/login"; return NextResponse.redirect(url);
+  }
+
   // Already logged in → skip the login page, land on the right workspace.
   if (pathname === "/login") {
     if (session) {
@@ -90,6 +109,7 @@ export const config = {
     "/referrals/:path*", "/scheduling/:path*",
     "/department", "/department/:path*",
     "/crowd", "/crowd/:path*",
+    "/events", "/events/:path*",
     "/login", "/dashboard", "/dashboard/:path*",
   ],
 };

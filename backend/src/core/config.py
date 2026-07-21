@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     DISPLAY_USERNAME: str = "display"
     DISPLAY_PASSWORD: str = "display123"
 
+    # Events (invitation calendar) PWA Credentials (separate login)
+    EVENTS_USERNAME: str = "events"
+    EVENTS_PASSWORD: str = "events123"
+
     # Frontend Configuration
     FRONTEND_FORM_BASE_URL: str = "http://localhost:8000/form"
 

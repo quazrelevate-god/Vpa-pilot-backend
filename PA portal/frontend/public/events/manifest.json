@@ -1,0 +1,17 @@
+{
+  "name": "Events Calendar — PA Office",
+  "short_name": "Events Desk",
+  "description": "Photograph invitation cards and manage the shared greetings calendar.",
+  "start_url": "/events",
+  "scope": "/events/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#21395B",
+  "theme_color": "#21395B",
+  "lang": "en",
+  "icons": [
+    { "src": "/events/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/events/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/events/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
