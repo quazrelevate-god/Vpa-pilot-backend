@@ -25,6 +25,12 @@ export type EventItem = {
 export type EventsFeed = { items: EventItem[] };
 export type NeedsReviewFeed = { items: EventItem[]; count: number };
 
+export type OverviewData = {
+  totals: { tickets: number; appointments: number; meetings: number };
+  today: { tickets: number; appointments: number; petitions: number };
+  departments: { name: string; count: number }[];
+};
+
 /** Canonical event types (mirror backend EVENT_TYPES) with labels + chip colors. */
 export const EVENT_TYPE_META: {
   value: string; en: string; ta: string; color: string;

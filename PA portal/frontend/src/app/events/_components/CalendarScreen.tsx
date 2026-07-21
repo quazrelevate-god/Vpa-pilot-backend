@@ -5,26 +5,28 @@ import { cn } from "@/lib/utils";
 import { api } from "../_lib/api";
 import type { EventItem } from "../_lib/types";
 import {
-  addDays, monthCells, monthLabel, toISO, weekDays, weekRangeLabel,
+  addDays, fromISO, monthCells, monthLabel, toISO, weekDays, weekRangeLabel,
 } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 import { ChevronLeft, ChevronRight } from "../_lib/icons";
 import WeekView from "./WeekView";
 import MonthView from "./MonthView";
-import DaySheet from "./DaySheet";
+import CaptureFab from "./CaptureFab";
 
 type Mode = "week" | "month";
 
-export default function CalendarScreen({ refreshKey, onOpen }: {
+export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
   refreshKey: number;
   onOpen: (e: EventItem) => void;
+  onSent: () => void;
 }) {
   const { t, lang } = useT();
   const [mode, setMode] = useState<Mode>("week");
   const [anchor, setAnchor] = useState(() => new Date());
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [daySheet, setDaySheet] = useState<string | null>(null); // ISO date
+  // Day the week view should scroll into view (set by tapping a month cell).
+  const [focusISO, setFocusISO] = useState<string | null>(null);
 
   // Visible span (inclusive) for the current mode + anchor.
   const span = useMemo(() => {
@@ -56,10 +58,18 @@ export default function CalendarScreen({ refreshKey, onOpen }: {
   }, [load]);
 
   function navigate(dir: -1 | 0 | 1) {
+    setFocusISO(null);
     if (dir === 0) { setAnchor(new Date()); return; }
     setAnchor((a) => mode === "week"
       ? addDays(a, dir * 7)
       : new Date(a.getFullYear(), a.getMonth() + dir, 1));
+  }
+
+  /** Month cell tapped → open that date in week mode, scrolled into view. */
+  function jumpToDate(iso: string) {
+    setAnchor(fromISO(iso));
+    setFocusISO(iso);
+    setMode("week");
   }
 
   const byDay = useMemo(() => {
@@ -79,49 +89,44 @@ export default function CalendarScreen({ refreshKey, onOpen }: {
       <div className="flex items-center gap-2 px-4 pb-2 pt-3">
         <div className="inline-flex items-center rounded-lg border border-[#E1E5EB] bg-[#EAEEF3] p-0.5">
           {(["week", "month"] as const).map((m) => (
-            <button key={m} type="button" onClick={() => setMode(m)} aria-pressed={mode === m}
-              className={cn("rounded-md px-3 py-1 text-xs font-bold transition-colors",
+            <button key={m} type="button"
+              onClick={() => { setFocusISO(null); setMode(m); }} aria-pressed={mode === m}
+              className={cn("rounded-md px-4 py-1.5 text-base font-bold transition-colors",
                 mode === m ? "bg-white text-[#21395B] shadow-sm" : "text-[#5A6472]")}>
               {m === "week" ? t("Week", "வாரம்") : t("Month", "மாதம்")}
             </button>
           ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1.5">
           <button onClick={() => navigate(-1)} aria-label={t("Previous", "முந்தைய")}
-            className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
-            <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
+            className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
+            <ChevronLeft className="h-6 w-6" strokeWidth={1.75} />
           </button>
           <button onClick={() => navigate(0)}
-            className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-[#21395B] active:bg-slate-50">
+            className="h-11 rounded-lg border border-slate-200 bg-white px-4 text-base font-bold text-[#21395B] active:bg-slate-50">
             {t("Today", "இன்று")}
           </button>
           <button onClick={() => navigate(1)} aria-label={t("Next", "அடுத்த")}
-            className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
-            <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+            className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
+            <ChevronRight className="h-6 w-6" strokeWidth={1.75} />
           </button>
         </div>
       </div>
 
       {/* Range label */}
-      <div className="px-4 pb-2 font-mono text-sm font-semibold tabular-nums text-slate-700">
+      <div className="px-4 pb-2 font-mono text-lg font-semibold tabular-nums text-slate-700">
         {mode === "week" ? weekRangeLabel(anchor, lang) : monthLabel(anchor, lang)}
-        {loading && <span className="ml-2 inline-block h-3 w-3 animate-spin rounded-full border border-slate-300 border-t-transparent align-middle" />}
+        {loading && <span className="ml-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border border-slate-300 border-t-transparent align-middle" />}
       </div>
 
       {mode === "week" ? (
-        <WeekView anchor={anchor} byDay={byDay} onOpen={onOpen} />
+        <WeekView anchor={anchor} byDay={byDay} onOpen={onOpen} focusISO={focusISO} />
       ) : (
-        <MonthView anchor={anchor} byDay={byDay} onOpen={onOpen}
-          onOpenDay={(iso) => setDaySheet(iso)} />
+        <MonthView anchor={anchor} byDay={byDay} onOpen={onOpen} onOpenDay={jumpToDate} />
       )}
 
-      <DaySheet
-        dateISO={daySheet}
-        events={daySheet ? (byDay.get(daySheet) ?? []) : []}
-        onClose={() => setDaySheet(null)}
-        onOpen={(e) => { setDaySheet(null); onOpen(e); }}
-      />
+      <CaptureFab onSent={onSent} />
     </div>
   );
 }

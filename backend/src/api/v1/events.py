@@ -56,6 +56,86 @@ async def events_session(request: Request):
     return JSONResponse({"user": user, "label": _LABEL})
 
 
+# ── Overview stats ──────────────────────────────────────────────────────────────
+
+@router.get("/api/overview")
+async def overview(
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_events_api),
+):
+    """Office-wide counts for the Overview tab.
+
+    Read-only aggregates over the existing petition/ticket tables:
+      totals  — all tickets (excl. reverted), all appointments, and meetings
+                (appointments actually booked into a slot)
+      today   — tickets raised today, appointments whose booked slot is today,
+                petitions received today (appointment rows created today)
+      departments — open ticket load per routed department (chart)
+    """
+    from datetime import date as _date, datetime as _dt, time as _time
+    from sqlalchemy import func, select as _select
+    from src.models.appointment_models import Appointment
+    from src.models.scheduling_models import AppointmentSlot, MLADailyAvailability
+    from src.models.ticket_models import Ticket, TicketStatus
+
+    today = _date.today()
+    day_start = _dt.combine(today, _time.min)
+    day_end = _dt.combine(today, _time.max)
+
+    async def _count(stmt) -> int:
+        return int((await db.execute(stmt)).scalar() or 0)
+
+    total_tickets = await _count(
+        _select(func.count(Ticket.id)).where(Ticket.status != TicketStatus.REVERTED.value)
+    )
+    total_appointments = await _count(_select(func.count(Appointment.id)))
+    total_meetings = await _count(
+        _select(func.count(Appointment.id)).where(Appointment.slot_id.isnot(None))
+    )
+
+    today_tickets = await _count(
+        _select(func.count(Ticket.id)).where(
+            Ticket.created_at >= day_start, Ticket.created_at <= day_end,
+            Ticket.status != TicketStatus.REVERTED.value,
+        )
+    )
+    today_appointments = await _count(
+        _select(func.count(Appointment.id))
+        .join(AppointmentSlot, AppointmentSlot.id == Appointment.slot_id)
+        .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
+        .where(MLADailyAvailability.date == today)
+    )
+    today_petitions = await _count(
+        _select(func.count(Appointment.id)).where(
+            Appointment.created_at >= day_start, Appointment.created_at <= day_end,
+        )
+    )
+
+    dept_rows = (await db.execute(
+        _select(Ticket.department, func.count(Ticket.id))
+        .where(Ticket.department.isnot(None),
+               Ticket.status != TicketStatus.REVERTED.value)
+        .group_by(Ticket.department)
+        .order_by(func.count(Ticket.id).desc())
+    )).all()
+
+    return {
+        "totals": {
+            "tickets": total_tickets,
+            "appointments": total_appointments,
+            "meetings": total_meetings,
+        },
+        "today": {
+            "tickets": today_tickets,
+            "appointments": today_appointments,
+            "petitions": today_petitions,
+        },
+        "departments": [
+            {"name": name, "count": int(cnt)} for name, cnt in dept_rows
+        ],
+    }
+
+
 # ── Calendar queries ────────────────────────────────────────────────────────────
 
 @router.get("/api/events")

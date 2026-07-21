@@ -27,7 +27,7 @@ export const viewport: Viewport = {
 export default function EventsLayout({ children }: { children: React.ReactNode }) {
   return (
     <EventsI18nProvider>
-      <div className="relative mx-auto min-h-screen max-w-[560px] bg-[#F3F5F8] text-slate-900 [--nav-h:64px]">
+      <div className="relative mx-auto min-h-screen max-w-[560px] bg-[#F3F5F8] text-[17px] text-slate-900 [--nav-h:76px]">
         {children}
       </div>
       <SwRegister />

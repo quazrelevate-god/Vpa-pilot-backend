@@ -53,8 +53,8 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
         <span className="grid h-14 w-14 place-items-center rounded-full bg-[#4F8A5B]/10 text-[#4F8A5B]">
           <Inbox className="h-6 w-6" strokeWidth={1.75} />
         </span>
-        <div className="text-sm font-bold text-slate-700">{t("All clear", "அனைத்தும் சரி")}</div>
-        <div className="max-w-[260px] text-xs leading-relaxed text-slate-400">
+        <div className="text-base font-bold text-slate-700">{t("All clear", "அனைத்தும் சரி")}</div>
+        <div className="max-w-[260px] text-sm leading-relaxed text-slate-400">
           {t("Every captured invitation has a date on the calendar.", "பதிவான ஒவ்வொரு அழைப்பிதழும் நாட்காட்டியில் உள்ளது.")}
         </div>
       </div>
@@ -63,7 +63,7 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
 
   return (
     <div className="space-y-2.5 px-4 pt-4">
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
+      <div className="text-sm font-bold uppercase tracking-wide text-slate-400">
         {t("Needs your attention", "உங்கள் கவனம் தேவை")} · <span className="font-mono tabular-nums">{items.length}</span>
       </div>
       {items.map((e) => {
@@ -74,18 +74,18 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
             className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5 text-left shadow-sm active:bg-slate-50">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={e.image_url} alt=""
-              className="h-14 w-14 shrink-0 rounded-lg border border-slate-100 object-cover" />
+              className="h-16 w-16 shrink-0 rounded-lg border border-slate-100 object-cover" />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-bold text-slate-900">{e.display_title}</div>
-              {e.venue && <div className="truncate text-xs text-slate-500">{e.venue}</div>}
+              <div className="truncate text-base font-bold text-slate-900">{e.display_title}</div>
+              {e.venue && <div className="truncate text-sm text-slate-500">{e.venue}</div>}
               <div className="mt-1 flex items-center gap-1.5">
-                <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6rem] font-bold", chip.cls)}>
-                  {e.status === "FAILED" && <AlertTriangle className="h-3 w-3" strokeWidth={1.75} />}
-                  {(e.status === "QUEUED" || e.status === "PROCESSING") && <Loader2 className="h-3 w-3 animate-spin" />}
+                <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.75rem] font-bold", chip.cls)}>
+                  {e.status === "FAILED" && <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                  {(e.status === "QUEUED" || e.status === "PROCESSING") && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   {chip.label}
                 </span>
                 {e.event_type && (
-                  <span className="truncate text-[0.6rem] font-semibold" style={{ color: meta.color }}>
+                  <span className="truncate text-[0.75rem] font-semibold" style={{ color: meta.color }}>
                     {t(meta.en, meta.ta)}
                   </span>
                 )}

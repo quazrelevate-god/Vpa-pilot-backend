@@ -1,8 +1,8 @@
 "use client";
 
 // Month grid: 7×6 cells (Monday start). Each cell shows up to 3 event chips
-// plus a "+N" overflow that opens the DaySheet. Tapping a chip opens the event
-// popup directly; tapping cell whitespace opens the DaySheet.
+// plus a "+N" overflow. Tapping a chip opens the event popup directly; tapping
+// anywhere else in a cell (or "+N") jumps to week mode on that date.
 
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -28,7 +28,7 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
       {/* Weekday headers */}
       <div className="grid grid-cols-7">
         {Array.from({ length: 7 }, (_, i) => (
-          <div key={i} className="py-1 text-center text-[0.6rem] font-bold uppercase tracking-wide text-slate-400">
+          <div key={i} className="py-1.5 text-center text-[0.72rem] font-bold uppercase tracking-wide text-slate-400">
             {dayName(i, lang)}
           </div>
         ))}
@@ -45,16 +45,16 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
           return (
             <div key={i}
               role="button" tabIndex={0}
-              onClick={() => list.length && onOpenDay(iso)}
-              onKeyDown={(e) => { if (e.key === "Enter" && list.length) onOpenDay(iso); }}
+              onClick={() => onOpenDay(iso)}
+              onKeyDown={(e) => { if (e.key === "Enter") onOpenDay(iso); }}
               className={cn(
-                "min-h-[76px] border-b border-r border-slate-100 p-1",
+                "min-h-[92px] border-b border-r border-slate-100 p-1 active:bg-slate-50",
                 (i + 1) % 7 === 0 && "border-r-0",
                 i >= 35 && "border-b-0",
                 !inMonth && "bg-slate-50/60",
               )}>
               <div className={cn(
-                "mb-0.5 grid h-5 w-5 place-items-center rounded-full font-mono text-[0.65rem] font-bold tabular-nums",
+                "mb-1 grid h-7 w-7 place-items-center rounded-full font-mono text-[0.85rem] font-bold tabular-nums",
                 isToday ? "bg-[#2F6FED] text-white"
                   : inMonth ? "text-slate-700" : "text-slate-300",
               )}>
@@ -70,16 +70,16 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
                       onClick={(ev) => { ev.stopPropagation(); onOpen(e); }}
                       style={{ backgroundColor: `${meta.color}1A` }}
                       className={cn(
-                        "flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[0.58rem] font-bold text-slate-800",
+                        "flex w-full items-center gap-1 truncate rounded px-1 py-1 text-left text-[0.72rem] font-bold text-slate-800",
                         processing && "animate-pulse",
                       )}>
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
                       <span className="truncate">{e.display_title}</span>
                     </button>
                   );
                 })}
                 {overflow > 0 && (
-                  <div className="px-1 font-mono text-[0.58rem] font-bold tabular-nums text-[#2F6FED]">
+                  <div className="px-1 font-mono text-[0.72rem] font-bold tabular-nums text-[#2F6FED]">
                     +{overflow}
                   </div>
                 )}
@@ -88,6 +88,9 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
           );
         })}
       </div>
+      <p className="px-1 pb-2 pt-1.5 text-center text-[0.78rem] text-slate-400">
+        {lang === "ta" ? "ஒரு தேதியை தட்டினால் வார பார்வை திறக்கும்" : "Tap a date to open it in week view"}
+      </p>
     </div>
   );
 }

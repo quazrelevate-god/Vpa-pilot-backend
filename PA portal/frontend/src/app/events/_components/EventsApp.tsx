@@ -7,11 +7,11 @@ import type { EventItem } from "../_lib/types";
 import TopBar from "./TopBar";
 import BottomNav from "./BottomNav";
 import CalendarScreen from "./CalendarScreen";
-import CaptureScreen from "./CaptureScreen";
+import OverviewScreen from "./OverviewScreen";
 import NeedsReviewScreen from "./NeedsReviewScreen";
 import EventPopup from "./EventPopup";
 
-export type View = "calendar" | "capture" | "review";
+export type View = "overview" | "calendar" | "review";
 
 export default function EventsApp() {
   const router = useRouter();
@@ -61,13 +61,9 @@ export default function EventsApp() {
       <TopBar onLogout={logout} />
 
       <main className="flex-1 pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+8px)]">
+        {view === "overview" && <OverviewScreen />}
         {view === "calendar" && (
-          <CalendarScreen refreshKey={refreshKey} onOpen={setSelected} />
-        )}
-        {view === "capture" && (
-          <CaptureScreen
-            onSent={() => { bumpRefresh(); setView("calendar"); }}
-          />
+          <CalendarScreen refreshKey={refreshKey} onOpen={setSelected} onSent={bumpRefresh} />
         )}
         {view === "review" && (
           <NeedsReviewScreen refreshKey={refreshKey} onOpen={setSelected} />

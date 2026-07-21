@@ -2,7 +2,7 @@
 // rewrites /events/api/* to FastAPI) and carries the events_session cookie via
 // credentials:"include".
 
-import type { EventItem, EventsFeed, NeedsReviewFeed } from "./types";
+import type { EventItem, EventsFeed, NeedsReviewFeed, OverviewData } from "./types";
 
 async function readJSON<T>(r: Response): Promise<T> {
   const d = await r.json().catch(() => ({} as Record<string, unknown>));
@@ -39,6 +39,9 @@ export const api = {
   session: () => getJSON<{ user: string; label: string }>("/events/api/session"),
   logout: () =>
     fetch("/events/api/logout", { method: "POST", credentials: "include" }).then(() => undefined),
+
+  // ── overview ──
+  overview: () => getJSON<OverviewData>("/events/api/overview"),
 
   // ── calendar ──
   range: (startISO: string, endISO: string) =>

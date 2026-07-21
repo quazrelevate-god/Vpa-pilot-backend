@@ -22,4 +22,10 @@ export {
   Send,
   RefreshCw,
   WifiOff,
+  LayoutDashboard,
+  Ticket,
+  CalendarCheck,
+  Handshake,
+  FolderOpen,
+  Building2,
 } from "lucide-react";

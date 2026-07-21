@@ -81,8 +81,8 @@ export default function EventsLoginPage() {
             <CalendarDays className="h-6 w-6" />
           </motion.span>
           <div className="leading-tight">
-            <div className="text-[1.3rem] font-black tracking-tight text-slate-900">{t("Events", "நிகழ்வு")}</div>
-            <div className="-mt-1 text-[1.3rem] font-black tracking-tight text-slate-900">{t("Calendar", "நாட்காட்டி")}</div>
+            <div className="text-[1.45rem] font-black tracking-tight text-slate-900">{t("NamKural", "நம்குரல்")}</div>
+            <div className="text-[0.95rem] font-bold text-slate-500">{t("Events Calendar", "நிகழ்வு நாட்காட்டி")}</div>
           </div>
           <span className="ml-auto rounded-md bg-[#21395B] px-1.5 py-0.5 text-[10px] font-black tracking-widest text-white">PWA</span>
         </motion.div>
