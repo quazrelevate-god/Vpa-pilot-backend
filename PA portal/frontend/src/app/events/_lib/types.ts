@@ -17,7 +17,10 @@ export type EventItem = {
   end_time: string | null;
   status: EventStatus;
   error_message: string | null;
-  image_url: string;
+  /** null for manually-created events with no photo uploaded. */
+  image_url: string | null;
+  /** false for manually-created events with no photo uploaded. */
+  has_photo: boolean;
   created_by: string;
   created_at: string | null;
 };
@@ -26,8 +29,8 @@ export type EventsFeed = { items: EventItem[] };
 export type NeedsReviewFeed = { items: EventItem[]; count: number };
 
 export type OverviewData = {
-  totals: { tickets: number; appointments: number; meetings: number };
-  today: { tickets: number; appointments: number; petitions: number };
+  totals: { tickets: number; appointments: number; meetings: number; petitions_received: number; petitions_awaiting: number; petitions_reviewed: number };
+  today: { tickets: number; appointments: number; petitions_received: number; petitions_awaiting: number; petitions_reviewed: number };
   departments: { name: string; count: number }[];
 };
 

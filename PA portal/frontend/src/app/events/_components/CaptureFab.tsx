@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { api } from "../_lib/api";
 import { useT } from "../_lib/i18n";
-import { Camera, FolderOpen, Loader2, RefreshCw, Send, X } from "../_lib/icons";
+import { Camera, FolderOpen, Loader2, Plus, RefreshCw, Send, X } from "../_lib/icons";
+import ManualEventForm from "./ManualEventForm";
 
 const MAX_DIM = 1600;
 const JPEG_QUALITY = 0.8;
@@ -45,6 +46,7 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -99,12 +101,20 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
       <input ref={filesRef} type="file" accept="image/*"
         onChange={pick} className="hidden" />
 
-      {/* FAB */}
-      <button onClick={() => setChooserOpen(true)}
-        aria-label={t("Add invitation", "அழைப்பிதழ் சேர்")}
-        className="fixed bottom-[calc(var(--nav-h)+env(safe-area-inset-bottom)+16px)] right-4 z-40 grid h-16 w-16 place-items-center rounded-full bg-[#2F6FED] text-white shadow-xl shadow-[#2F6FED]/35 transition-transform active:scale-95">
-        <Camera className="h-8 w-8" strokeWidth={1.75} />
-      </button>
+      {/* FAB — camera opens OCR flow; + badge opens manual form */}
+      <div className="fixed bottom-[calc(var(--nav-h)+env(safe-area-inset-bottom)+16px)] right-4 z-40">
+        <button onClick={() => setChooserOpen(true)}
+          aria-label={t("Add invitation", "அழைப்பிதழ் சேர்")}
+          className="grid h-16 w-16 place-items-center rounded-full bg-[#2F6FED] text-white shadow-xl shadow-[#2F6FED]/35 transition-transform active:scale-95">
+          <Camera className="h-8 w-8" strokeWidth={1.75} />
+        </button>
+        {/* + badge — opens manual creation form */}
+        <button onClick={() => setManualOpen(true)}
+          aria-label={t("Create event manually", "நிகழ்வை கைமுறையாக உருவாக்கு")}
+          className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full bg-white text-[#2F6FED] shadow-md ring-2 ring-[#2F6FED] transition-transform active:scale-90">
+          <Plus className="h-4 w-4" strokeWidth={2.5} />
+        </button>
+      </div>
 
       {/* Source chooser */}
       <Sheet open={chooserOpen && !file} onOpenChange={(o) => { if (!o) setChooserOpen(false); }}>
@@ -175,6 +185,11 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
           </Button>
         </SheetContent>
       </Sheet>
+      <ManualEventForm
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        onSaved={() => { setManualOpen(false); onSent(); }}
+      />
     </>
   );
 }

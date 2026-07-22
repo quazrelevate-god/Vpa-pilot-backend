@@ -59,4 +59,9 @@ export const api = {
   create: (fd: FormData): Promise<{ id: number; status: string }> =>
     fetch("/events/api/events", { method: "POST", credentials: "include", body: fd })
       .then((r) => readJSON<{ id: number; status: string }>(r)),
+
+  // ── manual creation ──
+  createManual: (fd: FormData): Promise<EventItem> =>
+    fetch("/events/api/events/manual", { method: "POST", credentials: "include", body: fd })
+      .then((r) => readJSON<EventItem>(r)),
 };

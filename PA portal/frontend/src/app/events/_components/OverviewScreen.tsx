@@ -12,7 +12,7 @@ import { api } from "../_lib/api";
 import type { OverviewData } from "../_lib/types";
 import { useT } from "../_lib/i18n";
 import {
-  Building2, CalendarCheck, FileText, Handshake, Ticket,
+  Building2, CalendarCheck, FileText, Handshake, Ticket, Clock, CheckCircle2,
 } from "../_lib/icons";
 
 // Same tone palette as the PA overview KpiCard.
@@ -30,16 +30,16 @@ function KpiCard({ icon: Icon, tone, label, value, caption }: {
 }) {
   const t = TONE[tone];
   return (
-    <Card className="flex flex-col gap-2 p-4">
-      <span className={cn("grid h-10 w-10 place-items-center rounded-xl", t.bg, t.fg)}>
-        <Icon className="h-5 w-5" strokeWidth={1.75} />
+    <Card className="flex flex-col gap-3 rounded-2xl border-slate-100 p-4 shadow-sm">
+      <span className={cn("grid h-9 w-9 place-items-center rounded-xl", t.bg, t.fg)}>
+        <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
       </span>
       <div className="min-w-0">
-        <div className="text-[0.82rem] font-semibold leading-snug text-slate-500">{label}</div>
-        <div className="font-mono text-[26px] font-bold leading-tight tracking-tight tabular-nums text-slate-900">
+        <div className="text-[0.75rem] font-semibold leading-snug text-slate-500">{label}</div>
+        <div className="font-mono text-[24px] font-bold leading-tight tracking-tight tabular-nums text-slate-900">
           {value.toLocaleString("en-IN")}
         </div>
-        <div className="text-[0.75rem] leading-snug text-slate-400">{caption}</div>
+        <div className="text-[0.7rem] leading-snug text-slate-400">{caption}</div>
       </div>
     </Card>
   );
@@ -68,7 +68,7 @@ export default function OverviewScreen() {
     return (
       <div className="space-y-3 px-4 pt-4">
         <div className="grid grid-cols-2 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[124px] rounded-2xl" />)}
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[124px] rounded-2xl" />)}
         </div>
         <Skeleton className="h-[260px] rounded-2xl" />
       </div>
@@ -78,10 +78,10 @@ export default function OverviewScreen() {
   const maxDept = Math.max(1, ...data.departments.map((d) => d.count));
 
   return (
-    <div className="space-y-5 px-4 pb-6 pt-4">
+    <div className="space-y-6 px-4 pb-8 pt-4">
       {/* ── Today ── */}
       <section>
-        <h2 className="mb-2.5 text-[0.82rem] font-extrabold uppercase tracking-wide text-slate-500">
+        <h2 className="mb-3 text-[0.7rem] font-extrabold uppercase tracking-widest text-slate-400">
           {t("Today", "இன்று")}
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -92,14 +92,20 @@ export default function OverviewScreen() {
             label={t("Appointments", "சந்திப்புகள்")} value={data.today.appointments}
             caption={t("scheduled today", "இன்று திட்டமிடப்பட்டவை")} />
           <KpiCard icon={FileText} tone="amber"
-            label={t("Petitions", "மனுக்கள்")} value={data.today.petitions}
+            label={t("Petitions Received", "பெறப்பட்ட மனுக்கள்")} value={data.today.petitions_received}
             caption={t("received today", "இன்று பெறப்பட்டவை")} />
+          <KpiCard icon={Clock} tone="rose"
+            label={t("Awaiting Review", "மதிப்பாய்வு நிலுவை")} value={data.today.petitions_awaiting}
+            caption={t("pending PA review", "PA மதிப்பாய்வு நிலுவை")} />
+          <KpiCard icon={CheckCircle2} tone="mint"
+            label={t("Reviewed", "மதிப்பாய்வு செய்யப்பட்டவை")} value={data.today.petitions_reviewed}
+            caption={t("reviewed today", "இன்று மதிப்பாய்வு")} />
         </div>
       </section>
 
       {/* ── Overall ── */}
       <section>
-        <h2 className="mb-2.5 text-[0.82rem] font-extrabold uppercase tracking-wide text-slate-500">
+        <h2 className="mb-3 text-[0.7rem] font-extrabold uppercase tracking-widest text-slate-400">
           {t("Overall", "மொத்தம்")}
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -112,16 +118,25 @@ export default function OverviewScreen() {
           <KpiCard icon={Handshake} tone="violet"
             label={t("Meetings", "கூட்டங்கள்")} value={data.totals.meetings}
             caption={t("slot-booked", "நேரம் ஒதுக்கப்பட்டவை")} />
+          <KpiCard icon={FileText} tone="amber"
+            label={t("Petitions Received", "பெறப்பட்ட மனுக்கள்")} value={data.totals.petitions_received}
+            caption={t("all time", "மொத்தமாக")} />
+          <KpiCard icon={Clock} tone="rose"
+            label={t("Awaiting Review", "மதிப்பாய்வு நிலுவை")} value={data.totals.petitions_awaiting}
+            caption={t("pending PA review", "PA மதிப்பாய்வு நிலுவை")} />
+          <KpiCard icon={CheckCircle2} tone="mint"
+            label={t("Reviewed", "மதிப்பாய்வு செய்யப்பட்டவை")} value={data.totals.petitions_reviewed}
+            caption={t("all time", "மொத்தமாக")} />
         </div>
       </section>
 
       {/* ── Department chart ── */}
       <section>
-        <h2 className="mb-2.5 flex items-center gap-1.5 text-[0.82rem] font-extrabold uppercase tracking-wide text-slate-500">
-          <Building2 className="h-4 w-4" strokeWidth={1.75} />
+        <h2 className="mb-3 flex items-center gap-1.5 text-[0.7rem] font-extrabold uppercase tracking-widest text-slate-400">
+          <Building2 className="h-3.5 w-3.5" strokeWidth={1.75} />
           {t("Tickets by department", "துறை வாரியாக டிக்கெட்")}
         </h2>
-        <Card className="p-4">
+        <Card className="rounded-2xl border-slate-100 p-4 shadow-sm">
           {data.departments.length === 0 ? (
             <div className="py-6 text-center text-base text-slate-400">
               {t("No tickets routed to departments yet.", "இன்னும் துறைகளுக்கு டிக்கெட் இல்லை.")}

@@ -10,12 +10,18 @@ function Item({ active, icon, label, badge, onClick }: {
 }) {
   return (
     <button onClick={onClick}
-      className={cn("relative flex flex-1 flex-col items-center justify-center gap-1 text-[0.78rem] font-bold transition-colors",
-        active ? "text-[#2F6FED]" : "text-slate-400")}>
-      <span className="relative [&_svg]:h-[27px] [&_svg]:w-[27px]">
+      className={cn(
+        "relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[0.72rem] font-bold transition-colors",
+        active ? "text-[#2F6FED]" : "text-slate-400",
+      )}>
+      {/* Active background pill */}
+      <span className={cn(
+        "relative flex h-8 w-14 items-center justify-center rounded-full transition-colors [&_svg]:h-[22px] [&_svg]:w-[22px]",
+        active ? "bg-[#2F6FED]/10" : "",
+      )}>
         {icon}
         {!!badge && (
-          <span className="absolute -right-3 -top-2 grid min-w-[20px] place-items-center rounded-full bg-[#B2372D] px-1 text-[11px] font-black leading-5 text-white">
+          <span className="absolute -right-1 -top-1.5 grid min-w-[18px] place-items-center rounded-full bg-[#B2372D] px-1 text-[10px] font-black leading-[18px] text-white">
             {badge > 99 ? "99+" : badge}
           </span>
         )}

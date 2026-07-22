@@ -156,11 +156,16 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
 
           <Tabs defaultValue="details" className="px-4 pb-4">
             <TabsList className="grid h-12 w-full grid-cols-2">
-              <TabsTrigger value="photo" className="text-base font-bold">{t("Photo", "படம்")}</TabsTrigger>
-              <TabsTrigger value="details" className="text-base font-bold">{t("Details", "விவரங்கள்")}</TabsTrigger>
+              {event.has_photo !== false && (
+                <TabsTrigger value="photo" className="text-base font-bold">{t("Photo", "படம்")}</TabsTrigger>
+              )}
+              <TabsTrigger value="details" className={`text-base font-bold ${event.has_photo === false ? "col-span-2" : ""}`}>
+                {t("Details", "விவரங்கள்")}
+              </TabsTrigger>
             </TabsList>
 
             {/* ── Photo tab ── */}
+            {event.has_photo !== false && event.image_url && (
             <TabsContent value="photo" className="mt-3">
               <button onClick={() => setLightbox(true)} className="block w-full">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -174,10 +179,11 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                 images={[{ url: event.image_url, name: event.display_title }]}
                 open={lightbox} onClose={() => setLightbox(false)} />
             </TabsContent>
+            )}
 
             {/* ── Details tab ── */}
             <TabsContent value="details" className="mt-3">
-              {event.status === "FAILED" && (
+              {event.status === "FAILED" && event.has_photo !== false && (
                 <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" strokeWidth={1.75} />
                   <div>

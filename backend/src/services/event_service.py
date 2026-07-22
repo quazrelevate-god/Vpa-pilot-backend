@@ -76,8 +76,12 @@ def _parse_time(value: Optional[str]) -> Optional[dtime]:
         return None
 
 
+_SENTINEL_IMAGE = "events/manual"
+
+
 def serialize(e: InvitationEvent) -> dict:
     """Wire format for the /events frontend."""
+    has_photo = e.image_path != _SENTINEL_IMAGE
     return {
         "id": e.id,
         "display_title": e.note or e.title or "Untitled",
@@ -90,13 +94,90 @@ def serialize(e: InvitationEvent) -> dict:
         "end_time": e.end_time.strftime("%H:%M") if e.end_time else None,
         "status": e.status,
         "error_message": e.error_message,
-        "image_url": f"/events/api/files/{e.image_path}",
+        "image_url": f"/events/api/files/{e.image_path}" if has_photo else None,
+        "has_photo": has_photo,
         "created_by": e.created_by,
         "created_at": e.created_at.isoformat() if e.created_at else None,
     }
 
 
 # ── Create + background extraction ──────────────────────────────────────────────
+
+async def create_manual_event(
+    db: AsyncSession,
+    *,
+    title: str,
+    venue: str,
+    event_type: str,
+    event_date: str,
+    start_time: str,
+    end_time: str,
+    note: str,
+    file_bytes: Optional[bytes],
+    mime_type: str,
+    created_by: str,
+) -> InvitationEvent:
+    """Create an event manually (no OCR). Saved immediately as READY.
+
+    Photo is optional — when omitted, image_path is set to a sentinel value
+    ("events/manual") so the column stays NOT NULL per the schema constraint,
+    and the frontend hides the photo tab for rows with that sentinel.
+    """
+    # Validate required fields
+    title = (title or "").strip()
+    if not title:
+        raise HTTPException(422, "title is required")
+    venue = (venue or "").strip()
+    if not venue:
+        raise HTTPException(422, "venue is required")
+    etype = (event_type or "").strip()
+    if not etype or etype not in EVENT_TYPES:
+        raise HTTPException(422, f"event_type must be one of: {', '.join(EVENT_TYPES)}")
+    parsed_date = _parse_date((event_date or "").strip())
+    if parsed_date is None:
+        raise HTTPException(422, "event_date is required and must be YYYY-MM-DD")
+    parsed_start = _parse_time((start_time or "").strip())
+    if parsed_start is None:
+        raise HTTPException(422, "start_time is required and must be HH:MM")
+
+    parsed_end = _parse_time((end_time or "").strip()) if end_time else None
+
+    # Optional photo
+    image_key = "events/manual"
+    image_mime_stored = "image/jpeg"
+    if file_bytes:
+        mime = (mime_type or "").lower().split(";")[0].strip()
+        ext = _ALLOWED_MIMES.get(mime)
+        if not ext:
+            raise HTTPException(422, f"Unsupported image type: {mime or 'unknown'}")
+        max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+        if len(file_bytes) > max_bytes:
+            raise HTTPException(413, f"Image exceeds {settings.MAX_FILE_SIZE_MB} MB limit")
+        image_key = f"events/{token_hex(16)}{ext}"
+        image_mime_stored = mime
+        await asyncio.to_thread(storage_service.save_file, file_bytes, image_key, mime)
+
+    event = InvitationEvent(
+        image_path=image_key,
+        image_mime=image_mime_stored,
+        title=title[:300],
+        venue=venue[:300],
+        event_type=etype,
+        event_date=parsed_date,
+        start_time=parsed_start,
+        end_time=parsed_end,
+        note=(note or "").strip() or None,
+        status=STATUS_READY,
+        created_by=created_by,
+        created_at=datetime.utcnow(),
+        processed_at=datetime.utcnow(),
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    logger.info("manual event %d created | date=%s type=%s", event.id, event.event_date, event.event_type)
+    return event
+
 
 async def create_event(
     db: AsyncSession, *, file_bytes: bytes, mime_type: str,

@@ -34,7 +34,7 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
         ))}
       </div>
 
-      <div className="grid grid-cols-7 overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="grid grid-cols-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {cells.map((d, i) => {
           const iso = toISO(d);
           const inMonth = d.getMonth() === anchor.getMonth();
@@ -48,13 +48,13 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
               onClick={() => onOpenDay(iso)}
               onKeyDown={(e) => { if (e.key === "Enter") onOpenDay(iso); }}
               className={cn(
-                "min-h-[92px] border-b border-r border-slate-100 p-1 active:bg-slate-50",
+                "min-h-[88px] border-b border-r border-slate-100 p-1.5 transition-colors active:bg-blue-50/50",
                 (i + 1) % 7 === 0 && "border-r-0",
                 i >= 35 && "border-b-0",
-                !inMonth && "bg-slate-50/60",
+                !inMonth && "bg-slate-50/70",
               )}>
               <div className={cn(
-                "mb-1 grid h-7 w-7 place-items-center rounded-full font-mono text-[0.85rem] font-bold tabular-nums",
+                "mb-1 grid h-6 w-6 place-items-center rounded-full font-mono text-[0.78rem] font-bold tabular-nums",
                 isToday ? "bg-[#2F6FED] text-white"
                   : inMonth ? "text-slate-700" : "text-slate-300",
               )}>
@@ -68,19 +68,19 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
                   return (
                     <button key={e.id}
                       onClick={(ev) => { ev.stopPropagation(); onOpen(e); }}
-                      style={{ backgroundColor: `${meta.color}1A` }}
+                      style={{ backgroundColor: `${meta.color}18` }}
                       className={cn(
-                        "flex w-full items-center gap-1 truncate rounded px-1 py-1 text-left text-[0.72rem] font-bold text-slate-800",
+                        "flex w-full items-center gap-1 truncate rounded-md px-1 py-0.5 text-left text-[0.68rem] font-bold text-slate-800",
                         processing && "animate-pulse",
                       )}>
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
                       <span className="truncate">{e.display_title}</span>
                     </button>
                   );
                 })}
                 {overflow > 0 && (
-                  <div className="px-1 font-mono text-[0.72rem] font-bold tabular-nums text-[#2F6FED]">
-                    +{overflow}
+                  <div className="px-1 font-mono text-[0.68rem] font-bold tabular-nums text-[#2F6FED]">
+                    +{overflow} {lang === "ta" ? "மேலும்" : "more"}
                   </div>
                 )}
               </div>
@@ -88,8 +88,8 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
           );
         })}
       </div>
-      <p className="px-1 pb-2 pt-1.5 text-center text-[0.78rem] text-slate-400">
-        {lang === "ta" ? "ஒரு தேதியை தட்டினால் வார பார்வை திறக்கும்" : "Tap a date to open it in week view"}
+      <p className="pb-2 pt-2 text-center text-[0.72rem] text-slate-400">
+        {lang === "ta" ? "ஒரு தேதியை தட்டினால் வார பார்வை திறக்கும்" : "Tap a date to open in week view"}
       </p>
     </div>
   );

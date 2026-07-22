@@ -8,6 +8,7 @@ the background — see event_service), edit/delete/retry, and authenticated
 image serving. Everything is scoped to the events_session cookie.
 """
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -93,6 +94,16 @@ async def overview(
         _select(func.count(Appointment.id)).where(Appointment.slot_id.isnot(None))
     )
 
+    # Petition breakdown: Received = all appointments; Awaiting Review / Reviewed by status.
+    _REVIEWED_STATUSES = ("REVIEWED", "DISMISSED", "COURTESY_DONE")
+    total_petitions_received = total_appointments
+    total_petitions_awaiting = await _count(
+        _select(func.count(Appointment.id)).where(Appointment.status == "AWAITING_REVIEW")
+    )
+    total_petitions_reviewed = await _count(
+        _select(func.count(Appointment.id)).where(Appointment.status.in_(_REVIEWED_STATUSES))
+    )
+
     today_tickets = await _count(
         _select(func.count(Ticket.id)).where(
             Ticket.created_at >= day_start, Ticket.created_at <= day_end,
@@ -105,9 +116,21 @@ async def overview(
         .join(MLADailyAvailability, MLADailyAvailability.id == AppointmentSlot.availability_id)
         .where(MLADailyAvailability.date == today)
     )
-    today_petitions = await _count(
+    today_petitions_received = await _count(
         _select(func.count(Appointment.id)).where(
             Appointment.created_at >= day_start, Appointment.created_at <= day_end,
+        )
+    )
+    today_petitions_awaiting = await _count(
+        _select(func.count(Appointment.id)).where(
+            Appointment.created_at >= day_start, Appointment.created_at <= day_end,
+            Appointment.status == "AWAITING_REVIEW",
+        )
+    )
+    today_petitions_reviewed = await _count(
+        _select(func.count(Appointment.id)).where(
+            Appointment.created_at >= day_start, Appointment.created_at <= day_end,
+            Appointment.status.in_(_REVIEWED_STATUSES),
         )
     )
 
@@ -124,11 +147,16 @@ async def overview(
             "tickets": total_tickets,
             "appointments": total_appointments,
             "meetings": total_meetings,
+            "petitions_received": total_petitions_received,
+            "petitions_awaiting": total_petitions_awaiting,
+            "petitions_reviewed": total_petitions_reviewed,
         },
         "today": {
             "tickets": today_tickets,
             "appointments": today_appointments,
-            "petitions": today_petitions,
+            "petitions_received": today_petitions_received,
+            "petitions_awaiting": today_petitions_awaiting,
+            "petitions_reviewed": today_petitions_reviewed,
         },
         "departments": [
             {"name": name, "count": int(cnt)} for name, cnt in dept_rows
@@ -164,7 +192,7 @@ async def needs_review(
     return {"items": [event_service.serialize(e) for e in items], "count": len(items)}
 
 
-# ── Upload ──────────────────────────────────────────────────────────────────────
+# ── Upload (OCR flow) ───────────────────────────────────────────────────────────
 
 @router.post("/api/events", status_code=201)
 async def create_event(
@@ -183,6 +211,45 @@ async def create_event(
         created_by=user,
     )
     return {"id": event.id, "status": event.status}
+
+
+# ── Manual creation (all fields supplied by the user, no OCR) ──────────────────
+
+@router.post("/api/events/manual", status_code=201)
+async def create_manual_event(
+    title: str = Form(...),
+    venue: str = Form(...),
+    event_type: str = Form(...),
+    event_date: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(default=""),
+    note: str = Form(default=""),
+    file: Optional[UploadFile] = File(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_events_api),
+):
+    """Create an event with all fields provided manually. Photo is optional.
+    Saved immediately as READY — no background extraction is triggered."""
+    file_bytes: Optional[bytes] = None
+    mime_type = ""
+    if file and file.filename:
+        file_bytes = await file.read()
+        mime_type = file.content_type or ""
+
+    event = await event_service.create_manual_event(
+        db,
+        title=title,
+        venue=venue,
+        event_type=event_type,
+        event_date=event_date,
+        start_time=start_time,
+        end_time=end_time,
+        note=note,
+        file_bytes=file_bytes,
+        mime_type=mime_type,
+        created_by=user,
+    )
+    return event_service.serialize(event)
 
 
 # ── Single event ────────────────────────────────────────────────────────────────

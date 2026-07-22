@@ -11,9 +11,10 @@ import { useT } from "../_lib/i18n";
 import { ChevronLeft, ChevronRight } from "../_lib/icons";
 import WeekView from "./WeekView";
 import MonthView from "./MonthView";
+import GlanceView from "./GlanceView";
 import CaptureFab from "./CaptureFab";
 
-type Mode = "week" | "month";
+type Mode = "week" | "month" | "glance";
 
 export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
   refreshKey: number;
@@ -88,12 +89,12 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
       {/* Controls */}
       <div className="flex items-center gap-2 px-4 pb-2 pt-3">
         <div className="inline-flex items-center rounded-lg border border-[#E1E5EB] bg-[#EAEEF3] p-0.5">
-          {(["week", "month"] as const).map((m) => (
+          {(["week", "glance", "month"] as const).map((m) => (
             <button key={m} type="button"
               onClick={() => { setFocusISO(null); setMode(m); }} aria-pressed={mode === m}
-              className={cn("rounded-md px-4 py-1.5 text-base font-bold transition-colors",
+              className={cn("rounded-md px-3 py-1.5 text-sm font-bold transition-colors",
                 mode === m ? "bg-white text-[#21395B] shadow-sm" : "text-[#5A6472]")}>
-              {m === "week" ? t("Week", "வாரம்") : t("Month", "மாதம்")}
+              {m === "week" ? t("Week", "வாரம்") : m === "glance" ? t("Glance", "பார்வை") : t("Month", "மாதம்")}
             </button>
           ))}
         </div>
@@ -115,13 +116,15 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
       </div>
 
       {/* Range label */}
-      <div className="px-4 pb-2 font-mono text-lg font-semibold tabular-nums text-slate-700">
-        {mode === "week" ? weekRangeLabel(anchor, lang) : monthLabel(anchor, lang)}
-        {loading && <span className="ml-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border border-slate-300 border-t-transparent align-middle" />}
+      <div className="px-4 pb-2 font-mono text-base font-semibold tabular-nums text-slate-600">
+        {mode === "month" ? monthLabel(anchor, lang) : weekRangeLabel(anchor, lang)}
+        {loading && <span className="ml-2 inline-block h-3 w-3 animate-spin rounded-full border border-slate-300 border-t-transparent align-middle" />}
       </div>
 
       {mode === "week" ? (
         <WeekView anchor={anchor} byDay={byDay} onOpen={onOpen} focusISO={focusISO} />
+      ) : mode === "glance" ? (
+        <GlanceView anchor={anchor} byDay={byDay} onOpen={onOpen} />
       ) : (
         <MonthView anchor={anchor} byDay={byDay} onOpen={onOpen} onOpenDay={jumpToDate} />
       )}

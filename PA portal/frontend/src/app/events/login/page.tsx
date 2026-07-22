@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useT } from "../_lib/i18n";
-import { CalendarDays, Loader2 } from "../_lib/icons";
+import { Handshake, Loader2 } from "../_lib/icons";
 
 const container: Variants = {
   hidden: {},
@@ -78,13 +78,12 @@ export default function EventsLoginPage() {
             initial={{ scale: 0.6, rotate: -8, opacity: 0 }}
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             transition={{ type: "spring", stiffness: 320, damping: 18, delay: 0.1 }}>
-            <CalendarDays className="h-6 w-6" />
+            <Handshake className="h-6 w-6" />
           </motion.span>
           <div className="leading-tight">
             <div className="text-[1.45rem] font-black tracking-tight text-slate-900">{t("NamKural", "நம்குரல்")}</div>
             <div className="text-[0.95rem] font-bold text-slate-500">{t("Events Calendar", "நிகழ்வு நாட்காட்டி")}</div>
           </div>
-          <span className="ml-auto rounded-md bg-[#21395B] px-1.5 py-0.5 text-[10px] font-black tracking-widest text-white">PWA</span>
         </motion.div>
 
         {/* Login card */}

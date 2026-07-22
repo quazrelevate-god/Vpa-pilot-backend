@@ -5,6 +5,10 @@
 // overlapping events, an all-day strip for date-only events, and a red
 // "now" line on today. When focusISO is set (tapped from month view), the
 // grid scrolls that day's column — and its first event — into view.
+//
+// Layout: the time gutter is sticky-left inside the single scroll container
+// so it stays visible during horizontal scrolling while sharing the same
+// vertical scroll position as the day columns.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -13,11 +17,11 @@ import { typeMeta } from "../_lib/types";
 import { dayName, fmtTime, pad2, sameDay, toISO, toMinutes, weekDays } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 
-const DAY_START = 6 * 60;   // grid shows 06:00 …
-const DAY_END = 22 * 60;    // … 22:00
-const HOUR_H = 56;          // px per hour
-const COL_W = 132;          // min px per day column
-const GUTTER_W = 56;
+const DAY_START = 0 * 60;    // grid shows 00:00 …
+const DAY_END   = 24 * 60;   // … 24:00
+const HOUR_H    = 40;        // px per hour — compact to show more rows at once
+const COL_W     = 88;        // min px per day column — narrower so ~4 days fit without scrolling
+const GUTTER_W  = 44;
 
 type Placed = {
   event: EventItem;
@@ -27,8 +31,7 @@ type Placed = {
   cols: number;
 };
 
-/** Greedy interval layout: cluster transitively-overlapping events, assign
- *  each the lowest free column, size blocks to the cluster's column count. */
+/** Greedy interval layout — unchanged from original. */
 function layoutDay(events: EventItem[]): Placed[] {
   const timed = events
     .filter((e) => toMinutes(e.start_time) !== null)
@@ -69,9 +72,9 @@ function layoutDay(events: EventItem[]): Placed[] {
 function EventBlock({ placed, onOpen }: { placed: Placed; onOpen: (e: EventItem) => void }) {
   const { event: e, startMin, endMin, col, cols } = placed;
   const meta = typeMeta(e.event_type);
-  const top = ((Math.max(startMin, DAY_START) - DAY_START) / 60) * HOUR_H;
+  const top    = ((Math.max(startMin, DAY_START) - DAY_START) / 60) * HOUR_H;
   const height = Math.max(((Math.min(endMin, DAY_END) - Math.max(startMin, DAY_START)) / 60) * HOUR_H, 30);
-  const width = 100 / cols;
+  const width  = 100 / cols;
   const processing = e.status === "QUEUED" || e.status === "PROCESSING";
 
   if (endMin <= DAY_START || startMin >= DAY_END) return null;
@@ -90,10 +93,10 @@ function EventBlock({ placed, onOpen }: { placed: Placed; onOpen: (e: EventItem)
         "absolute overflow-hidden rounded-md border-l-4 px-1.5 py-1 text-left",
         processing && "animate-pulse",
       )}>
-      <div className="truncate text-[0.82rem] font-bold leading-tight text-slate-800">
+      <div className="truncate text-[0.75rem] font-bold leading-tight text-slate-800">
         {e.display_title}
       </div>
-      <div className="truncate font-mono text-[0.72rem] font-medium tabular-nums text-slate-500">
+      <div className="truncate font-mono text-[0.68rem] font-medium tabular-nums text-slate-500">
         {fmtTime(e.start_time)}
       </div>
     </button>
@@ -107,10 +110,10 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
   focusISO?: string | null;
 }) {
   const { t, lang } = useT();
-  const days = useMemo(() => weekDays(anchor), [anchor]);
-  const today = new Date();
-  const hScrollRef = useRef<HTMLDivElement>(null);
-  const vScrollRef = useRef<HTMLDivElement>(null);
+  const days    = useMemo(() => weekDays(anchor), [anchor]);
+  const today   = new Date();
+  // Single scroll container — both gutter and columns move together vertically.
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Red "now" line, re-computed every minute.
   const [nowMin, setNowMin] = useState(() => today.getHours() * 60 + today.getMinutes());
@@ -122,32 +125,25 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
     return () => clearInterval(id);
   }, []);
 
-  // Scroll behaviour: with a focus day (tapped in month view), bring that
-  // column into view and scroll to its first event; otherwise default to
-  // 08:00. Each scroll applies ONCE — byDay changes identity on every silent
-  // poll, and re-scrolling then would yank the user's position mid-reading.
-  const appliedFocus = useRef<string | null>(null);
-  const didInitScroll = useRef(false);
+  // Scroll once to focusISO column / first event, or default to 08:00.
+  const appliedFocus   = useRef<string | null>(null);
+  const didInitScroll  = useRef(false);
   useEffect(() => {
     const dayISOs = days.map(toISO);
     const idx = focusISO ? dayISOs.indexOf(focusISO) : -1;
     if (idx >= 0 && appliedFocus.current !== focusISO) {
       appliedFocus.current = focusISO ?? null;
       didInitScroll.current = true;
-      // Instant (not smooth) — a data-fetch re-render mid-animation would
-      // freeze a smooth scroll partway to the target column.
-      hScrollRef.current?.scrollTo({ left: Math.max(0, idx * COL_W - COL_W / 2) });
+      scrollRef.current?.scrollTo({ left: Math.max(0, idx * COL_W - COL_W / 2) });
       const first = (byDay.get(focusISO!) ?? [])
         .map((e) => toMinutes(e.start_time))
         .filter((m): m is number => m !== null)
         .sort((a, b) => a - b)[0];
       const targetMin = first ?? 8 * 60;
-      vScrollRef.current?.scrollTo({
-        top: Math.max(0, ((targetMin - DAY_START) / 60) * HOUR_H - HOUR_H / 2),
-      });
+      scrollRef.current?.scrollTo({ top: Math.max(0, (targetMin / 60) * HOUR_H - HOUR_H / 2) });
     } else if (idx < 0 && !didInitScroll.current) {
       didInitScroll.current = true;
-      vScrollRef.current?.scrollTo({ top: 2 * HOUR_H });
+      scrollRef.current?.scrollTo({ top: 8 * HOUR_H }); // default to 08:00
     }
   }, [focusISO, days, byDay]);
 
@@ -163,81 +159,114 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
     () => days.map((d) => (byDay.get(toISO(d)) ?? []).filter((e) => toMinutes(e.start_time) === null)),
     [days, byDay],
   );
-  const hasAllDay = allDay.some((l) => l.length > 0);
-  const gridMinWidth = GUTTER_W + 7 * COL_W;
+  const hasAllDay    = allDay.some((l) => l.length > 0);
+  const gridMinWidth = 7 * COL_W; // gutter is outside the scroll, so not counted here
 
   return (
-    <div ref={hScrollRef} className="overflow-x-auto">
-      <div style={{ minWidth: gridMinWidth }}>
-        {/* Day headers */}
-        <div className="sticky top-0 z-10 flex border-b border-slate-200 bg-[#F3F5F8]">
-          <div style={{ width: GUTTER_W }} className="shrink-0" />
-          {days.map((d, i) => {
-            const isToday = sameDay(d, today);
-            const isFocus = focusISO === toISO(d);
-            return (
-              <div key={i} className="flex-1 py-2 text-center" style={{ minWidth: COL_W }}>
-                <div className="text-[0.72rem] font-bold uppercase tracking-wide text-slate-400">
-                  {dayName(i, lang)}
-                </div>
-                <div className={cn(
-                  "mx-auto grid h-8 w-8 place-items-center rounded-full font-mono text-base font-bold tabular-nums",
-                  isToday ? "bg-[#2F6FED] text-white"
-                    : isFocus ? "ring-2 ring-[#2F6FED] text-[#2F6FED]" : "text-slate-700",
-                )}>
-                  {d.getDate()}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+    // Outer wrapper: flex row — frozen gutter on the left, scrollable area on the right.
+    <div className="flex overflow-hidden">
 
-        {/* All-day strip (date, no time) */}
-        {hasAllDay && (
-          <div className="flex border-b border-slate-200 bg-white/60">
-            <div style={{ width: GUTTER_W }}
-              className="shrink-0 py-1 pr-1 text-right text-[0.62rem] font-bold uppercase text-slate-400">
-              {t("All day", "நாள் முழுதும்")}
-            </div>
-            {allDay.map((list, i) => (
-              <div key={i} className="flex-1 space-y-0.5 p-0.5" style={{ minWidth: COL_W }}>
-                {list.map((e) => {
-                  const meta = typeMeta(e.event_type);
-                  const processing = e.status === "QUEUED" || e.status === "PROCESSING";
-                  return (
-                    <button key={e.id} onClick={() => onOpen(e)}
-                      style={{ backgroundColor: `${meta.color}1A`, borderColor: meta.color }}
-                      className={cn(
-                        "block w-full truncate rounded-md border-l-4 px-1.5 py-1 text-left text-[0.8rem] font-bold text-slate-800",
-                        processing && "animate-pulse",
-                      )}>
-                      {e.display_title}
-                    </button>
-                  );
-                })}
+      {/* ── Frozen left gutter ───────────────────────────────────────────────── */}
+      <div
+        style={{ width: GUTTER_W, minWidth: GUTTER_W }}
+        className="relative z-10 shrink-0 bg-[#F3F5F8]"
+      >
+        {/* Blank cell aligning with the day-header row height (40px) */}
+        <div className="h-10 border-b border-slate-200" />
+
+        {/* Blank cell aligning with the all-day strip (only when visible) */}
+        {hasAllDay && <div className="border-b border-slate-200 py-1" style={{ minHeight: 32 }} />}
+
+        {/* Hour labels — scroll in sync because this div is the same height
+            as the time grid and sits inside the same outer flex row.
+            We use a separate overflow-hidden div that mirrors the scroll
+            position of scrollRef via onScroll forwarding below. */}
+        <div
+          ref={(el) => {
+            // Keep the gutter labels vertically in sync with scrollRef.
+            if (!el) return;
+            const scroller = scrollRef.current;
+            if (!scroller) return;
+            const sync = () => { el.scrollTop = scroller.scrollTop; };
+            scroller.addEventListener("scroll", sync, { passive: true });
+            // cleanup handled by component unmount (ref callback limitation)
+          }}
+          className="overflow-hidden"
+          style={{ height: "72vh" }}
+        >
+          <div style={{ height: ((DAY_END - DAY_START) / 60) * HOUR_H }} className="relative">
+            {hours.map((h) => (
+              <div
+                key={h}
+                style={{ top: (h - DAY_START / 60) * HOUR_H }}
+                className="absolute right-1.5 -translate-y-1/2 font-mono text-[0.72rem] font-medium tabular-nums text-slate-400"
+              >
+                {h === 0 ? "" : `${pad2(h)}:00`}
               </div>
             ))}
           </div>
-        )}
+        </div>
+      </div>
 
-        {/* Time grid */}
-        <div ref={vScrollRef} className="overflow-y-auto" style={{ maxHeight: "62vh" }}>
-          <div className="relative flex" style={{ height: ((DAY_END - DAY_START) / 60) * HOUR_H }}>
-            {/* Hour gutter */}
-            <div style={{ width: GUTTER_W }} className="relative shrink-0">
-              {hours.map((h) => (
-                <div key={h}
-                  style={{ top: (h - DAY_START / 60) * HOUR_H }}
-                  className="absolute right-1.5 -translate-y-1/2 font-mono text-[0.72rem] font-medium tabular-nums text-slate-400">
-                  {h === DAY_START / 60 ? "" : `${pad2(h)}:00`}
+      {/* ── Scrollable area (horizontal + vertical) ──────────────────────────── */}
+      <div
+        ref={scrollRef}
+        className="overflow-auto flex-1"
+        style={{ maxHeight: "calc(72vh + 40px + 1px)" /* header + grid, matches gutter */ }}
+      >
+        <div style={{ minWidth: gridMinWidth }}>
+
+          {/* Day headers */}
+          <div className="sticky top-0 z-10 flex border-b border-slate-200 bg-[#F3F5F8]">
+            {days.map((d, i) => {
+              const isToday = sameDay(d, today);
+              const isFocus = focusISO === toISO(d);
+              return (
+                <div key={i} className="flex-1 py-2 text-center" style={{ minWidth: COL_W }}>
+                  <div className="text-[0.72rem] font-bold uppercase tracking-wide text-slate-400">
+                    {dayName(i, lang)}
+                  </div>
+                  <div className={cn(
+                    "mx-auto grid h-8 w-8 place-items-center rounded-full font-mono text-base font-bold tabular-nums",
+                    isToday ? "bg-[#2F6FED] text-white"
+                      : isFocus ? "ring-2 ring-[#2F6FED] text-[#2F6FED]" : "text-slate-700",
+                  )}>
+                    {d.getDate()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* All-day strip */}
+          {hasAllDay && (
+            <div className="flex border-b border-slate-200 bg-white/60">
+              {allDay.map((list, i) => (
+                <div key={i} className="flex-1 space-y-0.5 p-0.5" style={{ minWidth: COL_W }}>
+                  {list.map((e) => {
+                    const meta = typeMeta(e.event_type);
+                    const processing = e.status === "QUEUED" || e.status === "PROCESSING";
+                    return (
+                      <button key={e.id} onClick={() => onOpen(e)}
+                        style={{ backgroundColor: `${meta.color}1A`, borderColor: meta.color }}
+                        className={cn(
+                          "block w-full truncate rounded-md border-l-4 px-1.5 py-1 text-left text-[0.8rem] font-bold text-slate-800",
+                          processing && "animate-pulse",
+                        )}>
+                        {e.display_title}
+                      </button>
+                    );
+                  })}
                 </div>
               ))}
             </div>
+          )}
 
-            {/* Day columns */}
+          {/* Time grid — no gutter here, it lives in the frozen column */}
+          <div style={{ height: ((DAY_END - DAY_START) / 60) * HOUR_H }} className="relative flex">
             {days.map((d, i) => {
-              const isToday = sameDay(d, today);
-              const showNow = isToday && nowMin >= DAY_START && nowMin <= DAY_END;
+              const isToday  = sameDay(d, today);
+              const showNow  = isToday && nowMin >= DAY_START && nowMin <= DAY_END;
               return (
                 <div key={i}
                   className={cn("relative flex-1 border-l border-slate-200", isToday && "bg-[#2F6FED]/[0.04]")}
@@ -264,6 +293,7 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
               );
             })}
           </div>
+
         </div>
       </div>
     </div>

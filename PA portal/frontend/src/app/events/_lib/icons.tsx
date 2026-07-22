@@ -6,6 +6,7 @@ export {
   Inbox,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   X,
   Loader2,
   LogOut,
@@ -34,4 +35,5 @@ export {
   SquarePlus,
   Smartphone,
   CheckCircle2,
+  Plus,
 } from "lucide-react";
