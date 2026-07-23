@@ -7,13 +7,14 @@
 // 8 MB originals.
 
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { api } from "../_lib/api";
 import { useT } from "../_lib/i18n";
-import { Camera, FolderOpen, Loader2, Plus, RefreshCw, Send, X } from "../_lib/icons";
+import { Camera, FileText, FolderOpen, Loader2, Plus, RefreshCw, Send, X } from "../_lib/icons";
 import ManualEventForm from "./ManualEventForm";
 
 const MAX_DIM = 1600;
@@ -45,6 +46,7 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
   const { t } = useT();
   const cameraRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
+  const [dialOpen, setDialOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -101,18 +103,79 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
       <input ref={filesRef} type="file" accept="image/*"
         onChange={pick} className="hidden" />
 
-      {/* FAB — camera opens OCR flow; + badge opens manual form */}
+      {/* ── Speed-dial FAB ──────────────────────────────────────────────────
+           Closed: one + button. Open: camera action pops up ABOVE it (photo
+           capture flow) and form action slides out to its LEFT (manual entry),
+           each with a small label chip. Backdrop tap or the × closes it. */}
+      <AnimatePresence>
+        {dialOpen && (
+          <motion.button
+            key="dial-backdrop"
+            aria-label={t("Close", "மூடு")}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setDialOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-900/25" />
+        )}
+      </AnimatePresence>
+
       <div className="fixed bottom-[calc(var(--nav-h)+env(safe-area-inset-bottom)+16px)] right-4 z-40">
-        <button onClick={() => setChooserOpen(true)}
-          aria-label={t("Add invitation", "அழைப்பிதழ் சேர்")}
+        {/* Camera — above the FAB */}
+        <AnimatePresence>
+          {dialOpen && (
+            <motion.div
+              key="dial-camera"
+              initial={{ opacity: 0, y: 12, scale: 0.7 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.7 }}
+              transition={{ type: "spring", stiffness: 420, damping: 26 }}
+              className="absolute bottom-[76px] right-0 flex items-center gap-2">
+              <span className="rounded-full bg-slate-900/80 px-3 py-1.5 text-sm font-bold text-white">
+                {t("Photo", "படம்")}
+              </span>
+              <button
+                onClick={() => { setDialOpen(false); setChooserOpen(true); }}
+                aria-label={t("Photograph an invitation", "அழைப்பிதழை படமெடு")}
+                className="grid h-14 w-14 place-items-center rounded-full bg-[#2F6FED] text-white shadow-lg shadow-[#2F6FED]/35 active:scale-95">
+                <Camera className="h-7 w-7" strokeWidth={1.75} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Form — left of the FAB */}
+        <AnimatePresence>
+          {dialOpen && (
+            <motion.div
+              key="dial-form"
+              initial={{ opacity: 0, x: 12, scale: 0.7 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 12, scale: 0.7 }}
+              transition={{ type: "spring", stiffness: 420, damping: 26, delay: 0.03 }}
+              className="absolute bottom-0 right-[76px] flex flex-col items-center gap-1.5">
+              <span className="whitespace-nowrap rounded-full bg-slate-900/80 px-3 py-1.5 text-sm font-bold text-white">
+                {t("Form", "படிவம்")}
+              </span>
+              <button
+                onClick={() => { setDialOpen(false); setManualOpen(true); }}
+                aria-label={t("Create event manually", "நிகழ்வை கைமுறையாக உருவாக்கு")}
+                className="grid h-14 w-14 place-items-center rounded-full bg-[#21395B] text-white shadow-lg shadow-[#21395B]/35 active:scale-95">
+                <FileText className="h-7 w-7" strokeWidth={1.75} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Main FAB — + rotates to × while open */}
+        <button onClick={() => setDialOpen((o) => !o)}
+          aria-label={t("Add event", "நிகழ்வு சேர்")} aria-expanded={dialOpen}
           className="grid h-16 w-16 place-items-center rounded-full bg-[#2F6FED] text-white shadow-xl shadow-[#2F6FED]/35 transition-transform active:scale-95">
-          <Camera className="h-8 w-8" strokeWidth={1.75} />
-        </button>
-        {/* + badge — opens manual creation form */}
-        <button onClick={() => setManualOpen(true)}
-          aria-label={t("Create event manually", "நிகழ்வை கைமுறையாக உருவாக்கு")}
-          className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full bg-white text-[#2F6FED] shadow-md ring-2 ring-[#2F6FED] transition-transform active:scale-90">
-          <Plus className="h-4 w-4" strokeWidth={2.5} />
+          <motion.span
+            animate={{ rotate: dialOpen ? 45 : 0 }}
+            transition={{ type: "spring", stiffness: 420, damping: 24 }}
+            className="grid place-items-center">
+            <Plus className="h-8 w-8" strokeWidth={2} />
+          </motion.span>
         </button>
       </div>
 
