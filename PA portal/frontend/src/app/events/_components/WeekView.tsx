@@ -26,7 +26,7 @@ const DAY_START = 0 * 60;    // grid shows 00:00 …
 const DAY_END   = 24 * 60;   // … 24:00 (midnight to midnight)
 const HOUR_H    = 40;        // px per hour — compact to show more rows at once
 const COL_W     = 88;        // min px per day column
-const GUTTER_W  = 44;
+const GUTTER_W  = 58;   // wide enough for 12-hour labels with breathing room
 const GRID_H    = ((DAY_END - DAY_START) / 60) * HOUR_H;
 
 type Placed = {
@@ -237,8 +237,8 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
             {hours.map((h) => (
               <div key={h}
                 style={{ top: (h - DAY_START / 60) * HOUR_H }}
-                className="absolute right-1.5 -translate-y-1/2 font-mono text-[0.72rem] font-medium tabular-nums text-slate-400">
-                {h === DAY_START / 60 ? "" : `${pad2(h)}:00`}
+                className="absolute inset-x-0 -translate-y-1/2 pl-1.5 pr-1.5 text-right font-mono text-[0.72rem] font-medium tabular-nums text-slate-400">
+                {h === DAY_START / 60 ? "" : `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`}
               </div>
             ))}
           </div>

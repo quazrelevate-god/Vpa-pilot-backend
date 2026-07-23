@@ -106,7 +106,7 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
       {/* ── Speed-dial FAB ──────────────────────────────────────────────────
            Closed: one + button. Open: camera action pops up ABOVE it (photo
            capture flow) and form action slides out to its LEFT (manual entry),
-           each with a small label chip. Backdrop tap or the × closes it. */}
+           icons only. Backdrop tap or the × closes it. */}
       <AnimatePresence>
         {dialOpen && (
           <motion.button
@@ -129,10 +129,7 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.7 }}
               transition={{ type: "spring", stiffness: 420, damping: 26 }}
-              className="absolute bottom-[76px] right-0 flex items-center gap-2">
-              <span className="rounded-full bg-slate-900/80 px-3 py-1.5 text-sm font-bold text-white">
-                {t("Photo", "படம்")}
-              </span>
+              className="absolute bottom-[76px] right-0">
               <button
                 onClick={() => { setDialOpen(false); setChooserOpen(true); }}
                 aria-label={t("Photograph an invitation", "அழைப்பிதழை படமெடு")}
@@ -152,10 +149,7 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: 12, scale: 0.7 }}
               transition={{ type: "spring", stiffness: 420, damping: 26, delay: 0.03 }}
-              className="absolute bottom-0 right-[76px] flex flex-col items-center gap-1.5">
-              <span className="whitespace-nowrap rounded-full bg-slate-900/80 px-3 py-1.5 text-sm font-bold text-white">
-                {t("Form", "படிவம்")}
-              </span>
+              className="absolute bottom-0 right-[76px]">
               <button
                 onClick={() => { setDialOpen(false); setManualOpen(true); }}
                 aria-label={t("Create event manually", "நிகழ்வை கைமுறையாக உருவாக்கு")}
