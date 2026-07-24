@@ -232,8 +232,11 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
         {/* ── Time grid: gutter + day columns in the SAME row ───────────────── */}
         <div className="flex" style={{ height: GRID_H }}>
           {/* Hour gutter — sticky left, same height as the columns, so each
-              label sits exactly on its grid line. */}
-          <div style={{ width: GUTTER_W, minWidth: GUTTER_W }} className={cn(gutterCell, "relative")}>
+              label sits exactly on its grid line. Do NOT add `relative` here:
+              `cn` is tailwind-merge, and `relative` sits in the same position
+              group as `sticky`, so it would silently strip the freeze. Sticky
+              is already a positioned ancestor for the absolute labels below. */}
+          <div style={{ width: GUTTER_W, minWidth: GUTTER_W }} className={gutterCell}>
             {hours.map((h) => (
               <div key={h}
                 style={{ top: (h - DAY_START / 60) * HOUR_H }}
