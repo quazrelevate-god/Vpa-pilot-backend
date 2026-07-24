@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { EventItem } from "../_lib/types";
-import { typeMeta } from "../_lib/types";
+import { displayTitle, typeMeta } from "../_lib/types";
 import { dayName, fmtTime, pad2, sameDay, toISO, toMinutes, weekDays } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 
@@ -76,7 +76,9 @@ function layoutDay(events: EventItem[]): Placed[] {
   return placed;
 }
 
-function EventBlock({ placed, onOpen }: { placed: Placed; onOpen: (e: EventItem) => void }) {
+function EventBlock({ placed, onOpen, lang }: {
+  placed: Placed; onOpen: (e: EventItem) => void; lang: "en" | "ta";
+}) {
   const { event: e, startMin, endMin, col, cols } = placed;
   const meta = typeMeta(e.event_type);
   const top    = ((Math.max(startMin, DAY_START) - DAY_START) / 60) * HOUR_H;
@@ -101,7 +103,7 @@ function EventBlock({ placed, onOpen }: { placed: Placed; onOpen: (e: EventItem)
         processing && "animate-pulse",
       )}>
       <div className="truncate text-[0.75rem] font-bold leading-tight text-slate-800">
-        {e.display_title}
+        {displayTitle(e, lang)}
       </div>
       <div className="truncate font-mono text-[0.68rem] font-medium tabular-nums text-slate-500">
         {fmtTime(e.start_time)}
@@ -220,7 +222,7 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
                         "block w-full truncate rounded-md border-l-4 px-1.5 py-1 text-left text-[0.8rem] font-bold text-slate-800",
                         processing && "animate-pulse",
                       )}>
-                      {e.display_title}
+                      {displayTitle(e, lang)}
                     </button>
                   );
                 })}
@@ -262,7 +264,7 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
                 ))}
                 {/* events */}
                 {layouts[i].map((p) => (
-                  <EventBlock key={p.event.id} placed={p} onOpen={onOpen} />
+                  <EventBlock key={p.event.id} placed={p} onOpen={onOpen} lang={lang} />
                 ))}
                 {/* now line */}
                 {showNow && (

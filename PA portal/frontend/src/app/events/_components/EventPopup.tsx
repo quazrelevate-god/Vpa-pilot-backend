@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { api } from "../_lib/api";
 import type { EventItem } from "../_lib/types";
-import { EVENT_TYPE_META, typeMeta } from "../_lib/types";
+import { EVENT_TYPE_META, displayTitle, pickRawSummary, pickTitle, pickVenue, typeMeta } from "../_lib/types";
 import { fmtLongDate, fmtTime } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 import {
@@ -26,15 +26,19 @@ import {
 } from "../_lib/icons";
 
 type Draft = {
-  title: string; note: string; venue: string; event_type: string;
+  title_en: string; title_ta: string;
+  venue_en: string; venue_ta: string;
+  note: string; event_type: string;
   event_date: string; start_time: string; end_time: string;
 };
 
 function toDraft(e: EventItem): Draft {
   return {
-    title: e.title ?? "",
+    title_en: e.title_en ?? "",
+    title_ta: e.title_ta ?? "",
+    venue_en: e.venue_en ?? "",
+    venue_ta: e.venue_ta ?? "",
     note: e.note ?? "",
-    venue: e.venue ?? "",
     event_type: e.event_type ?? "",
     event_date: e.date ?? "",
     start_time: e.start_time ?? "",
@@ -139,7 +143,7 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
               <span className="mt-1.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
               <div className="min-w-0 flex-1">
                 <DialogTitle className="break-words text-lg font-extrabold leading-snug text-slate-900">
-                  {event.display_title}
+                  {displayTitle(event, lang)}
                 </DialogTitle>
                 <div className="mt-0.5 text-sm font-semibold text-slate-400">
                   {t(meta.en, meta.ta)}
@@ -176,7 +180,7 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                 {t("Tap the photo to zoom.", "பெரிதாக்க படத்தை தட்டவும்.")}
               </p>
               <ImageLightbox
-                images={[{ url: event.image_url, name: event.display_title }]}
+                images={[{ url: event.image_url, name: displayTitle(event, lang) }]}
                 open={lightbox} onClose={() => setLightbox(false)} />
             </TabsContent>
             )}
@@ -214,11 +218,16 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                       )}
                     </Row>
                     <Row icon={<MapPin strokeWidth={1.75} />} label={t("Venue", "இடம்")}>
-                      {event.venue || <span className="text-slate-400">—</span>}
+                      {pickVenue(event, lang) || <span className="text-slate-400">—</span>}
                     </Row>
                     <Row icon={<Pencil strokeWidth={1.75} />} label={t("Extracted title", "எடுக்கப்பட்ட தலைப்பு")}>
-                      {event.title || <span className="text-slate-400">—</span>}
+                      {pickTitle(event, lang) || <span className="text-slate-400">—</span>}
                     </Row>
+                    {pickRawSummary(event, lang) && (
+                      <Row icon={<StickyNote strokeWidth={1.75} />} label={t("More context", "மேலும் விவரம்")}>
+                        <span className="text-sm leading-relaxed text-slate-600">{pickRawSummary(event, lang)}</span>
+                      </Row>
+                    )}
                     <Row icon={<StickyNote strokeWidth={1.75} />} label={t("Your note (shown on calendar)", "உங்கள் குறிப்பு (நாட்காட்டியில்)")}>
                       {event.note || <span className="text-slate-400">—</span>}
                     </Row>
@@ -242,15 +251,36 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                     <Textarea value={draft.note} rows={2} className="text-base"
                       onChange={(e) => set("note")(e.target.value)} />
                   </div>
+                  {/* Bilingual title — one input per script, both saved. The
+                       backend keeps them in sync; the toggle picks which side
+                       to render on read screens. */}
                   <div className="space-y-1">
-                    <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("Title", "தலைப்பு")}</Label>
-                    <Input value={draft.title} className={inputCls}
-                      onChange={(e) => set("title")(e.target.value)} />
+                    <Label className="text-[0.78rem] font-bold uppercase text-slate-500">
+                      {t("Title (English)", "தலைப்பு (English)")}
+                    </Label>
+                    <Input value={draft.title_en} className={inputCls} placeholder="e.g. Karthik & Priya Wedding"
+                      onChange={(e) => set("title_en")(e.target.value)} />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("Venue", "இடம்")}</Label>
-                    <Input value={draft.venue} className={inputCls}
-                      onChange={(e) => set("venue")(e.target.value)} />
+                    <Label className="text-[0.78rem] font-bold uppercase text-slate-500">
+                      {t("Title (Tamil)", "தலைப்பு (தமிழ்)")}
+                    </Label>
+                    <Input value={draft.title_ta} className={inputCls} placeholder="எ.கா. கார்த்திக் & பிரியா திருமண விழா"
+                      onChange={(e) => set("title_ta")(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[0.78rem] font-bold uppercase text-slate-500">
+                      {t("Venue (English)", "இடம் (English)")}
+                    </Label>
+                    <Input value={draft.venue_en} className={inputCls} placeholder="e.g. SRM Mahal, Tambaram"
+                      onChange={(e) => set("venue_en")(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[0.78rem] font-bold uppercase text-slate-500">
+                      {t("Venue (Tamil)", "இடம் (தமிழ்)")}
+                    </Label>
+                    <Input value={draft.venue_ta} className={inputCls} placeholder="எ.கா. எஸ்.ஆர்.எம். மஹால், தாம்பரம்"
+                      onChange={(e) => set("venue_ta")(e.target.value)} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("Event type", "நிகழ்வு வகை")}</Label>

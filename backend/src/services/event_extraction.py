@@ -33,23 +33,39 @@ logger = logging.getLogger(__name__)
 
 # ── Output schema ───────────────────────────────────────────────────────────────
 class InvitationExtraction(BaseModel):
-    """Structured event details read off one invitation card."""
+    """Structured event details read off one invitation card.
 
-    title: str = Field(
+    The whole PA-portal / Events PWA has an EN / TA language toggle, so every
+    displayed string must exist in both scripts. The extractor always returns
+    both `title_en` + `title_ta` and both `venue_en` + `venue_ta` — one is
+    the source (whatever the card was printed in), the other is a faithful
+    translation/transliteration produced by the same Gemini call. Dates are
+    kept Gregorian (frontend transliterates month names to Tamil), because
+    switching to the actual Tamil calendar (சித்திரை/வைகாசி/…) would break
+    every date filter and calendar grid downstream.
+    """
+
+    title_en: str = Field(
         default="",
         description=(
-            "Short event title naming the occasion and host, in the script the "
-            "card is printed in (e.g. 'Karthik & Priya Wedding', "
-            "'குமரன் திருமண விழா', 'New Bus Stand Opening — Madurai'). "
-            "EMPTY STRING '' if the card is unreadable. Never 'Unknown'."
+            "Short event title in ENGLISH (Latin script). Naming the occasion "
+            "and the host if printed (e.g. 'Karthik & Priya Wedding', "
+            "'New Bus Stand Opening — Madurai'). If the card is printed only "
+            "in Tamil, TRANSLATE the title to natural English (e.g. "
+            "'குமரன் திருமண விழா' -> 'Kumaran Wedding'). Personal names stay "
+            "in Latin letters (transliterate them). EMPTY STRING '' only when "
+            "the card is completely unreadable. Never 'Unknown'."
         ),
         max_length=300,
     )
     title_ta: str = Field(
         default="",
         description=(
-            "The same title in TAMIL (தமிழ்) if the card is Tamil or you can "
-            "transliterate confidently; else empty string ''."
+            "The same title in TAMIL (தமிழ்). If the card is Tamil, echo it "
+            "verbatim; if English, translate to natural Tamil "
+            "('Wedding of Karthik & Priya' -> 'கார்த்திக் & பிரியா திருமண "
+            "விழா'). Personal names use Tamil script. EMPTY STRING '' only "
+            "when the card is completely unreadable."
         ),
         max_length=300,
     )
@@ -62,12 +78,25 @@ class InvitationExtraction(BaseModel):
         ),
         max_length=50,
     )
-    venue: str = Field(
+    venue_en: str = Field(
         default="",
         description=(
-            "The venue/location as printed — hall name, street, town (e.g. "
-            "'SRM Mahal, Tambaram' or 'அண்ணா அரங்கம், மதுரை'). EMPTY STRING '' "
-            "if no venue is printed or it is illegible. Never guess."
+            "Venue/location in ENGLISH (Latin script). Hall name + street + "
+            "town/city as printed on the card (e.g. 'SRM Mahal, Tambaram, "
+            "Chennai'). If the card prints the venue only in Tamil, "
+            "transliterate proper nouns and translate the connectives "
+            "('அண்ணா அரங்கம், மதுரை' -> 'Anna Arangam, Madurai'). EMPTY "
+            "STRING '' if no venue is printed or it is illegible. Never guess."
+        ),
+        max_length=300,
+    )
+    venue_ta: str = Field(
+        default="",
+        description=(
+            "Venue/location in TAMIL (தமிழ் script). If the card prints it "
+            "in Tamil, echo verbatim; if English, transliterate to Tamil "
+            "('SRM Mahal, Tambaram' -> 'எஸ்.ஆர்.எம். மஹால், தாம்பரம்'). EMPTY "
+            "STRING '' if no venue is printed or illegible."
         ),
         max_length=300,
     )
@@ -104,12 +133,21 @@ class InvitationExtraction(BaseModel):
         ),
         max_length=5,
     )
-    raw_summary: str = Field(
+    raw_summary_en: str = Field(
         default="",
         description=(
-            "1-2 plain sentences of anything else useful on the card: hosts' "
-            "names, multi-day schedule, chief guests, reception vs muhurtham "
-            "timings, RSVP contact. English preferred, Tamil acceptable."
+            "1-2 plain ENGLISH sentences of anything else useful on the card: "
+            "hosts' names, multi-day schedule, chief guests, reception vs "
+            "muhurtham timings, RSVP contact. Empty string if nothing extra."
+        ),
+        max_length=600,
+    )
+    raw_summary_ta: str = Field(
+        default="",
+        description=(
+            "The same extra context in TAMIL (தமிழ்). Translation of "
+            "raw_summary_en into natural Tamil, keeping personal names in "
+            "Tamil script. Empty string if raw_summary_en is empty."
         ),
         max_length=600,
     )
@@ -129,13 +167,31 @@ Cards are printed in Tamil, English, or both. Read both scripts. Ornate
 fonts, gold-on-red printing, and photographs of cards at an angle are
 normal — do your best, but never let decoration push you into guessing.
 
-DATES: Tamil cards may use Tamil calendar month names alongside or instead
-of Gregorian dates. Convert to a single Gregorian YYYY-MM-DD. If only day
-and month are printed, resolve the year to the nearest future occurrence
-relative to the "Today's date" line provided in the message. If several
-dates are printed (multiple functions — reception, muhurtham, valaikaappu),
-return the MAIN function's date (muhurtham for weddings) and describe the
-rest in raw_summary.
+BILINGUAL OUTPUT — ALWAYS FILL BOTH SCRIPTS
+The calendar has an English/Tamil toggle, so every visible text field
+must exist in BOTH scripts. For each pair (title_en/title_ta,
+venue_en/venue_ta, raw_summary_en/raw_summary_ta):
+  - If the card is printed in Tamil, echo Tamil verbatim into the *_ta
+    field AND produce a natural English translation into the *_en field.
+  - If the card is printed in English, echo it into *_en AND produce a
+    natural Tamil translation into *_ta (personal names → Tamil script,
+    place names → transliterated).
+  - If the card is bilingual, use the card's own text on each side.
+  - The pair is "both filled or both empty" — never leave one side blank
+    while the other has content, unless the whole card is unreadable.
+Preserve titles, honorifics and personal names; do not summarise them
+away in the translation.
+
+DATES: Cards frequently use Tamil calendar month names (சித்திரை,
+வைகாசி, ஆனி, ஆடி, ஆவணி, புரட்டாசி, ஐப்பசி, கார்த்திகை, மார்கழி, தை, மாசி,
+பங்குனி). ALWAYS convert to a single Gregorian YYYY-MM-DD — the calendar
+UI transliterates the Gregorian month name to Tamil for display, so do
+NOT return Tamil calendar month names. If only day and month are printed,
+resolve the year to the nearest future occurrence relative to the "Today's
+date" line provided in the message. If several dates are printed (multiple
+functions — reception, muhurtham, valaikaappu), return the MAIN function's
+date (muhurtham for weddings) and describe the rest in raw_summary_en /
+raw_summary_ta.
 
 TIMES: convert Tamil daypart words — காலை (morning), முற்பகல் (forenoon),
 மதியம்/நண்பகல் (noon), பிற்பகல் (afternoon), மாலை (evening), இரவு (night) —
@@ -208,9 +264,10 @@ class InvitationExtractionService:
         )
         result = self._call_with_fallback(contents=contents, config=config)
         logger.info(
-            "Invitation extraction done in %dms | model=%s | type=%s | date=%s | time=%s",
+            "Invitation extraction done in %dms | model=%s | type=%s | date=%s | time=%s | en=%r | ta=%r",
             int((time.monotonic() - t0) * 1000), self._model_name,
             result.event_type, result.event_date, result.start_time,
+            (result.title_en or "")[:40], (result.title_ta or "")[:40],
         )
         return result
 

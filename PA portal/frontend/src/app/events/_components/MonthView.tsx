@@ -7,7 +7,7 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { EventItem } from "../_lib/types";
-import { typeMeta } from "../_lib/types";
+import { displayTitle, typeMeta } from "../_lib/types";
 import { dayName, monthCells, sameDay, toISO } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 
@@ -74,7 +74,7 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
                         processing && "animate-pulse",
                       )}>
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
-                      <span className="truncate">{e.display_title}</span>
+                      <span className="truncate">{displayTitle(e, lang)}</span>
                     </button>
                   );
                 })}

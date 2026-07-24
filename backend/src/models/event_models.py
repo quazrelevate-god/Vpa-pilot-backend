@@ -54,8 +54,16 @@ class InvitationEvent(Base):
     note       = Column(Text, nullable=True)
 
     # ── Extracted fields (editable by the PA team) ──────────────────────────────
-    title      = Column(VARCHAR(300), nullable=True, comment="Event name/host as printed on the card")
-    venue      = Column(VARCHAR(300), nullable=True)
+    # Bilingual title + venue — the PWA has an EN/TA toggle and needs both
+    # sides. Gemini always fills both (see event_extraction.EXTRACTION_PROMPT).
+    # `title` / `venue` (below) are the legacy single-language columns; still
+    # populated for back-compat but the UI reads title_en/_ta and venue_en/_ta.
+    title      = Column(VARCHAR(300), nullable=True, comment="Legacy single-language title (kept for back-compat)")
+    title_en   = Column(VARCHAR(300), nullable=True, comment="Title in English (populated for both EN- and TA-sourced cards)")
+    title_ta   = Column(VARCHAR(300), nullable=True, comment="Title in Tamil (populated for both EN- and TA-sourced cards)")
+    venue      = Column(VARCHAR(300), nullable=True, comment="Legacy single-language venue (kept for back-compat)")
+    venue_en   = Column(VARCHAR(300), nullable=True, comment="Venue in English")
+    venue_ta   = Column(VARCHAR(300), nullable=True, comment="Venue in Tamil")
     event_type = Column(VARCHAR(50),  nullable=True, comment="One of EVENT_TYPES")
     event_date = Column(Date, nullable=True, comment="NULL => unscheduled / needs review")
     start_time = Column(Time, nullable=True, comment="NULL with a date set => all-day")
@@ -75,6 +83,7 @@ class InvitationEvent(Base):
     created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
     updated_at   = Column(DateTime, nullable=True)
+    updated_by   = Column(VARCHAR(100), nullable=True, comment="events_session username of the last PATCH")
 
     __table_args__ = (
         Index("ix_inv_events_date", "event_date"),

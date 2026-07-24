@@ -39,12 +39,15 @@ async function downscale(file: File): Promise<Blob> {
 }
 
 type Fields = {
-  title: string; venue: string; event_type: string;
+  title_en: string; title_ta: string;
+  venue_en: string; venue_ta: string;
+  event_type: string;
   event_date: string; start_time: string; end_time: string; note: string;
 };
 
 const EMPTY: Fields = {
-  title: "", venue: "", event_type: "", event_date: "",
+  title_en: "", title_ta: "", venue_en: "", venue_ta: "",
+  event_type: "", event_date: "",
   start_time: "", end_time: "", note: "",
 };
 
@@ -85,8 +88,18 @@ export default function ManualEventForm({
 
   function validate(): boolean {
     const e: Partial<Fields> = {};
-    if (!fields.title.trim())      e.title      = t("Required", "தேவை");
-    if (!fields.venue.trim())      e.venue      = t("Required", "தேவை");
+    // Bilingual pair: at least one side of each pair must be filled.
+    // The backend echoes the filled side into the empty one on the wire read
+    // path (pickTitle/pickVenue fallback), so a lone Tamil title still renders
+    // in the English tab.
+    if (!fields.title_en.trim() && !fields.title_ta.trim()) {
+      const msg = t("Enter at least one language", "குறைந்தது ஒரு மொழியில் தேவை");
+      e.title_en = msg; e.title_ta = msg;
+    }
+    if (!fields.venue_en.trim() && !fields.venue_ta.trim()) {
+      const msg = t("Enter at least one language", "குறைந்தது ஒரு மொழியில் தேவை");
+      e.venue_en = msg; e.venue_ta = msg;
+    }
     if (!fields.event_type)        e.event_type = t("Required", "தேவை");
     if (!fields.event_date)        e.event_date = t("Required", "தேவை");
     if (!fields.start_time)        e.start_time = t("Required", "தேவை");
@@ -104,8 +117,12 @@ export default function ManualEventForm({
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append("title",      fields.title.trim());
-      fd.append("venue",      fields.venue.trim());
+      // Send bilingual pairs. Backend accepts either _en/_ta or legacy
+      // `title`/`venue`; we always send the new shape.
+      fd.append("title_en",   fields.title_en.trim());
+      fd.append("title_ta",   fields.title_ta.trim());
+      fd.append("venue_en",   fields.venue_en.trim());
+      fd.append("venue_ta",   fields.venue_ta.trim());
       fd.append("event_type", fields.event_type);
       fd.append("event_date", fields.event_date);
       fd.append("start_time", fields.start_time);
@@ -150,26 +167,39 @@ export default function ManualEventForm({
               onChange={(e) => set("note")(e.target.value)} />
           </div>
 
-          {/* Title */}
+          {/* Title — bilingual pair. Fill at least one; the other side
+               falls back to what's filled on read screens. */}
           <div className="space-y-1">
             <Label className="text-[0.78rem] font-bold uppercase tracking-wide text-slate-500">
               {t("Title", "தலைப்பு")} <span className="text-red-500">*</span>
+              <span className="ml-1.5 font-normal normal-case tracking-normal text-slate-400">
+                {t("— fill at least one", "— குறைந்தது ஒன்று")}
+              </span>
             </Label>
-            <Input value={fields.title} className={cn(inputCls, errors.title && "border-red-400")}
-              placeholder={t("e.g. Karthik & Priya Wedding", "எ.கா. கார்த்திக் திருமண விழா")}
-              onChange={(e) => set("title")(e.target.value)} />
-            {errors.title && <p className={errCls}>{errors.title}</p>}
+            <Input value={fields.title_en} className={cn(inputCls, errors.title_en && "border-red-400")}
+              placeholder="English — e.g. Karthik & Priya Wedding"
+              onChange={(e) => set("title_en")(e.target.value)} />
+            <Input value={fields.title_ta} className={cn(inputCls, errors.title_ta && "border-red-400", "mt-2")}
+              placeholder="தமிழ் — எ.கா. கார்த்திக் திருமண விழா"
+              onChange={(e) => set("title_ta")(e.target.value)} />
+            {(errors.title_en || errors.title_ta) && <p className={errCls}>{errors.title_en || errors.title_ta}</p>}
           </div>
 
-          {/* Venue */}
+          {/* Venue — bilingual pair, same rule as title. */}
           <div className="space-y-1">
             <Label className="text-[0.78rem] font-bold uppercase tracking-wide text-slate-500">
               {t("Venue", "இடம்")} <span className="text-red-500">*</span>
+              <span className="ml-1.5 font-normal normal-case tracking-normal text-slate-400">
+                {t("— fill at least one", "— குறைந்தது ஒன்று")}
+              </span>
             </Label>
-            <Input value={fields.venue} className={cn(inputCls, errors.venue && "border-red-400")}
-              placeholder={t("e.g. SRM Mahal, Chennai", "எ.கா. SRM மகால், சென்னை")}
-              onChange={(e) => set("venue")(e.target.value)} />
-            {errors.venue && <p className={errCls}>{errors.venue}</p>}
+            <Input value={fields.venue_en} className={cn(inputCls, errors.venue_en && "border-red-400")}
+              placeholder="English — e.g. SRM Mahal, Chennai"
+              onChange={(e) => set("venue_en")(e.target.value)} />
+            <Input value={fields.venue_ta} className={cn(inputCls, errors.venue_ta && "border-red-400", "mt-2")}
+              placeholder="தமிழ் — எ.கா. எஸ்.ஆர்.எம். மகால், சென்னை"
+              onChange={(e) => set("venue_ta")(e.target.value)} />
+            {(errors.venue_en || errors.venue_ta) && <p className={errCls}>{errors.venue_en || errors.venue_ta}</p>}
           </div>
 
           {/* Event Type */}

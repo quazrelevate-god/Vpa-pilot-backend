@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { api } from "../_lib/api";
 import type { EventItem } from "../_lib/types";
-import { typeMeta } from "../_lib/types";
+import { displayTitle, pickVenue, typeMeta } from "../_lib/types";
 import { useT } from "../_lib/i18n";
 import { AlertTriangle, Inbox, Loader2 } from "../_lib/icons";
 
@@ -26,7 +26,7 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
   refreshKey: number;
   onOpen: (e: EventItem) => void;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const [items, setItems] = useState<EventItem[] | null>(null);
 
   useEffect(() => {
@@ -88,8 +88,8 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
               </span>
             )}
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[0.9rem] font-bold text-slate-900">{e.display_title}</div>
-              {e.venue && <div className="truncate text-xs text-slate-500 mt-0.5">{e.venue}</div>}
+              <div className="truncate text-[0.9rem] font-bold text-slate-900">{displayTitle(e, lang)}</div>
+              {pickVenue(e, lang) && <div className="truncate text-xs text-slate-500 mt-0.5">{pickVenue(e, lang)}</div>}
               <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                 <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.72rem] font-bold", chip.cls)}>
                   {e.status === "FAILED" && <AlertTriangle className="h-3 w-3" strokeWidth={2} />}
