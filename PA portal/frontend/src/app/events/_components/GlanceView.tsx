@@ -8,6 +8,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { EventItem } from "../_lib/types";
 import { displayTitle, typeMeta } from "../_lib/types";
+import { AttendanceDot } from "./AttendanceDot";
 import { fmtTime, sameDay, toISO, weekDays } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 import { ChevronDown } from "../_lib/icons";
@@ -148,8 +149,9 @@ export default function GlanceView({ anchor, byDay, onOpen }: {
                             </span>
                             <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
                             <span className="min-w-0 flex-1">
-                              <span className={cn("block truncate text-sm font-bold text-slate-800", processing && "animate-pulse")}>
-                                {displayTitle(e, lang)}
+                              <span className={cn("flex items-center gap-1.5 truncate text-sm font-bold text-slate-800", processing && "animate-pulse")}>
+                                <AttendanceDot value={e.attendance} />
+                                <span className="truncate">{displayTitle(e, lang)}</span>
                               </span>
                               <span className="font-mono text-xs tabular-nums text-slate-500">
                                 {e.start_time ? fmtTime(e.start_time) : t("All day", "நாள் முழுதும்")}

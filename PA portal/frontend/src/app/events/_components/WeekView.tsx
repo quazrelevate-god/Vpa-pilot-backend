@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { EventItem } from "../_lib/types";
 import { displayTitle, typeMeta } from "../_lib/types";
+import { AttendanceDot } from "./AttendanceDot";
 import { dayName, fmtTime, pad2, sameDay, toISO, toMinutes, weekDays } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 
@@ -102,8 +103,9 @@ function EventBlock({ placed, onOpen, lang }: {
         "absolute overflow-hidden rounded-md border-l-4 px-1.5 py-1 text-left",
         processing && "animate-pulse",
       )}>
-      <div className="truncate text-[0.75rem] font-bold leading-tight text-slate-800">
-        {displayTitle(e, lang)}
+      <div className="flex items-center gap-1 truncate text-[0.75rem] font-bold leading-tight text-slate-800">
+        <AttendanceDot value={e.attendance} />
+        <span className="truncate">{displayTitle(e, lang)}</span>
       </div>
       <div className="truncate font-mono text-[0.68rem] font-medium tabular-nums text-slate-500">
         {fmtTime(e.start_time)}
@@ -219,10 +221,11 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
                     <button key={e.id} onClick={() => onOpen(e)}
                       style={{ backgroundColor: `${meta.color}1A`, borderColor: meta.color }}
                       className={cn(
-                        "block w-full truncate rounded-md border-l-4 px-1.5 py-1 text-left text-[0.8rem] font-bold text-slate-800",
+                        "flex w-full items-center gap-1 truncate rounded-md border-l-4 px-1.5 py-1 text-left text-[0.8rem] font-bold text-slate-800",
                         processing && "animate-pulse",
                       )}>
-                      {displayTitle(e, lang)}
+                      <AttendanceDot value={e.attendance} />
+                      <span className="truncate">{displayTitle(e, lang)}</span>
                     </button>
                   );
                 })}

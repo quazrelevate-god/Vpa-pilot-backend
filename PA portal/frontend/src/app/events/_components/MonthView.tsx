@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { EventItem } from "../_lib/types";
 import { displayTitle, typeMeta } from "../_lib/types";
+import { AttendanceDot } from "./AttendanceDot";
 import { dayName, monthCells, sameDay, toISO } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 
@@ -74,6 +75,7 @@ export default function MonthView({ anchor, byDay, onOpen, onOpenDay }: {
                         processing && "animate-pulse",
                       )}>
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                      <AttendanceDot value={e.attendance} className="!h-3 !w-3 !text-[8px]" />
                       <span className="truncate">{displayTitle(e, lang)}</span>
                     </button>
                   );

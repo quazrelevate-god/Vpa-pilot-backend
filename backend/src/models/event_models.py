@@ -78,6 +78,13 @@ class InvitationEvent(Base):
     # Full raw Gemini extraction (audit/debug; columns above are the truth).
     extraction_json = Column(JSONB, nullable=True)
 
+    # ── Attendance (post-event) ─────────────────────────────────────────────────
+    # Simple three-state marker set by the PA after the event: NULL means not
+    # yet reviewed / not applicable; 'attended' / 'not_attended' record the
+    # outcome. Kept as a plain string (not an enum) so a future third state —
+    # e.g. 'sent_representative' — can be added without a schema migration.
+    attendance = Column(VARCHAR(20), nullable=True, comment="attended | not_attended | NULL")
+
     # ── Timestamps / audit ──────────────────────────────────────────────────────
     created_by   = Column(VARCHAR(100), nullable=False, comment="events_session username")
     created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)

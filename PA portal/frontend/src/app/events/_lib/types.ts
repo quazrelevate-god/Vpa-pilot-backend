@@ -2,6 +2,9 @@
 
 export type EventStatus = "QUEUED" | "PROCESSING" | "READY" | "FAILED";
 
+/** Post-event outcome, set manually by the PA. Null = not marked yet. */
+export type Attendance = "attended" | "not_attended" | null;
+
 export type EventItem = {
   id: number;
   /** note ?? title_en ?? title_ta ?? "Untitled" — plain fallback string.
@@ -30,6 +33,7 @@ export type EventItem = {
   start_time: string | null;
   end_time: string | null;
   status: EventStatus;
+  attendance: Attendance;
   error_message: string | null;
   /** null for manually-created events with no photo uploaded. */
   image_url: string | null;

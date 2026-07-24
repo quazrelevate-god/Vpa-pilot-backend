@@ -114,6 +114,7 @@ def serialize(e: InvitationEvent) -> dict:
         "start_time": e.start_time.strftime("%H:%M") if e.start_time else None,
         "end_time": e.end_time.strftime("%H:%M") if e.end_time else None,
         "status": e.status,
+        "attendance": e.attendance,   # "attended" | "not_attended" | null
         "error_message": e.error_message,
         "image_url": f"/events/api/files/{e.image_path}" if has_photo else None,
         "has_photo": has_photo,
@@ -512,6 +513,16 @@ async def update_event(
                 setattr(event, key, parsed)
             else:
                 setattr(event, key, None)
+
+    # Attendance — three-state; empty string clears back to NULL.
+    if "attendance" in payload:
+        raw = (payload["attendance"] or "").strip().lower()
+        if raw in ("", "null", "none"):
+            event.attendance = None
+        elif raw in ("attended", "not_attended"):
+            event.attendance = raw
+        else:
+            raise HTTPException(400, "attendance must be 'attended', 'not_attended' or empty")
 
     # A manual date on a FAILED row resolves it — no retry needed.
     if event.status == STATUS_FAILED and event.event_date is not None:

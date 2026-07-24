@@ -22,7 +22,7 @@ import { EVENT_TYPE_META, displayTitle, pickRawSummary, pickTitle, pickVenue, ty
 import { fmtLongDate, fmtTime } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 import {
-  AlertTriangle, Clock, Loader2, MapPin, Pencil, RotateCcw, StickyNote, Trash2,
+  AlertTriangle, Check, Clock, Loader2, MapPin, Pencil, RotateCcw, StickyNote, Trash2, X as XIcon,
 } from "../_lib/icons";
 
 type Draft = {
@@ -131,6 +131,22 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
     }
   }
 
+  // Post-event attendance marker. Sending the same value again clears it —
+  // gives the PA a "undo" without needing a separate button.
+  async function setAttendance(next: "attended" | "not_attended") {
+    if (!event || busy) return;
+    const value = event.attendance === next ? "" : next;   // toggle-off = clear
+    setBusy(true);
+    try {
+      const updated = await api.update(event.id, { attendance: value });
+      onChanged(updated);
+    } catch (err) {
+      toast.error((err as Error).message || t("Could not save.", "சேமிக்க முடியவில்லை."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const inputCls = "h-12 text-base";
 
   return (
@@ -231,6 +247,51 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                     <Row icon={<StickyNote strokeWidth={1.75} />} label={t("Your note (shown on calendar)", "உங்கள் குறிப்பு (நாட்காட்டியில்)")}>
                       {event.note || <span className="text-slate-400">—</span>}
                     </Row>
+                  </div>
+
+                  {/* Attendance — post-event marker. Tapping the same chip
+                       again clears it, so the PA can undo a mis-tap without a
+                       separate button. Available on every event; the actual
+                       "did we go?" question only makes sense for past events
+                       but hiding it based on the date would need the toggle
+                       to consider the user's timezone — cheap to always show. */}
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="mb-2 text-[0.72rem] font-bold uppercase tracking-wide text-slate-400">
+                      {t("Attendance", "வருகை")}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => setAttendance("attended")}
+                        className={cn(
+                          "h-12 gap-2 text-base font-bold",
+                          event.attendance === "attended"
+                            ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                            : "text-slate-600",
+                        )}>
+                        <Check className="h-5 w-5" strokeWidth={2} />
+                        {t("Attended", "வருகை பதிந்தது")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => setAttendance("not_attended")}
+                        className={cn(
+                          "h-12 gap-2 text-base font-bold",
+                          event.attendance === "not_attended"
+                            ? "border-slate-400 bg-slate-100 text-slate-700"
+                            : "text-slate-600",
+                        )}>
+                        <XIcon className="h-5 w-5" strokeWidth={2} />
+                        {t("Not attended", "வரவில்லை")}
+                      </Button>
+                    </div>
+                    {event.attendance && (
+                      <p className="mt-2 text-[11px] text-slate-400">
+                        {t("Tap the same button again to clear.", "அதே பொத்தானை மீண்டும் தட்டி நீக்கலாம்.")}
+                      </p>
+                    )}
                   </div>
 
                   <div className="mt-3 flex gap-2">
