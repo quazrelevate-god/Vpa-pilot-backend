@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   FileText, Film, Mic, Paperclip, ImageIcon,
-  ZoomIn, ZoomOut, RotateCcw, Maximize2, Minimize2, RotateCw,
+  ZoomIn, ZoomOut, RotateCcw, Maximize2, RotateCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
@@ -193,7 +193,6 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
-  const [expanded, setExpanded] = useState(false);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
 
@@ -202,22 +201,6 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
     setOffset({ x: 0, y: 0 });
     setRotation(0);
   }, []);
-
-  // Expanded mode: image pops out to a large centered overlay so detail
-  // (e.g. text inside a scanned proof photo) is actually legible — the
-  // inline box in the drawer is too small to read fine print. Esc or the
-  // toggle button collapses it back to the inline size.
-  useEffect(() => {
-    if (!expanded) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setExpanded(false); };
-    document.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [expanded]);
 
   const clamp = useCallback((z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(z.toFixed(2)))), []);
 
@@ -267,10 +250,7 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
     <div
       ref={stageRef}
       className={cn(
-        "flex items-center justify-center overflow-hidden bg-black/[0.04]",
-        expanded
-          ? "fixed inset-0 z-[100] bg-black/90"
-          : "relative h-full w-full",
+        "relative flex h-full w-full items-center justify-center overflow-hidden bg-black/[0.04]",
         zoom > 1 ? (dragRef.current ? "cursor-grabbing" : "cursor-grab") : "cursor-zoom-in"
       )}
       onDoubleClick={(e) => zoomBy(zoom >= ZOOM_MAX - 0.01 ? -(zoom - 1) : 1, { x: e.clientX, y: e.clientY })}
@@ -285,10 +265,7 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
         src={src}
         alt={alt}
         draggable={false}
-        className={cn(
-          "select-none object-contain transition-transform duration-75 ease-out will-change-transform",
-          expanded ? "max-h-[92vh] max-w-[92vw]" : "max-h-full max-w-full"
-        )}
+        className="max-h-full max-w-full select-none object-contain transition-transform duration-75 ease-out will-change-transform"
         style={{
           transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${zoom}) rotate(${rotation}deg)`,
         }}
@@ -309,8 +286,8 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
         <ZoomBtn label="Rotate" onClick={() => setRotation((r) => (r + 90) % 360)}>
           <RotateCw className="h-4 w-4" />
         </ZoomBtn>
-        <ZoomBtn label={expanded ? "Collapse" : "Expand"} onClick={() => setExpanded((e) => !e)}>
-          {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        <ZoomBtn label="Fit" onClick={reset}>
+          <Maximize2 className="h-4 w-4" />
         </ZoomBtn>
         <ZoomBtn label="Reset" onClick={reset}>
           <RotateCcw className="h-4 w-4" />
