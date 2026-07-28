@@ -208,12 +208,24 @@ async def features() -> dict:
 # ── Users ────────────────────────────────────────────────────────────────────
 
 def _user_row(r: Login) -> UserRow:
-    row = UserRow.model_validate(r, from_attributes=True)
-    row.department = (r.scope or {}).get("department")
-    # Capability roles are eager-loaded via Login.capability_roles (selectin);
-    # sort for stable UI ordering across responses.
-    row.capability_roles = sorted(cr.role for cr in (r.capability_roles or []))
-    return row
+    """Build the wire shape explicitly. Cannot use model_validate(from_attributes=
+    True) because Pydantic would try to read `r.capability_roles` — a list of
+    UserRole ORM objects — into the `list[str]` field and 500 the request. This
+    is also cheaper: no reflection, and the field list here doubles as the
+    single place that documents what the admin API exposes."""
+    return UserRow(
+        id=r.id,
+        login_name=r.login_name,
+        full_name=r.full_name,
+        email=r.email,
+        role=r.role,
+        department=(r.scope or {}).get("department"),
+        # capability_roles is eager-loaded via Login.capability_roles (selectin);
+        # sort for stable UI ordering across responses.
+        capability_roles=sorted(cr.role for cr in (r.capability_roles or [])),
+        is_active=r.is_active,
+        created_at=r.created_at,
+    )
 
 
 def _validate_capability_roles(roles: list[str]) -> list[str]:
