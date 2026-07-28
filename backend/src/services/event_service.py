@@ -115,6 +115,13 @@ def serialize(e: InvitationEvent) -> dict:
         "start_time": e.start_time.strftime("%H:%M") if e.start_time else None,
         "end_time": e.end_time.strftime("%H:%M") if e.end_time else None,
         "status": e.status,
+        # Approval gate — see model. False = sitting in Needs Review awaiting
+        # a reviewer's Approve after Minister confirmation. Frontend calendar
+        # already only receives approved rows (server-filtered), but the
+        # detail/edit views need the flag to render the Approve button.
+        "is_approved": bool(e.is_approved),
+        "approved_by": e.approved_by,
+        "approved_at": e.approved_at.isoformat() if e.approved_at else None,
         "attendance": e.attendance,   # "attended" | "not_attended" | null
         "error_message": e.error_message,
         "image_url": f"/events/api/files/{quote(e.image_path, safe='/')}" if has_photo else None,
@@ -408,9 +415,14 @@ async def recover_stale() -> int:
 # ── Queries ─────────────────────────────────────────────────────────────────────
 
 async def list_events(db: AsyncSession, start: date, end: date) -> list[InvitationEvent]:
+    """Calendar feed — approved events only. Anything created (photo or
+    manual) is unapproved by default and stays out of the calendar until a
+    reviewer clicks Approve; those unapproved rows surface in Needs Review
+    for triage."""
     result = await db.execute(
         select(InvitationEvent)
         .where(InvitationEvent.event_date >= start, InvitationEvent.event_date <= end)
+        .where(InvitationEvent.is_approved == True)  # noqa: E712
         .order_by(InvitationEvent.event_date,
                   InvitationEvent.start_time.asc().nulls_first(),
                   InvitationEvent.id)
@@ -423,7 +435,11 @@ _NEEDS_REVIEW_HARD_LIMIT = 200
 
 
 async def list_needs_review(db: AsyncSession) -> list[InvitationEvent]:
-    """FAILED / still-processing / READY-but-undated rows, newest first.
+    """Everything a reviewer might act on: FAILED, still-processing, undated,
+    OR fully-extracted-but-not-yet-approved. The last case is what makes
+    every new event (photo OR manual) surface here first — the reviewer
+    confirms with the Minister before flipping is_approved and letting the
+    row hit the calendar.
 
     Rolling 30-day window (by created_at) plus a hard LIMIT so a stale pile
     of old undated invitations can never balloon this endpoint into a full-
@@ -436,6 +452,7 @@ async def list_needs_review(db: AsyncSession) -> list[InvitationEvent]:
         .where(
             (InvitationEvent.event_date.is_(None))
             | (InvitationEvent.status != STATUS_READY)
+            | (InvitationEvent.is_approved == False)  # noqa: E712
         )
         .where(InvitationEvent.created_at >= cutoff)
         .order_by(InvitationEvent.created_at.desc())
@@ -559,4 +576,31 @@ async def retry_event(db: AsyncSession, event_id: int) -> InvitationEvent:
     await db.commit()
     await db.refresh(event)
     asyncio.create_task(process_event(event.id))
+    return event
+
+
+async def approve_event(
+    db: AsyncSession, event_id: int, approved_by: str,
+) -> InvitationEvent:
+    """Reviewer flips the approval gate after Minister confirmation.
+
+    Refuses to approve rows that aren't ready — extraction still running, a
+    failed OCR, or no event_date yet — because those aren't in a state a
+    Minister could have said "yes" to. The reviewer should retry / fill in
+    the missing fields first.
+
+    Idempotent: re-approving is a no-op that doesn't stamp a new approved_at.
+    """
+    event = await get_event(db, event_id)
+    if event.status != STATUS_READY:
+        raise HTTPException(409, "Only READY events can be approved — retry / fix first")
+    if event.event_date is None:
+        raise HTTPException(409, "Set an event date before approving")
+    if event.is_approved:
+        return event
+    event.is_approved = True
+    event.approved_by = approved_by
+    event.approved_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(event)
     return event

@@ -305,6 +305,19 @@ async def retry_event(
     return event_service.serialize(event)
 
 
+@router.post("/api/events/{event_id}/approve")
+async def approve_event(
+    event_id: int,
+    db: AsyncSession = Depends(get_db),
+    login: Login = Depends(require_events_review),
+):
+    """Reviewer flips the approval gate after confirming with the Minister.
+    Only after this does the event appear on the calendar view — every
+    upload (photo or manual) waits here first, no exceptions."""
+    event = await event_service.approve_event(db, event_id, approved_by=login.login_name)
+    return event_service.serialize(event)
+
+
 @router.delete("/api/events/{event_id}")
 async def delete_event(
     event_id: int,

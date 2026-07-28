@@ -63,6 +63,7 @@ export const api = {
   update: (id: number, body: Record<string, string>) =>
     send<EventItem>(`/events/api/events/${id}`, "PATCH", body),
   retry: (id: number) => send<EventItem>(`/events/api/events/${id}/retry`, "POST"),
+  approve: (id: number) => send<EventItem>(`/events/api/events/${id}/approve`, "POST"),
   remove: (id: number) => send<{ ok: boolean }>(`/events/api/events/${id}`, "DELETE"),
 
   // ── capture ──

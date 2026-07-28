@@ -33,6 +33,12 @@ export type EventItem = {
   start_time: string | null;
   end_time: string | null;
   status: EventStatus;
+  /** Approval gate — false until a reviewer clicks Approve after Minister
+   *  confirmation. Only approved events appear on the calendar; unapproved
+   *  rows sit in Needs Review. */
+  is_approved: boolean;
+  approved_by: string | null;
+  approved_at: string | null;
   attendance: Attendance;
   error_message: string | null;
   /** null for manually-created events with no photo uploaded. */

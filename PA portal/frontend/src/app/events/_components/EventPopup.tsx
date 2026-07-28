@@ -131,6 +131,20 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
     }
   }
 
+  async function doApprove() {
+    if (!event) return;
+    setBusy(true);
+    try {
+      const updated = await api.approve(event.id);
+      toast.success(t("Approved — now on the calendar", "அனுமதிக்கப்பட்டது — நாட்காட்டியில் காட்டப்படுகிறது"));
+      onChanged(updated);
+    } catch (err) {
+      toast.error((err as Error).message || t("Approve failed", "அனுமதி தோல்வி"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Post-event attendance marker. Sending the same value again clears it —
   // gives the PA a "undo" without needing a separate button.
   async function setAttendance(next: "attended" | "not_attended") {
@@ -212,6 +226,29 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                     <Button size="sm" variant="outline" disabled={busy} onClick={doRetry}
                       className="mt-2 h-10 gap-1.5 border-red-300 bg-white text-sm font-bold text-red-700">
                       <RotateCcw className="h-4 w-4" /> {t("Retry", "மீண்டும் முயற்சி")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Awaiting-approval banner — shown for READY + dated but not yet
+                  approved rows. Every new event lands here first; the reviewer
+                  confirms with the Minister then clicks Approve, and the event
+                  moves onto the calendar. */}
+              {event.status === "READY" && !!event.date && !event.is_approved && (
+                <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                  <div className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-blue-500/15" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold">{t("Awaiting approval", "அனுமதிக்கு காத்திருக்கிறது")}</div>
+                    <div className="mt-0.5 opacity-80">
+                      {t(
+                        "Confirm with the Minister, then approve to publish on the calendar.",
+                        "அமைச்சரிடம் உறுதிசெய்து, நாட்காட்டியில் வெளியிட அனுமதிக்கவும்.",
+                      )}
+                    </div>
+                    <Button size="sm" disabled={busy} onClick={doApprove}
+                      className="mt-2 h-10 gap-1.5 bg-[#2F6FED] px-4 text-sm font-bold text-white hover:bg-[#2456bd]">
+                      {t("Approve", "அனுமதி")}
                     </Button>
                   </div>
                 </div>
