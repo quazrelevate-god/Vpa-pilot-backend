@@ -235,14 +235,12 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
   const [rotation, setRotation] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [errored, setErrored] = useState(false);
+  const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
 
   // Reset the error state if the source changes (drawer row swap reuses the key,
   // but a retry after a transient failure should re-attempt the load).
   useEffect(() => { setErrored(false); }, [src]);
-
-  if (errored) return <PreviewError />;
-  const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
 
   const reset = useCallback(() => {
     setZoom(1);
@@ -309,6 +307,11 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
     setOffset({ x: d.ox + (e.clientX - d.x), y: d.oy + (e.clientY - d.y) });
   };
   const onPointerUp = () => { dragRef.current = null; };
+
+  // Errored branch renders AFTER all hooks have run — an early return above
+  // the useCallback/useEffect calls would violate hooks-rules-of-order and
+  // trip "Rendered fewer hooks than expected" on the very first failure.
+  if (errored) return <PreviewError />;
 
   return (
     <div

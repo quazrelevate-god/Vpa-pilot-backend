@@ -90,6 +90,71 @@ async def api_analytics_petitions(
     return JSONResponse(await analytics_service.get_petitions(db, f, page, page_size, sort, direction))
 
 
+@router.get("/api/petitions/inbox")
+async def api_petitions_inbox(
+    request: Request,
+    page: int = 1,
+    page_size: int = 25,
+    status: str = "",
+    q: str = "",
+    category: str = "",
+    priority: str = "",
+    source: str = "",
+    batch_id: str = "",
+    from_date: str = "",
+    to_date: str = "",
+    sort: str = "submitted_desc",
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Unified AI-review inbox — one server-paginated feed combining
+    `ai_uploads` and citizen-submitted petitions. Replaces the frontend's old
+    ai-uploads + fetchAppointments(pageSize=2000) merge, whose 500-row upload
+    cap made the "showing N of M" total drift from the true tab count."""
+    from src.services.petition_inbox_service import petition_inbox_service
+    data = await petition_inbox_service.list_inbox(
+        db,
+        page=page, page_size=page_size,
+        status=status or None, q=q or None, category=category or None,
+        priority=priority or None, source=source or None,
+        batch_id=batch_id or None, from_date=from_date or None, to_date=to_date or None,
+        sort=sort or "submitted_desc",
+    )
+    return JSONResponse(data)
+
+
+@router.get("/api/petitions/inbox/facets")
+async def api_petitions_inbox_facets(
+    request: Request,
+    status: str = "",
+    q: str = "",
+    priority: str = "",
+    source: str = "",
+    batch_id: str = "",
+    from_date: str = "",
+    to_date: str = "",
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Tab counts + category distribution across BOTH tables. Replaces the
+    frontend's old bulk `fetchAppointments(pageSize=2000)` + client-side
+    aggregation, which silently truncated past 2000 rows and mixed status
+    scopes so the chart total (141) disagreed with the tab count (133).
+
+    `status` is asymmetric on purpose: `counts_by_status` ignores it (so each
+    tab shows what it WOULD have if clicked), but `distribution` applies it
+    (so the chart reflects the CURRENT tab and its total equals the tab's
+    count)."""
+    from src.services.petition_inbox_service import petition_inbox_service
+    data = await petition_inbox_service.facets(
+        db,
+        status=status or None,
+        q=q or None, priority=priority or None, source=source or None,
+        batch_id=batch_id or None, from_date=from_date or None, to_date=to_date or None,
+    )
+    return JSONResponse(data)
+
+
 @router.get("/api/analytics/export")
 async def api_analytics_export(
     date_from: str = None, date_to: str = None, category: str = None, priority: str = None,
