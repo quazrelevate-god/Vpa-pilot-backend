@@ -31,9 +31,13 @@ function Item({ active, icon, label, badge, onClick }: {
   );
 }
 
-export default function BottomNav({ view, reviewCount, onChange }: {
+export default function BottomNav({ view, reviewCount, canReview, onChange }: {
   view: View;
   reviewCount: number;
+  // Only event_reviewer sees the Needs Review tab. Uploader-only accounts
+  // never see it — the endpoint 403s them anyway, so hiding it also stops a
+  // pointless failing background poll.
+  canReview: boolean;
   onChange: (v: View) => void;
 }) {
   const { t } = useT();
@@ -44,8 +48,10 @@ export default function BottomNav({ view, reviewCount, onChange }: {
         label={t("Overview", "மேலோட்டம்")} onClick={() => onChange("overview")} />
       <Item active={view === "calendar"} icon={<CalendarDays strokeWidth={1.75} />}
         label={t("Calendar", "நாட்காட்டி")} onClick={() => onChange("calendar")} />
-      <Item active={view === "review"} icon={<Inbox strokeWidth={1.75} />} badge={reviewCount}
-        label={t("Needs Review", "சரிபார்க்க")} onClick={() => onChange("review")} />
+      {canReview && (
+        <Item active={view === "review"} icon={<Inbox strokeWidth={1.75} />} badge={reviewCount}
+          label={t("Needs Review", "சரிபார்க்க")} onClick={() => onChange("review")} />
+      )}
     </nav>
   );
 }

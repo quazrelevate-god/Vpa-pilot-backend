@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "../_lib/api";
+import { api, type EventsRole } from "../_lib/api";
 import type { EventItem } from "../_lib/types";
 import TopBar from "./TopBar";
 import BottomNav from "./BottomNav";
@@ -16,23 +16,38 @@ export type View = "overview" | "calendar" | "review";
 export default function EventsApp() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [roles, setRoles] = useState<EventsRole[]>([]);
   const [view, setView] = useState<View>("calendar");
   const [reviewCount, setReviewCount] = useState(0);
   const [selected, setSelected] = useState<EventItem | null>(null);
   // Bumped after any mutation (upload/edit/delete/retry) so screens refetch.
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const canReview = roles.includes("event_reviewer");
+
   // Session gate: the middleware already redirects logged-out page loads, but
   // an expired cookie mid-session surfaces here as a 401 → back to login.
   useEffect(() => {
     api.session()
-      .then(() => setReady(true))
+      .then((s) => {
+        setRoles(s.roles ?? []);
+        setReady(true);
+      })
       .catch(() => router.replace("/events/login"));
   }, [router]);
 
+  // If the user landed on the review tab but no longer has the reviewer role
+  // (or the initial view state is review for a non-reviewer), send them home.
+  useEffect(() => {
+    if (ready && view === "review" && !canReview) setView("overview");
+  }, [ready, view, canReview]);
+
   const refreshBadge = useCallback(() => {
+    // Only reviewers can see the review queue, so only they need the badge —
+    // needs-review is 403 for uploaders anyway, so calling it would 403-loop.
+    if (!canReview) { setReviewCount(0); return; }
     api.needsReview().then((d) => setReviewCount(d.count)).catch(() => {});
-  }, []);
+  }, [canReview]);
 
   useEffect(() => {
     if (!ready) return;
@@ -65,12 +80,12 @@ export default function EventsApp() {
         {view === "calendar" && (
           <CalendarScreen refreshKey={refreshKey} onOpen={setSelected} onSent={bumpRefresh} />
         )}
-        {view === "review" && (
+        {view === "review" && canReview && (
           <NeedsReviewScreen refreshKey={refreshKey} onOpen={setSelected} />
         )}
       </main>
 
-      <BottomNav view={view} reviewCount={reviewCount} onChange={setView} />
+      <BottomNav view={view} reviewCount={reviewCount} canReview={canReview} onChange={setView} />
 
       <EventPopup
         event={selected}

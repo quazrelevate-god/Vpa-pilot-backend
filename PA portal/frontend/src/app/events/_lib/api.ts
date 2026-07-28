@@ -34,9 +34,19 @@ function send<T>(url: string, method: string, body?: unknown): Promise<T> {
   }).then((r) => readJSON<T>(r));
 }
 
+// Roles the events PWA understands. Server-provided in /session, drives nav
+// gating (hide Needs Review from users without event_reviewer).
+export type EventsRole = "event_uploader" | "event_reviewer";
+
+export interface EventsSession {
+  user: string;
+  label: string;
+  roles: EventsRole[];
+}
+
 export const api = {
   // ── auth ──
-  session: () => getJSON<{ user: string; label: string }>("/events/api/session"),
+  session: () => getJSON<EventsSession>("/events/api/session"),
   logout: () =>
     fetch("/events/api/logout", { method: "POST", credentials: "include" }).then(() => undefined),
 
