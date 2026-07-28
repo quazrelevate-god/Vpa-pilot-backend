@@ -10,6 +10,10 @@ export interface GalleryAttachment {
   name: string;
   url: string;
   type: "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO";
+  // Optional server MIME. Lets the previewer pick the PDF viewer by content type
+  // rather than by filename extension alone — an extensionless PDF (common when
+  // the original name was entirely non-ASCII) would otherwise miss the viewer.
+  mime?: string;
 }
 
 interface AttachmentGalleryProps {

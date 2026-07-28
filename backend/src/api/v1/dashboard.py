@@ -901,6 +901,7 @@ async def serve_stored_file(file_path: str, request: Request) -> Response:
         get_file_bytes, get_file_size, get_file_range_bytes, get_file_content_type,
     )
     from pathlib import PurePosixPath
+    from urllib.parse import quote
 
     filename = PurePosixPath(file_path).name or "file"
     mime, _ = mimetypes.guess_type(filename)
@@ -914,7 +915,21 @@ async def serve_stored_file(file_path: str, request: Request) -> Response:
         mime = await asyncio.to_thread(get_file_content_type, file_path)
         typed_by_fallback = mime is not None
     media_type = mime or "application/octet-stream"
-    disposition = f'inline; filename="{filename}"'
+    # The stored MIME (from get_file_content_type, ultimately the client's
+    # upload-time content_type) becomes the Content-Type header. A value with
+    # non-latin-1 chars would 500 on header serialization, and one containing
+    # CR/LF is a header-injection vector. Fall back to octet-stream if it isn't a
+    # clean, header-safe token.
+    if ("\r" in media_type or "\n" in media_type
+            or not media_type.isascii() or not media_type.strip()):
+        media_type = "application/octet-stream"
+    # HTTP header values must be latin-1-encodable. A non-ASCII filename (e.g. a
+    # Tamil "மனு.pdf" key) raises UnicodeEncodeError when Starlette serializes the
+    # response headers → HTTP 500. RFC 5987: send an ASCII-safe `filename=`
+    # fallback plus a UTF-8 `filename*` that modern browsers prefer and render
+    # correctly. Keeps the header pure-ASCII so encoding can never throw.
+    ascii_name = filename.encode("ascii", "ignore").decode().strip() or "file"
+    disposition = "inline; filename=\"%s\"; filename*=UTF-8''%s" % (ascii_name, quote(filename))
 
     # Cache policy. Well-named files are immutable (unique token_hex names), so
     # they keep the year-long hard cache. Files typed via the fallback must NOT

@@ -1729,6 +1729,9 @@ function SelectField({ label, value, fallback, editing, options, onChange, label
 /** Inline document / attachment preview (download disabled). Shared by the
  *  desktop left panel and the mobile in-body preview. */
 function DocPreview({ review, t }: { review: Upload; t: (k: string) => string }) {
+  // Declared before any early return so the hook order stays stable.
+  const [imgError, setImgError] = useState(false);
+  useEffect(() => { setImgError(false); }, [review.file_url]);
   if (review._kind === "petition") {
     const att = [...(review.attachments ?? [])];
     if (review.audio_url && !att.some(a => a.type === "AUDIO")) att.push({ name: "Voice recording", url: review.audio_url, type: "AUDIO" });
@@ -1751,8 +1754,11 @@ function DocPreview({ review, t }: { review: Upload; t: (k: string) => string })
         <iframe src={src} title="document" className="h-full min-h-[240px] w-full rounded-lg border border-border bg-white" />
       );
     }
+    if (imgError) {
+      return <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
+    }
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={review.file_url} alt="petition" className="mx-auto max-w-full select-none rounded-lg shadow" draggable={false} />;
+    return <img src={review.file_url} alt="petition" onError={() => setImgError(true)} className="mx-auto max-w-full select-none rounded-lg shadow" draggable={false} />;
   }
   return <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
 }

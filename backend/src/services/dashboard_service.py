@@ -842,7 +842,6 @@ async def add_case_attachment(
     a bad type/size; returns None if the appointment doesn't exist.
     """
     import asyncio
-    import re
     import secrets
     from pathlib import Path
     from datetime import datetime as _dt
@@ -858,7 +857,13 @@ async def add_case_attachment(
         return None
 
     attachment_type = "IMAGE" if mime.startswith("image/") else "DOCUMENT"
-    safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename or "file")
+    # Use the shared Unicode-preserving sanitizer (same as citizen/kiosk/AI
+    # streams) rather than an ASCII-only whitelist: this is a Tamil-first product,
+    # object keys are UTF-8, and get_file_url() percent-encodes them. The old
+    # re.sub collapsed "மனு.pdf" → "___.pdf" (fidelity loss) and had no length
+    # cap, so a 1000+ char name could exceed MinIO's key limit and 500 at store.
+    from src.services.appointment_service import appointment_service
+    safe = appointment_service._sanitize_filename(filename)
     ts = _dt.utcnow().strftime("%Y%m%d_%H%M%S")
     # Same unified folder as citizen uploads: attachments/{token}/...
     rel = f"attachments/{appt.token_assigned}/pa_{ts}_{secrets.token_hex(6)}_{safe}"

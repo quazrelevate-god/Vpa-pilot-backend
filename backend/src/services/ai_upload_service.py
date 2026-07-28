@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -103,8 +104,12 @@ class AiUploadService:
             if total_bytes > _MAX_REQUEST_BYTES:
                 raise HTTPException(status_code=400, detail="Upload chunk too large — send fewer files per request.")
 
+            # Unique token in the key: a folder scan with two "scan.pdf" (or two
+            # extensionless files that both sanitize to "file") would otherwise map
+            # to the same key and the second would silently overwrite the first.
+            # Every other attachment stream already guards this with token_hex.
             safe = appointment_service._sanitize_filename(f.filename)
-            rel = f"ai_uploads/{batch_id}/{safe}"
+            rel = f"ai_uploads/{batch_id}/{secrets.token_hex(6)}_{safe}"
             storage_url = await asyncio.to_thread(save_file, raw, rel, mime)
 
             row = AiUpload(

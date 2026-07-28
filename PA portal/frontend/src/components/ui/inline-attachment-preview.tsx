@@ -73,23 +73,7 @@ export function InlineAttachmentPreview({ attachments, audioTranscript, classNam
                   : "border-border hover:border-brand/40"
               )}
             >
-              {a.type === "IMAGE" ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={a.url}
-                  alt={a.name}
-                  className="h-full w-full object-cover"
-                  draggable={false}
-                  onContextMenu={(e) => e.preventDefault()}
-                />
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-muted/60 px-1 text-muted-foreground">
-                  <Icon className="h-6 w-6" />
-                  <span className="line-clamp-1 text-[10px] font-medium uppercase tracking-wider">
-                    {a.type === "DOCUMENT" ? "Doc" : a.type === "VIDEO" ? "Video" : "Audio"}
-                  </span>
-                </div>
-              )}
+              <ThumbBody attachment={a} Icon={Icon} />
               <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition group-hover:opacity-100">
                 {a.name}
               </span>
@@ -136,27 +120,19 @@ function PreviewBody({ attachment, audioTranscript }: { attachment: GalleryAttac
   }
 
   if (attachment.type === "VIDEO") {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-black p-2">
-        <video
-          controls
-          controlsList="nodownload noplaybackrate"
-          disablePictureInPicture
-          preload="metadata"
-          className="max-h-full max-w-full"
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          <source src={attachment.url} />
-        </video>
-      </div>
-    );
+    return <VideoPreview key={attachment.url} src={attachment.url} />;
   }
 
   // DOCUMENT — inline PDF via <object>, fall back to <iframe>.
   // Chrome/Edge's built-in PDF viewer refuses to run inside a `sandbox`
   // iframe (it's treated as a plugin and gets silently blocked → "🚫" glyph),
   // so we drop the sandbox and rely on `#toolbar=0` to hide the download UI.
-  const isPdf = /\.pdf(\?|$)/i.test(attachment.url) || /\.pdf$/i.test(attachment.name);
+  // Prefer the server MIME: an extensionless PDF (original name was all-Tamil,
+  // sanitised to a bare stem) has no ".pdf" to match but is still a PDF.
+  const isPdf =
+    attachment.mime === "application/pdf" ||
+    /\.pdf(\?|$)/i.test(attachment.url) ||
+    /\.pdf$/i.test(attachment.name);
   if (isPdf) {
     const src = `${attachment.url}#toolbar=0&navpanes=0&view=FitH`;
     // Single <iframe> only — previously wrapped in <object> with iframe as
@@ -182,6 +158,70 @@ function PreviewBody({ attachment, audioTranscript }: { attachment: GalleryAttac
   );
 }
 
+// Thumbnail body: image thumbs fall back to the type icon if the image 404s /
+// fails, so a purged file shows a clean icon tile instead of a broken glyph.
+function ThumbBody({ attachment, Icon }: { attachment: GalleryAttachment; Icon: typeof Paperclip }) {
+  const [errored, setErrored] = useState(false);
+  const label = attachment.type === "DOCUMENT" ? "Doc" : attachment.type === "VIDEO" ? "Video" : "Audio";
+  if (attachment.type === "IMAGE" && !errored) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={attachment.url}
+        alt={attachment.name}
+        className="h-full w-full object-cover"
+        draggable={false}
+        onError={() => setErrored(true)}
+        onContextMenu={(e) => e.preventDefault()}
+      />
+    );
+  }
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-muted/60 px-1 text-muted-foreground">
+      <Icon className="h-6 w-6" />
+      <span className="line-clamp-1 text-[10px] font-medium uppercase tracking-wider">
+        {attachment.type === "IMAGE" ? "Image" : label}
+      </span>
+    </div>
+  );
+}
+
+// Shared fallback shown when a stored file fails to load (purged object, expired
+// session, unsupported codec). Beats the browser's broken-image glyph / blank
+// frame — the goal is that no preview surface ever renders an unexplained error.
+function PreviewError({ label = "This file couldn't be loaded." }: { label?: string }) {
+  return (
+    <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 p-6 text-center">
+      <div className="grid h-14 w-14 place-items-center rounded-xl bg-muted text-muted-foreground">
+        <FileText className="h-7 w-7" />
+      </div>
+      <div className="text-sm font-semibold text-foreground">Preview unavailable</div>
+      <div className="max-w-xs text-xs text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+function VideoPreview({ src }: { src: string }) {
+  const [errored, setErrored] = useState(false);
+  useEffect(() => { setErrored(false); }, [src]);
+  if (errored) return <PreviewError label="This video couldn't be played." />;
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-black p-2">
+      <video
+        controls
+        controlsList="nodownload noplaybackrate"
+        disablePictureInPicture
+        preload="metadata"
+        className="max-h-full max-w-full"
+        onError={() => setErrored(true)}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <source src={src} onError={() => setErrored(true)} />
+      </video>
+    </div>
+  );
+}
+
 // ── Image zoom / pan / rotate ─────────────────────────────────────────────
 // Wheel to zoom around cursor, drag to pan (when zoomed), buttons for +/−,
 // rotate, reset-to-fit. Bounds pan so the image never floats off-screen.
@@ -194,6 +234,13 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  // Reset the error state if the source changes (drawer row swap reuses the key,
+  // but a retry after a transient failure should re-attempt the load).
+  useEffect(() => { setErrored(false); }, [src]);
+
+  if (errored) return <PreviewError />;
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
 
@@ -285,6 +332,7 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
         src={src}
         alt={alt}
         draggable={false}
+        onError={() => setErrored(true)}
         className={cn(
           "select-none object-contain transition-transform duration-75 ease-out will-change-transform",
           expanded ? "max-h-[92vh] max-w-[92vw]" : "max-h-full max-w-full"

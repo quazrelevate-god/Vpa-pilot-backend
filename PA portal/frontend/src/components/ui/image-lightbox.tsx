@@ -20,8 +20,10 @@ interface ImageLightboxProps {
 export function ImageLightbox({ images, initialIndex = 0, open, onClose }: ImageLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
   const [scale, setScale] = useState(1);
+  const [errored, setErrored] = useState(false);
 
   useEffect(() => { if (open) { setIndex(initialIndex); setScale(1); } }, [open, initialIndex]);
+  useEffect(() => { setErrored(false); }, [index, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,15 +77,22 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
 
       {/* Image */}
       <div className="flex h-full w-full items-center justify-center overflow-auto" onClick={onClose}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={current.url}
-          alt={current.name ?? ""}
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={() => setScale((s) => (s === 1 ? 2 : 1))}
-          style={{ transform: `scale(${scale})`, transition: "transform 0.15s ease-out" }}
-          className="max-h-[85vh] max-w-[90vw] cursor-zoom-in select-none object-contain shadow-2xl"
-        />
+        {errored ? (
+          <div className="select-none text-center text-sm text-white/70" onClick={(e) => e.stopPropagation()}>
+            This image couldn&apos;t be loaded.
+          </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={current.url}
+            alt={current.name ?? ""}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={() => setScale((s) => (s === 1 ? 2 : 1))}
+            onError={() => setErrored(true)}
+            style={{ transform: `scale(${scale})`, transition: "transform 0.15s ease-out" }}
+            className="max-h-[85vh] max-w-[90vw] cursor-zoom-in select-none object-contain shadow-2xl"
+          />
+        )}
       </div>
 
       {/* Prev / Next */}

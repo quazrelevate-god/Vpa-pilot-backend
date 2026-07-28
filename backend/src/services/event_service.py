@@ -13,6 +13,7 @@ only fills columns that are still NULL, so a concurrent PATCH always wins.
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import quote
 import logging
 from datetime import date, datetime, time as dtime, timedelta
 from secrets import token_hex
@@ -116,7 +117,7 @@ def serialize(e: InvitationEvent) -> dict:
         "status": e.status,
         "attendance": e.attendance,   # "attended" | "not_attended" | null
         "error_message": e.error_message,
-        "image_url": f"/events/api/files/{e.image_path}" if has_photo else None,
+        "image_url": f"/events/api/files/{quote(e.image_path, safe='/')}" if has_photo else None,
         "has_photo": has_photo,
         "created_by": e.created_by,
         "created_at": e.created_at.isoformat() if e.created_at else None,
