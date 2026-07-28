@@ -196,11 +196,15 @@ async def create_manual_event(
     parsed_date = _parse_date((event_date or "").strip())
     if parsed_date is None:
         raise HTTPException(422, "event_date is required and must be YYYY-MM-DD")
+    # Every event is a scheduled block — no more all-day. Both start and end
+    # are required so the reviewer + Minister always know exactly when it
+    # runs, and so the WeekView timeline can render every event on the grid.
     parsed_start = _parse_time((start_time or "").strip())
     if parsed_start is None:
         raise HTTPException(422, "start_time is required and must be HH:MM")
-
-    parsed_end = _parse_time((end_time or "").strip()) if end_time else None
+    parsed_end = _parse_time((end_time or "").strip())
+    if parsed_end is None:
+        raise HTTPException(422, "end_time is required and must be HH:MM")
 
     # Optional photo
     image_key = "events/manual"
@@ -451,6 +455,11 @@ async def list_needs_review(db: AsyncSession) -> list[InvitationEvent]:
         select(InvitationEvent)
         .where(
             (InvitationEvent.event_date.is_(None))
+            # Missing times count as unfinished — every event now must have
+            # both start and end (all-day was removed), and the reviewer can't
+            # approve one without them.
+            | (InvitationEvent.start_time.is_(None))
+            | (InvitationEvent.end_time.is_(None))
             | (InvitationEvent.status != STATUS_READY)
             | (InvitationEvent.is_approved == False)  # noqa: E712
         )
@@ -596,6 +605,8 @@ async def approve_event(
         raise HTTPException(409, "Only READY events can be approved — retry / fix first")
     if event.event_date is None:
         raise HTTPException(409, "Set an event date before approving")
+    if event.start_time is None or event.end_time is None:
+        raise HTTPException(409, "Set both start and end time before approving")
     if event.is_approved:
         return event
     event.is_approved = True

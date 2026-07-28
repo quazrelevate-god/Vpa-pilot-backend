@@ -245,8 +245,12 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                       {event.date ? (
                         <span className="font-mono text-base tabular-nums">
                           {fmtLongDate(event.date, lang)}
-                          {event.start_time && <> · {fmtTime(event.start_time)}</>}
-                          {event.end_time && <> – {fmtTime(event.end_time)}</>}
+                          {event.start_time
+                            ? <> · {fmtTime(event.start_time)}</>
+                            : <span className="text-[#CC6A1F]"> · {t("no start time", "தொடக்க நேரம் இல்லை")}</span>}
+                          {event.end_time
+                            ? <> – {fmtTime(event.end_time)}</>
+                            : <span className="text-[#CC6A1F]"> – {t("no end time", "முடிவு நேரம் இல்லை")}</span>}
                         </span>
                       ) : (
                         <span className="font-semibold text-[#CC6A1F]">
@@ -337,19 +341,24 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                         onChange={(e) => set("event_date")(e.target.value)} />
                     </div>
                     <div className="space-y-1 max-sm:col-span-2 sm:col-span-1">
-                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("Start", "தொடக்கம்")}</Label>
-                      <Input type="time" value={draft.start_time} className={cn(inputCls, "font-mono tabular-nums")}
+                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("Start", "தொடக்கம்")} *</Label>
+                      <Input type="time" required value={draft.start_time}
+                        className={cn(inputCls, "font-mono tabular-nums", !draft.start_time && "border-red-400")}
                         onChange={(e) => set("start_time")(e.target.value)} />
                     </div>
                     <div className="space-y-1 max-sm:col-span-1 sm:col-span-1">
-                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("End", "முடிவு")}</Label>
-                      <Input type="time" value={draft.end_time} className={cn(inputCls, "font-mono tabular-nums")}
+                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("End", "முடிவு")} *</Label>
+                      <Input type="time" required value={draft.end_time}
+                        className={cn(inputCls, "font-mono tabular-nums", !draft.end_time && "border-red-400")}
                         onChange={(e) => set("end_time")(e.target.value)} />
                     </div>
                   </div>
 
                   <div className="flex gap-2 pt-1">
-                    <Button disabled={busy} onClick={save}
+                    {/* Save disabled until both times are set — matches the
+                        server rule (no more all-day events) so we surface it
+                        before the round-trip. */}
+                    <Button disabled={busy || !draft.start_time || !draft.end_time} onClick={save}
                       className="h-12 flex-1 gap-2 bg-[#2F6FED] text-base font-bold text-white hover:bg-[#2558C4]">
                       {busy && <Loader2 className="h-5 w-5 animate-spin" />}
                       {t("Save", "சேமி")}

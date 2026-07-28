@@ -154,8 +154,13 @@ export default function GlanceView({ anchor, byDay, onOpen }: {
                                 <span className="truncate">{displayTitle(e, lang)}</span>
                               </span>
                               <span className="font-mono text-xs tabular-nums text-slate-500">
-                                {e.start_time ? fmtTime(e.start_time) : t("All day", "நாள் முழுதும்")}
-                                {e.end_time && ` – ${fmtTime(e.end_time)}`}
+                                {/* Every event now must have start + end. A
+                                    missing side is a data hole to flag, not a
+                                    valid "all day" state. */}
+                                {e.start_time ? fmtTime(e.start_time) : <span className="text-[#CC6A1F]">--:--</span>}
+                                {e.end_time
+                                  ? ` – ${fmtTime(e.end_time)}`
+                                  : <span className="text-[#CC6A1F]"> – --:--</span>}
                               </span>
                             </span>
                             <span

@@ -170,12 +170,10 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
     () => days.map((d) => layoutDay(byDay.get(toISO(d)) ?? [])),
     [days, byDay],
   );
-  const allDay = useMemo(
-    () => days.map((d) => (byDay.get(toISO(d)) ?? []).filter((e) => toMinutes(e.start_time) === null)),
-    [days, byDay],
-  );
-  const hasAllDay = allDay.some((l) => l.length > 0);
-
+  // All-day events were removed — every event now has both start and end
+  // time (mandated at extraction, manual create, and edit). Any legacy row
+  // without a start time won't render in the timeline grid; those surface
+  // in Needs Review so a reviewer can fix them.
   const gutterCell = "sticky left-0 z-20 shrink-0 bg-[#F3F5F8]";
 
   return (
@@ -204,35 +202,6 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
             );
           })}
         </div>
-
-        {/* ── All-day strip (date, no time) ─────────────────────────────────── */}
-        {hasAllDay && (
-          <div className="flex border-b border-slate-200 bg-white/60">
-            <div style={{ width: GUTTER_W, minWidth: GUTTER_W }}
-              className={cn(gutterCell, "py-1 pr-1 text-right text-[0.55rem] font-bold uppercase leading-tight text-slate-400")}>
-              {t("All day", "நாள் முழுதும்")}
-            </div>
-            {allDay.map((list, i) => (
-              <div key={i} className="flex-1 space-y-0.5 p-0.5" style={{ minWidth: COL_W }}>
-                {list.map((e) => {
-                  const meta = typeMeta(e.event_type);
-                  const processing = e.status === "QUEUED" || e.status === "PROCESSING";
-                  return (
-                    <button key={e.id} onClick={() => onOpen(e)}
-                      style={{ backgroundColor: `${meta.color}1A`, borderColor: meta.color }}
-                      className={cn(
-                        "flex w-full items-center gap-1 truncate rounded-md border-l-4 px-1.5 py-1 text-left text-[0.8rem] font-bold text-slate-800",
-                        processing && "animate-pulse",
-                      )}>
-                      <AttendanceDot value={e.attendance} />
-                      <span className="truncate">{displayTitle(e, lang)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* ── Time grid: gutter + day columns in the SAME row ───────────────── */}
         <div className="flex" style={{ height: GRID_H }}>

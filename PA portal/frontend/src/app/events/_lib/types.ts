@@ -29,7 +29,9 @@ export type EventItem = {
   event_type: string | null;
   /** YYYY-MM-DD, or null when no date was detected (needs review). */
   date: string | null;
-  /** HH:MM 24h, or null (all-day). */
+  /** HH:MM 24h. Both times are required on create/edit and to approve;
+   *  null on a live row means legacy data or an OCR extraction gap and
+   *  the row will surface in Needs Review until the reviewer fixes it. */
   start_time: string | null;
   end_time: string | null;
   status: EventStatus;
