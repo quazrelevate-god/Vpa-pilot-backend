@@ -498,13 +498,13 @@
             font-size: 0.72rem;
         }
 
+
         .choice-card--waitlist       { border-color: #b45309; background: #b45309; }
         .choice-card--waitlist:hover { border-color: #92400e; background: #92400e; }
         .choice-card--waitlist::after { color: rgba(255,255,255,0.7); }
         .choice-card--waitlist .choice-card__icon  { background: rgba(255,255,255,0.2); color: #fff; }
         .choice-card--waitlist .choice-card__title { color: #ffffff; }
         .choice-card--waitlist .choice-card__sub   { color: rgba(255,255,255,0.8); }
-
         .choice-card--primary { border-width: 2.5px; }
         .choice-card--meeting.choice-card--primary  {
             box-shadow: 0 4px 16px rgba(5,150,105,0.35);
@@ -2155,6 +2155,7 @@
                     ta ? 'சந்திப்பு இல்லை — பதிவு மட்டும்' : 'No meeting - just register it',
                     "document.getElementById('btnPetition').click()");
             };
+
             var waitlist = function(primary) {
                 return card('waitlist', primary, '⌛',
                     ta ? 'காத்திருப்பு பட்டியலில் சேர' : 'Join the waiting list',
@@ -2162,13 +2163,20 @@
                     "document.getElementById('btnWaitlist').click()");
             };
 
+            // Toggle to re-enable the waiting-list flow (currently disabled).
+            var WAITLIST_ENABLED = false;
+
             var fullNotice =
                 '<div class="slots-alert">' +
                     '<span class="slots-alert__icon"><i class="fa-solid fa-circle-info"></i></span>' +
                     '<div class="slots-alert__text">' +
                         (ta
-                            ? '<strong>தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.</strong> நீங்கள் உங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் உங்களைத் தொடர்பு கொள்வோம்.'
-                            : "<strong>All meeting slots are currently full.</strong> You can still submit your petition, or join the waiting list - we'll contact you as soon as a slot opens.") +
+                            ? (WAITLIST_ENABLED
+                                ? '<strong>தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.</strong> நீங்கள் உங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் உங்களைத் தொடர்பு கொள்வோம்.'
+                                : '<strong>தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.</strong> பிறகு மீண்டும் முயற்சிக்கவும் — இடம் கிடைத்தால் சந்திப்பு பதிவு செய்யலாம். இப்போது மனுவை மட்டும் சமர்ப்பிக்கவும்.')
+                            : (WAITLIST_ENABLED
+                                ? "<strong>All meeting slots are currently full.</strong> You can still submit your petition, or join the waiting list - we'll contact you as soon as a slot opens."
+                                : "<strong>All meeting slots are currently full.</strong> Please try again later — if a slot opens, you can book an appointment for the meeting. For now, submit a petition only.")) +
                     '</div>' +
                 '</div>';
 
@@ -2178,11 +2186,11 @@
             // "petition only" option for these.
             const courtesy = _isCourtesyCategory();
             if (courtesy) {
-                wrap.innerHTML = meetingAvailable ? meeting(true) : fullNotice + waitlist(true);
+                wrap.innerHTML = meetingAvailable ? meeting(true) : fullNotice + (WAITLIST_ENABLED ? waitlist(true) : '');
             } else {
                 wrap.innerHTML = meetingAvailable
                     ? meeting(true) + petition(false)
-                    : fullNotice + petition(true) + waitlist(false);
+                    : fullNotice + petition(true) + (WAITLIST_ENABLED ? waitlist(false) : '');
             }
         }
 

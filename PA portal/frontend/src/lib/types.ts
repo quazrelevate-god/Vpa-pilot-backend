@@ -56,6 +56,7 @@ export interface AppointmentRow {
   name_ta?: string | null;
   mobile: string;
   category: string;
+  category_key?: string | null;
   ministry?: string | null;     // AI-classified Ministry — snake_case Ministry enum key
   status: AppointmentStatus;
   source?: string | null;    // intake channel: qr_citizen | ai_scan | manual_staff

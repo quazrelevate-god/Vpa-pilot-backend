@@ -202,6 +202,7 @@ class PetitionInboxService:
         *,
         status: Optional[str] = None,
         q: Optional[str] = None,
+        category: Optional[str] = None,
         priority: Optional[str] = None,
         source: Optional[str] = None,
         batch_id: Optional[str] = None,
@@ -227,15 +228,16 @@ class PetitionInboxService:
         dist: Dict[str, int] = {}
         status_focus = (status or "").upper() or None
 
+        cat_focus = (category or "").lower() or None
+
         def _absorb(sk: Optional[str], cat: Optional[str], n: int) -> None:
+            cat_key = (cat or "other").lower()
             if sk in counts:
-                counts[sk] += n
-                counts[""] += n
-            # Distribution respects the current status tab so the chart total
-            # matches the tab count. Without status, every row contributes.
+                if cat_focus is None or cat_key == cat_focus:
+                    counts[sk] += n
+                    counts[""] += n
             if status_focus is None or sk == status_focus:
-                key = (cat or "other").lower()
-                dist[key] = dist.get(key, 0) + n
+                dist[cat_key] = dist.get(cat_key, 0) + n
 
         # ── UPLOADS ────────────────────────────────────────────────────────
         upload_case = case(
@@ -249,7 +251,6 @@ class PetitionInboxService:
             AiUpload.grievance_category.label("cat"),
             func.count(AiUpload.id).label("n"),
         )
-        # Pass category=None: category is an axis, not a filter, here.
         u_stmt = ai_upload_service._apply_common_filters(
             u_stmt, status=None, q=q, category=None, priority=priority,
             source=source, batch_id=batch_id, from_date=from_date, to_date=to_date,

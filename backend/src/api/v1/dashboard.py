@@ -128,6 +128,7 @@ async def api_petitions_inbox_facets(
     request: Request,
     status: str = "",
     q: str = "",
+    category: str = "",
     priority: str = "",
     source: str = "",
     batch_id: str = "",
@@ -149,7 +150,8 @@ async def api_petitions_inbox_facets(
     data = await petition_inbox_service.facets(
         db,
         status=status or None,
-        q=q or None, priority=priority or None, source=source or None,
+        q=q or None, category=category or None,
+        priority=priority or None, source=source or None,
         batch_id=batch_id or None, from_date=from_date or None, to_date=to_date or None,
     )
     return JSONResponse(data)
