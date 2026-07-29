@@ -102,7 +102,10 @@ export default function ManualEventForm({
     }
     if (!fields.event_type)        e.event_type = t("Required", "தேவை");
     if (!fields.event_date)        e.event_date = t("Required", "தேவை");
+    // Both start AND end are required — no more all-day events. The server
+    // enforces this too; catching it client-side avoids a 422 round-trip.
     if (!fields.start_time)        e.start_time = t("Required", "தேவை");
+    if (!fields.end_time)          e.end_time   = t("Required", "தேவை");
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -246,8 +249,9 @@ export default function ManualEventForm({
                 {t("End", "முடிவு")}
               </Label>
               <Input type="time" value={fields.end_time}
-                className={cn(inputCls, "font-mono tabular-nums")}
+                className={cn(inputCls, "font-mono tabular-nums", errors.end_time && "border-red-400")}
                 onChange={(e) => set("end_time")(e.target.value)} />
+              {errors.end_time && <p className={errCls}>{errors.end_time}</p>}
             </div>
           </div>
 

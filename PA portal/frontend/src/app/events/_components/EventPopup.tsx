@@ -131,17 +131,15 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
     }
   }
 
-  // Post-event attendance marker. Sending the same value again clears it —
-  // gives the PA a "undo" without needing a separate button.
-  async function setAttendance(next: "attended" | "not_attended") {
-    if (!event || busy) return;
-    const value = event.attendance === next ? "" : next;   // toggle-off = clear
+  async function doApprove() {
+    if (!event) return;
     setBusy(true);
     try {
-      const updated = await api.update(event.id, { attendance: value });
+      const updated = await api.approve(event.id);
+      toast.success(t("Approved — now on the calendar", "அனுமதிக்கப்பட்டது — நாட்காட்டியில் காட்டப்படுகிறது"));
       onChanged(updated);
     } catch (err) {
-      toast.error((err as Error).message || t("Could not save.", "சேமிக்க முடியவில்லை."));
+      toast.error((err as Error).message || t("Approve failed", "அனுமதி தோல்வி"));
     } finally {
       setBusy(false);
     }
@@ -217,6 +215,29 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                 </div>
               )}
 
+              {/* Awaiting-approval banner — shown for READY + dated but not yet
+                  approved rows. Every new event lands here first; the reviewer
+                  confirms with the Minister then clicks Approve, and the event
+                  moves onto the calendar. */}
+              {event.status === "READY" && !!event.date && !event.is_approved && (
+                <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                  <div className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-blue-500/15" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold">{t("Awaiting approval", "அனுமதிக்கு காத்திருக்கிறது")}</div>
+                    <div className="mt-0.5 opacity-80">
+                      {t(
+                        "Confirm with the Minister, then approve to publish on the calendar.",
+                        "அமைச்சரிடம் உறுதிசெய்து, நாட்காட்டியில் வெளியிட அனுமதிக்கவும்.",
+                      )}
+                    </div>
+                    <Button size="sm" disabled={busy} onClick={doApprove}
+                      className="mt-2 h-10 gap-1.5 bg-[#2F6FED] px-4 text-sm font-bold text-white hover:bg-[#2456bd]">
+                      {t("Approve", "அனுமதி")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {!editing ? (
                 <>
                   <div className="rounded-lg border border-slate-200 bg-white px-3">
@@ -224,8 +245,12 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                       {event.date ? (
                         <span className="font-mono text-base tabular-nums">
                           {fmtLongDate(event.date, lang)}
-                          {event.start_time && <> · {fmtTime(event.start_time)}</>}
-                          {event.end_time && <> – {fmtTime(event.end_time)}</>}
+                          {event.start_time
+                            ? <> · {fmtTime(event.start_time)}</>
+                            : <span className="text-[#CC6A1F]"> · {t("no start time", "தொடக்க நேரம் இல்லை")}</span>}
+                          {event.end_time
+                            ? <> – {fmtTime(event.end_time)}</>
+                            : <span className="text-[#CC6A1F]"> – {t("no end time", "முடிவு நேரம் இல்லை")}</span>}
                         </span>
                       ) : (
                         <span className="font-semibold text-[#CC6A1F]">
@@ -247,51 +272,6 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                     <Row icon={<StickyNote strokeWidth={1.75} />} label={t("Your note (shown on calendar)", "உங்கள் குறிப்பு (நாட்காட்டியில்)")}>
                       {event.note || <span className="text-slate-400">—</span>}
                     </Row>
-                  </div>
-
-                  {/* Attendance — post-event marker. Tapping the same chip
-                       again clears it, so the PA can undo a mis-tap without a
-                       separate button. Available on every event; the actual
-                       "did we go?" question only makes sense for past events
-                       but hiding it based on the date would need the toggle
-                       to consider the user's timezone — cheap to always show. */}
-                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                    <div className="mb-2 text-[0.72rem] font-bold uppercase tracking-wide text-slate-400">
-                      {t("Attendance", "வருகை")}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() => setAttendance("attended")}
-                        className={cn(
-                          "h-12 gap-2 text-base font-bold",
-                          event.attendance === "attended"
-                            ? "border-emerald-400 bg-emerald-50 text-emerald-700"
-                            : "text-slate-600",
-                        )}>
-                        <Check className="h-5 w-5" strokeWidth={2} />
-                        {t("Attended", "வருகை பதிந்தது")}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() => setAttendance("not_attended")}
-                        className={cn(
-                          "h-12 gap-2 text-base font-bold",
-                          event.attendance === "not_attended"
-                            ? "border-slate-400 bg-slate-100 text-slate-700"
-                            : "text-slate-600",
-                        )}>
-                        <XIcon className="h-5 w-5" strokeWidth={2} />
-                        {t("Not attended", "வரவில்லை")}
-                      </Button>
-                    </div>
-                    {event.attendance && (
-                      <p className="mt-2 text-[11px] text-slate-400">
-                        {t("Tap the same button again to clear.", "அதே பொத்தானை மீண்டும் தட்டி நீக்கலாம்.")}
-                      </p>
-                    )}
                   </div>
 
                   <div className="mt-3 flex gap-2">
@@ -361,19 +341,24 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                         onChange={(e) => set("event_date")(e.target.value)} />
                     </div>
                     <div className="space-y-1 max-sm:col-span-2 sm:col-span-1">
-                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("Start", "தொடக்கம்")}</Label>
-                      <Input type="time" value={draft.start_time} className={cn(inputCls, "font-mono tabular-nums")}
+                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("Start", "தொடக்கம்")} *</Label>
+                      <Input type="time" required value={draft.start_time}
+                        className={cn(inputCls, "font-mono tabular-nums", !draft.start_time && "border-red-400")}
                         onChange={(e) => set("start_time")(e.target.value)} />
                     </div>
                     <div className="space-y-1 max-sm:col-span-1 sm:col-span-1">
-                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("End", "முடிவு")}</Label>
-                      <Input type="time" value={draft.end_time} className={cn(inputCls, "font-mono tabular-nums")}
+                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("End", "முடிவு")} *</Label>
+                      <Input type="time" required value={draft.end_time}
+                        className={cn(inputCls, "font-mono tabular-nums", !draft.end_time && "border-red-400")}
                         onChange={(e) => set("end_time")(e.target.value)} />
                     </div>
                   </div>
 
                   <div className="flex gap-2 pt-1">
-                    <Button disabled={busy} onClick={save}
+                    {/* Save disabled until both times are set — matches the
+                        server rule (no more all-day events) so we surface it
+                        before the round-trip. */}
+                    <Button disabled={busy || !draft.start_time || !draft.end_time} onClick={save}
                       className="h-12 flex-1 gap-2 bg-[#2F6FED] text-base font-bold text-white hover:bg-[#2558C4]">
                       {busy && <Loader2 className="h-5 w-5 animate-spin" />}
                       {t("Save", "சேமி")}

@@ -140,6 +140,8 @@ async def dept_progress(ticket_id: int, note: str = Form(...), progress_pct: Opt
 async def dept_resolve(ticket_id: int, remarks: str = Form(...),
                        files: List[UploadFile] = File(...),
                        department: str = Depends(require_department), db: AsyncSession = Depends(get_db)):
+    import secrets
+    from src.services.appointment_service import appointment_service
     metas = []
     for f in files:
         if not f.filename:
@@ -150,7 +152,13 @@ async def dept_resolve(ticket_id: int, remarks: str = Form(...),
         raw = await f.read()
         if len(raw) > _MAX_BYTES:
             return JSONResponse({"error": f"'{f.filename}' exceeds 15 MB."}, status_code=400)
-        rel = f"ticket_attachments/{ticket_id}/{f.filename}"
+        # Sanitize + unique token: the raw client filename must never go straight
+        # into the object key. Unsanitized it (a) collides — two "photo.jpg" on one
+        # ticket overwrite silently, (b) can 500 at store time on control chars /
+        # 1000+ char names that break MinIO key limits, and (c) lets "../" leak on
+        # local-disk reads. Mirrors every other attachment stream.
+        safe = appointment_service._sanitize_filename(f.filename)
+        rel = f"ticket_attachments/{ticket_id}/{secrets.token_hex(6)}_{safe}"
         url = await asyncio.to_thread(save_file, raw, rel, mime)
         metas.append({"storage_url": url, "mime_type": mime,
                       "file_size_bytes": len(raw), "original_filename": f.filename})

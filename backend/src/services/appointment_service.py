@@ -575,7 +575,9 @@ class AppointmentService:
             # Generate filename and save via storage_service. All media for one
             # submission lives in a single folder keyed by the token (the only id
             # available before appointment.id exists): attachments/{token}/...
-            filename = f"audio_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.webm"
+            # token_hex guards against two blobs saved in the same wall-clock
+            # second for one token colliding on the second-granularity timestamp.
+            filename = f"audio_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}.webm"
             relative_path = f"attachments/{token_number}/{filename}"
             
             from src.services.storage_service import save_file

@@ -14,12 +14,15 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import settings
 from src.core.database import get_db
 from src.core.events_auth import (
-    create_events_cookie, clear_events_cookie, get_events_user, require_events_api,
+    create_events_cookie, clear_events_cookie,
+    get_events_login, require_events_api,
+    require_events_upload, require_events_review,
+    verify_events_credentials,
 )
 from src.core.rate_limit import limiter
+from src.models.login_models import Login
 from src.services import event_service
 
 router = APIRouter(prefix="/events", tags=["Events Calendar"])
@@ -32,13 +35,27 @@ _MAX_RANGE_DAYS = 62
 
 @router.post("/api/login")
 @limiter.limit("5/minute")
-async def events_login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Validate events credentials, set the events_session cookie. 200 or 401."""
-    if username == settings.EVENTS_USERNAME and password == settings.EVENTS_PASSWORD:
-        response = JSONResponse({"ok": True, "label": _LABEL})
-        create_events_cookie(response, username)
-        return response
-    return JSONResponse({"error": "Invalid username or password."}, status_code=401)
+async def events_login(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Validate events credentials against the Login table, set the
+    events_session cookie. 200 or 401. Users without any events capability
+    role are rejected with the same generic message as a wrong password so a
+    caller can't probe for account existence."""
+    login = await verify_events_credentials(db, username, password)
+    if login is None:
+        return JSONResponse({"error": "Invalid username or password."}, status_code=401)
+    response = JSONResponse({
+        "ok": True,
+        "label": _LABEL,
+        "user": login.login_name,
+        "roles": sorted(login.role_set()),
+    })
+    create_events_cookie(response, login.id)
+    return response
 
 
 @router.post("/api/logout")
@@ -49,12 +66,17 @@ async def events_logout():
 
 
 @router.get("/api/session")
-async def events_session(request: Request):
-    """Return {label} for an authenticated events session, else 401 (JSON)."""
-    user = get_events_user(request)
-    if not user:
+async def events_session(login: Optional[Login] = Depends(get_events_login)):
+    """Return {user, label, roles} for an authenticated events session, else
+    401 (JSON). `roles` drives the PWA nav gating (hide the Needs Review tab
+    for users without event_reviewer)."""
+    if login is None:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
-    return JSONResponse({"user": user, "label": _LABEL})
+    return JSONResponse({
+        "user": login.login_name,
+        "label": _LABEL,
+        "roles": sorted(login.role_set()),
+    })
 
 
 # ── Overview stats ──────────────────────────────────────────────────────────────
@@ -62,7 +84,7 @@ async def events_session(request: Request):
 @router.get("/api/overview")
 async def overview(
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_api),
 ):
     """Office-wide counts for the Overview tab.
 
@@ -125,7 +147,13 @@ async def overview(
         .order_by(func.count(Ticket.id).desc())
     )).all()
 
+    # ── Event KPIs — the events-app-native section, front-and-centre in
+    # the UI. Lives alongside (not instead of) the office-wide numbers so
+    # advisors who want both perspectives can still see them.
+    events_kpis = await event_service.overview_events(db)
+
     return {
+        "events": events_kpis,
         "totals": {
             "tickets": int(t_row.total),
             "appointments": int(a_row.total),
@@ -154,7 +182,7 @@ async def list_events(
     start: date,
     end: date,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_api),
 ):
     """Events with a date inside [start, end] (inclusive), for the visible span."""
     if end < start:
@@ -168,9 +196,11 @@ async def list_events(
 @router.get("/api/events/needs-review")
 async def needs_review(
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_review),
 ):
-    """Failed / still-processing / undated events, newest first."""
+    """Failed / still-processing / undated events, newest first. Reviewer-only:
+    uploaders never see this list — they can only create rows, not act on the
+    extracted output."""
     items = await event_service.list_needs_review(db)
     return {"items": [event_service.serialize(e) for e in items], "count": len(items)}
 
@@ -182,16 +212,17 @@ async def create_event(
     file: UploadFile = File(...),
     note: str = Form(default=""),
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_upload),
 ):
-    """Store the photographed invitation + optional note; extraction runs async."""
+    """Store the photographed invitation + optional note; extraction runs async.
+    Either events role may upload (reviewer is a superset of uploader)."""
     file_bytes = await file.read()
     event = await event_service.create_event(
         db,
         file_bytes=file_bytes,
         mime_type=file.content_type or "",
         note=note,
-        created_by=user,
+        created_by=login.login_name,
     )
     return {"id": event.id, "status": event.status}
 
@@ -217,7 +248,7 @@ async def create_manual_event(
     note: str = Form(default=""),
     file: Optional[UploadFile] = File(default=None),
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_upload),
 ):
     """Create an event with all fields provided manually. Photo is optional.
     Saved immediately as READY — no background extraction is triggered."""
@@ -238,7 +269,7 @@ async def create_manual_event(
         note=note,
         file_bytes=file_bytes,
         mime_type=mime_type,
-        created_by=user,
+        created_by=login.login_name,
     )
     return event_service.serialize(event)
 
@@ -249,7 +280,7 @@ async def create_manual_event(
 async def get_event(
     event_id: int,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_api),
 ):
     event = await event_service.get_event(db, event_id)
     return event_service.serialize(event)
@@ -260,9 +291,11 @@ async def update_event(
     event_id: int,
     payload: dict = Body(...),
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_review),
 ):
-    event = await event_service.update_event(db, event_id, payload, updated_by=user)
+    """Reviewer-only: only they can edit the extracted fields (title, venue,
+    date, etc.). Uploaders create rows, reviewers curate them."""
+    event = await event_service.update_event(db, event_id, payload, updated_by=login.login_name)
     return event_service.serialize(event)
 
 
@@ -270,9 +303,24 @@ async def update_event(
 async def retry_event(
     event_id: int,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_review),
 ):
+    """Reviewer-only: retriggering extraction on a failed row is a review
+    action, not an upload — the row already exists."""
     event = await event_service.retry_event(db, event_id)
+    return event_service.serialize(event)
+
+
+@router.post("/api/events/{event_id}/approve")
+async def approve_event(
+    event_id: int,
+    db: AsyncSession = Depends(get_db),
+    login: Login = Depends(require_events_review),
+):
+    """Reviewer flips the approval gate after confirming with the Minister.
+    Only after this does the event appear on the calendar view — every
+    upload (photo or manual) waits here first, no exceptions."""
+    event = await event_service.approve_event(db, event_id, approved_by=login.login_name)
     return event_service.serialize(event)
 
 
@@ -280,8 +328,11 @@ async def retry_event(
 async def delete_event(
     event_id: int,
     db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_review),
 ):
+    """Reviewer-only: destructive. Uploaders cannot delete anything, not even
+    their own uploads — that stops accidental purge of data the reviewer
+    hasn't triaged yet."""
     await event_service.delete_event(db, event_id)
     return {"ok": True}
 
@@ -292,7 +343,7 @@ async def delete_event(
 async def events_serve_file(
     file_path: str,
     request: Request,
-    user: str = Depends(require_events_api),
+    login: Login = Depends(require_events_api),
 ):
     """Serve a stored invitation photo scoped by the events session cookie.
 

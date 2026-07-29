@@ -264,6 +264,7 @@ export default function TicketDetailDrawer({
     name: a.name || "attachment",
     url: a.url,
     type: galleryType(a.mime),
+    mime: a.mime,
   }));
 
   // Bilingual field accessor — falls back to EN if a TA variant is missing.

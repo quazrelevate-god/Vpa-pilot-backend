@@ -72,7 +72,7 @@ export default function TicketDetail({ detail, departments, myDept, onClose, onD
   }
 
   const toGallery = (a: DeptTicketDetail["attachments"][number]): GalleryAttachment => ({
-    name: a.name || "attachment", url: a.url, type: galleryType(a.mime),
+    name: a.name || "attachment", url: a.url, type: galleryType(a.mime), mime: a.mime,
   });
   const petitionAtt = detail.attachments.filter((a) => a.kind !== "resolution").map(toGallery);
   const resAtt      = detail.attachments.filter((a) => a.kind === "resolution").map(toGallery);

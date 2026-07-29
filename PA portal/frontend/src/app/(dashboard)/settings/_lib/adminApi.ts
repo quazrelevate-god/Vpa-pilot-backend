@@ -4,6 +4,11 @@
 
 export type Role = "super_admin" | "pa" | "petition_reviewer" | "dept_officer" | "auditor";
 
+// Capability roles are additive — a user can hold any subset independently
+// of their primary Role. First surface to consume them is the events PWA.
+export type CapabilityRole = "event_uploader" | "event_reviewer";
+export const ALL_CAPABILITY_ROLES: readonly CapabilityRole[] = ["event_uploader", "event_reviewer"];
+
 export interface SessionUser {
   id: number;
   login_name: string;
@@ -24,6 +29,7 @@ export interface UserRow {
   email: string | null;
   role: Role;
   department: string | null;
+  capability_roles: CapabilityRole[];
   is_active: boolean;
   created_at: string;
 }
@@ -109,7 +115,8 @@ export async function listUsers(): Promise<UserRow[]> {
 }
 
 export async function createUser(body: {
-  login_name: string; password: string; full_name?: string; email?: string; role: Role; department?: string;
+  login_name: string; password: string; full_name?: string; email?: string; role: Role;
+  department?: string; capability_roles?: CapabilityRole[];
 }): Promise<UserRow> {
   const r = await fetch("/api/v1/admin/users", {
     method: "POST", credentials: "include",
@@ -121,7 +128,8 @@ export async function createUser(body: {
 }
 
 export async function updateUser(id: number, patch: {
-  full_name?: string; email?: string; role?: Role; is_active?: boolean; password?: string; department?: string;
+  full_name?: string; email?: string; role?: Role; is_active?: boolean; password?: string;
+  department?: string; capability_roles?: CapabilityRole[];
 }): Promise<UserRow> {
   const r = await fetch(`/api/v1/admin/users/${id}`, {
     method: "PATCH", credentials: "include",

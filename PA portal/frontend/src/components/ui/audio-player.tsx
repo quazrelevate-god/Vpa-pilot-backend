@@ -42,6 +42,7 @@ export function AudioPlayer({ src, className }: AudioPlayerProps) {
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [ready, setReady] = useState(false);
+  const [errored, setErrored] = useState(false);
 
   // ── Fix WebM duration on load ────────────────────────────────────────
   const onLoadedMetadata = useCallback(() => {
@@ -115,10 +116,25 @@ export function AudioPlayer({ src, className }: AudioPlayerProps) {
   useEffect(() => {
     // Reset when src changes (drawer swap)
     durationFixed.current = false;
-    setPlaying(false); setCurrent(0); setDuration(0); setReady(false);
+    setPlaying(false); setCurrent(0); setDuration(0); setReady(false); setErrored(false);
   }, [src]);
 
   const pct = duration > 0 ? Math.min(100, (current / duration) * 100) : 0;
+
+  // Failed load (purged blob, expired session, unsupported codec). Without this
+  // the player sat forever at "—:—" with a permanently-disabled play button and
+  // no explanation. Surface a clear inline message instead.
+  if (errored) {
+    return (
+      <div className={cn(
+        "flex items-center gap-2 rounded-xl border border-border bg-muted/50 px-3 py-2.5 text-[13px] text-muted-foreground shadow-card",
+        className,
+      )}>
+        <Mic className="h-4 w-4 shrink-0" />
+        <span>Audio couldn&apos;t be loaded.</span>
+      </div>
+    );
+  }
 
   return (
     <div className={cn(
@@ -182,6 +198,7 @@ export function AudioPlayer({ src, className }: AudioPlayerProps) {
         onDurationChange={onDurationChange}
         onTimeUpdate={onTimeUpdate}
         onEnded={onEnded}
+        onError={() => setErrored(true)}
         onContextMenu={(e) => e.preventDefault()}
         // display:none prevents the browser from loading media in some
         // engines, so hide visually with size 0 + opacity instead.

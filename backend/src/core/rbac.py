@@ -31,7 +31,9 @@ from src.core.database import get_db
 from src.core.dash_auth import require_auth
 from src.models.login_models import (
     Login,
+    ROLE_EVENT_REVIEWER,
     ROLE_SUPER_ADMIN,
+    UserRole,
     hash_password,
 )
 
@@ -60,16 +62,29 @@ async def ensure_env_admin_seeded(db: AsyncSession, username: str) -> Login:
             is_active=True,
         )
         db.add(row)
+        await db.flush()  # get row.id before user_roles insert
+        # Grant events reviewer role on seed so the events PWA is usable
+        # from day one — otherwise the very first admin login could never
+        # sign into /events (no user has any events capability role yet).
+        db.add(UserRole(login_id=row.id, role=ROLE_EVENT_REVIEWER))
         await db.commit()
         await db.refresh(row)
-        logger.info("[RBAC] seeded env admin as super_admin (login.id=%s)", row.id)
+        logger.info("[RBAC] seeded env admin as super_admin + event_reviewer (login.id=%s)", row.id)
     else:
-        # Self-heal: env admin is always super_admin + active.
+        # Self-heal: env admin is always super_admin + active, and always
+        # holds event_reviewer so the events PWA stays reachable via the
+        # bootstrap credential.
+        changed = False
         if row.role != ROLE_SUPER_ADMIN or not row.is_active:
             row.role = ROLE_SUPER_ADMIN
             row.is_active = True
             # Also re-sync password in case env value changed.
             row.password = hash_password(settings.DASHBOARD_PASSWORD)
+            changed = True
+        if not any(r.role == ROLE_EVENT_REVIEWER for r in (row.capability_roles or [])):
+            db.add(UserRole(login_id=row.id, role=ROLE_EVENT_REVIEWER))
+            changed = True
+        if changed:
             await db.commit()
             await db.refresh(row)
             logger.info("[RBAC] restored env admin to super_admin (login.id=%s)", row.id)

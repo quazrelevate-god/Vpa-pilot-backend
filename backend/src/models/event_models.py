@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger, Column, Date, DateTime, Index, Text, Time, VARCHAR,
+    BigInteger, Boolean, Column, Date, DateTime, Index, Text, Time, VARCHAR, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -84,6 +84,15 @@ class InvitationEvent(Base):
     # outcome. Kept as a plain string (not an enum) so a future third state —
     # e.g. 'sent_representative' — can be added without a schema migration.
     attendance = Column(VARCHAR(20), nullable=True, comment="attended | not_attended | NULL")
+
+    # ── Approval gate ──────────────────────────────────────────────────────────
+    # Every new event lands with is_approved=False. It stays out of the
+    # calendar view and sits in Needs Review until a reviewer confirms with the
+    # Minister and clicks Approve. Existing rows were backfilled to True in
+    # migration 038 so they stay visible on rollout.
+    is_approved  = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    approved_by  = Column(VARCHAR(100), nullable=True, comment="events_session username who approved")
+    approved_at  = Column(DateTime, nullable=True)
 
     # ── Timestamps / audit ──────────────────────────────────────────────────────
     created_by   = Column(VARCHAR(100), nullable=False, comment="events_session username")

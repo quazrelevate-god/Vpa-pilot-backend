@@ -23,8 +23,23 @@ import { InitialsAvatar } from "@/components/ui/avatar";
 import { useLang } from "@/lib/lang-context";
 import {
   listUsers, createUser, updateUser, deleteUser, listDepartments,
-  type UserRow, type Role, type DepartmentRow,
+  ALL_CAPABILITY_ROLES,
+  type UserRow, type Role, type DepartmentRow, type CapabilityRole,
 } from "../_lib/adminApi";
+
+// Capability roles — additive, independent of the primary Role. Rendered as
+// checkboxes so the two are visually distinct: primary is exclusive, capabilities
+// are stackable. Add another row here when a new role lands (e.g. crowd_operator).
+const CAPABILITY_META: Record<CapabilityRole, { label: string; help: string }> = {
+  event_uploader: {
+    label: "Event uploader",
+    help:  "Upload greetings / invitation photos. Cannot see the review queue or edit events.",
+  },
+  event_reviewer: {
+    label: "Event reviewer",
+    help:  "Everything the uploader can do, plus edit / retry / delete events and see the Needs Review queue.",
+  },
+};
 
 // Role → translation key (the "user type" badge/select label).
 const ROLE_KEY: Record<Role, string> = {
@@ -191,6 +206,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                   email: values.email,
                   role: values.role,
                   department: values.department,
+                  capability_roles: values.capability_roles,
                 });
                 toast.success(t("set.userCreated"));
                 setOpenCreate(false);
@@ -221,6 +237,9 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                     {u.full_name || u.login_name}
                   </span>
                   <StatusDot label={t(ROLE_KEY[u.role])} tone={ROLE_TONE[u.role]} />
+                  {u.capability_roles?.map((cr) => (
+                    <StatusDot key={cr} label={CAPABILITY_META[cr].label} tone="slate" />
+                  ))}
                   {!u.is_active && <StatusDot label={t("set.disabledTag")} tone="red" />}
                   {u.id === currentUserId && <StatusDot label={t("set.you")} tone="brand" />}
                 </div>
@@ -270,6 +289,7 @@ export default function UsersTab({ currentUserId }: { currentUserId: number }) {
                   email: values.email,
                   role: values.role,
                   department: values.department,
+                  capability_roles: values.capability_roles,
                   ...(values.password ? { password: values.password } : {}),
                 });
                 toast.success(t("set.saved"));
@@ -300,6 +320,7 @@ function UserFormDialog({
     email?: string;
     role: Role;
     department?: string;
+    capability_roles: CapabilityRole[];
   }) => Promise<void>;
   requirePassword?: boolean;
 }) {
@@ -311,7 +332,19 @@ function UserFormDialog({
   const [department, setDepartment] = useState<string>(initial?.department ?? "");
   const [departments, setDepartments] = useState<DepartmentRow[]>([]);
   const [password, setPassword]   = useState("");
+  const [capabilityRoles, setCapabilityRoles] = useState<Set<CapabilityRole>>(
+    () => new Set(initial?.capability_roles ?? []),
+  );
   const [busy, setBusy]           = useState(false);
+
+  const toggleCapabilityRole = (r: CapabilityRole) => {
+    setCapabilityRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r);
+      else next.add(r);
+      return next;
+    });
+  };
 
   const isEdit = !!initial;
   const needsDept = role === "dept_officer";
@@ -386,6 +419,31 @@ function UserFormDialog({
         <div className="sm:col-span-2">
           <RolePreview role={role} />
         </div>
+        {/* Capability roles — additive, independent of primary Role. Rendered
+            as checkboxes so it's visually obvious a user can hold both. */}
+        <div className="space-y-2 sm:col-span-2">
+          <Label>Events access</Label>
+          <div className="rounded-xl border border-border bg-muted/40 p-3 space-y-2">
+            {ALL_CAPABILITY_ROLES.map((r) => {
+              const meta = CAPABILITY_META[r];
+              const checked = capabilityRoles.has(r);
+              return (
+                <label key={r} className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-background/60">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleCapabilityRole(r)}
+                    className="mt-1 h-4 w-4 accent-brand"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground">{meta.label}</div>
+                    <div className="text-[11px] leading-relaxed text-muted-foreground">{meta.help}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
       </div>
       <DialogFooter>
         <Button
@@ -401,6 +459,7 @@ function UserFormDialog({
                 email: email || undefined,
                 role,
                 department: needsDept ? department : undefined,
+                capability_roles: Array.from(capabilityRoles),
               });
             } finally { setBusy(false); }
           }}

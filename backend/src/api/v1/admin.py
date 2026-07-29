@@ -31,6 +31,8 @@ from src.core.rbac import (
 from src.models.login_models import (
     Login,
     ROLE_SUPER_ADMIN, ROLE_PA, ROLE_DEPT_OFFICER, ROLE_AUDITOR, ALL_ROLES,
+    ALL_CAPABILITY_ROLES,
+    UserRole,
     hash_password,
 )
 from src.models.registry_models import DepartmentRegistry, MinistryRegistry, VenueRegistry
@@ -58,6 +60,9 @@ class UserRow(BaseModel):
     email: Optional[str] = None
     role: str
     department: Optional[str] = None   # for dept officers — from scope.department
+    # Additive capability roles (e.g. event_uploader, event_reviewer). Rendered
+    # as independent checkboxes on the admin user form; stored in user_roles.
+    capability_roles: list[str] = []
     is_active: bool
     created_at: datetime
 
@@ -70,6 +75,8 @@ class UserCreate(BaseModel):
     role: str = Field(default=ROLE_PA)
     department: Optional[str] = Field(default=None, max_length=60,
                                       description="Required when role=dept_officer — scopes them to one department.")
+    capability_roles: list[str] = Field(default_factory=list,
+                                        description="Additive capability roles: event_uploader, event_reviewer.")
 
 
 class UserUpdate(BaseModel):
@@ -79,6 +86,9 @@ class UserUpdate(BaseModel):
     department: Optional[str] = Field(default=None, max_length=60)
     is_active: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=6, max_length=200)
+    # Nullable to distinguish "not sent" from "explicitly empty list". When
+    # provided, replaces the full capability-role set for this user.
+    capability_roles: Optional[list[str]] = None
 
 
 class DepartmentRow(BaseModel):
@@ -198,9 +208,54 @@ async def features() -> dict:
 # ── Users ────────────────────────────────────────────────────────────────────
 
 def _user_row(r: Login) -> UserRow:
-    row = UserRow.model_validate(r, from_attributes=True)
-    row.department = (r.scope or {}).get("department")
-    return row
+    """Build the wire shape explicitly. Cannot use model_validate(from_attributes=
+    True) because Pydantic would try to read `r.capability_roles` — a list of
+    UserRole ORM objects — into the `list[str]` field and 500 the request. This
+    is also cheaper: no reflection, and the field list here doubles as the
+    single place that documents what the admin API exposes."""
+    return UserRow(
+        id=r.id,
+        login_name=r.login_name,
+        full_name=r.full_name,
+        email=r.email,
+        role=r.role,
+        department=(r.scope or {}).get("department"),
+        # capability_roles is eager-loaded via Login.capability_roles (selectin);
+        # sort for stable UI ordering across responses.
+        capability_roles=sorted(cr.role for cr in (r.capability_roles or [])),
+        is_active=r.is_active,
+        created_at=r.created_at,
+    )
+
+
+def _validate_capability_roles(roles: list[str]) -> list[str]:
+    """Reject unknown role names + dedupe. Empty list is valid (no capabilities)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for role in roles:
+        if role not in ALL_CAPABILITY_ROLES:
+            raise HTTPException(422, f"Unknown capability role: {role}")
+        if role in seen:
+            continue
+        seen.add(role)
+        out.append(role)
+    return out
+
+
+async def _sync_capability_roles(db: AsyncSession, login_id: int, roles: list[str]) -> None:
+    """Replace this user's capability roles with the given set. Deletes rows
+    for roles no longer granted; inserts rows for newly granted roles; leaves
+    unchanged rows alone (so granted_at is preserved as an audit trail)."""
+    existing = (await db.execute(
+        select(UserRole).where(UserRole.login_id == login_id)
+    )).scalars().all()
+    have = {r.role: r for r in existing}
+    want = set(roles)
+    for role, row in have.items():
+        if role not in want:
+            await db.delete(row)
+    for role in want - have.keys():
+        db.add(UserRole(login_id=login_id, role=role))
 
 
 @router.get("/users", response_model=list[UserRow])
@@ -224,6 +279,8 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db)):
             raise HTTPException(422, "A department is required for a department officer.")
         scope = {"department": body.department}
 
+    capability_roles = _validate_capability_roles(body.capability_roles)
+
     row = Login(
         login_name=body.login_name,
         password=hash_password(body.password),
@@ -234,6 +291,9 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db)):
         is_active=True,
     )
     db.add(row)
+    await db.flush()  # need row.id before we can insert user_roles
+    for role in capability_roles:
+        db.add(UserRole(login_id=row.id, role=role))
     await db.commit()
     await db.refresh(row)
     return _user_row(row)
@@ -275,6 +335,10 @@ async def update_user(
     if body.role is not None:       row.role = body.role
     if body.is_active is not None:  row.is_active = body.is_active
     if body.password:               row.password = hash_password(body.password)
+    if body.capability_roles is not None:
+        await _sync_capability_roles(
+            db, row.id, _validate_capability_roles(body.capability_roles),
+        )
 
     # Department scope follows the (possibly updated) role.
     if row.role == ROLE_DEPT_OFFICER:
