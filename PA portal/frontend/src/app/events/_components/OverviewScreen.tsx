@@ -50,20 +50,48 @@ function KpiTile({
   tone: Tone; label: string; value: number | string; caption?: string;
 }) {
   const t = TONE[tone];
-  // Padding / icon / number all scale down on small screens (iPhone-mini
-  // 375px is the target lower bound) so a 2×2 grid still breathes.
+  // Everything scales fluidly with viewport width via clamp() — no step
+  // jumps at breakpoints. Ranges tuned for the 320px–560px column the
+  // events PWA lives in (layout wraps content in max-w-[560px] mx-auto).
   return (
-    <Card className="flex flex-col gap-2 rounded-2xl border-slate-100 p-3 shadow-sm sm:gap-3 sm:p-4">
-      <span className={cn("grid h-8 w-8 place-items-center rounded-lg sm:h-9 sm:w-9 sm:rounded-xl", t.bg, t.fg)}>
-        <Icon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" strokeWidth={1.75} />
+    <Card
+      className={cn(
+        "flex flex-col rounded-2xl border-slate-100 shadow-sm",
+        "gap-[clamp(0.4rem,1.8vw,0.75rem)] p-[clamp(0.65rem,3vw,1rem)]",
+      )}
+    >
+      <span
+        className={cn("grid place-items-center rounded-xl", t.bg, t.fg)}
+        style={{
+          height: "clamp(1.85rem, 7vw, 2.25rem)",
+          width:  "clamp(1.85rem, 7vw, 2.25rem)",
+        }}
+      >
+        <Icon
+          strokeWidth={1.75}
+          className="h-[clamp(0.95rem,3.7vw,1.15rem)] w-[clamp(0.95rem,3.7vw,1.15rem)]"
+        />
       </span>
       <div className="min-w-0">
-        <div className="text-[0.7rem] font-semibold leading-snug text-slate-500 sm:text-[0.75rem]">{label}</div>
-        <div className="font-mono text-[22px] font-bold leading-tight tracking-tight tabular-nums text-slate-900 sm:text-[26px]">
+        <div
+          className="font-semibold leading-snug text-slate-500"
+          style={{ fontSize: "clamp(0.68rem, 2.6vw, 0.78rem)" }}
+        >
+          {label}
+        </div>
+        <div
+          className="font-mono font-bold leading-tight tracking-tight tabular-nums text-slate-900"
+          style={{ fontSize: "clamp(1.25rem, 5.6vw, 1.7rem)" }}
+        >
           {typeof value === "number" ? value.toLocaleString("en-IN") : value}
         </div>
         {caption && (
-          <div className="mt-0.5 text-[0.66rem] leading-snug text-slate-400 sm:text-[0.7rem]">{caption}</div>
+          <div
+            className="mt-0.5 leading-snug text-slate-400"
+            style={{ fontSize: "clamp(0.62rem, 2.3vw, 0.72rem)" }}
+          >
+            {caption}
+          </div>
         )}
       </div>
     </Card>
@@ -93,31 +121,62 @@ export default function OverviewScreen() {
 
   if (!data) {
     return (
-      <div className="space-y-3 px-3 pt-3 sm:px-4 sm:pt-4">
-        <Skeleton className="h-[120px] rounded-2xl sm:h-[136px]" />
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
+      <div
+        style={{
+          padding: "clamp(0.65rem, 3vw, 1rem)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "clamp(0.75rem, 3vw, 1rem)",
+        }}
+      >
+        <Skeleton style={{ height: "clamp(7rem, 30vw, 8.5rem)" }} className="rounded-2xl" />
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: "repeat(auto-fit, minmax(clamp(8.5rem, 42vw, 10rem), 1fr))",
+            gap: "clamp(0.5rem, 2.4vw, 0.75rem)",
+          }}
+        >
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-[108px] rounded-2xl sm:h-[124px]" />
+            <Skeleton key={i} style={{ height: "clamp(6.5rem, 26vw, 7.75rem)" }} className="rounded-2xl" />
           ))}
         </div>
-        <Skeleton className="h-[200px] rounded-2xl sm:h-[220px]" />
-        <Skeleton className="h-[200px] rounded-2xl sm:h-[220px]" />
+        <Skeleton style={{ height: "clamp(12rem, 45vw, 13.75rem)" }} className="rounded-2xl" />
+        <Skeleton style={{ height: "clamp(12rem, 45vw, 13.75rem)" }} className="rounded-2xl" />
       </div>
     );
   }
 
   return (
-    // Tighter default spacing for phone widths; loosen on ≥sm so tablets /
-    // side-by-side viewers still breathe. Same rule for horizontal padding.
-    <div className="space-y-4 px-3 pb-6 pt-3 sm:space-y-6 sm:px-4 sm:pb-8 sm:pt-4">
+    // Fluid outer padding + section gap — smoothly scales between phone and
+    // the 560px cap the events layout wraps around. No breakpoint jumps.
+    <div
+      className="pb-6"
+      style={{
+        paddingLeft:  "clamp(0.65rem, 3vw, 1rem)",
+        paddingRight: "clamp(0.65rem, 3vw, 1rem)",
+        paddingTop:   "clamp(0.65rem, 3vw, 1rem)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "clamp(0.95rem, 4vw, 1.5rem)",
+      }}
+    >
       <Hero events={data.events} lang={lang} t={t} onOpen={setOpenEvent} />
 
-      {/* ── KPI row — 6 tiles (2 cols on phone, 3 on sm, 6 on lg) ── */}
+      {/* ── KPI row — auto-fit(minmax). Tiles wrap by their own intrinsic
+             size, not by breakpoint columns. On 375px column → 2 cols; on
+             a 560px viewport → 3 cols; wider → more. Gap fluid too. ── */}
       <section>
         <SectionLabel icon={CalendarDays}>
           {t("At a glance", "நோட்டமிட")}
         </SectionLabel>
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: "repeat(auto-fit, minmax(clamp(8.5rem, 42vw, 10rem), 1fr))",
+            gap: "clamp(0.5rem, 2.4vw, 0.75rem)",
+          }}
+        >
           <KpiTile icon={CalendarDays} tone="brand"
             label={t("Today", "இன்று")} value={data.events.today}
             caption={t("scheduled today", "இன்று திட்டமிடப்பட்டவை")} />
@@ -228,29 +287,50 @@ function Hero({
   const nextEvent = events.next_events[0];
   return (
     <Card className="overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-[#21395B] to-[#2F6FED] p-0 shadow-md">
-      {/* Responsive layout: single-column on iPhone-mini (375) / 13 (390),
-          two-column with the next-up chip beside from sm (≥640). Padding
-          and hero number are also cut on small screens — the old p-5 +
-          52px number ate the viewport vertically. */}
-      <div className="grid gap-4 p-4 sm:gap-5 sm:p-5 sm:grid-cols-[1fr_auto] sm:items-center">
+      {/* Fluid layout — the outer grid switches to two columns only when
+          the container has room for the next-up chip beside the count
+          (≥ ~28rem). Otherwise stacks. Padding, gaps, and every font
+          size scale via clamp() so the design breathes on 375px and
+          stops growing at 560px. */}
+      <div
+        className="grid items-center"
+        style={{
+          padding: "clamp(0.85rem, 4vw, 1.25rem)",
+          gap: "clamp(0.85rem, 3.5vw, 1.25rem)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(15rem, 100%), 1fr))",
+        }}
+      >
         <div className="min-w-0">
-          <div className="text-[0.68rem] font-bold uppercase tracking-widest text-white/60 sm:text-[0.7rem]">
+          <div
+            className="font-bold uppercase tracking-widest text-white/60"
+            style={{ fontSize: "clamp(0.62rem, 2.4vw, 0.72rem)" }}
+          >
             {dateLabel}
           </div>
-          <div className="mt-1 flex items-baseline gap-2.5 sm:gap-3">
-            <span className="font-mono text-[40px] font-bold leading-none tabular-nums text-white sm:text-[52px]">
+          <div
+            className="mt-1 flex items-baseline"
+            style={{ gap: "clamp(0.5rem, 2vw, 0.75rem)" }}
+          >
+            <span
+              className="font-mono font-bold leading-none tabular-nums text-white"
+              style={{ fontSize: "clamp(2.25rem, 10.5vw, 3.25rem)" }}
+            >
               {events.today}
             </span>
-            <span className="text-sm font-semibold leading-tight text-white/85 sm:text-base">
+            <span
+              className="font-semibold leading-tight text-white/85"
+              style={{ fontSize: "clamp(0.85rem, 3.4vw, 1rem)" }}
+            >
               {events.today === 1
                 ? t("event today", "இன்று 1 நிகழ்வு")
                 : t("events today", "இன்று நிகழ்வுகள்")}
             </span>
           </div>
-          {/* Subtitle now disjoint: "N upcoming · this month: P past · U ahead"
-              so no number overlaps with another. Was: "3 upcoming · 7 this month"
-              which double-counted today+ July dates in both halves. */}
-          <div className="mt-1 text-[0.78rem] leading-snug text-white/70 sm:text-[0.85rem]">
+          {/* Subtitle: three disjoint numbers, no double-counting. */}
+          <div
+            className="mt-1 leading-snug text-white/70"
+            style={{ fontSize: "clamp(0.72rem, 2.8vw, 0.85rem)" }}
+          >
             {events.upcoming > 0
               ? t(
                   `${events.upcoming} upcoming · this month: ${events.past_this_month} past · ${events.upcoming_this_month} ahead`,
@@ -263,35 +343,54 @@ function Hero({
         {nextEvent ? (
           <button
             onClick={() => onOpen(nextEvent)}
-            className="group flex min-w-0 items-start gap-2.5 rounded-xl bg-white/12 p-2.5 text-left transition-colors hover:bg-white/20 sm:gap-3 sm:p-3 sm:max-w-[320px]"
+            className="group flex min-w-0 items-start rounded-xl bg-white/12 text-left transition-colors hover:bg-white/20"
+            style={{
+              gap: "clamp(0.5rem, 2vw, 0.75rem)",
+              padding: "clamp(0.55rem, 2.4vw, 0.75rem)",
+            }}
           >
             <span
               className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: typeMeta(nextEvent.event_type).color }}
             />
             <div className="min-w-0">
-              <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/60 sm:text-[0.65rem]">
+              <div
+                className="font-bold uppercase tracking-widest text-white/60"
+                style={{ fontSize: "clamp(0.55rem, 2.2vw, 0.65rem)" }}
+              >
                 {t("Next up", "அடுத்தது")}
               </div>
-              <div className="mt-0.5 truncate text-[0.88rem] font-bold text-white sm:text-[0.95rem]">
+              <div
+                className="mt-0.5 truncate font-bold text-white"
+                style={{ fontSize: "clamp(0.82rem, 3.2vw, 0.95rem)" }}
+              >
                 {displayTitle(nextEvent, lang)}
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10.5px] tabular-nums text-white/75 sm:text-[11px]">
+              <div
+                className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono tabular-nums text-white/75"
+                style={{ fontSize: "clamp(0.62rem, 2.4vw, 0.72rem)" }}
+              >
                 <span>{shortDate(nextEvent.date, lang)}</span>
-                {/* Times are mandatory now — the old ternary guards were
-                    dead code. Kept as a soft check for legacy null rows
-                    that pre-date the mandate. */}
                 {nextEvent.start_time && <span>· {fmtTime(nextEvent.start_time)}</span>}
               </div>
               {pickVenue(nextEvent, lang) && (
-                <div className="mt-0.5 truncate text-[10.5px] text-white/60 sm:text-[11px]">
+                <div
+                  className="mt-0.5 truncate text-white/60"
+                  style={{ fontSize: "clamp(0.62rem, 2.4vw, 0.72rem)" }}
+                >
                   {pickVenue(nextEvent, lang)}
                 </div>
               )}
             </div>
           </button>
         ) : (
-          <div className="rounded-xl bg-white/10 p-2.5 text-center text-[0.78rem] text-white/70 sm:p-3 sm:text-[0.8rem] sm:max-w-[220px]">
+          <div
+            className="rounded-xl bg-white/10 text-center text-white/70"
+            style={{
+              padding: "clamp(0.55rem, 2.4vw, 0.75rem)",
+              fontSize: "clamp(0.72rem, 2.8vw, 0.85rem)",
+            }}
+          >
             {t("Calendar clear.", "நாட்காட்டி வெறுமை.")}
           </div>
         )}
