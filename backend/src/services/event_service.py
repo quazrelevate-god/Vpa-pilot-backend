@@ -513,7 +513,16 @@ async def overview_events(db: AsyncSession) -> dict:
 
     # ── 1) Headline counts — one round-trip, FILTER per KPI ─────────────────
     not_approved = InvitationEvent.is_approved == False  # noqa: E712
+    approved = InvitationEvent.is_approved == True  # noqa: E712
     is_ready = InvitationEvent.status == STATUS_READY
+    # Rolling window used for the 30-day attendance rate — the calendar-month
+    # chart is noisy mid-month, the rolling window is what the office reads.
+    thirty_start = today - timedelta(days=30)
+    # Last day of the current month. replace(day=28) + 4d always lands in
+    # next month regardless of month length, then snap to day=1 and step
+    # back one — handles Feb/Dec without special-cases.
+    _next_month_first = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_end = _next_month_first - timedelta(days=1)
     counts = (await db.execute(select(
         func.count(InvitationEvent.id).filter(
             InvitationEvent.event_date == today
@@ -522,9 +531,25 @@ async def overview_events(db: AsyncSession) -> dict:
             (InvitationEvent.event_date >= week_start)
             & (InvitationEvent.event_date <= week_end)
         ).label("this_week"),
+        # This week's confirmed subset — how prepared is the office. Divisor
+        # is `this_week`, so the frontend can render "N of M confirmed" with
+        # no extra math.
         func.count(InvitationEvent.id).filter(
-            InvitationEvent.event_date >= month_start
-        ).label("this_month"),
+            approved
+            & (InvitationEvent.event_date >= week_start)
+            & (InvitationEvent.event_date <= week_end)
+        ).label("this_week_confirmed"),
+        # Split the calendar month into past-so-far vs upcoming to kill the
+        # old ambiguous "this_month" number (which double-counted vs
+        # `upcoming` since both include future dates in the same month).
+        func.count(InvitationEvent.id).filter(
+            (InvitationEvent.event_date >= month_start)
+            & (InvitationEvent.event_date < today)
+        ).label("past_this_month"),
+        func.count(InvitationEvent.id).filter(
+            (InvitationEvent.event_date >= today)
+            & (InvitationEvent.event_date <= month_end)
+        ).label("upcoming_this_month"),
         # Awaiting approval — the reviewer's to-do queue: fully-extracted,
         # dated, times set, event date today or later, not yet approved.
         # Past unapproved events are terminally "not attended" and don't
@@ -557,6 +582,18 @@ async def overview_events(db: AsyncSession) -> dict:
         func.count(InvitationEvent.id).filter(
             InvitationEvent.event_date >= today
         ).label("upcoming"),
+        # Rolling-30d attendance: only PAST events (excluding today) can
+        # have a settled attended/not-attended answer, so both attended
+        # count and the denominator gate on event_date < today.
+        func.count(InvitationEvent.id).filter(
+            approved
+            & (InvitationEvent.event_date >= thirty_start)
+            & (InvitationEvent.event_date < today)
+        ).label("attended_30d"),
+        func.count(InvitationEvent.id).filter(
+            (InvitationEvent.event_date >= thirty_start)
+            & (InvitationEvent.event_date < today)
+        ).label("total_past_30d"),
     ))).one()
 
     # ── 2) Next up to 5 upcoming events (all events, approved or not) ──────
@@ -625,10 +662,18 @@ async def overview_events(db: AsyncSession) -> dict:
             week_grid[key] = int(n)
     volume_series = [{"week_start": k, "count": v} for k, v in week_grid.items()]
 
+    total_past_30d = int(counts.total_past_30d)
+    attended_30d = int(counts.attended_30d)
     return {
         "today":                int(counts.today),
         "this_week":            int(counts.this_week),
-        "this_month":           int(counts.this_month),
+        # `this_week_confirmed` is a subset of `this_week`; frontend renders
+        # "N of M confirmed" — no client-side math needed.
+        "this_week_confirmed":  int(counts.this_week_confirmed),
+        # Retired: `this_month` (ambiguous — double-counted today+ dates with
+        # `upcoming`). Split into disjoint past/upcoming for clarity.
+        "past_this_month":      int(counts.past_this_month),
+        "upcoming_this_month":  int(counts.upcoming_this_month),
         "upcoming":             int(counts.upcoming),
         "awaiting_approval":    int(counts.awaiting_approval),
         "needs_attention":      int(counts.needs_attention),
@@ -642,6 +687,13 @@ async def overview_events(db: AsyncSession) -> dict:
             for t, n in sorted(type_rows, key=lambda r: -int(r[1]))
         ],
         "attendance_this_month": attendance,
+        # Rolling-30-day attendance stat. `rate` is percent (0-100), None when
+        # the denominator is zero so the UI can show "—" instead of dividing.
+        "attendance_last_30d": {
+            "attended":       attended_30d,
+            "total":          total_past_30d,
+            "rate":           round(attended_30d / total_past_30d * 100, 1) if total_past_30d else None,
+        },
         "volume_last_8_weeks":   volume_series,
     }
 

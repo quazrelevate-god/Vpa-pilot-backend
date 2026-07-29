@@ -87,16 +87,22 @@ export type NeedsReviewFeed = { items: EventItem[]; count: number };
 export type EventsOverview = {
   today: number;
   this_week: number;
-  this_month: number;
+  /** Subset of `this_week` — how many are already approved / confirmed. */
+  this_week_confirmed: number;
+  /** Split of the calendar month. Replaces the old ambiguous `this_month`
+   *  (which overlapped with `upcoming`). Disjoint: past + upcoming = total. */
+  past_this_month: number;
+  upcoming_this_month: number;
   upcoming: number;
   awaiting_approval: number;
   needs_attention: number;
   week_range: { start: string; end: string };
   next_events: EventItem[];
   by_type_this_week: { type: string; count: number }[];
-  /** Two buckets under the new is_approved-as-attendance model. Backend still
-   *  emits `not_marked: 0` for legacy shape stability; nothing renders it. */
   attendance_this_month: { attended: number; not_attended: number };
+  /** Rolling 30-day attendance. `rate` null when denominator is zero — UI
+   *  should show a dash rather than dividing. */
+  attendance_last_30d: { attended: number; total: number; rate: number | null };
   volume_last_8_weeks: { week_start: string; count: number }[];
 };
 

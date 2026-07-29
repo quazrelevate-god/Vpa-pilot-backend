@@ -47,21 +47,23 @@ function KpiTile({
   icon: Icon, tone, label, value, caption,
 }: {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
-  tone: Tone; label: string; value: number; caption?: string;
+  tone: Tone; label: string; value: number | string; caption?: string;
 }) {
   const t = TONE[tone];
+  // Padding / icon / number all scale down on small screens (iPhone-mini
+  // 375px is the target lower bound) so a 2×2 grid still breathes.
   return (
-    <Card className="flex flex-col gap-3 rounded-2xl border-slate-100 p-4 shadow-sm">
-      <span className={cn("grid h-9 w-9 place-items-center rounded-xl", t.bg, t.fg)}>
-        <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
+    <Card className="flex flex-col gap-2 rounded-2xl border-slate-100 p-3 shadow-sm sm:gap-3 sm:p-4">
+      <span className={cn("grid h-8 w-8 place-items-center rounded-lg sm:h-9 sm:w-9 sm:rounded-xl", t.bg, t.fg)}>
+        <Icon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" strokeWidth={1.75} />
       </span>
       <div className="min-w-0">
-        <div className="text-[0.75rem] font-semibold leading-snug text-slate-500">{label}</div>
-        <div className="font-mono text-[26px] font-bold leading-tight tracking-tight tabular-nums text-slate-900">
-          {value.toLocaleString("en-IN")}
+        <div className="text-[0.7rem] font-semibold leading-snug text-slate-500 sm:text-[0.75rem]">{label}</div>
+        <div className="font-mono text-[22px] font-bold leading-tight tracking-tight tabular-nums text-slate-900 sm:text-[26px]">
+          {typeof value === "number" ? value.toLocaleString("en-IN") : value}
         </div>
         {caption && (
-          <div className="text-[0.7rem] leading-snug text-slate-400">{caption}</div>
+          <div className="mt-0.5 text-[0.66rem] leading-snug text-slate-400 sm:text-[0.7rem]">{caption}</div>
         )}
       </div>
     </Card>
@@ -91,36 +93,62 @@ export default function OverviewScreen() {
 
   if (!data) {
     return (
-      <div className="space-y-3 px-4 pt-4">
-        <Skeleton className="h-[136px] rounded-2xl" />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[124px] rounded-2xl" />)}
+      <div className="space-y-3 px-3 pt-3 sm:px-4 sm:pt-4">
+        <Skeleton className="h-[120px] rounded-2xl sm:h-[136px]" />
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-[108px] rounded-2xl sm:h-[124px]" />
+          ))}
         </div>
-        <Skeleton className="h-[220px] rounded-2xl" />
-        <Skeleton className="h-[220px] rounded-2xl" />
+        <Skeleton className="h-[200px] rounded-2xl sm:h-[220px]" />
+        <Skeleton className="h-[200px] rounded-2xl sm:h-[220px]" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 px-4 pb-8 pt-4">
+    // Tighter default spacing for phone widths; loosen on ≥sm so tablets /
+    // side-by-side viewers still breathe. Same rule for horizontal padding.
+    <div className="space-y-4 px-3 pb-6 pt-3 sm:space-y-6 sm:px-4 sm:pb-8 sm:pt-4">
       <Hero events={data.events} lang={lang} t={t} onOpen={setOpenEvent} />
 
-      {/* ── KPI row — 4 tiles ── */}
+      {/* ── KPI row — 6 tiles (2 cols on phone, 3 on sm, 6 on lg) ── */}
       <section>
         <SectionLabel icon={CalendarDays}>
           {t("At a glance", "நோட்டமிட")}
         </SectionLabel>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
           <KpiTile icon={CalendarDays} tone="brand"
             label={t("Today", "இன்று")} value={data.events.today}
             caption={t("scheduled today", "இன்று திட்டமிடப்பட்டவை")} />
           <KpiTile icon={CalendarCheck} tone="navy"
             label={t("This week", "இந்த வாரம்")} value={data.events.this_week}
             caption={weekRangeCaption(data.events.week_range, lang)} />
+          {/* NEW — how prepared is the week: N of M events already confirmed
+              (approved/attending). Answers "how much of the week is locked in?"
+              at a glance without opening the calendar. */}
+          <KpiTile icon={CheckCircle2} tone="mint"
+            label={t("Confirmed", "உறுதிசெய்யப்பட்டது")}
+            value={`${data.events.this_week_confirmed} / ${data.events.this_week}`}
+            caption={t("this week", "இந்த வாரம்")} />
           <KpiTile icon={Clock} tone="amber"
-            label={t("Awaiting approval", "ஒப்புதலுக்கு காத்திருக்கிறது")} value={data.events.awaiting_approval}
-            caption={t("ready, pending Minister", "தயார், அமைச்சர் ஒப்புதலுக்காக")} />
+            label={t("Awaiting confirmation", "உறுதிசெய்ய")}
+            value={data.events.awaiting_approval}
+            caption={t("today+ · needs Minister ok", "இன்று+ · அமைச்சர் ஒப்புதல்")} />
+          {/* NEW — rolling 30-day attendance rate. Falls back to a dash when
+              the office has no past events yet in the window, rather than
+              dividing by zero and showing NaN%. */}
+          <KpiTile icon={CheckCircle2} tone="mint"
+            label={t("Attendance (30d)", "வருகை (30 நாள்)")}
+            value={
+              data.events.attendance_last_30d.rate != null
+                ? `${data.events.attendance_last_30d.rate}%`
+                : "—"
+            }
+            caption={t(
+              `${data.events.attendance_last_30d.attended} of ${data.events.attendance_last_30d.total} past`,
+              `${data.events.attendance_last_30d.attended} / ${data.events.attendance_last_30d.total} கடந்தவை`,
+            )} />
           <KpiTile icon={AlertTriangle} tone="rose"
             label={t("Needs attention", "கவனம் தேவை")} value={data.events.needs_attention}
             caption={t("failed / undated / no time", "தோல்வி / தேதி / நேரம் இல்லை")} />
@@ -200,26 +228,33 @@ function Hero({
   const nextEvent = events.next_events[0];
   return (
     <Card className="overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-[#21395B] to-[#2F6FED] p-0 shadow-md">
-      <div className="grid gap-5 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
+      {/* Responsive layout: single-column on iPhone-mini (375) / 13 (390),
+          two-column with the next-up chip beside from sm (≥640). Padding
+          and hero number are also cut on small screens — the old p-5 +
+          52px number ate the viewport vertically. */}
+      <div className="grid gap-4 p-4 sm:gap-5 sm:p-5 sm:grid-cols-[1fr_auto] sm:items-center">
         <div className="min-w-0">
-          <div className="text-[0.7rem] font-bold uppercase tracking-widest text-white/60">
+          <div className="text-[0.68rem] font-bold uppercase tracking-widest text-white/60 sm:text-[0.7rem]">
             {dateLabel}
           </div>
-          <div className="mt-1 flex items-baseline gap-3">
-            <span className="font-mono text-[52px] font-bold leading-none tabular-nums text-white">
+          <div className="mt-1 flex items-baseline gap-2.5 sm:gap-3">
+            <span className="font-mono text-[40px] font-bold leading-none tabular-nums text-white sm:text-[52px]">
               {events.today}
             </span>
-            <span className="text-base font-semibold leading-tight text-white/85">
+            <span className="text-sm font-semibold leading-tight text-white/85 sm:text-base">
               {events.today === 1
                 ? t("event today", "இன்று 1 நிகழ்வு")
                 : t("events today", "இன்று நிகழ்வுகள்")}
             </span>
           </div>
-          <div className="mt-1 text-[0.85rem] text-white/70">
+          {/* Subtitle now disjoint: "N upcoming · this month: P past · U ahead"
+              so no number overlaps with another. Was: "3 upcoming · 7 this month"
+              which double-counted today+ July dates in both halves. */}
+          <div className="mt-1 text-[0.78rem] leading-snug text-white/70 sm:text-[0.85rem]">
             {events.upcoming > 0
               ? t(
-                  `${events.upcoming} upcoming · ${events.this_month} this month`,
-                  `${events.upcoming} வரவிருக்கிறது · ${events.this_month} இந்த மாதம்`,
+                  `${events.upcoming} upcoming · this month: ${events.past_this_month} past · ${events.upcoming_this_month} ahead`,
+                  `${events.upcoming} வரவிருக்கிறது · இந்த மாதம்: ${events.past_this_month} முடிந்தது · ${events.upcoming_this_month} வரவுள்ளது`,
                 )
               : t("Nothing scheduled ahead", "வரவுள்ள நிகழ்வு இல்லை")}
           </div>
@@ -228,32 +263,35 @@ function Hero({
         {nextEvent ? (
           <button
             onClick={() => onOpen(nextEvent)}
-            className="group flex min-w-0 items-start gap-3 rounded-xl bg-white/12 p-3 text-left transition-colors hover:bg-white/20 sm:max-w-[320px]"
+            className="group flex min-w-0 items-start gap-2.5 rounded-xl bg-white/12 p-2.5 text-left transition-colors hover:bg-white/20 sm:gap-3 sm:p-3 sm:max-w-[320px]"
           >
             <span
               className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: typeMeta(nextEvent.event_type).color }}
             />
             <div className="min-w-0">
-              <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/60">
+              <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/60 sm:text-[0.65rem]">
                 {t("Next up", "அடுத்தது")}
               </div>
-              <div className="mt-0.5 truncate text-[0.95rem] font-bold text-white">
+              <div className="mt-0.5 truncate text-[0.88rem] font-bold text-white sm:text-[0.95rem]">
                 {displayTitle(nextEvent, lang)}
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[11px] tabular-nums text-white/75">
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10.5px] tabular-nums text-white/75 sm:text-[11px]">
                 <span>{shortDate(nextEvent.date, lang)}</span>
+                {/* Times are mandatory now — the old ternary guards were
+                    dead code. Kept as a soft check for legacy null rows
+                    that pre-date the mandate. */}
                 {nextEvent.start_time && <span>· {fmtTime(nextEvent.start_time)}</span>}
               </div>
               {pickVenue(nextEvent, lang) && (
-                <div className="mt-0.5 truncate text-[11px] text-white/60">
+                <div className="mt-0.5 truncate text-[10.5px] text-white/60 sm:text-[11px]">
                   {pickVenue(nextEvent, lang)}
                 </div>
               )}
             </div>
           </button>
         ) : (
-          <div className="rounded-xl bg-white/10 p-3 text-center text-[0.8rem] text-white/70 sm:max-w-[220px]">
+          <div className="rounded-xl bg-white/10 p-2.5 text-center text-[0.78rem] text-white/70 sm:p-3 sm:text-[0.8rem] sm:max-w-[220px]">
             {t("Calendar clear.", "நாட்காட்டி வெறுமை.")}
           </div>
         )}
@@ -290,14 +328,14 @@ function NextUp({
                 <li key={e.id}>
                   <button
                     onClick={() => onOpen(e)}
-                    className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                    className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 px-3 py-2.5 text-left hover:bg-slate-50 sm:gap-3 sm:px-4 sm:py-3"
                   >
-                    {/* Date bubble */}
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-center">
+                    {/* Date bubble — slightly smaller on phones */}
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-center sm:h-11 sm:w-11">
                       <span className="font-mono text-[9px] font-black uppercase tabular-nums text-slate-400 leading-none">
                         {monthShort(e.date, lang)}
                       </span>
-                      <span className="font-mono text-[16px] font-bold tabular-nums text-slate-800 leading-none">
+                      <span className="font-mono text-[15px] font-bold tabular-nums text-slate-800 leading-none sm:text-[16px]">
                         {dayNum(e.date)}
                       </span>
                     </span>
@@ -308,11 +346,14 @@ function NextUp({
                           className="h-1.5 w-1.5 shrink-0 rounded-full"
                           style={{ backgroundColor: meta.color }}
                         />
-                        <span className="truncate text-[0.9rem] font-bold text-slate-800">
+                        <span className="truncate text-[0.85rem] font-bold text-slate-800 sm:text-[0.9rem]">
                           {displayTitle(e, lang)}
                         </span>
+                        {e.is_approved && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-label="Attended" />
+                        )}
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-slate-500">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500 sm:text-[11.5px]">
                         <span className="inline-flex items-center gap-1">
                           <Clock className="h-3 w-3" strokeWidth={2} />
                           <span className="font-mono tabular-nums">
