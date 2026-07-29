@@ -147,7 +147,13 @@ async def overview(
         .order_by(func.count(Ticket.id).desc())
     )).all()
 
+    # ── Event KPIs — the events-app-native section, front-and-centre in
+    # the UI. Lives alongside (not instead of) the office-wide numbers so
+    # advisors who want both perspectives can still see them.
+    events_kpis = await event_service.overview_events(db)
+
     return {
+        "events": events_kpis,
         "totals": {
             "tickets": int(t_row.total),
             "appointments": int(a_row.total),

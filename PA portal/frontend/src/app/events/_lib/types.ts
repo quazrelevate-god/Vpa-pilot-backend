@@ -82,7 +82,28 @@ export function pickRawSummary(e: Pick<EventItem, "raw_summary_en" | "raw_summar
 export type EventsFeed = { items: EventItem[] };
 export type NeedsReviewFeed = { items: EventItem[]; count: number };
 
+/** Event-centric KPIs — the primary content of the Overview screen. Powered
+ *  by `event_service.overview_events` on the backend; every field is a live
+ *  aggregation over invitation_events, no client-side derivation. */
+export type EventsOverview = {
+  today: number;
+  this_week: number;
+  this_month: number;
+  upcoming: number;
+  awaiting_approval: number;
+  needs_attention: number;
+  week_range: { start: string; end: string };
+  next_events: EventItem[];
+  by_type_this_week: { type: string; count: number }[];
+  attendance_this_month: { attended: number; not_attended: number; not_marked: number };
+  volume_last_8_weeks: { week_start: string; count: number }[];
+};
+
 export type OverviewData = {
+  /** Event-centric KPIs — the primary section of the Overview screen. */
+  events: EventsOverview;
+  /** Office-wide totals kept alongside so the same screen still doubles as a
+   *  quick office snapshot for advisors who want it. */
   totals: { tickets: number; appointments: number; meetings: number; petitions_received: number; petitions_awaiting: number; petitions_reviewed: number };
   today: { tickets: number; appointments: number; petitions_received: number; petitions_awaiting: number; petitions_reviewed: number };
   departments: { name: string; count: number }[];
