@@ -13,12 +13,23 @@ import { displayTitle, pickVenue, typeMeta } from "../_lib/types";
 import { useT } from "../_lib/i18n";
 import { AlertTriangle, Inbox, Loader2 } from "../_lib/icons";
 
-// An event is approvable when extraction (or manual save) finished cleanly
-// AND a date was set — those are the two things a Minister could actually
-// have said "yes" to. The Approve button is hidden otherwise so a reviewer
-// isn't tempted to bless a broken/undated row and then find it on the calendar.
+// An event is approvable when:
+//   1. Extraction (or manual save) finished cleanly (status=READY).
+//   2. Date AND both times are set — nothing a Minister could have "said yes
+//      to" is missing.
+//   3. Not already approved (idempotent — hide the button once done).
+//   4. Event date is today or later. Attendance is forward-looking; past
+//      events cannot be approved and the button is hidden to match the
+//      server rule (POST /approve 409s on a past row).
 function isApprovable(e: EventItem): boolean {
-  return e.status === "READY" && !!e.date && !e.is_approved;
+  if (e.status !== "READY") return false;
+  if (!e.date || !e.start_time || !e.end_time) return false;
+  if (e.is_approved) return false;
+  // Compare as YYYY-MM-DD strings — no TZ math needed since e.date is IST
+  // wall-clock and toISODate uses local (IST) date too.
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return e.date >= todayISO;
 }
 
 function statusChip(e: EventItem, t: (en: string, ta: string) => string) {
@@ -28,11 +39,25 @@ function statusChip(e: EventItem, t: (en: string, ta: string) => string) {
   if (e.status === "QUEUED" || e.status === "PROCESSING") {
     return { cls: "bg-amber-50 text-amber-700 border-amber-200", label: t("Extracting…", "எடுக்கப்படுகிறது…") };
   }
+  // Data-hole chips come BEFORE the approval chips so a missing-time
+  // legacy row doesn't get labelled "Awaiting approval" when the real
+  // issue is a data fix. Order matters: date → times → past → default.
   if (!e.date) {
     return { cls: "bg-orange-50 text-orange-700 border-orange-200", label: t("No date — set one", "தேதி இல்லை — அமைக்கவும்") };
   }
-  // READY + dated but not yet approved — waiting for Minister confirmation.
-  return { cls: "bg-blue-50 text-blue-700 border-blue-200", label: t("Awaiting approval", "அனுமதிக்கு காத்திருக்கிறது") };
+  if (!e.start_time || !e.end_time) {
+    return { cls: "bg-orange-50 text-orange-700 border-orange-200", label: t("Missing time — set one", "நேரம் இல்லை — அமைக்கவும்") };
+  }
+  // READY + fully-formed. If it's already approved (only possible on a
+  // legacy backfilled row still in the queue for another reason, or a
+  // rare race), show that truthfully — "Attended" — so the popup badge
+  // and the list chip match.
+  if (e.is_approved) {
+    return { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", label: t("Attended", "வருகை பதிந்தது") };
+  }
+  // Only remaining case for a row that reaches Needs Review: unapproved
+  // AND today or later (server predicate excludes past unapproved).
+  return { cls: "bg-blue-50 text-blue-700 border-blue-200", label: t("Awaiting confirmation", "உறுதிசெய்ய காத்திருக்கிறது") };
 }
 
 export default function NeedsReviewScreen({ refreshKey, onOpen }: {

@@ -2,9 +2,6 @@
 
 export type EventStatus = "QUEUED" | "PROCESSING" | "READY" | "FAILED";
 
-/** Post-event outcome, set manually by the PA. Null = not marked yet. */
-export type Attendance = "attended" | "not_attended" | null;
-
 export type EventItem = {
   id: number;
   /** note ?? title_en ?? title_ta ?? "Untitled" — plain fallback string.
@@ -38,10 +35,12 @@ export type EventItem = {
   /** Approval gate — false until a reviewer clicks Approve after Minister
    *  confirmation. Only approved events appear on the calendar; unapproved
    *  rows sit in Needs Review. */
+  /** Doubles as the ATTENDED marker under the new semantics: true means the
+   *  reviewer marked the Minister as attending (or already having attended).
+   *  Approve is only possible on today/future events. */
   is_approved: boolean;
   approved_by: string | null;
   approved_at: string | null;
-  attendance: Attendance;
   error_message: string | null;
   /** null for manually-created events with no photo uploaded. */
   image_url: string | null;
@@ -95,7 +94,9 @@ export type EventsOverview = {
   week_range: { start: string; end: string };
   next_events: EventItem[];
   by_type_this_week: { type: string; count: number }[];
-  attendance_this_month: { attended: number; not_attended: number; not_marked: number };
+  /** Two buckets under the new is_approved-as-attendance model. Backend still
+   *  emits `not_marked: 0` for legacy shape stability; nothing renders it. */
+  attendance_this_month: { attended: number; not_attended: number };
   volume_last_8_weeks: { week_start: string; count: number }[];
 };
 

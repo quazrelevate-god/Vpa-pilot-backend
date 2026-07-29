@@ -215,26 +215,48 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                 </div>
               )}
 
-              {/* Awaiting-approval banner — shown for READY + dated but not yet
-                  approved rows. Every new event lands here first; the reviewer
-                  confirms with the Minister then clicks Approve, and the event
-                  moves onto the calendar. */}
-              {event.status === "READY" && !!event.date && !event.is_approved && (
-                <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                  <div className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-blue-500/15" />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-bold">{t("Awaiting approval", "அனுமதிக்கு காத்திருக்கிறது")}</div>
-                    <div className="mt-0.5 opacity-80">
-                      {t(
-                        "Confirm with the Minister, then approve to publish on the calendar.",
-                        "அமைச்சரிடம் உறுதிசெய்து, நாட்காட்டியில் வெளியிட அனுமதிக்கவும்.",
-                      )}
+              {/* Approve-to-mark-attended banner. Only shown when the row is
+                  fully-formed AND today or later — approval is forward-looking
+                  under the new semantics; past events can't be marked
+                  attended from the UI (server 409s too). */}
+              {(() => {
+                if (event.is_approved) return null;
+                if (event.status !== "READY") return null;
+                if (!event.date || !event.start_time || !event.end_time) return null;
+                const today = new Date();
+                const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                if (event.date < todayISO) return null;
+                return (
+                  <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                    <div className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-blue-500/15" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold">{t("Awaiting confirmation", "உறுதிசெய்ய காத்திருக்கிறது")}</div>
+                      <div className="mt-0.5 opacity-80">
+                        {t(
+                          "Confirm with the Minister, then approve to mark as attending.",
+                          "அமைச்சரிடம் உறுதிசெய்து, வருகை பதிய அனுமதிக்கவும்.",
+                        )}
+                      </div>
+                      <Button size="sm" disabled={busy} onClick={doApprove}
+                        className="mt-2 h-10 gap-1.5 bg-[#2F6FED] px-4 text-sm font-bold text-white hover:bg-[#2456bd]">
+                        {t("Approve", "அனுமதி")}
+                      </Button>
                     </div>
-                    <Button size="sm" disabled={busy} onClick={doApprove}
-                      className="mt-2 h-10 gap-1.5 bg-[#2F6FED] px-4 text-sm font-bold text-white hover:bg-[#2456bd]">
-                      {t("Approve", "அனுமதி")}
-                    </Button>
                   </div>
+                );
+              })()}
+
+              {/* Attended badge — visible once approved so the reviewer can
+                  see at a glance the event is confirmed. */}
+              {event.is_approved && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  {t("Attended", "வருகை பதிந்தது")}
+                  {event.approved_by && (
+                    <span className="ml-1 text-[11px] font-normal opacity-80">
+                      · {event.approved_by}
+                    </span>
+                  )}
                 </div>
               )}
 

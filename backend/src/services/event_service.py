@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 from urllib.parse import quote
 import logging
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from secrets import token_hex
 from typing import Optional
 
@@ -79,6 +79,15 @@ def _parse_time(value: Optional[str]) -> Optional[dtime]:
 
 _SENTINEL_IMAGE = "events/manual"
 
+# IST wall-clock time for the today/future gate on approve. The server runs
+# UTC; if we compared against UTC's today() an IST evening could land on the
+# previous UTC date and let a past-in-IST event still be approvable.
+_IST_TZ = timezone(timedelta(hours=5, minutes=30))
+
+
+def _ist_today() -> date:
+    return datetime.now(_IST_TZ).date()
+
 
 def serialize(e: InvitationEvent) -> dict:
     """Wire format for the /events frontend.
@@ -115,14 +124,12 @@ def serialize(e: InvitationEvent) -> dict:
         "start_time": e.start_time.strftime("%H:%M") if e.start_time else None,
         "end_time": e.end_time.strftime("%H:%M") if e.end_time else None,
         "status": e.status,
-        # Approval gate — see model. False = sitting in Needs Review awaiting
-        # a reviewer's Approve after Minister confirmation. Frontend calendar
-        # already only receives approved rows (server-filtered), but the
-        # detail/edit views need the flag to render the Approve button.
+        # is_approved doubles as the attendance flag (see model). True = the
+        # Minister attended / is committed to attend. False = not attended.
+        # The calendar renders every event; this flag is a marker, not a gate.
         "is_approved": bool(e.is_approved),
         "approved_by": e.approved_by,
         "approved_at": e.approved_at.isoformat() if e.approved_at else None,
-        "attendance": e.attendance,   # "attended" | "not_attended" | null
         "error_message": e.error_message,
         "image_url": f"/events/api/files/{quote(e.image_path, safe='/')}" if has_photo else None,
         "has_photo": has_photo,
@@ -419,14 +426,13 @@ async def recover_stale() -> int:
 # ── Queries ─────────────────────────────────────────────────────────────────────
 
 async def list_events(db: AsyncSession, start: date, end: date) -> list[InvitationEvent]:
-    """Calendar feed — approved events only. Anything created (photo or
-    manual) is unapproved by default and stays out of the calendar until a
-    reviewer clicks Approve; those unapproved rows surface in Needs Review
-    for triage."""
+    """Calendar feed — every event in the range, approved or not. The
+    is_approved flag is now the attendance marker (not a visibility gate),
+    so uploaded events show on the calendar immediately; whether the
+    Minister actually attended is rendered separately as a badge."""
     result = await db.execute(
         select(InvitationEvent)
         .where(InvitationEvent.event_date >= start, InvitationEvent.event_date <= end)
-        .where(InvitationEvent.is_approved == True)  # noqa: E712
         .order_by(InvitationEvent.event_date,
                   InvitationEvent.start_time.asc().nulls_first(),
                   InvitationEvent.id)
@@ -439,25 +445,34 @@ _NEEDS_REVIEW_HARD_LIMIT = 200
 
 
 async def list_needs_review(db: AsyncSession) -> list[InvitationEvent]:
-    """Everything a reviewer might act on: FAILED, still-processing, undated,
-    OR fully-extracted-but-not-yet-approved. The last case is what makes
-    every new event (photo OR manual) surface here first — the reviewer
-    confirms with the Minister before flipping is_approved and letting the
-    row hit the calendar.
+    """Everything a reviewer can still act on. Past-dated events are hidden
+    entirely — even data-hole ones — since the reviewer can no longer approve
+    them and any missing fields are now cosmetic history. Undated rows
+    (event_date IS NULL) still surface because we can't tell if they're past.
+
+    Two layers to the filter:
+      1. Actionability gate: event_date IS NULL OR event_date >= today (IST).
+         Anything past drops out of the list.
+      2. Within actionable rows, surface if:
+         • FAILED / still-processing (data isn't final)
+         • Missing date / start / end time (data hole to fix)
+         • Not yet approved (reviewer's confirm-with-Minister queue)
 
     Rolling 30-day window (by created_at) plus a hard LIMIT so a stale pile
-    of old undated invitations can never balloon this endpoint into a full-
-    table scan. Anything genuinely older can still be found via the calendar
-    date navigator; the Needs-Review tab is a to-do queue, not archival.
+    of undated invitations can never balloon this endpoint.
     """
     cutoff = datetime.utcnow() - timedelta(days=_NEEDS_REVIEW_DAYS)
+    today = _ist_today()
     result = await db.execute(
         select(InvitationEvent)
+        # Actionability gate — no past events, ever.
         .where(
             (InvitationEvent.event_date.is_(None))
-            # Missing times count as unfinished — every event now must have
-            # both start and end (all-day was removed), and the reviewer can't
-            # approve one without them.
+            | (InvitationEvent.event_date >= today)
+        )
+        # Reason to surface.
+        .where(
+            (InvitationEvent.event_date.is_(None))
             | (InvitationEvent.start_time.is_(None))
             | (InvitationEvent.end_time.is_(None))
             | (InvitationEvent.status != STATUS_READY)
@@ -482,10 +497,11 @@ async def overview_events(db: AsyncSession) -> dict:
       4. This-month attendance breakdown (chart).
       5. Last-8-weeks volume series (mini-bar sparkline).
 
-    All predicates use `is_approved=true` where relevant, matching the calendar
-    view — nothing an approver hasn't yet OK'd shows up in headline numbers.
-    Exception: `awaiting_approval` and `needs_attention` are the counterpart,
-    counting the pipeline BEFORE approval so the reviewer knows what's queued.
+    Under the new semantics `is_approved` is the ATTENDANCE marker, not a
+    publish gate — so headline counts (today / this_week / this_month /
+    upcoming) count all events regardless of approval. `awaiting_approval`
+    counts the reviewer's to-do queue (today+ unapproved, extraction clean);
+    `needs_attention` covers data-hole rows.
     """
     today = date.today()
     # Monday-anchored week bounds (matches the calendar's Mon-first grid).
@@ -496,54 +512,57 @@ async def overview_events(db: AsyncSession) -> dict:
     volume_start = today - timedelta(days=56)
 
     # ── 1) Headline counts — one round-trip, FILTER per KPI ─────────────────
-    approved = InvitationEvent.is_approved == True   # noqa: E712
     not_approved = InvitationEvent.is_approved == False  # noqa: E712
     is_ready = InvitationEvent.status == STATUS_READY
     counts = (await db.execute(select(
         func.count(InvitationEvent.id).filter(
-            approved & (InvitationEvent.event_date == today)
+            InvitationEvent.event_date == today
         ).label("today"),
         func.count(InvitationEvent.id).filter(
-            approved
-            & (InvitationEvent.event_date >= week_start)
+            (InvitationEvent.event_date >= week_start)
             & (InvitationEvent.event_date <= week_end)
         ).label("this_week"),
         func.count(InvitationEvent.id).filter(
-            approved
-            & (InvitationEvent.event_date >= month_start)
+            InvitationEvent.event_date >= month_start
         ).label("this_month"),
         # Awaiting approval — the reviewer's to-do queue: fully-extracted,
-        # dated, but not yet approved. Undated/failed rows live in
-        # "needs_attention" below so the two counts don't overlap.
+        # dated, times set, event date today or later, not yet approved.
+        # Past unapproved events are terminally "not attended" and don't
+        # count as awaiting anything.
         func.count(InvitationEvent.id).filter(
             not_approved
             & is_ready
-            & (InvitationEvent.event_date.isnot(None))
+            & (InvitationEvent.event_date >= today)
             & (InvitationEvent.start_time.isnot(None))
             & (InvitationEvent.end_time.isnot(None))
         ).label("awaiting_approval"),
-        # Needs attention — data-hole queue: failed OCR, undated,
-        # missing times. Mirrors list_needs_review's predicate exactly.
+        # Needs attention — data-hole queue: failed OCR, undated, missing
+        # times. Gated to actionable rows only (event_date IS NULL OR >=
+        # today) so this count matches what actually shows up in the Needs
+        # Review list — no past-dated rows inflate the badge.
         func.count(InvitationEvent.id).filter(
-            (InvitationEvent.status != STATUS_READY)
-            | (InvitationEvent.event_date.is_(None))
-            | (InvitationEvent.start_time.is_(None))
-            | (InvitationEvent.end_time.is_(None))
+            (
+                (InvitationEvent.event_date.is_(None))
+                | (InvitationEvent.event_date >= today)
+            )
+            & (
+                (InvitationEvent.status != STATUS_READY)
+                | (InvitationEvent.event_date.is_(None))
+                | (InvitationEvent.start_time.is_(None))
+                | (InvitationEvent.end_time.is_(None))
+            )
         ).label("needs_attention"),
-        # Upcoming count (approved future events including today) — used
-        # by the "next N events" agenda card header.
+        # Upcoming — all future events including today, whether approved
+        # or not. Powers the "next N events" agenda header.
         func.count(InvitationEvent.id).filter(
-            approved & (InvitationEvent.event_date >= today)
+            InvitationEvent.event_date >= today
         ).label("upcoming"),
     ))).one()
 
-    # ── 2) Next up to 5 upcoming events ─────────────────────────────────────
+    # ── 2) Next up to 5 upcoming events (all events, approved or not) ──────
     upcoming_rows = (await db.execute(
         select(InvitationEvent)
-        .where(
-            InvitationEvent.is_approved == True,   # noqa: E712
-            InvitationEvent.event_date >= today,
-        )
+        .where(InvitationEvent.event_date >= today)
         .order_by(
             InvitationEvent.event_date.asc(),
             InvitationEvent.start_time.asc().nulls_first(),
@@ -552,11 +571,10 @@ async def overview_events(db: AsyncSession) -> dict:
         .limit(5)
     )).scalars().all()
 
-    # ── 3) This-week distribution by event_type ─────────────────────────────
+    # ── 3) This-week distribution by event_type (all events) ────────────────
     type_rows = (await db.execute(
         select(InvitationEvent.event_type, func.count(InvitationEvent.id))
         .where(
-            InvitationEvent.is_approved == True,   # noqa: E712
             InvitationEvent.event_date >= week_start,
             InvitationEvent.event_date <= week_end,
         )
@@ -564,25 +582,24 @@ async def overview_events(db: AsyncSession) -> dict:
     )).all()
 
     # ── 4) This-month attendance breakdown ──────────────────────────────────
-    # Bucket into three: attended / not_attended / not_marked (NULL). Only
-    # events in the current month AND already past their date (otherwise the
-    # "not marked" bucket balloons with future events the PA cannot yet
-    # answer for).
+    # Two buckets now: attended (is_approved=true) vs not_attended
+    # (is_approved=false). Only past-or-today events count — a future event
+    # can't have "not attended" applied yet. The old three-state "not_marked"
+    # bucket is gone with the attendance column.
     attendance_rows = (await db.execute(
-        select(InvitationEvent.attendance, func.count(InvitationEvent.id))
+        select(InvitationEvent.is_approved, func.count(InvitationEvent.id))
         .where(
-            InvitationEvent.is_approved == True,   # noqa: E712
             InvitationEvent.event_date >= month_start,
             InvitationEvent.event_date <= today,
         )
-        .group_by(InvitationEvent.attendance)
+        .group_by(InvitationEvent.is_approved)
     )).all()
     attendance = {"attended": 0, "not_attended": 0, "not_marked": 0}
-    for value, n in attendance_rows:
-        key = value if value in ("attended", "not_attended") else "not_marked"
-        attendance[key] = attendance.get(key, 0) + int(n)
+    for is_approved_val, n in attendance_rows:
+        key = "attended" if is_approved_val else "not_attended"
+        attendance[key] += int(n)
 
-    # ── 5) Last-8-weeks volume series ───────────────────────────────────────
+    # ── 5) Last-8-weeks volume series (all events) ──────────────────────────
     # `date_trunc('week', ...)` gives ISO Monday-anchored buckets; matches
     # the calendar's week convention above.
     week_rows = (await db.execute(
@@ -591,7 +608,6 @@ async def overview_events(db: AsyncSession) -> dict:
             func.count(InvitationEvent.id),
         )
         .where(
-            InvitationEvent.is_approved == True,   # noqa: E712
             InvitationEvent.event_date >= volume_start,
             InvitationEvent.event_date <= week_end,
         )
@@ -701,15 +717,10 @@ async def update_event(
             else:
                 setattr(event, key, None)
 
-    # Attendance — three-state; empty string clears back to NULL.
-    if "attendance" in payload:
-        raw = (payload["attendance"] or "").strip().lower()
-        if raw in ("", "null", "none"):
-            event.attendance = None
-        elif raw in ("attended", "not_attended"):
-            event.attendance = raw
-        else:
-            raise HTTPException(400, "attendance must be 'attended', 'not_attended' or empty")
+    # Attendance is no longer editable via PATCH — the reviewer marks it by
+    # calling POST /events/{id}/approve, which enforces the today+ rule and
+    # stamps the approver's name. A stray "attendance" key in the payload is
+    # silently ignored so older clients don't 400 during rollout.
 
     # A manual date on a FAILED row resolves it — no retry needed.
     if event.status == STATUS_FAILED and event.event_date is not None:
@@ -751,12 +762,17 @@ async def retry_event(db: AsyncSession, event_id: int) -> InvitationEvent:
 async def approve_event(
     db: AsyncSession, event_id: int, approved_by: str,
 ) -> InvitationEvent:
-    """Reviewer flips the approval gate after Minister confirmation.
+    """Reviewer marks an event as attended (is_approved=true).
 
-    Refuses to approve rows that aren't ready — extraction still running, a
-    failed OCR, or no event_date yet — because those aren't in a state a
-    Minister could have said "yes" to. The reviewer should retry / fill in
-    the missing fields first.
+    Guardrails:
+      • Row must be READY (extraction done or manual save committed).
+      • Both date AND times must be set — you can't attend something without
+        a place in the calendar.
+      • event_date must be today or later (IST). Approving a past event is
+        rejected: attendance is a forward-looking commitment; if the Minister
+        actually attended a past event that wasn't approved in time, the
+        reviewer should edit the date to today or contact ops for a manual
+        DB fix. Prevents accidental retro-marking of no-shows as attended.
 
     Idempotent: re-approving is a no-op that doesn't stamp a new approved_at.
     """
@@ -767,6 +783,8 @@ async def approve_event(
         raise HTTPException(409, "Set an event date before approving")
     if event.start_time is None or event.end_time is None:
         raise HTTPException(409, "Set both start and end time before approving")
+    if event.event_date < _ist_today():
+        raise HTTPException(409, "Past events cannot be approved — attendance is forward-looking")
     if event.is_approved:
         return event
     event.is_approved = True

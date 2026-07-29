@@ -433,10 +433,10 @@ function ByTypeCard({
 function AttendanceCard({
   data, lang, t,
 }: {
-  data: { attended: number; not_attended: number; not_marked: number };
+  data: { attended: number; not_attended: number };
   lang: "en" | "ta"; t: (en: string, ta: string) => string;
 }) {
-  const total = data.attended + data.not_attended + data.not_marked;
+  const total = data.attended + data.not_attended;
   const monthName = monthLabel(new Date(), lang);
   const attendedPct = total > 0 ? Math.round((data.attended / total) * 100) : 0;
 
@@ -479,29 +479,15 @@ function AttendanceCard({
                 style={{ width: `${(data.not_attended / total) * 100}%` }}
               />
             )}
-            {data.not_marked > 0 && (
-              <div
-                className="h-full bg-slate-300"
-                style={{ width: `${(data.not_marked / total) * 100}%` }}
-              />
-            )}
           </div>
 
-          {/* Legend chips */}
+          {/* Legend chips — now binary: attended vs not attended. The old
+              "not marked" bucket was tied to the dropped attendance column
+              and is always zero under the new is_approved-as-attended model. */}
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
             <LegendChip color="#0F8B4C" label={t("Attended", "வருகை")} value={data.attended} />
             <LegendChip color="#C0362C" label={t("Not attended", "வரவில்லை")} value={data.not_attended} />
-            <LegendChip color="#CBD5E1" label={t("Not marked", "குறிக்கப்படவில்லை")} value={data.not_marked} />
           </div>
-
-          {data.not_marked > 0 && (
-            <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[11.5px] font-medium text-amber-700">
-              {t(
-                `${data.not_marked} past event(s) not marked yet — open them and set attendance.`,
-                `${data.not_marked} கடந்த நிகழ்வுகள் குறிக்கப்படவில்லை — வருகையை அமைக்கவும்.`,
-              )}
-            </div>
-          )}
         </>
       )}
     </Card>
