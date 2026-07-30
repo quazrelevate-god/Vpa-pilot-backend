@@ -167,14 +167,23 @@ export default function VoiceCaptureSheet({
     reset();
   }, [reset]);
 
-  const send = useCallback(async () => {
+  const send = useCallback(() => {
     if (!blob || busy) return;
-    setBusy(true);
-    try {
-      const fd = new FormData();
-      const ext = (mimeRef.current || "audio/webm").split("/")[1]?.split(";")[0] || "webm";
-      fd.append("file", blob, `voice.${ext}`);
-      fd.append("note", note.trim());
+    // OPTIMISTIC UX — close the sheet on click. Do NOT await the request.
+    // Was previously a blocking await: user tapped Send, the button flipped
+    // to "Reading…" with a spinner for the 3–5s Gemini took to transcribe +
+    // extract, and only then did the sheet close. Felt broken (especially
+    // with the earlier 502s). Now the sheet dismisses immediately, a sonner
+    // toast tracks progress, and success/failure lands on the toast — the
+    // user is free to keep working. If it fails, the toast carries the
+    // error message so they can retry (recording is lost, but voice memos
+    // are short enough to re-do — same trade-off as any optimistic form).
+    const fd = new FormData();
+    const ext = (mimeRef.current || "audio/webm").split("/")[1]?.split(";")[0] || "webm";
+    fd.append("file", blob, `voice.${ext}`);
+    fd.append("note", note.trim());
+
+    const sending = (async () => {
       const res = await fetch("/events/api/events/voice", {
         method: "POST",
         body: fd,
@@ -184,25 +193,24 @@ export default function VoiceCaptureSheet({
         const d = await res.json().catch(() => ({}));
         throw new Error(d.detail || d.error || `http ${res.status}`);
       }
-      toast.success(t("Event captured from your voice.",
-        "உங்கள் குரலிலிருந்து நிகழ்வு உருவாக்கப்பட்டது."));
+      // Refresh the parent so the new row appears in Needs Review the
+      // moment the toast turns green. onSaved is safe to call twice
+      // (parent just re-fetches) so no need to guard.
       onSaved();
-      // Match the photo/manual flows — close the sheet on success. Was
-      // just calling reset() which cleared the blob but left the sheet
-      // open, so the Send button flipped back to its idle state and made
-      // it look like nothing happened even though the row was created.
-      // Order matters: setBusy(false) BEFORE closeSheet(), because
-      // closeSheet() short-circuits when busy=true (guard against closing
-      // mid-upload). onSaved above already refreshed the parent.
-      setBusy(false);
-      closeSheet();
-      return;
-    } catch (err) {
-      toast.error((err as Error).message || t("Send failed. Try again.",
-        "அனுப்ப முடியவில்லை. மீண்டும் முயற்சிக்கவும்."));
-    } finally {
-      setBusy(false);
-    }
+    })();
+
+    toast.promise(sending, {
+      loading: t("Sending voice memo…", "குரல் அனுப்பப்படுகிறது…"),
+      success: t("Event captured — check Needs Review.",
+                 "நிகழ்வு உருவாக்கப்பட்டது — சரிபார்க்க தாவலைத் திறக்கவும்."),
+      error: (err: unknown) =>
+        (err as Error)?.message ||
+        t("Send failed. Try again.", "அனுப்ப முடியவில்லை. மீண்டும் முயற்சிக்கவும்."),
+    });
+
+    // Close the sheet right now — busy is still false so closeSheet()
+    // doesn't short-circuit on its own guard.
+    closeSheet();
   }, [blob, busy, note, onSaved, closeSheet, t]);
 
   const mmss = `${String(Math.floor(seconds / 60)).padStart(1, "0")}:${String(seconds % 60).padStart(2, "0")}`;
