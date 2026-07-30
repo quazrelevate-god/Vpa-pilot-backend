@@ -41,7 +41,7 @@ _ALLOWED_MIMES = {
     "image/heif": ".heif",
 }
 # Audio formats the MediaRecorder API on Chrome / Safari / Firefox actually
-# emits by default. Sarvam STT supports all of these on the REST path.
+# emits by default. Gemini 1.5+ accepts all of these as inline_data parts.
 _ALLOWED_AUDIO_MIMES = {
     "audio/webm":  ".webm",
     "audio/ogg":   ".ogg",
@@ -53,8 +53,9 @@ _ALLOWED_AUDIO_MIMES = {
 }
 _EXTRACT_TIMEOUT_S = 120
 _STALE_MINUTES = 15
-# Audio > 60s starts to feel long for a "speak the event" input, and Sarvam
-# REST caps at 30s (batch takes over past that). 90s is our voluntary cap.
+# Audio > 60s starts to feel long for a "speak the event" input. 90s is our
+# voluntary cap on the frontend recorder — long enough for a rambling PA to
+# describe the entire card without hitting Gemini's larger multi-minute limits.
 _MAX_AUDIO_SECONDS_SOFT = 90
 
 # Lazily-created singleton — building the Gemini client needs GEMINI_API_KEY,
@@ -322,17 +323,20 @@ async def create_voice_event(
 
     Flow:
       1. Validate + persist the audio blob (MinIO under events/<hex>.<ext>).
-      2. Sarvam STT twice — once in verbatim Tamil, once in translate-mode
-         English — so Gemini has code-switched code covered.
-      3. Feed both transcripts + optional PA note to
-         `event_extraction.extract_from_transcript` (same schema as photo).
-      4. Insert the row directly as READY (extraction ran synchronously here
-         — no worker, no polling; the whole thing is < 5s end to end and the
+      2. One Gemini call: audio → transcript_ta + transcript_en + structured
+         event fields (title, venue, date, times, type, summary). Same
+         InvitationExtraction schema as the photo path.
+      3. Insert the row directly as READY (extraction ran synchronously —
+         no worker, no polling; the whole thing is a few seconds and the
          user is holding the phone).
 
     Photo events use image_path + async worker; voice events use audio_path
-    and run STT + extraction inline. The `image_path` column stays set to
-    the manual sentinel so the NOT-NULL constraint doesn't fail.
+    and run extraction inline. The `image_path` column stays set to the
+    manual sentinel so the NOT-NULL constraint doesn't fail.
+
+    Was previously a two-hop Sarvam-STT-then-Gemini pipeline; Sarvam upstream
+    was throttling / 502ing and doubling latency. Gemini 1.5+ handles audio
+    natively so one call is enough.
     """
     mime = (mime_type or "").lower().split(";")[0].strip()
     ext = _ALLOWED_AUDIO_MIMES.get(mime)
@@ -348,40 +352,12 @@ async def create_voice_event(
     key = f"events/{token_hex(16)}{ext}"
     await asyncio.to_thread(storage_service.save_file, audio_bytes, key, mime)
 
-    # ── 2) transcribe (Tamil + English) ────────────────────────────────────
-    # Sarvam is blocking — offload to a worker thread. Wrap in a bounded
-    # timeout so a hung upstream can't hang the whole request.
-    from src.services.stt_service import SarvamSTTService
-    try:
-        stt = SarvamSTTService.from_settings()
-    except Exception as exc:
-        logger.exception("Sarvam init failed")
-        raise HTTPException(503, f"Voice capture not configured: {exc}")
-
-    def _do_transcribe():
-        # verbatim source (usually Tamil) + English translation
-        t = stt.transcribe(audio_bytes, filename=f"voice{ext}", mime_type=mime, mode="transcribe")
-        e = stt.transcribe(audio_bytes, filename=f"voice{ext}", mime_type=mime, mode="translate")
-        return t, e
-
-    try:
-        stt_ta, stt_en = await asyncio.wait_for(
-            asyncio.to_thread(_do_transcribe), timeout=_EXTRACT_TIMEOUT_S,
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(504, "Voice transcription timed out")
-
-    transcript_ta = (stt_ta.transcript or "").strip()
-    transcript_en = (stt_en.english_translation or stt_en.transcript or "").strip()
-    if not (transcript_ta or transcript_en):
-        raise HTTPException(422, "Could not hear anything in the audio — try again.")
-
-    # ── 3) LLM extraction (reuses the same InvitationExtraction schema) ────
+    # ── 2) Gemini: transcribe + extract in one call ────────────────────────
     svc = _get_extractor()
     def _do_extract():
-        return svc.extract_from_transcript(
-            transcript_ta=transcript_ta,
-            transcript_en=transcript_en,
+        return svc.extract_from_audio(
+            audio_bytes=audio_bytes,
+            mime_type=mime,
             note=(note or "").strip(),
         )
     try:
@@ -390,6 +366,13 @@ async def create_voice_event(
         )
     except asyncio.TimeoutError:
         raise HTTPException(504, "Voice extraction timed out")
+
+    transcript_ta = (result.transcript_ta or "").strip()
+    transcript_en = (result.transcript_en or "").strip()
+    if not (transcript_ta or transcript_en):
+        # Gemini couldn't hear anything intelligible — treat as user error so
+        # the frontend shows the retry toast instead of a silent success.
+        raise HTTPException(422, "Could not hear anything in the audio — try again.")
 
     # ── 4) insert row (READY — same as manual create) ──────────────────────
     r_title_en = (result.title_en or "").strip()[:300] or None

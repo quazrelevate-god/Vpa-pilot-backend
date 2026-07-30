@@ -151,6 +151,29 @@ class InvitationExtraction(BaseModel):
         ),
         max_length=600,
     )
+    # ── Populated ONLY for audio (voice-memo) extraction ────────────────────────
+    # The photo path leaves these empty — there's nothing to transcribe. For
+    # audio inputs the model transcribes the recording verbatim in Tamil AND
+    # gives an English translation, so the popup's transcript pane still works
+    # after we dropped the separate Sarvam STT round-trip.
+    transcript_ta: str = Field(
+        default="",
+        description=(
+            "Verbatim Tamil transcript of the audio (if input was audio). "
+            "Preserve every word. Empty for photo inputs or when the audio "
+            "was unintelligible."
+        ),
+        max_length=4000,
+    )
+    transcript_en: str = Field(
+        default="",
+        description=(
+            "Faithful English translation of `transcript_ta` (if input was "
+            "audio). Empty for photo inputs. Personal / place names "
+            "transliterated to Latin script."
+        ),
+        max_length=4000,
+    )
 
 
 # ── System prompt ───────────────────────────────────────────────────────────────
@@ -271,7 +294,60 @@ class InvitationExtractionService:
         )
         return result
 
-    # ── Voice / transcript-driven extraction ────────────────────────────────────
+    # ── Voice / audio-native extraction (Gemini direct, no external STT) ───────
+    def extract_from_audio(
+        self,
+        *,
+        audio_bytes: bytes,
+        mime_type: str,
+        note: str = "",
+    ) -> InvitationExtraction:
+        """One Gemini call: read a voice memo → transcript + structured event
+        details. Replaces the previous two-hop pipeline (Sarvam STT ×2 →
+        Gemini extraction), which was the source of the 502s the office was
+        seeing when Sarvam timed out or throttled.
+
+        Gemini 1.5+ accepts audio as an inline part, same shape as an image;
+        `transcript_ta` / `transcript_en` in the response carry the model's
+        transcription so the popup's transcript pane still populates.
+        """
+        t0 = time.monotonic()
+        prompt = (
+            "SPOKEN INVITATION — the following is a voice memo recorded by a "
+            "PA describing an event the Minister has been invited to. First "
+            "TRANSCRIBE the audio verbatim into `transcript_ta` (Tamil script) "
+            "AND provide an English translation into `transcript_en`. Then "
+            "extract the same structured event details you would from a "
+            "photographed card (title_en/ta, venue_en/ta, event_type, "
+            "event_date, start_time, end_time, raw_summary_en/ta). "
+            f"Today's date is {date.today().isoformat()}."
+        )
+        if note:
+            prompt += f"\nPA's note (highest-priority context): {note}"
+        contents: list = [
+            prompt,
+            types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+            "\n[Return the JSON object now.]",
+        ]
+        config = types.GenerateContentConfig(
+            system_instruction=EXTRACTION_PROMPT,
+            temperature=0.1,
+            top_p=0.9,
+            response_mime_type="application/json",
+            response_schema=InvitationExtraction,
+            service_tier=self._service_tier,
+        )
+        result = self._call_with_fallback(contents=contents, config=config)
+        logger.info(
+            "Audio extraction done in %dms | model=%s | type=%s | date=%s | time=%s | en=%r | ta=%r | ta_transcript_len=%d",
+            int((time.monotonic() - t0) * 1000), self._model_name,
+            result.event_type, result.event_date, result.start_time,
+            (result.title_en or "")[:40], (result.title_ta or "")[:40],
+            len(result.transcript_ta or ""),
+        )
+        return result
+
+    # ── Voice / transcript-driven extraction (LEGACY — kept for compat) ────────
     def extract_from_transcript(
         self,
         *,
