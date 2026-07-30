@@ -101,6 +101,33 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
     }
   }
 
+  // Bucket by date so the list reads as a chronology, not a jumbled queue.
+  // Undated rows (no event_date yet — either OCR gap or manual save with a
+  // dropped date) get a "No date" section pinned at the top; those are the
+  // most urgent to fix because the reviewer can't approve them.
+  // Dated rows are ordered ascending so the closest events come first.
+  //
+  // MUST live above the loading / empty early returns — hooks-rules-of-order.
+  // React counts hook calls positionally per render; if items goes from null
+  // to a loaded array the pre-fix version added a 3rd hook mid-lifecycle and
+  // threw error #310 "Rendered more hooks than during the previous render".
+  const sections = useMemo(() => {
+    if (!items) return [];
+    const map = new Map<string, EventItem[]>();  // key = date string OR "" for undated
+    for (const e of items) {
+      const key = e.date || "";
+      const arr = map.get(key) ?? [];
+      arr.push(e);
+      map.set(key, arr);
+    }
+    const dated = [...map.entries()].filter(([k]) => k).sort(([a], [b]) => a.localeCompare(b));
+    const undated = map.get("") ?? [];
+    const out: { key: string; date: string | null; rows: EventItem[] }[] = [];
+    if (undated.length) out.push({ key: "__no_date__", date: null, rows: undated });
+    for (const [k, rows] of dated) out.push({ key: k, date: k, rows });
+    return out;
+  }, [items]);
+
   if (items === null) {
     return (
       <div className="grid min-h-[40vh] place-items-center">
@@ -122,27 +149,6 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
       </div>
     );
   }
-
-  // Bucket by date so the list reads as a chronology, not a jumbled queue.
-  // Undated rows (no event_date yet — either OCR gap or manual save with a
-  // dropped date) get a "No date" section pinned at the top; those are the
-  // most urgent to fix because the reviewer can't approve them.
-  // Dated rows are ordered ascending so the closest events come first.
-  const sections = useMemo(() => {
-    const map = new Map<string, EventItem[]>();  // key = date string OR "" for undated
-    for (const e of items) {
-      const key = e.date || "";
-      const arr = map.get(key) ?? [];
-      arr.push(e);
-      map.set(key, arr);
-    }
-    const dated = [...map.entries()].filter(([k]) => k).sort(([a], [b]) => a.localeCompare(b));
-    const undated = map.get("") ?? [];
-    const out: { key: string; date: string | null; rows: EventItem[] }[] = [];
-    if (undated.length) out.push({ key: "__no_date__", date: null, rows: undated });
-    for (const [k, rows] of dated) out.push({ key: k, date: k, rows });
-    return out;
-  }, [items]);
 
   return (
     <div
