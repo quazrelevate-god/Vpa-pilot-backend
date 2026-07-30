@@ -245,3 +245,13 @@ backend/eval/results_*.csv
 # DB backups / dumps (contain production data — never commit)
 *.dump
 backend/railway_v1_backup*
+
+# VAPID keys
+*.pem
+private_key.pem
+public_key.pem
+
+# VAPID keys
+*.pem
+private_key.pem
+public_key.pem

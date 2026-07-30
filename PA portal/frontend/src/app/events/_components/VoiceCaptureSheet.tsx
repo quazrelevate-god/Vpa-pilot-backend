@@ -186,15 +186,24 @@ export default function VoiceCaptureSheet({
       }
       toast.success(t("Event captured from your voice.",
         "உங்கள் குரலிலிருந்து நிகழ்வு உருவாக்கப்பட்டது."));
-      reset();
       onSaved();
+      // Match the photo/manual flows — close the sheet on success. Was
+      // just calling reset() which cleared the blob but left the sheet
+      // open, so the Send button flipped back to its idle state and made
+      // it look like nothing happened even though the row was created.
+      // Order matters: setBusy(false) BEFORE closeSheet(), because
+      // closeSheet() short-circuits when busy=true (guard against closing
+      // mid-upload). onSaved above already refreshed the parent.
+      setBusy(false);
+      closeSheet();
+      return;
     } catch (err) {
       toast.error((err as Error).message || t("Send failed. Try again.",
         "அனுப்ப முடியவில்லை. மீண்டும் முயற்சிக்கவும்."));
     } finally {
       setBusy(false);
     }
-  }, [blob, busy, note, onSaved, reset, t]);
+  }, [blob, busy, note, onSaved, closeSheet, t]);
 
   const mmss = `${String(Math.floor(seconds / 60)).padStart(1, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 

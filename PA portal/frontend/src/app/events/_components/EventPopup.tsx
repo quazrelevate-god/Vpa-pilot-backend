@@ -294,19 +294,9 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                 );
               })()}
 
-              {/* Attended badge — visible once approved so the reviewer can
-                  see at a glance the event is confirmed. */}
-              {event.is_approved && (
-                <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  {t("Attended", "வருகை பதிந்தது")}
-                  {event.approved_by && (
-                    <span className="ml-1 text-[11px] font-normal opacity-80">
-                      · {event.approved_by}
-                    </span>
-                  )}
-                </div>
-              )}
+              {/* Attended banner removed — calendar now filters to approved
+                  rows only, so anything the reviewer opens from the calendar
+                  is by definition attended. The banner was redundant noise. */}
 
               {!editing ? (
                 <>

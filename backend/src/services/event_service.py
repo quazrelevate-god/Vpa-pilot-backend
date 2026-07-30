@@ -568,13 +568,17 @@ async def recover_stale() -> int:
 # ── Queries ─────────────────────────────────────────────────────────────────────
 
 async def list_events(db: AsyncSession, start: date, end: date) -> list[InvitationEvent]:
-    """Calendar feed — every event in the range, approved or not. The
-    is_approved flag is now the attendance marker (not a visibility gate),
-    so uploaded events show on the calendar immediately; whether the
-    Minister actually attended is rendered separately as a badge."""
+    """Calendar feed — approved events only. `is_approved` now doubles as
+    both the review-gate and the attendance flag: an unapproved row is
+    still awaiting a reviewer's confirmation and shouldn't appear on the
+    calendar until then. Anything unapproved lives in Needs Review."""
     result = await db.execute(
         select(InvitationEvent)
-        .where(InvitationEvent.event_date >= start, InvitationEvent.event_date <= end)
+        .where(
+            InvitationEvent.event_date >= start,
+            InvitationEvent.event_date <= end,
+            InvitationEvent.is_approved == True,  # noqa: E712
+        )
         .order_by(InvitationEvent.event_date,
                   InvitationEvent.start_time.asc().nulls_first(),
                   InvitationEvent.id)

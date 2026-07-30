@@ -4,12 +4,13 @@
 // extractions, uploads still processing, and readable cards with no
 // detected date. Nothing captured is ever silently lost.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { api } from "../_lib/api";
 import type { EventItem } from "../_lib/types";
 import { displayTitle, pickVenue, typeMeta } from "../_lib/types";
+import { fmtLongDate } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 import { AlertTriangle, Inbox, Loader2 } from "../_lib/icons";
 
@@ -122,82 +123,159 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
     );
   }
 
+  // Bucket by date so the list reads as a chronology, not a jumbled queue.
+  // Undated rows (no event_date yet — either OCR gap or manual save with a
+  // dropped date) get a "No date" section pinned at the top; those are the
+  // most urgent to fix because the reviewer can't approve them.
+  // Dated rows are ordered ascending so the closest events come first.
+  const sections = useMemo(() => {
+    const map = new Map<string, EventItem[]>();  // key = date string OR "" for undated
+    for (const e of items) {
+      const key = e.date || "";
+      const arr = map.get(key) ?? [];
+      arr.push(e);
+      map.set(key, arr);
+    }
+    const dated = [...map.entries()].filter(([k]) => k).sort(([a], [b]) => a.localeCompare(b));
+    const undated = map.get("") ?? [];
+    const out: { key: string; date: string | null; rows: EventItem[] }[] = [];
+    if (undated.length) out.push({ key: "__no_date__", date: null, rows: undated });
+    for (const [k, rows] of dated) out.push({ key: k, date: k, rows });
+    return out;
+  }, [items]);
+
   return (
-    <div className="space-y-2 px-4 pt-4 pb-4">
-      <div className="mb-3 text-[0.72rem] font-bold uppercase tracking-wider text-slate-400">
+    <div
+      className="pb-4"
+      style={{
+        paddingLeft:  "clamp(0.75rem, 3.5vw, 1rem)",
+        paddingRight: "clamp(0.75rem, 3.5vw, 1rem)",
+        paddingTop:   "clamp(0.75rem, 3.5vw, 1rem)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "clamp(0.9rem, 3.5vw, 1.25rem)",
+      }}
+    >
+      <div className="text-[0.72rem] font-bold uppercase tracking-wider text-slate-400">
         {t("Needs your attention", "உங்கள் கவனம் தேவை")}
         <span className="ml-1.5 inline-block rounded-full bg-slate-200 px-2 py-0.5 font-mono text-slate-600 tabular-nums">
           {items.length}
         </span>
       </div>
-      {items.map((e) => {
-        const chip = statusChip(e, t);
-        const meta = typeMeta(e.event_type);
-        const canApprove = isApprovable(e);
-        const busy = approving.has(e.id);
-        return (
-          // Row-as-div (not button) because we now have a nested Approve
-          // button — nested <button> is invalid HTML and browsers complain.
-          <div
-            key={e.id}
-            role="button" tabIndex={0}
-            onClick={() => onOpen(e)}
-            onKeyDown={(k) => { if (k.key === "Enter" || k.key === " ") onOpen(e); }}
-            className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition-shadow hover:shadow-md active:bg-slate-50"
-          >
-            {/* Thumbnail — hidden for manual events with no photo */}
-            {e.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={e.image_url} alt=""
-                className="h-14 w-14 shrink-0 rounded-xl border border-slate-100 object-cover" />
-            ) : (
-              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-slate-100 bg-slate-50 text-slate-300">
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3h10.5M4.5 6.75h15M3 10.5h18M4.5 14.25h15M6.75 18h10.5M9 21.75h6" />
-                </svg>
-              </span>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[0.9rem] font-bold text-slate-900">{displayTitle(e, lang)}</div>
-              {pickVenue(e, lang) && <div className="truncate text-xs text-slate-500 mt-0.5">{pickVenue(e, lang)}</div>}
-              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.72rem] font-bold", chip.cls)}>
-                  {e.status === "FAILED" && <AlertTriangle className="h-3 w-3" strokeWidth={2} />}
-                  {(e.status === "QUEUED" || e.status === "PROCESSING") && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {chip.label}
-                </span>
-                {e.event_type && (
-                  <span className="text-[0.72rem] font-semibold" style={{ color: meta.color }}>
-                    {t(meta.en, meta.ta)}
-                  </span>
-                )}
-              </div>
+
+      {sections.map((section) => (
+        <section key={section.key} className="flex flex-col gap-2">
+          {/* Date header — sticky-ish top of each section. Undated rows get
+              a highlighted "No date" chip so the reviewer's eye lands there
+              first (most actionable data hole). */}
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                "text-[0.72rem] font-bold uppercase tracking-wider",
+                section.date ? "text-slate-500" : "text-[#CC6A1F]",
+              )}
+            >
+              {section.date
+                ? fmtLongDate(section.date, lang)
+                : t("No date — set one", "தேதி இல்லை — அமைக்கவும்")}
             </div>
-            {canApprove ? (
-              // Approve is the primary reviewer action — surface it inline so
-              // the common case is one tap. Open-detail is still available by
-              // tapping anywhere else on the row.
-              <button
-                type="button"
-                disabled={busy}
-                onClick={(k) => { k.stopPropagation(); onApprove(e); }}
-                className={cn(
-                  "shrink-0 rounded-full px-3 py-1.5 text-[0.78rem] font-bold text-white shadow-sm transition-colors",
-                  busy ? "bg-slate-300" : "bg-[#2F6FED] hover:bg-[#2456bd]",
-                )}
-              >
-                {busy
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : t("Approve", "அனுமதி")}
-              </button>
-            ) : (
-              <svg className="h-4 w-4 shrink-0 text-slate-300" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            )}
+            <div className="h-px flex-1 bg-slate-200" />
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums text-slate-500">
+              {section.rows.length}
+            </span>
           </div>
-        );
-      })}
+
+          <div className="flex flex-col gap-2">
+            {section.rows.map((e) => (
+              <NeedsReviewRow
+                key={e.id}
+                e={e}
+                lang={lang}
+                t={t}
+                busy={approving.has(e.id)}
+                onOpen={onOpen}
+                onApprove={onApprove}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+// Row extracted so the section-grouped render above stays readable. Behavior
+// unchanged from the previous flat list — same chip, same Approve button
+// gating, same open-on-tap semantics.
+function NeedsReviewRow({
+  e, lang, t, busy, onOpen, onApprove,
+}: {
+  e: EventItem;
+  lang: "en" | "ta";
+  t: (en: string, ta: string) => string;
+  busy: boolean;
+  onOpen: (e: EventItem) => void;
+  onApprove: (e: EventItem) => void;
+}) {
+  const chip = statusChip(e, t);
+  const meta = typeMeta(e.event_type);
+  const canApprove = isApprovable(e);
+  return (
+    // Row-as-div (not button) because we have a nested Approve button and
+    // nested <button> is invalid HTML.
+    <div
+      role="button" tabIndex={0}
+      onClick={() => onOpen(e)}
+      onKeyDown={(k) => { if (k.key === "Enter" || k.key === " ") onOpen(e); }}
+      className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition-shadow hover:shadow-md active:bg-slate-50"
+    >
+      {/* Thumbnail — hidden for manual events with no photo */}
+      {e.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={e.image_url} alt=""
+          className="h-14 w-14 shrink-0 rounded-xl border border-slate-100 object-cover" />
+      ) : (
+        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-slate-100 bg-slate-50 text-slate-300">
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3h10.5M4.5 6.75h15M3 10.5h18M4.5 14.25h15M6.75 18h10.5M9 21.75h6" />
+          </svg>
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[0.9rem] font-bold text-slate-900">{displayTitle(e, lang)}</div>
+        {pickVenue(e, lang) && <div className="truncate text-xs text-slate-500 mt-0.5">{pickVenue(e, lang)}</div>}
+        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+          <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.72rem] font-bold", chip.cls)}>
+            {e.status === "FAILED" && <AlertTriangle className="h-3 w-3" strokeWidth={2} />}
+            {(e.status === "QUEUED" || e.status === "PROCESSING") && <Loader2 className="h-3 w-3 animate-spin" />}
+            {chip.label}
+          </span>
+          {e.event_type && (
+            <span className="text-[0.72rem] font-semibold" style={{ color: meta.color }}>
+              {t(meta.en, meta.ta)}
+            </span>
+          )}
+        </div>
+      </div>
+      {canApprove ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(k) => { k.stopPropagation(); onApprove(e); }}
+          className={cn(
+            "shrink-0 rounded-full px-3 py-1.5 text-[0.78rem] font-bold text-white shadow-sm transition-colors",
+            busy ? "bg-slate-300" : "bg-[#2F6FED] hover:bg-[#2456bd]",
+          )}
+        >
+          {busy
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : t("Approve", "அனுமதி")}
+        </button>
+      ) : (
+        <svg className="h-4 w-4 shrink-0 text-slate-300" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+        </svg>
+      )}
     </div>
   );
 }
