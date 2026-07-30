@@ -14,8 +14,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { api } from "../_lib/api";
 import { useT } from "../_lib/i18n";
-import { Camera, FileText, FolderOpen, Loader2, Plus, RefreshCw, Send, X } from "../_lib/icons";
+import { Camera, FileText, FolderOpen, Loader2, Mic, Plus, RefreshCw, Send, X } from "../_lib/icons";
 import ManualEventForm from "./ManualEventForm";
+import VoiceCaptureSheet from "./VoiceCaptureSheet";
 
 const MAX_DIM = 1600;
 const JPEG_QUALITY = 0.8;
@@ -49,6 +50,7 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
   const [dialOpen, setDialOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -160,6 +162,28 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
           )}
         </AnimatePresence>
 
+        {/* Voice — diagonally above-left of the FAB. Sits between camera
+             (straight up) and manual (straight left) so all three form a
+             quarter-arc that reads as one grouped menu. */}
+        <AnimatePresence>
+          {dialOpen && (
+            <motion.div
+              key="dial-voice"
+              initial={{ opacity: 0, x: 10, y: 10, scale: 0.7 }}
+              animate={{ opacity: 1, x: 0,  y: 0,  scale: 1 }}
+              exit={{ opacity: 0, x: 10, y: 10, scale: 0.7 }}
+              transition={{ type: "spring", stiffness: 420, damping: 26, delay: 0.06 }}
+              className="absolute bottom-[62px] right-[62px]">
+              <button
+                onClick={() => { setDialOpen(false); setVoiceOpen(true); }}
+                aria-label={t("Speak the event", "நிகழ்வை பேசவும்")}
+                className="grid h-14 w-14 place-items-center rounded-full bg-[#4F8A5B] text-white shadow-lg shadow-[#4F8A5B]/35 active:scale-95">
+                <Mic className="h-7 w-7" strokeWidth={1.75} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Main FAB — + rotates to × while open */}
         <button onClick={() => setDialOpen((o) => !o)}
           aria-label={t("Add event", "நிகழ்வு சேர்")} aria-expanded={dialOpen}
@@ -246,6 +270,11 @@ export default function CaptureFab({ onSent }: { onSent: () => void }) {
         open={manualOpen}
         onClose={() => setManualOpen(false)}
         onSaved={() => { setManualOpen(false); onSent(); }}
+      />
+      <VoiceCaptureSheet
+        open={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        onSaved={() => { setVoiceOpen(false); onSent(); }}
       />
     </>
   );

@@ -271,6 +271,59 @@ class InvitationExtractionService:
         )
         return result
 
+    # ── Voice / transcript-driven extraction ────────────────────────────────────
+    def extract_from_transcript(
+        self,
+        *,
+        transcript_ta: str = "",
+        transcript_en: str = "",
+        note: str = "",
+    ) -> InvitationExtraction:
+        """One Gemini call: parse a spoken invitation → structured event details.
+
+        The PA (or a family member) speaks the event details into the app; Sarvam
+        STT produces the Tamil transcript AND its English translation, and both
+        are passed here so the model has the maximum context possible even when
+        the speaker code-switches (very common in Tamil political speech).
+
+        Uses the SAME response schema as photo extraction — the caller doesn't
+        need to know which capture path produced the row.
+        """
+        t0 = time.monotonic()
+        # Compose a text-only prompt that reuses the strict bilingual rules
+        # baked into EXTRACTION_PROMPT (system_instruction) but tells the
+        # model it's reading a spoken description instead of a card.
+        lines = [
+            "SPOKEN INVITATION — the following is a voice memo transcribed by",
+            "Sarvam AI. Extract the same fields you would from a photographed card.",
+            f"Today's date is {date.today().isoformat()}.",
+        ]
+        if note:
+            lines.append(f"PA's note (highest-priority context): {note}")
+        if transcript_ta:
+            lines.append(f"Tamil transcript:\n{transcript_ta}")
+        if transcript_en:
+            lines.append(f"English translation:\n{transcript_en}")
+        lines.append("[Return the JSON object now.]")
+
+        contents = ["\n\n".join(lines)]
+        config = types.GenerateContentConfig(
+            system_instruction=EXTRACTION_PROMPT,
+            temperature=0.1,
+            top_p=0.9,
+            response_mime_type="application/json",
+            response_schema=InvitationExtraction,
+            service_tier=self._service_tier,
+        )
+        result = self._call_with_fallback(contents=contents, config=config)
+        logger.info(
+            "Voice extraction done in %dms | model=%s | type=%s | date=%s | time=%s | en=%r | ta=%r",
+            int((time.monotonic() - t0) * 1000), self._model_name,
+            result.event_type, result.event_date, result.start_time,
+            (result.title_en or "")[:40], (result.title_ta or "")[:40],
+        )
+        return result
+
     # ── Resilience (mirrors summarisation._call_with_fallback) ──────────────────
     def _generate_once(self, model: str, contents: list, config) -> InvitationExtraction:
         response = self._client.models.generate_content(model=model, contents=contents, config=config)

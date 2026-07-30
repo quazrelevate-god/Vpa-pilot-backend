@@ -22,7 +22,7 @@ import { EVENT_TYPE_META, displayTitle, pickRawSummary, pickTitle, pickVenue, ty
 import { fmtLongDate, fmtTime } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 import {
-  AlertTriangle, Check, Clock, Loader2, MapPin, Pencil, RotateCcw, StickyNote, Trash2, X as XIcon,
+  AlertTriangle, Check, Clock, Loader2, MapPin, Mic, Pencil, RotateCcw, StickyNote, Trash2, X as XIcon,
 } from "../_lib/icons";
 
 type Draft = {
@@ -172,18 +172,28 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
             </div>
           </div>
 
+          {/* One of three tab layouts depending on capture mode:
+                 • photo   → Photo + Details
+                 • voice   → Voice + Details
+                 • manual  → Details only (full width) */}
           <Tabs defaultValue="details" className="px-4 pb-4">
-            <TabsList className="grid h-12 w-full grid-cols-2">
-              {event.has_photo !== false && (
+            <TabsList className={cn(
+              "grid h-12 w-full",
+              (event.has_photo || event.has_audio) ? "grid-cols-2" : "grid-cols-1",
+            )}>
+              {event.has_photo && (
                 <TabsTrigger value="photo" className="text-base font-bold">{t("Photo", "படம்")}</TabsTrigger>
               )}
-              <TabsTrigger value="details" className={`text-base font-bold ${event.has_photo === false ? "col-span-2" : ""}`}>
+              {event.has_audio && (
+                <TabsTrigger value="voice" className="text-base font-bold">{t("Voice", "குரல்")}</TabsTrigger>
+              )}
+              <TabsTrigger value="details" className="text-base font-bold">
                 {t("Details", "விவரங்கள்")}
               </TabsTrigger>
             </TabsList>
 
             {/* ── Photo tab ── */}
-            {event.has_photo !== false && event.image_url && (
+            {event.has_photo && event.image_url && (
             <TabsContent value="photo" className="mt-3">
               <button onClick={() => setLightbox(true)} className="block w-full">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -199,9 +209,46 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
             </TabsContent>
             )}
 
+            {/* ── Voice tab (voice-captured events only) ── */}
+            {event.has_audio && event.audio_url && (
+            <TabsContent value="voice" className="mt-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 flex items-center gap-2 text-[13px] font-bold text-slate-700">
+                  <Mic className="h-4 w-4 text-[#4F8A5B]" strokeWidth={1.75} />
+                  {t("Recorded audio", "பதிவான குரல்")}
+                </div>
+                <audio controls src={event.audio_url} className="w-full" preload="metadata" />
+              </div>
+
+              {(event.transcript_ta || event.transcript_en) && (
+                <div className="mt-4 space-y-3">
+                  <div className="text-[0.72rem] font-bold uppercase tracking-wide text-slate-400">
+                    {t("Transcript", "எழுத்துப்படி")}
+                  </div>
+                  {event.transcript_ta && (
+                    <div className="rounded-lg border border-slate-200 bg-white p-3">
+                      <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                        {t("Source (Tamil)", "மூல மொழி (தமிழ்)")}
+                      </div>
+                      <p className="text-[14px] leading-relaxed text-slate-800">{event.transcript_ta}</p>
+                    </div>
+                  )}
+                  {event.transcript_en && (
+                    <div className="rounded-lg border border-slate-200 bg-white p-3">
+                      <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                        {t("English", "ஆங்கிலம்")}
+                      </div>
+                      <p className="text-[14px] leading-relaxed text-slate-800">{event.transcript_en}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+            )}
+
             {/* ── Details tab ── */}
             <TabsContent value="details" className="mt-3">
-              {event.status === "FAILED" && event.has_photo !== false && (
+              {event.status === "FAILED" && (event.has_photo || event.has_audio) && (
                 <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" strokeWidth={1.75} />
                   <div>
@@ -222,7 +269,8 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
               {(() => {
                 if (event.is_approved) return null;
                 if (event.status !== "READY") return null;
-                if (!event.date || !event.start_time || !event.end_time) return null;
+                // end_time is optional — start alone is enough to approve.
+                if (!event.date || !event.start_time) return null;
                 const today = new Date();
                 const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
                 if (event.date < todayISO) return null;
@@ -270,9 +318,9 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                           {event.start_time
                             ? <> · {fmtTime(event.start_time)}</>
                             : <span className="text-[#CC6A1F]"> · {t("no start time", "தொடக்க நேரம் இல்லை")}</span>}
-                          {event.end_time
-                            ? <> – {fmtTime(event.end_time)}</>
-                            : <span className="text-[#CC6A1F]"> – {t("no end time", "முடிவு நேரம் இல்லை")}</span>}
+                          {/* end_time is optional — if missing, just show
+                              start alone, no orange warning. */}
+                          {event.end_time && <> – {fmtTime(event.end_time)}</>}
                         </span>
                       ) : (
                         <span className="font-semibold text-[#CC6A1F]">
@@ -369,18 +417,20 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                         onChange={(e) => set("start_time")(e.target.value)} />
                     </div>
                     <div className="space-y-1 max-sm:col-span-1 sm:col-span-1">
-                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">{t("End", "முடிவு")} *</Label>
-                      <Input type="time" required value={draft.end_time}
-                        className={cn(inputCls, "font-mono tabular-nums", !draft.end_time && "border-red-400")}
+                      <Label className="text-[0.78rem] font-bold uppercase text-slate-500">
+                        {t("End", "முடிவு")}
+                        <span className="ml-1 font-normal normal-case text-slate-400">{t("(optional)", "(விருப்பம்)")}</span>
+                      </Label>
+                      <Input type="time" value={draft.end_time}
+                        className={cn(inputCls, "font-mono tabular-nums")}
                         onChange={(e) => set("end_time")(e.target.value)} />
                     </div>
                   </div>
 
                   <div className="flex gap-2 pt-1">
-                    {/* Save disabled until both times are set — matches the
-                        server rule (no more all-day events) so we surface it
-                        before the round-trip. */}
-                    <Button disabled={busy || !draft.start_time || !draft.end_time} onClick={save}
+                    {/* Save gated on start_time only — end is optional,
+                        matching the server approve rule. */}
+                    <Button disabled={busy || !draft.start_time} onClick={save}
                       className="h-12 flex-1 gap-2 bg-[#2F6FED] text-base font-bold text-white hover:bg-[#2558C4]">
                       {busy && <Loader2 className="h-5 w-5 animate-spin" />}
                       {t("Save", "சேமி")}

@@ -23,7 +23,9 @@ import { AlertTriangle, Inbox, Loader2 } from "../_lib/icons";
 //      server rule (POST /approve 409s on a past row).
 function isApprovable(e: EventItem): boolean {
   if (e.status !== "READY") return false;
-  if (!e.date || !e.start_time || !e.end_time) return false;
+  // end_time is optional — many invitations only announce a start ("6 PM
+  // at SRM Mahal"). Mirrors the backend approve_event guard.
+  if (!e.date || !e.start_time) return false;
   if (e.is_approved) return false;
   // Compare as YYYY-MM-DD strings — no TZ math needed since e.date is IST
   // wall-clock and toISODate uses local (IST) date too.
@@ -45,8 +47,8 @@ function statusChip(e: EventItem, t: (en: string, ta: string) => string) {
   if (!e.date) {
     return { cls: "bg-orange-50 text-orange-700 border-orange-200", label: t("No date — set one", "தேதி இல்லை — அமைக்கவும்") };
   }
-  if (!e.start_time || !e.end_time) {
-    return { cls: "bg-orange-50 text-orange-700 border-orange-200", label: t("Missing time — set one", "நேரம் இல்லை — அமைக்கவும்") };
+  if (!e.start_time) {
+    return { cls: "bg-orange-50 text-orange-700 border-orange-200", label: t("No start time — set one", "தொடக்க நேரம் இல்லை — அமைக்கவும்") };
   }
   // READY + fully-formed. If it's already approved (only possible on a
   // legacy backfilled row still in the queue for another reason, or a

@@ -50,6 +50,18 @@ class InvitationEvent(Base):
     image_path = Column(Text,         nullable=False, comment="storage_service key, e.g. events/<hex>.jpg")
     image_mime = Column(VARCHAR(100), nullable=False)
 
+    # ── Voice-capture (a spoken invitation instead of a photo) ──────────────────
+    # image_path stays set to the sentinel ("events/manual") for voice events so
+    # the NOT-NULL constraint doesn't fail; the has_photo/serialize logic picks
+    # audio_path over image_path for these rows. Both null on a normal photo or
+    # manual event; both set only on voice-created events.
+    audio_path    = Column(Text,         nullable=True, comment="storage_service key, e.g. events/<hex>.webm")
+    audio_mime    = Column(VARCHAR(100), nullable=True)
+    # Sarvam STT gives us the source-language transcript plus (in translate
+    # mode) an English rendering — we keep both so the reviewer can audit.
+    transcript_ta = Column(Text,         nullable=True)
+    transcript_en = Column(Text,         nullable=True)
+
     # PA's optional note — takes display priority over the extracted title.
     note       = Column(Text, nullable=True)
 
@@ -87,6 +99,14 @@ class InvitationEvent(Base):
     is_approved  = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     approved_by  = Column(VARCHAR(100), nullable=True, comment="events_session username who approved")
     approved_at  = Column(DateTime, nullable=True)
+
+    # ── Reminder-fired flags (web-push scheduler) ──────────────────────────────
+    # Each is flipped inside the same DB tx that dispatches the corresponding
+    # reminder, so a scheduler-tick crash mid-fan-out can't cause a duplicate
+    # send. See notification_scheduler.py.
+    notified_night_before = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    notified_morning      = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    notified_1h           = Column(Boolean, nullable=False, default=False, server_default=text("false"))
 
     # ── Timestamps / audit ──────────────────────────────────────────────────────
     created_by   = Column(VARCHAR(100), nullable=False, comment="events_session username")

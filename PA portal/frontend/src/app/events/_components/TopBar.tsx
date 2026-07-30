@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useT } from "../_lib/i18n";
-import { CalendarDays, Download, LogOut } from "../_lib/icons";
+import { Download, LogOut } from "../_lib/icons";
 import InstallDialog from "./InstallDialog";
 
 export default function TopBar({ onLogout }: { onLogout: () => void }) {
@@ -13,9 +13,11 @@ export default function TopBar({ onLogout }: { onLogout: () => void }) {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="flex h-14 items-center gap-3 px-4">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#21395B] text-white shadow-sm">
-          <CalendarDays className="h-5 w-5" strokeWidth={1.75} />
-        </span>
+        {/* Nam Kural brand mark — the navy-square SVG carries its own
+            background so it reads on the white top bar. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/events/namkural-icon.svg" alt="நம் குரல்"
+          className="h-9 w-9 shrink-0 rounded-xl shadow-sm" />
         <div className="min-w-0 leading-tight">
           <div className="truncate text-[1rem] font-extrabold tracking-tight text-slate-900">
             {t("Events Desk", "நிகழ்வு மேசை")}

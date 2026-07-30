@@ -46,6 +46,14 @@ export type EventItem = {
   image_url: string | null;
   /** false for manually-created events with no photo uploaded. */
   has_photo: boolean;
+  /** True on voice-captured events (has audio_url + transcripts). */
+  has_audio: boolean;
+  audio_url: string | null;
+  /** Sarvam STT source-language transcript (usually Tamil). "" when
+   *  the event wasn't voice-captured. */
+  transcript_ta: string;
+  /** Sarvam STT English translation. */
+  transcript_en: string;
   created_by: string;
   created_at: string | null;
   /** Who last edited this row + when. Null on rows never edited. */

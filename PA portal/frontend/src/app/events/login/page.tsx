@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useT } from "../_lib/i18n";
-import { Handshake, Loader2 } from "../_lib/icons";
+import { Loader2 } from "../_lib/icons";
 
 const container: Variants = {
   hidden: {},
@@ -71,17 +71,16 @@ export default function EventsLoginPage() {
 
       <motion.div variants={container} initial="hidden" animate="show"
         className="relative mx-auto w-full max-w-[400px]">
-        {/* Brand */}
-        <motion.div variants={item} className="flex items-center gap-3">
-          <motion.span
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#21395B] text-white shadow-lg shadow-[#21395B]/25"
+        {/* Brand — the Nam Kural mark, shown large and centred on the
+            login so the app opens on its identity. */}
+        <motion.div variants={item} className="flex flex-col items-center gap-3 text-center">
+          <motion.img
+            src="/events/namkural-icon.svg" alt="நம் குரல்"
+            className="h-24 w-24 rounded-3xl shadow-xl shadow-[#14233F]/25"
             initial={{ scale: 0.6, rotate: -8, opacity: 0 }}
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 320, damping: 18, delay: 0.1 }}>
-            <Handshake className="h-6 w-6" />
-          </motion.span>
+            transition={{ type: "spring", stiffness: 320, damping: 18, delay: 0.1 }} />
           <div className="leading-tight">
-            <div className="text-[1.45rem] font-black tracking-tight text-slate-900">{t("NamKural", "நம்குரல்")}</div>
             <div className="text-[0.95rem] font-bold text-slate-500">{t("Events Calendar", "நிகழ்வு நாட்காட்டி")}</div>
           </div>
         </motion.div>

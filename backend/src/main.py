@@ -179,6 +179,47 @@ async def _recover_invitation_events():
         logging.getLogger("events").warning("startup recovery skipped: %s", e)
 
 
+# Kept as a module-level singleton so shutdown can await/cancel it cleanly.
+_reminder_task = None
+
+
+@app.on_event("startup")
+async def _start_event_reminder_scheduler():
+    """Background loop that fires web-push reminders for upcoming events.
+
+    Silent no-op when VAPID keys aren't configured (see push_service
+    `vapid_configured`), so dev environments without keys don't warn.
+    """
+    global _reminder_task
+    try:
+        from src.services import notification_scheduler
+        _reminder_task = await notification_scheduler.start()
+    except Exception as e:
+        logging.getLogger("events").warning("reminder scheduler startup skipped: %s", e)
+
+
+@app.on_event("shutdown")
+async def _stop_event_reminder_scheduler():
+    """Signal the reminder loop to exit + await it briefly."""
+    global _reminder_task
+    if _reminder_task is None:
+        return
+    try:
+        stop = getattr(_reminder_task, "_stop_event", None)
+        if stop is not None:
+            stop.set()
+        # Give the loop up to a tick to finish its current pass.
+        import asyncio
+        try:
+            await asyncio.wait_for(_reminder_task, timeout=5)
+        except asyncio.TimeoutError:
+            _reminder_task.cancel()
+    except Exception:
+        logging.getLogger("events").exception("reminder scheduler shutdown noisy")
+    finally:
+        _reminder_task = None
+
+
 @app.on_event("startup")
 async def _start_auto_reschedule_loop():
     """

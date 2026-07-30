@@ -102,10 +102,10 @@ export default function ManualEventForm({
     }
     if (!fields.event_type)        e.event_type = t("Required", "தேவை");
     if (!fields.event_date)        e.event_date = t("Required", "தேவை");
-    // Both start AND end are required — no more all-day events. The server
-    // enforces this too; catching it client-side avoids a 422 round-trip.
+    // Only start_time is required — end_time is optional so invitations
+    // that only announce a start ("6 PM at SRM Mahal") don't force the
+    // PA to invent an end. Matches the backend approve_event guard.
     if (!fields.start_time)        e.start_time = t("Required", "தேவை");
-    if (!fields.end_time)          e.end_time   = t("Required", "தேவை");
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -247,11 +247,13 @@ export default function ManualEventForm({
             <div className="space-y-1 max-sm:col-span-1 sm:col-span-1">
               <Label className="text-[0.78rem] font-bold uppercase tracking-wide text-slate-500">
                 {t("End", "முடிவு")}
+                <span className="ml-1 font-normal normal-case tracking-normal text-slate-400">
+                  {t("(optional)", "(விருப்பம்)")}
+                </span>
               </Label>
               <Input type="time" value={fields.end_time}
-                className={cn(inputCls, "font-mono tabular-nums", errors.end_time && "border-red-400")}
+                className={cn(inputCls, "font-mono tabular-nums")}
                 onChange={(e) => set("end_time")(e.target.value)} />
-              {errors.end_time && <p className={errCls}>{errors.end_time}</p>}
             </div>
           </div>
 

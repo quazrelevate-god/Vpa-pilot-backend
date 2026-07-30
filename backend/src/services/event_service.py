@@ -40,8 +40,22 @@ _ALLOWED_MIMES = {
     "image/heic": ".heic",
     "image/heif": ".heif",
 }
+# Audio formats the MediaRecorder API on Chrome / Safari / Firefox actually
+# emits by default. Sarvam STT supports all of these on the REST path.
+_ALLOWED_AUDIO_MIMES = {
+    "audio/webm":  ".webm",
+    "audio/ogg":   ".ogg",
+    "audio/mp4":   ".m4a",
+    "audio/mpeg":  ".mp3",
+    "audio/wav":   ".wav",
+    "audio/x-wav": ".wav",
+    "audio/aac":   ".aac",
+}
 _EXTRACT_TIMEOUT_S = 120
 _STALE_MINUTES = 15
+# Audio > 60s starts to feel long for a "speak the event" input, and Sarvam
+# REST caps at 30s (batch takes over past that). 90s is our voluntary cap.
+_MAX_AUDIO_SECONDS_SOFT = 90
 
 # Lazily-created singleton — building the Gemini client needs GEMINI_API_KEY,
 # which shouldn't be required just to import this module (e.g. for alembic).
@@ -131,6 +145,13 @@ def serialize(e: InvitationEvent) -> dict:
         "approved_by": e.approved_by,
         "approved_at": e.approved_at.isoformat() if e.approved_at else None,
         "error_message": e.error_message,
+        # Voice-created events keep the sentinel image_path; the audio blob
+        # replaces the photo. The drawer decides which player to show based
+        # on `has_audio` / `has_photo`.
+        "has_audio": bool(e.audio_path),
+        "audio_url": f"/events/api/files/{quote(e.audio_path, safe='/')}" if e.audio_path else None,
+        "transcript_ta": e.transcript_ta or "",
+        "transcript_en": e.transcript_en or "",
         "image_url": f"/events/api/files/{quote(e.image_path, safe='/')}" if has_photo else None,
         "has_photo": has_photo,
         "created_by": e.created_by,
@@ -203,15 +224,15 @@ async def create_manual_event(
     parsed_date = _parse_date((event_date or "").strip())
     if parsed_date is None:
         raise HTTPException(422, "event_date is required and must be YYYY-MM-DD")
-    # Every event is a scheduled block — no more all-day. Both start and end
-    # are required so the reviewer + Minister always know exactly when it
-    # runs, and so the WeekView timeline can render every event on the grid.
+    # Start time is required (the WeekView timeline needs a slot to render
+    # against). End time is optional — many invitations only announce a
+    # start ("6 PM at SRM Mahal"); mandating a made-up end just forced the
+    # reviewer to invent one. If missing, the drawer / calendar just render
+    # the start-only form.
     parsed_start = _parse_time((start_time or "").strip())
     if parsed_start is None:
         raise HTTPException(422, "start_time is required and must be HH:MM")
-    parsed_end = _parse_time((end_time or "").strip())
-    if parsed_end is None:
-        raise HTTPException(422, "end_time is required and must be HH:MM")
+    parsed_end = _parse_time((end_time or "").strip()) if end_time else None
 
     # Optional photo
     image_key = "events/manual"
@@ -290,6 +311,127 @@ async def create_event(
     await db.refresh(event)
 
     asyncio.create_task(process_event(event.id))
+    return event
+
+
+async def create_voice_event(
+    db: AsyncSession, *, audio_bytes: bytes, mime_type: str,
+    note: str, created_by: str,
+) -> InvitationEvent:
+    """Voice-capture path: PA speaks the event into the phone.
+
+    Flow:
+      1. Validate + persist the audio blob (MinIO under events/<hex>.<ext>).
+      2. Sarvam STT twice — once in verbatim Tamil, once in translate-mode
+         English — so Gemini has code-switched code covered.
+      3. Feed both transcripts + optional PA note to
+         `event_extraction.extract_from_transcript` (same schema as photo).
+      4. Insert the row directly as READY (extraction ran synchronously here
+         — no worker, no polling; the whole thing is < 5s end to end and the
+         user is holding the phone).
+
+    Photo events use image_path + async worker; voice events use audio_path
+    and run STT + extraction inline. The `image_path` column stays set to
+    the manual sentinel so the NOT-NULL constraint doesn't fail.
+    """
+    mime = (mime_type or "").lower().split(";")[0].strip()
+    ext = _ALLOWED_AUDIO_MIMES.get(mime)
+    if not ext:
+        raise HTTPException(422, f"Unsupported audio type: {mime or 'unknown'}")
+    max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    if len(audio_bytes) > max_bytes:
+        raise HTTPException(413, f"Audio exceeds {settings.MAX_FILE_SIZE_MB} MB limit")
+    if not audio_bytes:
+        raise HTTPException(422, "Empty audio")
+
+    # ── 1) persist audio ───────────────────────────────────────────────────
+    key = f"events/{token_hex(16)}{ext}"
+    await asyncio.to_thread(storage_service.save_file, audio_bytes, key, mime)
+
+    # ── 2) transcribe (Tamil + English) ────────────────────────────────────
+    # Sarvam is blocking — offload to a worker thread. Wrap in a bounded
+    # timeout so a hung upstream can't hang the whole request.
+    from src.services.stt_service import SarvamSTTService
+    try:
+        stt = SarvamSTTService.from_settings()
+    except Exception as exc:
+        logger.exception("Sarvam init failed")
+        raise HTTPException(503, f"Voice capture not configured: {exc}")
+
+    def _do_transcribe():
+        # verbatim source (usually Tamil) + English translation
+        t = stt.transcribe(audio_bytes, filename=f"voice{ext}", mime_type=mime, mode="transcribe")
+        e = stt.transcribe(audio_bytes, filename=f"voice{ext}", mime_type=mime, mode="translate")
+        return t, e
+
+    try:
+        stt_ta, stt_en = await asyncio.wait_for(
+            asyncio.to_thread(_do_transcribe), timeout=_EXTRACT_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "Voice transcription timed out")
+
+    transcript_ta = (stt_ta.transcript or "").strip()
+    transcript_en = (stt_en.english_translation or stt_en.transcript or "").strip()
+    if not (transcript_ta or transcript_en):
+        raise HTTPException(422, "Could not hear anything in the audio — try again.")
+
+    # ── 3) LLM extraction (reuses the same InvitationExtraction schema) ────
+    svc = _get_extractor()
+    def _do_extract():
+        return svc.extract_from_transcript(
+            transcript_ta=transcript_ta,
+            transcript_en=transcript_en,
+            note=(note or "").strip(),
+        )
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(_do_extract), timeout=_EXTRACT_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "Voice extraction timed out")
+
+    # ── 4) insert row (READY — same as manual create) ──────────────────────
+    r_title_en = (result.title_en or "").strip()[:300] or None
+    r_title_ta = (result.title_ta or "").strip()[:300] or None
+    r_venue_en = (result.venue_en or "").strip()[:300] or None
+    r_venue_ta = (result.venue_ta or "").strip()[:300] or None
+    etype = (result.event_type or "").strip()
+    event = InvitationEvent(
+        # image_path stays as the sentinel so serialize's has_photo returns
+        # false — the drawer will show the audio player instead of a photo.
+        image_path=_SENTINEL_IMAGE,
+        image_mime="audio/*",
+        audio_path=key,
+        audio_mime=mime,
+        transcript_ta=transcript_ta or None,
+        transcript_en=transcript_en or None,
+        title=r_title_en or r_title_ta,
+        title_en=r_title_en,
+        title_ta=r_title_ta,
+        venue=r_venue_en or r_venue_ta,
+        venue_en=r_venue_en,
+        venue_ta=r_venue_ta,
+        event_type=(etype if etype in EVENT_TYPES else "other"),
+        event_date=_parse_date(result.event_date),
+        start_time=_parse_time(result.start_time),
+        end_time=_parse_time(result.end_time),
+        note=(note or "").strip() or None,
+        status=STATUS_READY,
+        error_message=None,
+        extraction_json=result.model_dump(),
+        created_by=created_by,
+        created_at=datetime.utcnow(),
+        processed_at=datetime.utcnow(),
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    logger.info(
+        "voice event %d created | date=%s type=%s | en=%r ta=%r",
+        event.id, event.event_date, event.event_type,
+        (event.title_en or "")[:40], (event.title_ta or "")[:40],
+    )
     return event
 
 
@@ -470,11 +612,12 @@ async def list_needs_review(db: AsyncSession) -> list[InvitationEvent]:
             (InvitationEvent.event_date.is_(None))
             | (InvitationEvent.event_date >= today)
         )
-        # Reason to surface.
+        # Reason to surface. end_time is intentionally NOT here — many
+        # invitations only announce a start ("6 PM at SRM Mahal") and
+        # mandating end was just noise. Start time is still required.
         .where(
             (InvitationEvent.event_date.is_(None))
             | (InvitationEvent.start_time.is_(None))
-            | (InvitationEvent.end_time.is_(None))
             | (InvitationEvent.status != STATUS_READY)
             | (InvitationEvent.is_approved == False)  # noqa: E712
         )
@@ -571,10 +714,11 @@ async def overview_events(db: AsyncSession) -> dict:
                 | (InvitationEvent.event_date >= today)
             )
             & (
+                # Kept in lock-step with list_needs_review's reason clause —
+                # end_time is not a data hole any more, only start is.
                 (InvitationEvent.status != STATUS_READY)
                 | (InvitationEvent.event_date.is_(None))
                 | (InvitationEvent.start_time.is_(None))
-                | (InvitationEvent.end_time.is_(None))
             )
         ).label("needs_attention"),
         # Upcoming — all future events including today, whether approved
@@ -833,8 +977,8 @@ async def approve_event(
         raise HTTPException(409, "Only READY events can be approved — retry / fix first")
     if event.event_date is None:
         raise HTTPException(409, "Set an event date before approving")
-    if event.start_time is None or event.end_time is None:
-        raise HTTPException(409, "Set both start and end time before approving")
+    if event.start_time is None:
+        raise HTTPException(409, "Set the start time before approving")
     if event.event_date < _ist_today():
         raise HTTPException(409, "Past events cannot be approved — attendance is forward-looking")
     if event.is_approved:

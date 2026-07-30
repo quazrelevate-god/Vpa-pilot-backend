@@ -1,8 +1,12 @@
 // Single place the events app pulls its icons from (lucide-react), so swapping
 // an icon is a one-line change and tree-shaking stays tight.
 export {
+  Bell,
+  BellOff,
   CalendarDays,
   Camera,
+  Mic,
+  Square,
   Inbox,
   ChevronLeft,
   ChevronRight,
