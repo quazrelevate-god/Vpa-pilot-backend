@@ -116,7 +116,7 @@ export function Hero() {
       <div className="relative z-10 w-full px-5 sm:px-6 lg:px-12 pb-[9vh] sm:pb-[11vh] pt-28">
         <h1 className="h-display text-white text-[clamp(33px,5.8vw,86px)] max-w-[15ch]">
           {t({ en: 'Your proposal.', ta: 'உங்கள் யோசனை.' })}<br />
-          <em className="not-italic text-haze-300">{t({ en: 'Before the Minister.', ta: 'அமைச்சரின் முன்.' })}</em>
+          <em className="not-italic text-haze-300">{t({ en: 'Before the Hon’ble Minister.', ta: 'மாண்புமிகு அமைச்சரின் முன்.' })}</em>
         </h1>
         <span className="relative inline-block mt-7 sm:mt-9">
           <button onClick={() => glideTo('desks')} className="btn-gold">
@@ -197,7 +197,7 @@ export function About() {
             {t({ en: 'About Nam Kural', ta: 'நம் குரல் பற்றி' })}
           </div>
           <h2 className="reveal-up h-display text-white text-[clamp(26px,4vw,52px)] mt-5 mb-2 leading-[1.12]" style={{ transitionDelay: '110ms' }}>
-            {t({ en: 'One official channel — from your idea to the Minister’s desk.', ta: 'உங்கள் யோசனையிலிருந்து அமைச்சரின் மேசை வரை — ஒரே அதிகாரப்பூர்வ வழி.' })}
+            {t({ en: 'One official channel — from your idea to the Hon’ble Minister’s desk.', ta: 'உங்கள் யோசனையிலிருந்து மாண்புமிகு அமைச்சரின் மேசை வரை — ஒரே அதிகாரப்பூர்வ வழி.' })}
           </h2>
         </div>
 
