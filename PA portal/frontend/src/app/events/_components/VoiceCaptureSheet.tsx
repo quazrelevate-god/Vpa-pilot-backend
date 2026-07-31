@@ -6,14 +6,17 @@
 //   1. Tap the big blue button → asks for mic permission → starts recording.
 //   2. Timer + waveform-ish pulse show it's live. Tap again → stops.
 //   3. A preview playback + optional PA note appears; tap Send.
-//   4. Backend transcribes (Sarvam Tamil + English) → Gemini extracts
-//      structured event fields → row lands in Needs Review.
-//   5. Sheet closes; onSaved() bumps the calendar to show the new event.
+//   4. Sheet closes IMMEDIATELY on Send tap. A sonner toast.promise tracks
+//      the upload — loading → success (row lands in Needs Review) or error.
+//      No blocking "Reading…" button state; the user is free to keep working
+//      while Gemini transcribes + extracts in the background.
+//   5. onSaved() refreshes the parent when the toast turns green so the
+//      new row appears in Needs Review right away.
 //
 // Constraints:
 //   * MediaRecorder mimeType is browser-dependent; we prefer webm+opus and
 //     fall back to whatever the browser will actually record.
-//   * Hard-cap at 90s so nobody sends a 5-min ramble that overflows Sarvam.
+//   * Hard-cap at 90s so nobody sends a 5-min ramble to Gemini.
 //   * Fully self-contained: cleans up the stream + object URL on close so
 //     the mic light doesn't stay on after the sheet is dismissed.
 
@@ -24,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useT } from "../_lib/i18n";
-import { Loader2, Mic, RefreshCw, Send, Square, X } from "../_lib/icons";
+import { Mic, RefreshCw, Send, Square, X } from "../_lib/icons";
 
 const MAX_SECONDS = 90;
 
@@ -58,7 +61,6 @@ export default function VoiceCaptureSheet({
   const [blob, setBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
 
   // Refs — MediaRecorder / stream / timer live outside React state so a
   // stop-mid-tick can flush the final chunk before we tear down the stream.
@@ -67,6 +69,11 @@ export default function VoiceCaptureSheet({
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
   const mimeRef = useRef<string>("");
+  // Guards a double-tap on Send. A ref (not state) because we don't want a
+  // re-render — the sheet is about to unmount anyway. Reset would only ever
+  // matter if send throws synchronously before the sheet closes; the
+  // fetch runs inside an IIFE so the ref is set true, sheet closes, done.
+  const sendingRef = useRef(false);
 
   // Preview URL lifecycle
   useEffect(() => {
@@ -96,11 +103,10 @@ export default function VoiceCaptureSheet({
   }, []);
 
   const closeSheet = useCallback(() => {
-    if (busy) return;
     stopStream();
     reset();
     onClose();
-  }, [busy, stopStream, reset, onClose]);
+  }, [stopStream, reset, onClose]);
 
   const startRecording = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -168,7 +174,8 @@ export default function VoiceCaptureSheet({
   }, [reset]);
 
   const send = useCallback(() => {
-    if (!blob || busy) return;
+    if (!blob || sendingRef.current) return;
+    sendingRef.current = true;
     // OPTIMISTIC UX — close the sheet on click. Do NOT await the request.
     // Was previously a blocking await: user tapped Send, the button flipped
     // to "Reading…" with a spinner for the 3–5s Gemini took to transcribe +
@@ -208,10 +215,11 @@ export default function VoiceCaptureSheet({
         t("Send failed. Try again.", "அனுப்ப முடியவில்லை. மீண்டும் முயற்சிக்கவும்."),
     });
 
-    // Close the sheet right now — busy is still false so closeSheet()
-    // doesn't short-circuit on its own guard.
+    // Close the sheet right now — no busy gate anywhere in the flow so
+    // closeSheet unmounts immediately and the toast becomes the only UI
+    // for this action.
     closeSheet();
-  }, [blob, busy, note, onSaved, closeSheet, t]);
+  }, [blob, note, onSaved, closeSheet, t]);
 
   const mmss = `${String(Math.floor(seconds / 60)).padStart(1, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
@@ -277,7 +285,6 @@ export default function VoiceCaptureSheet({
                 <span className="font-mono tabular-nums">{mmss}</span>
                 <button
                   onClick={retake}
-                  disabled={busy}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-semibold text-[#2F6FED] hover:bg-white"
                 >
                   <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
@@ -301,17 +308,15 @@ export default function VoiceCaptureSheet({
               />
             </div>
 
+            {/* Send is optimistic — click closes the sheet immediately and a
+                sonner toast tracks the upload. No "Reading…" state on the
+                button because it's gone the instant it's tapped. */}
             <Button
               onClick={send}
-              disabled={busy}
-              className="h-14 w-full gap-2 rounded-xl bg-[#2F6FED] text-lg font-bold text-white hover:bg-[#2558C4] active:scale-[0.99] disabled:opacity-60"
+              className="h-14 w-full gap-2 rounded-xl bg-[#2F6FED] text-lg font-bold text-white hover:bg-[#2558C4] active:scale-[0.99]"
             >
-              {busy
-                ? <Loader2 className="h-6 w-6 animate-spin" />
-                : <Send    className="h-6 w-6" strokeWidth={1.75} />}
-              {busy
-                ? t("Reading…", "கேட்கப்படுகிறது…")
-                : t("Send",     "அனுப்பு")}
+              <Send className="h-6 w-6" strokeWidth={1.75} />
+              {t("Send", "அனுப்பு")}
             </Button>
           </div>
         )}
