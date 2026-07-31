@@ -72,9 +72,11 @@ async function getVapidKey(): Promise<string | null> {
 
 async function currentSubscription(): Promise<PushSubscription | null> {
   if (!browserSupportsPush()) return null;
-  // Scope is `/events` (no trailing slash) — must match the register call
-  // in SwRegister.tsx AND the manifest's scope. iOS is strict about this.
-  const reg = await navigator.serviceWorker.getRegistration("/events");
+  // Scope is `/events/` — must match the register call in SwRegister.tsx
+  // AND the manifest's scope. iOS follows the SW spec strictly for scope
+  // matching; wider scopes need a Service-Worker-Allowed header that
+  // Next.js /public doesn't emit, so we stick to the default max scope.
+  const reg = await navigator.serviceWorker.getRegistration("/events/");
   if (!reg) return null;
   return reg.pushManager.getSubscription();
 }
