@@ -154,11 +154,18 @@ async def _sweep_once() -> None:
         # to be robust to server jitter / tick spacing.
         night_hour = settings.EVENTS_REMINDER_NIGHT_BEFORE_HOUR_IST
         tick_s     = settings.EVENTS_REMINDER_TICK_SECONDS
+        # `is_approved` is required across all three reminder branches: only
+        # events the reviewer has explicitly confirmed with the Minister
+        # should ping the office. Unapproved events are still waiting in the
+        # Needs Review queue — pushing reminders for those would prompt the
+        # team to attend an unconfirmed maybe, which the whole approval-gate
+        # was designed to prevent.
         if _in_hour_window(now_ist, night_hour, tick_s):
             rows = (await db.execute(
                 select(InvitationEvent).where(
                     InvitationEvent.event_date == tomorrow,
                     InvitationEvent.status == STATUS_READY,
+                    InvitationEvent.is_approved == True,  # noqa: E712
                     InvitationEvent.notified_night_before == False,  # noqa: E712
                 )
             )).scalars().all()
@@ -172,6 +179,7 @@ async def _sweep_once() -> None:
                 select(InvitationEvent).where(
                     InvitationEvent.event_date == today,
                     InvitationEvent.status == STATUS_READY,
+                    InvitationEvent.is_approved == True,  # noqa: E712
                     InvitationEvent.notified_morning == False,  # noqa: E712
                 )
             )).scalars().all()
@@ -184,6 +192,7 @@ async def _sweep_once() -> None:
             select(InvitationEvent).where(
                 InvitationEvent.event_date == today,
                 InvitationEvent.status == STATUS_READY,
+                InvitationEvent.is_approved == True,  # noqa: E712
                 InvitationEvent.start_time.isnot(None),
                 InvitationEvent.notified_1h == False,  # noqa: E712
             )
