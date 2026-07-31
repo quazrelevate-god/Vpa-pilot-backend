@@ -3,7 +3,7 @@
   "short_name": "நம் குரல்",
   "description": "Photograph or speak invitation details and manage the shared greetings calendar.",
   "start_url": "/events",
-  "scope": "/events/",
+  "scope": "/events",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#14233F",

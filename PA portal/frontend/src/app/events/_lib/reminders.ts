@@ -72,7 +72,9 @@ async function getVapidKey(): Promise<string | null> {
 
 async function currentSubscription(): Promise<PushSubscription | null> {
   if (!browserSupportsPush()) return null;
-  const reg = await navigator.serviceWorker.getRegistration("/events/");
+  // Scope is `/events` (no trailing slash) — must match the register call
+  // in SwRegister.tsx AND the manifest's scope. iOS is strict about this.
+  const reg = await navigator.serviceWorker.getRegistration("/events");
   if (!reg) return null;
   return reg.pushManager.getSubscription();
 }
