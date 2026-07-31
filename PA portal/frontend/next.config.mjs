@@ -5,6 +5,37 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"
 
 const nextConfig = {
   reactStrictMode: true,
+  // Force correct MIME + max-scope headers on the service worker files. Some
+  // upstreams (Railway edge / Cloudflare / Next.js dev overlay) have been
+  // observed serving /events/sw.js as text/html — the browser then refuses
+  // to register it as a SW ("service worker registration failed"), which
+  // manifests downstream as navigator.serviceWorker.ready hanging forever.
+  // Setting Content-Type here removes the ambiguity end-to-end. The
+  // Service-Worker-Allowed header is defensive: it explicitly authorises
+  // the scope we register with, so a future scope widening doesn't need a
+  // second round of debugging.
+  async headers() {
+    return [
+      {
+        source: "/events/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Service-Worker-Allowed", value: "/events/" },
+          // Cache-Control none — the SW file itself must always be
+          // network-fetched so a deploy actually rolls out a new SW.
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+      {
+        source: "/crowd/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Service-Worker-Allowed", value: "/crowd/" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+    ];
+  },
   // Same-origin proxy: frontend calls /api/* and /auth/* — Next.js forwards
   // them to FastAPI's /dashboard/* routes.  Keeps the auth cookie (dash_session)
   // in scope without any CORS plumbing.
