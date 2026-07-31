@@ -1,11 +1,50 @@
 "use client";
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLang, useT } from '../i18n.jsx'
 import { IMG, SLIDES, CATEGORIES } from '../data.jsx'
 import { Logo } from './logo.jsx'
 import { useBrandFile } from '../brand.jsx'
 
 const scrollToDesks = () => document.getElementById('desks')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+// A deliberately slow, eased scroll — used by the hero CTA so the page glides
+// DOWN THROUGH the About section (its content reveals as it passes) before it
+// arrives at the categories, instead of jumping. A timer (not rAF) drives it so
+// it runs even in throttled/background contexts; CSS scroll-behavior is disabled
+// for the duration so the per-tick scrollTo isn't double-animated, and any user
+// wheel/touch hands control straight back.
+let _glideTimer = null
+function glideTo(id) {
+  if (typeof document === 'undefined') return
+  const el = document.getElementById(id)
+  if (!el) return
+  if (_glideTimer) { clearInterval(_glideTimer); _glideTimer = null }
+  const html = document.documentElement
+  const prevBehavior = html.style.scrollBehavior
+  html.style.scrollBehavior = 'auto'
+  const startY = window.scrollY
+  const dist = el.getBoundingClientRect().top          // px from current view to target top
+  if (Math.abs(dist) < 4) { html.style.scrollBehavior = prevBehavior; return }
+  const duration = Math.min(2400, Math.max(1400, Math.abs(dist) * 0.85))  // slow, distance-aware
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) // easeInOutCubic
+  const t0 = performance.now()
+  let lastY = startY
+  const end = () => {
+    if (_glideTimer) { clearInterval(_glideTimer); _glideTimer = null }
+    html.style.scrollBehavior = prevBehavior
+    window.removeEventListener('wheel', onUser)
+    window.removeEventListener('touchmove', onUser)
+  }
+  const onUser = () => end()   // user grabbed the scroll — stop gliding
+  window.addEventListener('wheel', onUser, { passive: true })
+  window.addEventListener('touchmove', onUser, { passive: true })
+  _glideTimer = setInterval(() => {
+    const p = Math.min((performance.now() - t0) / duration, 1)
+    lastY = Math.round(startY + dist * ease(p))
+    window.scrollTo(0, lastY)
+    if (p >= 1) end()
+  }, 16)
+}
 
 /** Uses public/brand/logo.* when present; falls back to the drawn wordmark. */
 function BrandLogo() {
@@ -79,14 +118,8 @@ export function Hero() {
           {t({ en: 'Your proposal.', ta: 'உங்கள் யோசனை.' })}<br />
           <em className="not-italic text-haze-300">{t({ en: 'Before the Minister.', ta: 'அமைச்சரின் முன்.' })}</em>
         </h1>
-        <p className="text-white/90 text-[clamp(14.5px,1.4vw,19px)] leading-relaxed max-w-[58ch] mt-5 sm:mt-6 mb-7 sm:mb-9">
-          {t({
-            en: 'Nam Kural is the formal channel through which corporates, institutions, associations and unions place proposals before the Hon\'ble Minister for Education, Government of Tamil Nadu. No queues, no intermediaries. Every submission is recorded, routed to the right desk, and answered on record.',
-            ta: 'நம் குரல்: நிறுவனங்கள், கல்வி நிலையங்கள், சங்கங்கள், தொழிற்சங்கங்கள் தங்கள் யோசனைகளை தமிழ்நாடு அரசின் மாண்புமிகு கல்வி அமைச்சரின் முன் வைக்கும் அதிகாரப்பூர்வ வழி. வரிசை இல்லை, இடைத்தரகர் இல்லை. ஒவ்வொரு சமர்ப்பிப்பும் பதிவு செய்யப்பட்டு, சரியான மேசைக்கு அனுப்பப்பட்டு, பதிவுடன் பதிலளிக்கப்படும்.',
-          })}
-        </p>
-        <span className="relative inline-block">
-          <button onClick={scrollToDesks} className="btn-gold">
+        <span className="relative inline-block mt-7 sm:mt-9">
+          <button onClick={() => glideTo('desks')} className="btn-gold">
             {t({ en: 'Give your idea for the betterment of tomorrow →', ta: 'நாளைய நலனுக்காக உங்கள் யோசனையை வழங்குங்கள் →' })}
           </button>
           <ClickHint />
@@ -100,11 +133,132 @@ export function Hero() {
           </p>
         </div>
       </div>
-      <button onClick={scrollToDesks} aria-label="Scroll to categories"
+      <button onClick={() => glideTo('desks')} aria-label="Scroll to categories"
         className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 hidden lg:grid place-items-center w-10 h-10 text-white/50 hover:text-white transition-colors scroll-nudge">
         ↓
       </button>
     </header>
+  )
+}
+
+/* ================= ABOUT =================
+   Sits between the hero and the desks: what Nam Kural is, who it is for, and
+   how a submission travels. Content reveals as it scrolls into view. */
+const SUBMITTERS = [
+  { en: 'Corporates', ta: 'நிறுவனங்கள்' },
+  { en: 'Educational institutions', ta: 'கல்வி நிலையங்கள்' },
+  { en: 'Startups', ta: 'ஸ்டார்ட்அப்கள்' },
+  { en: 'Research organisations', ta: 'ஆராய்ச்சி நிறுவனங்கள்' },
+  { en: 'Technology companies', ta: 'தொழில்நுட்ப நிறுவனங்கள்' },
+  { en: 'Industry associations', ta: 'தொழில் சங்கங்கள்' },
+  { en: 'Professional bodies', ta: 'தொழில்முறை அமைப்புகள்' },
+  { en: 'NGOs', ta: 'தொண்டு நிறுவனங்கள்' },
+  { en: 'Subject experts', ta: 'துறை வல்லுநர்கள்' },
+]
+const FLOW = [
+  { n: '01', title: { en: 'Recorded', ta: 'பதிவு' },
+    desc: { en: 'Formally logged on the state’s record the moment you submit.', ta: 'சமர்ப்பித்த நொடியிலேயே அரசுப் பதிவில் முறையாக பதிவு.' } },
+  { n: '02', title: { en: 'Acknowledged', ta: 'ஒப்புகை' },
+    desc: { en: 'A written acknowledgement reaches you — no wondering where it went.', ta: 'எழுத்துப்பூர்வ ஒப்புகை உங்களை அடையும் — எங்கே சென்றது என்ற கேள்வி இல்லை.' } },
+  { n: '03', title: { en: 'Forwarded', ta: 'அனுப்பப்பட்டது' },
+    desc: { en: 'Routed to the right department for evaluation through the prescribed process.', ta: 'உரிய துறைக்கு நிர்ணயிக்கப்பட்ட நடைமுறையில் மதிப்பீட்டிற்காக அனுப்பப்படும்.' } },
+]
+
+export function About() {
+  const t = useT()
+  const ref = useRef(null)
+  const [inView, setInView] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    // Reveal once, when the section scrolls into view.
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => { if (e.isIntersecting) { setInView(true); io.disconnect() } }),
+      { threshold: 0.12, rootMargin: '0px 0px -8% 0px' }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
+  return (
+    <section id="about" ref={ref}
+      className={`relative overflow-hidden bg-ink-950 py-24 sm:py-28 lg:py-36 ${inView ? 'about-in' : ''}`}>
+      {/* ambient aura + faint Tamil watermark */}
+      <div className="absolute inset-0 form-aura pointer-events-none" aria-hidden="true" />
+      <div className="absolute inset-0 grid place-items-center pointer-events-none" aria-hidden="true">
+        <span className="font-disp font-extrabold text-[27vw] leading-none text-haze-300/[0.04] select-none whitespace-nowrap">நம் குரல்</span>
+      </div>
+
+      <div className="wrap relative">
+        {/* header */}
+        <div className="max-w-[48rem]">
+          <div className="reveal-up eyebrow text-gold-400 flex items-center gap-3" style={{ transitionDelay: '40ms' }}>
+            <span className="h-px w-8 bg-gold-500/70" />
+            {t({ en: 'About Nam Kural', ta: 'நம் குரல் பற்றி' })}
+          </div>
+          <h2 className="reveal-up h-display text-white text-[clamp(26px,4vw,52px)] mt-5 mb-2 leading-[1.12]" style={{ transitionDelay: '110ms' }}>
+            {t({ en: 'One official channel — from your idea to the Minister’s desk.', ta: 'உங்கள் யோசனையிலிருந்து அமைச்சரின் மேசை வரை — ஒரே அதிகாரப்பூர்வ வழி.' })}
+          </h2>
+        </div>
+
+        {/* lead + who-can-submit */}
+        <div className="grid lg:grid-cols-[1.5fr_1fr] gap-x-14 gap-y-9 mt-8 sm:mt-10">
+          <div>
+            <p className="reveal-up text-white/85 text-[clamp(15px,1.5vw,18px)] leading-[1.78] max-w-[62ch]" style={{ transitionDelay: '170ms' }}>
+              {t({
+                en: 'Nam Kural is the official platform through which corporates, educational institutions, startups, research organisations, technology companies, industry associations, professional bodies, NGOs and subject experts submit innovative ideas, research findings, technology solutions, policy recommendations and project proposals directly to the Hon’ble Minister for School Education, Government of Tamil Nadu.',
+                ta: 'நிறுவனங்கள், கல்வி நிலையங்கள், ஸ்டார்ட்அப்கள், ஆராய்ச்சி நிறுவனங்கள், தொழில்நுட்ப நிறுவனங்கள், தொழில் சங்கங்கள், தொழில்முறை அமைப்புகள், தொண்டு நிறுவனங்கள் மற்றும் துறை வல்லுநர்கள் — தங்கள் புதுமையான யோசனைகள், ஆராய்ச்சி முடிவுகள், தொழில்நுட்பத் தீர்வுகள், கொள்கை பரிந்துரைகள் மற்றும் திட்ட முன்மொழிவுகளை தமிழ்நாடு அரசின் மாண்புமிகு பள்ளிக் கல்வி அமைச்சரின் முன் நேரடியாக சமர்ப்பிக்கும் அதிகாரப்பூர்வ தளமே நம் குரல்.',
+              })}
+            </p>
+            <p className="reveal-up text-white/70 text-[14.5px] sm:text-[15.5px] leading-[1.8] max-w-[62ch] mt-5" style={{ transitionDelay: '230ms' }}>
+              {t({
+                en: 'We welcome proposals that strengthen the education ecosystem — improving student learning outcomes, empowering teachers, enhancing school administration, and bringing proven innovation and best practice into the School Education Department.',
+                ta: 'மாணவர் கற்றல் விளைவுகளை மேம்படுத்தும், ஆசிரியர்களை வலுப்படுத்தும், பள்ளி நிர்வாகத்தை மேம்படுத்தும், மற்றும் நிரூபிக்கப்பட்ட புதுமைகளையும் சிறந்த நடைமுறைகளையும் பள்ளிக் கல்வித் துறையில் கொண்டுவரும் யோசனைகளை நாங்கள் வரவேற்கிறோம்.',
+              })}
+            </p>
+          </div>
+          <div className="reveal-up" style={{ transitionDelay: '290ms' }}>
+            <p className="text-[10.5px] uppercase tracking-wide2 text-gold-400/80 mb-3.5">{t({ en: 'Who can submit', ta: 'யார் சமர்ப்பிக்கலாம்' })}</p>
+            <div className="flex flex-wrap gap-2">
+              {SUBMITTERS.map((s, i) => (
+                <span key={i} className="rounded-full border border-white/15 bg-white/[0.04] px-3.5 py-1.5 text-[12.5px] text-white/80">
+                  {t(s)}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* pull quote */}
+        <div className="reveal-up mt-16 sm:mt-20 flex items-stretch gap-5" style={{ transitionDelay: '120ms' }}>
+          <span className="shrink-0 w-1 rounded bg-gradient-to-b from-gold-400 to-gold-600" />
+          <p className="h-display text-white text-[clamp(21px,3vw,38px)] leading-[1.2]">
+            {t({ en: 'No intermediaries. No unnecessary delays.', ta: 'இடைத்தரகர் இல்லை. தேவையற்ற தாமதம் இல்லை.' })}
+          </p>
+        </div>
+
+        {/* how a submission travels */}
+        <div className="mt-14 sm:mt-16 grid sm:grid-cols-3 gap-x-8 gap-y-9">
+          {FLOW.map((st, i) => (
+            <div key={i} className="reveal-up relative pt-6 border-t-2 border-white/12" style={{ transitionDelay: `${160 + i * 90}ms` }}>
+              <span className="font-disp font-extrabold text-gold-400/90 text-[12.5px] tracking-wide2 tabular-nums">{st.n}</span>
+              <h3 className="h-display text-white text-[19px] sm:text-[21px] mt-2 mb-2">{t(st.title)}</h3>
+              <p className="text-white/60 text-[13px] leading-relaxed max-w-[30ch]">{t(st.desc)}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* closing */}
+        <div className="reveal-up mt-16 sm:mt-20 border-t border-white/10 pt-9 sm:pt-11 flex flex-col md:flex-row md:items-end md:justify-between gap-7" style={{ transitionDelay: '120ms' }}>
+          <p className="font-disp text-haze-100 text-[clamp(17px,2.1vw,25px)] leading-[1.45] max-w-[26ch]">
+            {t({ en: 'Your idea has the potential to shape the future of education in Tamil Nadu.', ta: 'உங்கள் யோசனை தமிழ்நாட்டின் கல்வியின் எதிர்காலத்தை வடிவமைக்கும் ஆற்றல் கொண்டது.' })}
+          </p>
+          <button onClick={scrollToDesks} className="btn-gold shrink-0 self-start md:self-auto">
+            {t({ en: 'Share your innovation →', ta: 'உங்கள் புதுமையைப் பகிருங்கள் →' })}
+          </button>
+        </div>
+      </div>
+    </section>
   )
 }
 

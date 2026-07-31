@@ -114,6 +114,18 @@ html { scroll-behavior: smooth; }
   100% { opacity: 0;   transform: scale(3.3); }
 }
 
+/* ---------- scroll reveal (About section) ----------
+   Children start lowered + transparent; the section adds `.about-in` when it
+   scrolls into view (IntersectionObserver), and per-element transition-delay
+   staggers the rise. */
+.reveal-up {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity .8s cubic-bezier(.22,.9,.24,1), transform .8s cubic-bezier(.22,.9,.24,1);
+  will-change: opacity, transform;
+}
+.about-in .reveal-up { opacity: 1; transform: none; }
+
 /* ---------- category desks ---------- */
 /* flex-grow is driven from React; the easing lives here */
 .desk { transition: flex-grow .7s cubic-bezier(.22,.9,.24,1); }

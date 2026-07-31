@@ -1,7 +1,7 @@
 "use client";
 import { useState } from 'react'
 import { LangProvider } from './i18n.jsx'
-import { Nav, Hero, CtaBand, Footer } from './components/sections.jsx'
+import { Nav, Hero, About, CtaBand, Footer } from './components/sections.jsx'
 import { CategoryStack } from './components/categories.jsx'
 import { ProposalForm } from './components/form.jsx'
 
@@ -21,6 +21,7 @@ export default function App() {
       <div className="nk-root min-h-screen">
       <Nav />
       <Hero />
+      <About />
       <CategoryStack onPick={setDesk} />
       <CtaBand />
       <Footer />
