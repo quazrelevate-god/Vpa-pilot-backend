@@ -41,6 +41,8 @@ const nextConfig = {
   // in scope without any CORS plumbing.
   async rewrites() {
     return [
+      // Public /proposal form OTP (session-less; sends via APM SMS). No auth cookie.
+      { source: "/api/v1/proposal/:path*", destination: `${API_BASE}/api/v1/proposal/:path*` },
       { source: "/api/v1/scheduling/:path*", destination: `${API_BASE}/api/v1/scheduling/:path*` },
       { source: "/api/v1/referral/:path*", destination: `${API_BASE}/api/v1/referral/:path*` },
       { source: "/api/v1/admin/:path*", destination: `${API_BASE}/api/v1/admin/:path*` },

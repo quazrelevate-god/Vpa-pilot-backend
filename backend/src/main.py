@@ -17,7 +17,7 @@ from src.core.logging_config import setup_logging, init_sentry
 setup_logging()
 init_sentry()
 
-from src.api.v1 import qr, form, appointments, dashboard, scheduling, display, scan_petition, referral, ai_uploads, events
+from src.api.v1 import qr, form, appointments, dashboard, scheduling, display, scan_petition, referral, ai_uploads, events, proposal
 
 # Import all ORM models so SQLAlchemy can resolve cross-model relationships
 # (e.g. Appointment → GrievanceSummaryRecord) before the mapper is configured.
@@ -136,6 +136,7 @@ app.include_router(referral.router)
 app.include_router(referral.page_router)
 app.include_router(ai_uploads.router)
 app.include_router(events.router)
+app.include_router(proposal.router)   # /api/v1/proposal/otp/* — public proposal form OTP
 
 from src.api.v1 import ticketing  # noqa: E402
 app.include_router(ticketing.dept_router)
