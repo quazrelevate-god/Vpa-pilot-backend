@@ -48,6 +48,7 @@ const nextConfig = {
       { source: "/api/v1/admin/:path*", destination: `${API_BASE}/api/v1/admin/:path*` },
       { source: "/api/v1/me", destination: `${API_BASE}/api/v1/me` },
       { source: "/api/v1/features", destination: `${API_BASE}/api/v1/features` },
+      { source: "/api/v1/departments", destination: `${API_BASE}/api/v1/departments` },
       { source: "/api/files/:path*", destination: `${API_BASE}/dashboard/api/files/:path*` },
       { source: "/api/:path*", destination: `${API_BASE}/dashboard/api/:path*` },
       // Department workspace API (its own auth cookie, separate from the PA portal).
