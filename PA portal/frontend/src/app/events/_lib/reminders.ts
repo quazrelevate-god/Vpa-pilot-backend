@@ -81,6 +81,35 @@ async function currentSubscription(): Promise<PushSubscription | null> {
   return reg.pushManager.getSubscription();
 }
 
+/** Wait for a registered + active SW for the events scope. Prefers
+ *  getRegistration() over `navigator.serviceWorker.ready` — `.ready` only
+ *  resolves when a SW is CONTROLLING the current page (spec-strict on iOS,
+ *  can hang if the launched URL doesn't quite match scope), whereas
+ *  getRegistration() returns as soon as there's a registered SW under
+ *  that scope, controlling or not. That's all pushManager needs.
+ *
+ *  Polls up to `timeoutMs` because on iOS Safari a fresh PWA install
+ *  takes several seconds to finish installing + activating the SW.
+ */
+async function waitForActiveRegistration(
+  scope: string,
+  timeoutMs: number,
+): Promise<ServiceWorkerRegistration> {
+  const started = Date.now();
+  let lastState = "unknown";
+  while (Date.now() - started < timeoutMs) {
+    const reg = await navigator.serviceWorker.getRegistration(scope);
+    if (reg?.active) return reg;
+    lastState = reg
+      ? `installing=${!!reg.installing} waiting=${!!reg.waiting} active=${!!reg.active}`
+      : "no registration";
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  throw new Error(
+    `no active SW after ${timeoutMs}ms (state: ${lastState}) at URL ${location.href}`,
+  );
+}
+
 /** Subscribe (or upgrade the existing subscription) and POST to backend.
  *  Each stage is caught + surfaced with a distinct prefix so we can see
  *  in the toast (and console) which step is failing on iOS — the previous
@@ -91,15 +120,10 @@ async function subscribeAndRegister(): Promise<PushSubscription | null> {
 
   let reg: ServiceWorkerRegistration;
   try {
-    // Hangs forever if SW never registered — expected on iOS PWAs opened
-    // from a non-Safari surface. Guard with a short timeout so we surface
-    // an error instead of a stuck "Enable" spinner.
-    reg = await Promise.race<ServiceWorkerRegistration>([
-      navigator.serviceWorker.ready,
-      new Promise<never>((_, rej) =>
-        setTimeout(() => rej(new Error("service worker not ready (installed as PWA via Safari?)")), 5000),
-      ),
-    ]);
+    // Poll for up to 12s — iOS cold-start install can take several seconds
+    // on a fresh PWA reinstall. Uses getRegistration (returns as soon as
+    // there's a registered SW) instead of the spec-strict `.ready`.
+    reg = await waitForActiveRegistration("/events/", 12000);
   } catch (err) {
     _surface("SW not ready", err);
     throw err;
