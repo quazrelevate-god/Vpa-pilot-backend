@@ -8,10 +8,15 @@ const wm = (file) => `https://commons.wikimedia.org/wiki/Special:FilePath/${enco
 export const IMG = {
   // enhanced via Higgsfield upscale (URLs patched post-processing)
   fort: 'https://d8j0ntlcm91z4.cloudfront.net/user_3G1sgX3CkLyrb0SH3O2EFMloWoI/hf_20260729_155518_e09d0530-26db-48c1-be64-ebf4256c37ee_min.webp',
-  vijay: 'https://d8j0ntlcm91z4.cloudfront.net/user_3G1sgX3CkLyrb0SH3O2EFMloWoI/hf_20260729_155510_e2442519-c7a5-4ebe-98e4-3394f0df7672_min.webp',
   metro: 'https://d8j0ntlcm91z4.cloudfront.net/user_3G1sgX3CkLyrb0SH3O2EFMloWoI/hf_20260729_155511_eefc755a-2c61-40b8-8edb-7efa39502879_min.webp',
   kids: 'https://d8j0ntlcm91z4.cloudfront.net/user_3G1sgX3CkLyrb0SH3O2EFMloWoI/hf_20260729_155513_1f7af077-885d-469a-a05e-9d76bc3b5616_min.webp',
   central: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Chennai_Central_%28Front_Entrance_at_Night_time%29.jpg/1920px-Chennai_Central_%28Front_Entrance_at_Night_time%29.jpg',
+  // Replace the former CM portrait slide. Wikimedia Commons (CC BY-SA 4.0),
+  // same sourcing as the plates above. To use the office's own photography
+  // instead, drop files in public/proposal/hero/ and point these at
+  // '/proposal/hero/<file>.jpg' (see the README there).
+  smartclass: wm('Students_at_a_school_in_Bangalore,_India_learning_to_code_on_Progate.jpg'), // students at computers — a "smart class"
+  shore:      wm('Front_View_of_Shore_Temple.jpg'),  // Shore Temple, Mamallapuram
   // one plate per portfolio
   classroom: wm('Tamil_Nadu_school_kids.jpg'),          // School Education
   valluvar:  wm('Thiruvalluvar_Statue_at_Kanyakumari_02.jpg'), // Tamil, Culture & Archaeology
@@ -26,7 +31,8 @@ export const IMG = {
 export const SLIDES = [
   { img: 'fort', pos: 'center', cap: { en: 'Fort St. George, Chennai · Seat of the Government of Tamil Nadu', ta: 'புனித ஜார்ஜ் கோட்டை, சென்னை · தமிழ்நாடு அரசின் தலைமையகம்' } },
   { img: 'kids', pos: 'center', cap: { en: 'Tomorrow begins in a classroom · 4,00,000 graduates a year start here', ta: 'நாளை ஒரு வகுப்பறையில் தொடங்குகிறது · ஆண்டுக்கு 4 லட்சம் பட்டதாரிகள்' } },
-  { img: 'vijay', pos: 'center 16%', cap: { en: "Hon'ble Chief Minister Vijay · A people's government since May 2026", ta: 'மாண்புமிகு முதலமைச்சர் விஜய் · மே 2026 முதல் மக்கள் அரசு' } },
+  { img: 'smartclass', pos: 'center', cap: { en: 'Smart classrooms across Tamil Nadu · Every child, a window to the world', ta: 'தமிழ்நாட்டின் நவீன வகுப்பறைகள் · ஒவ்வொரு குழந்தைக்கும் உலகை நோக்கிய ஒரு சாளரம்' } },
+  { img: 'shore', pos: 'center', cap: { en: 'Shore Temple, Mamallapuram · A heritage that outlasts the centuries', ta: 'கடற்கரைக் கோயில், மாமல்லபுரம் · நூற்றாண்டுகளைத் தாண்டி நிற்கும் பாரம்பரியம்' } },
   { img: 'metro', pos: 'center', cap: { en: 'Chennai Metro, Guindy · World-class mobility for every citizen', ta: 'சென்னை மெட்ரோ, கிண்டி · ஒவ்வொரு குடிமகனுக்கும் உலகத்தரம்' } },
   { img: 'central', pos: 'center', cap: { en: 'Chennai Central at night · A state always in motion', ta: 'சென்னை சென்ட்ரல் · எப்போதும் இயங்கும் மாநிலம்' } },
 ]

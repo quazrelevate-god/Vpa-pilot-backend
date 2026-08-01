@@ -16,35 +16,67 @@ html { scroll-behavior: smooth; }
   .wrap { @apply max-w-wrap mx-auto px-6 lg:px-12; }
   .eyebrow { @apply font-disp text-[11px] font-semibold uppercase tracking-eyebrow; }
   .h-display { @apply font-disp font-bold leading-[1.08] tracking-tight; }
-  /* 4px: square enough to read as institutional, soft enough that the inset
-     highlight wraps the corner instead of terminating on a hard edge. Holds at
-     the smaller "Begin here" size too, where 5px starts to look rounded. */
+  /* Premium 12px radius — soft enough to read as a modern product surface,
+     restrained enough to stay institutional. Applies to the form's buttons
+     (form.jsx consumes .btn / .btn-gold / .btn-ghost / .pill directly), so
+     the questionnaire shell inherits the redesign without any JS change. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2.5 rounded-[4px] font-disp font-semibold
+    @apply inline-flex items-center justify-center gap-2.5 rounded-xl font-disp font-semibold
            text-[14px] sm:text-[15px] px-6 sm:px-7 py-3.5 cursor-pointer select-none
            transition-all duration-300 ease-out;
   }
   .btn-gold {
     @apply btn text-ink-950;
     background-image: linear-gradient(140deg, #F6E3B4 0%, #E9B84C 42%, #C9902B 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 6px 18px -8px rgba(227,170,61,.6);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 10px 28px -12px rgba(227,170,61,.68);
   }
   .btn-gold:hover {
     @apply -translate-y-0.5;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.65), 0 16px 34px -10px rgba(227,170,61,.72);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.65), 0 18px 40px -14px rgba(227,170,61,.8);
   }
   .btn-gold:active { @apply translate-y-0 scale-[.98]; }
   .btn-ghost {
-    @apply btn bg-white/[0.07] text-white border border-white/35 backdrop-blur-sm
+    @apply btn bg-white/[0.07] text-white border border-white/35 backdrop-blur-md
            hover:bg-white/[0.14] hover:border-white/70 hover:-translate-y-0.5;
   }
   .btn-ghost:active { @apply translate-y-0 scale-[.98]; }
   /* small pill used for close / change / secondary chrome */
   .pill {
     @apply inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/[0.06]
-           px-4 py-2 text-[13px] backdrop-blur-sm transition-all duration-200
+           px-4 py-2 text-[13px] backdrop-blur-md transition-all duration-200
            hover:border-white/60 hover:bg-white/[0.12];
   }
+
+  /* ── v2 skins for the redesigned primitives (components/ui.jsx) ──────────
+     Visual skin only — radius + padding come from the cva sizes so the Button
+     primitive stays composable. The gold gradient is the SAME brand gradient
+     as .btn-gold above (single source of the hue); only the depth is richer. */
+  .btn-gold-v2 {
+    background-image: linear-gradient(140deg, #F6E3B4 0%, #E9B84C 42%, #C9902B 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 12px 32px -14px rgba(227,170,61,.72);
+  }
+  .btn-gold-v2:hover { box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 20px 46px -16px rgba(227,170,61,.85); }
+  .btn-ghost-v2 {
+    @apply bg-white/[0.07] border border-white/30 backdrop-blur-md;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 14px 34px -20px rgba(0,0,0,0.8);
+  }
+  .btn-ghost-v2:hover { @apply bg-white/[0.14] border-white/60; }
+  .pill-v2 {
+    @apply inline-flex items-center gap-2 border border-white/25 bg-white/[0.06] px-4 py-2 text-[13px] backdrop-blur-md;
+  }
+
+  /* Shine sweep on gold CTAs — a light streak crosses the button on hover.
+     Applies to both the form's .btn-gold and the redesigned .btn-gold-v2 so
+     every primary action shares the cue. Auto-disabled under reduced motion
+     by the global media query at the foot of this file. */
+  .btn-gold, .btn-gold-v2 { position: relative; overflow: hidden; isolation: isolate; }
+  .btn-gold::after, .btn-gold-v2::after {
+    content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(115deg, transparent 22%, rgba(255,255,255,.5) 50%, transparent 78%);
+    transform: translateX(-130%);
+  }
+  .btn-gold:hover::after, .btn-gold-v2:hover::after { animation: btnShine 0.9s cubic-bezier(.3,.7,.3,1); }
+  @keyframes btnShine { to { transform: translateX(130%); } }
 
 /* ---------- hero slideshow ---------- */
 .slide {
@@ -273,9 +305,34 @@ html[lang="ta"] input::placeholder,
 html[lang="ta"] textarea::placeholder { letter-spacing: normal; }
 
 /* ---------- motion ----------
-   The original app suppressed most animation under `prefers-reduced-motion:
-   reduce` (froze the hero, snapped the category desks open in .01ms, killed
-   smooth scrolling, etc.). Per the office's request the full designed motion —
-   hero slideshow, the .7s category-desk expand, smooth anchor scrolling, the
-   form card slides, seal and keynote cascade — now plays for every viewer, so
-   that reduced-motion override is intentionally omitted. */
+   Redesign brief re-instates prefers-reduced-motion support (the previous
+   build intentionally omitted it). For visitors who ask their OS to reduce
+   motion we stop the looping / heavy-transform CSS animations and let content
+   present statically. Motion (framer-motion) elements are handled separately
+   by <MotionConfig reducedMotion="user">, and Lenis smooth scrolling is
+   disabled in useLenis() under the same query — so all three animation layers
+   respect the preference together. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  /* Kill every CSS keyframe animation on the page in one sweep — cheaper and
+     more complete than enumerating the ~20 named animations, and safe because
+     each animated element's final/visible state is its resting state. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  /* Hero slideshow: freeze on the first plate rather than cross-fading. */
+  .slide { opacity: 0; transform: none; }
+  .slide:first-child { opacity: 1; }
+
+  /* Scroll-reveal content is shown immediately (no rise-in). */
+  .reveal-up { opacity: 1 !important; transform: none !important; }
+
+  /* One-shot chrome hints add nothing without motion — hide them. */
+  .click-hint, .scroll-nudge { display: none; }
+}
