@@ -451,3 +451,16 @@ class GrievanceSummary(BaseModel):
         min_length=1,
         max_length=8,
     )
+
+    # ── Document's own date (letterhead / signature date, not the received date) ──
+    document_date: Optional[str] = Field(
+        default=None,
+        description=(
+            "The date WRITTEN ON the document itself — its letterhead / heading / "
+            "signature date — as ISO 8601 'YYYY-MM-DD'. This is the document's OWN "
+            "date, NOT the date it was received, scanned or submitted. Convert any "
+            "written form ('12.02.2024', '12 Feb 2024', '12-02-24', '12ஆம் தேதி') "
+            "to YYYY-MM-DD. Return NULL if no date is clearly written on the "
+            "document — never guess, never use today's date."
+        ),
+    )

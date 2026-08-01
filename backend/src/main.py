@@ -17,7 +17,7 @@ from src.core.logging_config import setup_logging, init_sentry
 setup_logging()
 init_sentry()
 
-from src.api.v1 import qr, form, appointments, dashboard, scheduling, display, scan_petition, referral, ai_uploads, events, proposal
+from src.api.v1 import qr, form, appointments, dashboard, scheduling, display, scan_petition, referral, ai_uploads, events, proposal, proposal_review, association_review
 
 # Import all ORM models so SQLAlchemy can resolve cross-model relationships
 # (e.g. Appointment → GrievanceSummaryRecord) before the mapper is configured.
@@ -30,6 +30,8 @@ import src.models.login_models  # noqa: F401  — ticket.assigned_to → login.i
 import src.models.activity_models  # noqa: F401  — unified audit log
 import src.models.department_account  # noqa: F401  — ticket routing/accept
 import src.models.event_models  # noqa: F401  — /events invitation calendar
+import src.models.proposal_models  # noqa: F401  — /proposal intake submissions
+import src.models.association_models  # noqa: F401  — association/union submissions
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':
@@ -136,7 +138,9 @@ app.include_router(referral.router)
 app.include_router(referral.page_router)
 app.include_router(ai_uploads.router)
 app.include_router(events.router)
-app.include_router(proposal.router)   # /api/v1/proposal/otp/* — public proposal form OTP
+app.include_router(proposal.router)   # /api/v1/proposal/otp/* + /submit — public proposal form
+app.include_router(proposal_review.router)   # /api/v1/admin/proposals/* — super_admin review
+app.include_router(association_review.router)   # /api/v1/admin/associations/* — super_admin review
 
 from src.api.v1 import ticketing  # noqa: E402
 app.include_router(ticketing.dept_router)
@@ -178,6 +182,17 @@ async def _recover_invitation_events():
         await event_service.recover_stale()
     except Exception as e:  # never block startup
         logging.getLogger("events").warning("startup recovery skipped: %s", e)
+
+
+@app.on_event("startup")
+async def _recover_proposals():
+    """After a restart, re-queue any proposal extractions left mid-processing and resume."""
+    try:
+        from src.services.proposal_service import proposal_service
+        await proposal_service.recover_stale(max_minutes=0)
+        await proposal_service._ensure_worker()   # drain anything still QUEUED
+    except Exception as e:  # never block startup
+        logging.getLogger("proposal").warning("startup recovery skipped: %s", e)
 
 
 # Kept as a module-level singleton so shutdown can await/cancel it cleanly.

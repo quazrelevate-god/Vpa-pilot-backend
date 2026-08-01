@@ -8,16 +8,21 @@ session-lessly, reusing the same APM SMS gateway and otp_verifications storage a
 the citizen flow (see AppointmentService.create_open_otp_request).
 """
 import re
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.core.rate_limit import limiter
 from src.services.appointment_service import appointment_service
+from src.services.proposal_service import proposal_service
 
 router = APIRouter(prefix="/api/v1/proposal", tags=["Proposal OTP"])
+
+_VALID_CATEGORIES = {"school", "tamil", "information", "film"}
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def _norm_mobile(v: str) -> str:
@@ -99,3 +104,67 @@ async def verify_proposal_otp(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OTP verification failed: {str(e)}")
+
+
+class ProposalSubmitResponse(BaseModel):
+    tracking_ref: str
+    documents: int
+    message: str
+
+
+@router.post(
+    "/submit",
+    response_model=ProposalSubmitResponse,
+    status_code=201,
+    summary="Submit a proposal (form fields + PDF documents) after OTP verification",
+)
+@limiter.limit("5/minute")
+async def submit_proposal(
+    request: Request,
+    category: str = Form(..., description="Desk: school | tamil | information | film"),
+    org_name: str = Form(..., min_length=1, max_length=300),
+    person_name: str = Form(..., min_length=1, max_length=200),
+    designation: Optional[str] = Form(None, max_length=200),
+    email: str = Form(..., min_length=3, max_length=254),
+    phone: str = Form(..., min_length=10, max_length=15),
+    files: List[UploadFile] = File(..., description="Proposal PDF(s), up to 5"),
+    db: AsyncSession = Depends(get_db),
+) -> ProposalSubmitResponse:
+    """
+    Persist a proposal + its documents and queue Gemini extraction. Identity from
+    the form is authoritative (Gemini never extracts it). The phone must already
+    have a verified OTP — this consumes it, binding the submission to that OTP.
+    """
+    cat = (category or "").strip().lower()
+    if cat not in _VALID_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"Unknown category '{category}'.")
+    if not _EMAIL_RE.match((email or "").strip()):
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+
+    mobile = _norm_mobile(phone)
+    if not re.fullmatch(r"[6-9]\d{9}", mobile):
+        raise HTTPException(status_code=400, detail="Enter a valid 10-digit mobile number.")
+
+    # Gate: the phone must have completed OTP verification. Consumes it.
+    await appointment_service.consume_verified_otp(mobile_number=mobile, db=db)
+
+    try:
+        result = await proposal_service.create_submission(
+            category=cat,
+            org_name=org_name,
+            person_name=person_name,
+            designation=designation,
+            email=email,
+            phone=mobile,
+            files=files,
+            db=db,
+        )
+        return ProposalSubmitResponse(
+            tracking_ref=result["tracking_ref"],
+            documents=result["documents"],
+            message="Proposal received and recorded.",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proposal submission failed: {str(e)}")

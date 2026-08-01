@@ -91,6 +91,11 @@ class GrievanceSummaryRecord(Base):
         ),
     )
 
+    # ISO YYYY-MM-DD date written ON the petition document (letterhead/signature
+    # date), extracted by Gemini. NULL when none is written. Distinct from the
+    # received/created date. (Write wired with the intake-router integration.)
+    document_date = Column(VARCHAR(10), nullable=True)
+
     # ── Citizen name (bilingual echo) ──────────────────────────────────────────
     name_en = Column(
         VARCHAR(200),

@@ -123,6 +123,39 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
     })
   }
 
+  // Real backend submission: persist the proposal + its PDFs and queue Gemini
+  // extraction for the Minister's Proposal Review. The form fields are the
+  // authoritative identity; the server mints the tracking reference (its value
+  // replaces the placeholder shown on the success screen). Best-effort so a
+  // hiccup here never strands the citizen mid-acknowledgement.
+  const submitProposal = async () => {
+    try {
+      const fd = new FormData()
+      fd.append('category', category?.key || '')
+      fd.append('org_name', answers.org || '')
+      fd.append('person_name', answers.personName || '')
+      fd.append('designation', answers.designation || '')
+      fd.append('email', answers.email || '')
+      fd.append('phone', normalisePhone(answers.phone))
+      ;(answers.docs || []).forEach((f) => fd.append('files', f))
+      const res = await fetch('/api/v1/proposal/submit', { method: 'POST', body: fd })
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data && data.tracking_ref) setTracking(data.tracking_ref)  // server ref wins
+      } else {
+        console.warn('[proposal] submit failed', res.status)
+      }
+    } catch (e) {
+      console.warn('[proposal] submit error', e)
+    }
+  }
+
+  // The processing bar tracks the real submit first, then the warm keynote.
+  const runSubmitAndKeynote = async () => {
+    await submitProposal()
+    return runKeynote()
+  }
+
   const missing = () => {
     if (s.optional) return false
     if (s.type === 'duo') return s.fields.some((f) => !String(get(f.key)).trim())
@@ -289,7 +322,7 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
         )}
 
         {phase === 'processing' && (
-          <Processing run={runKeynote} category={category} ta={ta} t={t}
+          <Processing run={runSubmitAndKeynote} category={category} ta={ta} t={t}
             onDone={(k) => { setKeynote(k); setPhase('done') }} />
         )}
 

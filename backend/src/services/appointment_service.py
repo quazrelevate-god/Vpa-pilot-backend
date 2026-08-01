@@ -361,6 +361,35 @@ class AppointmentService:
 
         return {"verified": True, "message": "OTP verified successfully."}
 
+    async def consume_verified_otp(self, mobile_number: str, db: AsyncSession) -> bool:
+        """
+        Confirm the mobile has an already-verified OTP and CONSUME it (mark
+        is_used) so a session-less form submission can only go through once per
+        verification. Binds the /proposal submit to a completed OTP without
+        re-entering the code.
+
+        Uses a 30-minute grace window from issue (not the 3-minute code-entry
+        expiry): once the code is verified the phone is proven, and the user may
+        still be uploading documents when they hit submit. Raises 400 if there is
+        no verified, unused OTP for the number within that window.
+        """
+        cutoff = datetime.utcnow() - timedelta(minutes=30)
+        stmt = select(OTPVerification).where(
+            OTPVerification.mobile_number == mobile_number,
+            OTPVerification.is_verified == True,   # noqa: E712
+            OTPVerification.is_used == False,       # noqa: E712
+            OTPVerification.created_at > cutoff,
+        ).order_by(OTPVerification.created_at.desc()).limit(1)
+        otp_record = (await db.execute(stmt)).scalar_one_or_none()
+        if not otp_record:
+            raise HTTPException(
+                status_code=400,
+                detail="Please verify your mobile number with the OTP before submitting.",
+            )
+        otp_record.is_used = True
+        await db.commit()
+        return True
+
     async def create_otp_request(
         self,
         session_token: UUID,
