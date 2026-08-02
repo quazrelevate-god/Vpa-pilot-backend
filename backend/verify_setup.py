@@ -1,6 +1,6 @@
 """
 Setup verification script.
-Checks that all dependencies and files are correctly configured.
+Checks that all dependencies and files are correctly installed and configured for the backend module.
 """
 import sys
 import os
