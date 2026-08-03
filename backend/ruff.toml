@@ -1,0 +1,25 @@
+# Ruff configuration for the backend.
+#
+# Primary intent (P1-1, go-live review): keep silent / bare exception handling
+# from creeping back in. We enable E722 — bare `except:` with no exception type,
+# which is the genuinely dangerous pattern (swallows KeyboardInterrupt/SystemExit
+# and hides everything).
+#
+# We deliberately do NOT enable BLE001 (blind `except Exception`): this codebase
+# uses broad excepts intentionally in defensive/fire-and-forget paths, now paired
+# with logging (see P1-1 clusters). Enabling BLE001 would flag ~200 legitimate
+# handlers with no baseline mechanism. Revisit if/when those are individually
+# reviewed.
+#
+# Not yet wired into CI — that's P2-5. Run locally with:  ruff check backend
+target-version = "py312"
+line-length = 120
+
+[lint]
+# Start from pyflakes (F) + a subset of pycodestyle errors, plus the bare-except
+# rule. Kept intentionally small so `ruff check` is signal, not noise.
+select = ["F401", "F811", "E722"]
+
+[lint.per-file-ignores]
+# Migrations are generated/boilerplate; unused imports there are harmless.
+"alembic/versions/*" = ["F401"]
