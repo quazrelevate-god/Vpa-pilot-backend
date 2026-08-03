@@ -44,6 +44,25 @@ def _bucket() -> str:
     return getattr(settings, "FILE_STORAGE_BUCKET", "vpa-uploads")
 
 
+def healthcheck() -> tuple[bool, str]:
+    """Lightweight storage reachability check for /health/deps.
+
+    Returns (ok, detail). Local-disk mode (no MinIO endpoint) is always ok.
+    MinIO mode does a single head_bucket — blocking, so callers should offload
+    to a thread with a short timeout.
+    """
+    if not getattr(settings, "FILE_STORAGE_ENDPOINT", None):
+        return True, "local-disk"
+    client = _get_client()
+    if client is None:
+        return False, "minio-client-init-failed"
+    try:
+        client.head_bucket(Bucket=_bucket())
+        return True, "minio"
+    except Exception as e:  # noqa: BLE001 — health probe reports, never raises
+        return False, f"minio-error: {repr(e)[:120]}"
+
+
 def save_file(data: bytes, relative_path: str, content_type: str = None) -> str:
     """
     Save file bytes to MinIO and return the object key.

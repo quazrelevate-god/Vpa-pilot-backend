@@ -380,7 +380,13 @@ async def health_check():
 
 @app.get("/health/ready", tags=["Health Check"])
 async def readiness_check():
-    """Readiness — verifies DB connectivity. Use this for the load balancer probe."""
+    """Readiness — verifies DB connectivity. Use this for the load balancer probe.
+
+    Deliberately DB-only: readiness gates whether the LB routes traffic here, and
+    a Gemini/MinIO blip should NOT pull every pod (most endpoints don't need
+    them). Dependency visibility lives in /health/deps below, which is
+    informational and does not gate the LB.
+    """
     from fastapi.responses import JSONResponse
     from sqlalchemy import text
     from src.core.database import AsyncSessionLocal
@@ -390,6 +396,45 @@ async def readiness_check():
         return {"status": "ready", "db": "ok"}
     except Exception as e:
         return JSONResponse({"status": "not_ready", "db": "error", "detail": str(e)[:200]}, status_code=503)
+
+
+@app.get("/health/deps", tags=["Health Check"])
+async def dependencies_check():
+    """Informational dependency snapshot for ops dashboards/alerts (P2-4).
+
+    Reports DB + storage reachability and whether the external API keys are
+    configured. NON-gating — always returns 200 so it can't accidentally be
+    wired to the LB and take the service down on a third-party outage. Alert on
+    the JSON body, not the status code. Gemini/Sarvam/APM are reported as
+    configured-or-not rather than live-called (a probe must stay cheap).
+    """
+    import asyncio as _asyncio
+    from sqlalchemy import text
+    from src.core.database import AsyncSessionLocal
+    from src.services import storage_service
+
+    deps: dict = {}
+
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        deps["db"] = {"ok": True}
+    except Exception as e:
+        deps["db"] = {"ok": False, "detail": str(e)[:160]}
+
+    try:
+        ok, detail = await _asyncio.wait_for(_asyncio.to_thread(storage_service.healthcheck), timeout=3)
+        deps["storage"] = {"ok": ok, "detail": detail}
+    except Exception as e:
+        deps["storage"] = {"ok": False, "detail": f"timeout/error: {str(e)[:120]}"}
+
+    # Configured-or-not (cheap). Not a liveness call to the vendor.
+    deps["gemini"] = {"configured": bool(settings.GEMINI_API_KEY)}
+    deps["sarvam"] = {"configured": bool(settings.SARVAM_API_KEY)}
+    deps["apm_sms"] = {"configured": bool(settings.APM_SMS_API_KEY)}
+
+    overall = all(deps[k].get("ok", True) for k in ("db", "storage"))
+    return {"status": "ok" if overall else "degraded", "deps": deps}
 
 
 if __name__ == "__main__":
