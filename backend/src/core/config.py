@@ -14,6 +14,15 @@ from typing import Optional
 # the preview tool, etc.).
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
+# Default staff credentials shipped for dev convenience (see the fields below).
+# These MUST be overridden before a production deploy — _enforce_production_
+# credentials refuses to start with any of them still in place when DEBUG=False.
+_DEFAULT_STAFF_CREDENTIALS = {
+    "DASHBOARD_USERNAME": "admin",     "DASHBOARD_PASSWORD": "admin123",
+    "DISPLAY_USERNAME":   "display",   "DISPLAY_PASSWORD":   "display123",
+    "EVENTS_USERNAME":    "events",    "EVENTS_PASSWORD":    "events123",
+}
+
 
 class Settings(BaseSettings):
     """
@@ -169,8 +178,28 @@ class Settings(BaseSettings):
         if all([self.DB_USER, self.DB_PASSWORD, self.DB_HOST, self.DB_PORT, self.DB_NAME]):
             self.DATABASE_URL = f"postgresql+psycopg_async://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
             return self
-        
+
         raise ValueError("Either DATABASE_URL or all DB_* parameters (DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME) must be provided")
+
+    @model_validator(mode='after')
+    def _enforce_production_credentials(self):
+        """In production (DEBUG=False), refuse to boot on default/blank staff
+        credentials. A prod deploy missing a value in .env would otherwise fall
+        back to the world's most-guessable creds with the whole dashboard behind
+        them. Dev keeps the defaults for zero-config startup."""
+        if self.DEBUG:
+            return self
+        offenders = [
+            name for name, default in _DEFAULT_STAFF_CREDENTIALS.items()
+            if not getattr(self, name) or getattr(self, name) == default
+        ]
+        if offenders:
+            raise ValueError(
+                "Refusing to start in production (DEBUG=False) with default or "
+                f"unset staff credentials: {', '.join(sorted(offenders))}. "
+                "Set strong values in backend/.env before deploying."
+            )
+        return self
 
 
 @lru_cache()
