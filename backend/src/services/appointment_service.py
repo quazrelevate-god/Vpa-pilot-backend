@@ -497,6 +497,13 @@ class AppointmentService:
             dummy_mode = otp_from_api is None
 
             if dummy_mode:
+                # Dummy mode leaks the OTP (plaintext log + response body). Only
+                # ever allow it in DEBUG. In production a missing APM key means we
+                # genuinely cannot deliver a code — fail closed instead of
+                # broadcasting it (see P0-3).
+                if not settings.DEBUG:
+                    logger.error("APM SMS not configured in production — refusing to leak OTP.")
+                    raise HTTPException(status_code=502, detail="OTP service is temporarily unavailable. Please try again later.")
                 otp_code = self._generate_otp_code()
                 logger.info(f"[OTP DUMMY] APM SMS not configured. OTP for {mobile_number}: {otp_code}")
             else:
@@ -605,6 +612,11 @@ class AppointmentService:
             # APM generates + sends the code and returns it; dummy mode → local.
             otp_from_api = await self._send_otp_sms(mobile_number)
             dummy_mode = otp_from_api is None
+            if dummy_mode and not settings.DEBUG:
+                # Fail closed in production rather than leak the OTP (see P0-3).
+                # The surrounding `except HTTPException` rolls back the session.
+                logger.error("APM SMS not configured in production — refusing to leak proposal OTP.")
+                raise HTTPException(status_code=502, detail="OTP service is temporarily unavailable. Please try again later.")
             otp_code = self._generate_otp_code() if dummy_mode else otp_from_api
             if dummy_mode:
                 logger.info(f"[PROPOSAL OTP DUMMY] APM not configured. OTP for {mobile_number}: {otp_code}")
