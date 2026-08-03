@@ -54,7 +54,7 @@ export function CategoryStack({ onPick }) {
     <section id="desks" className="relative min-h-screen bg-ink-950 flex flex-col overflow-hidden">
       <Reveal className="shrink-0 px-5 sm:px-6 lg:px-12 pt-24 lg:pt-28 pb-6 sm:pb-7">
         <RevealItem as="h2" className="h-display text-white text-[clamp(23px,3.4vw,46px)] max-w-[20ch]">
-          {t({ en: 'Choose your proposal category', ta: 'உங்கள் யோசனைப் பிரிவைத் தேர்வு செய்யுங்கள்' })}
+          {t({ en: 'Choose your proposal category', ta: 'உங்கள் முன்மொழிவுப் பிரிவைத் தேர்வு செய்யுங்கள்' })}
         </RevealItem>
       </Reveal>
 

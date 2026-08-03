@@ -679,7 +679,7 @@ function OtpGate({ phone, ta, onVerified, onBack }) {
    arrives — with a short floor so the work always reads as substantial. */
 const STAGES = {
   en: ['Securing your document', 'Analyzing key details from the proposal', 'Routing to the Proposal review team'],
-  ta: ['ஆவணம் பாதுகாப்பாகப் பெறப்படுகிறது', 'யோசனையிலிருந்து முக்கிய விவரங்கள் பகுப்பாய்வு', 'யோசனை ஆய்வுக் குழுவிற்கு அனுப்பப்படுகிறது'],
+  ta: ['ஆவணம் பாதுகாப்பாகப் பெறப்படுகிறது', 'முன்மொழிவிலிருந்து முக்கிய விவரங்கள் பகுப்பாய்வு', 'முன்மொழிவு ஆய்வுக் குழுவிற்கு அனுப்பப்படுகிறது'],
 }
 
 function Processing({ run, category, ta, t, onDone }) {
@@ -730,7 +730,7 @@ function Processing({ run, category, ta, t, onDone }) {
 
       <div className="eyebrow text-haze-300 mb-3">{ta ? 'செயலாக்கத்தில்' : 'In progress'}</div>
       <h2 className="h-display text-[clamp(22px,2.6vw,32px)] mb-2">
-        {ta ? 'உங்கள் யோசனை வாசிக்கப்படுகிறது' : 'Reading and understanding your proposal'}
+        {ta ? 'உங்கள் முன்மொழிவு வாசிக்கப்படுகிறது' : 'Reading and understanding your proposal'}
       </h2>
       {category && (
         <p className="text-white/50 text-[13px] mb-9">{ta ? 'செல்லும் இடம்' : 'Routing to'} · {t(category.dept)}</p>

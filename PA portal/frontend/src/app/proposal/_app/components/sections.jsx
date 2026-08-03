@@ -66,7 +66,7 @@ export function Nav() {
         <BrandLogo />
         <span className="hidden sm:block h-8 w-px bg-white/20 shrink-0" />
         <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.16em] text-haze-300/90 hidden sm:block leading-relaxed max-w-[16ch] transition-colors group-hover:text-haze-300">
-          {t({ en: 'Proposal Management System', ta: 'யோசனை மேலாண்மை அமைப்பு' })}
+          {t({ en: 'Proposal Management System', ta: 'முன்மொழிவு மேலாண்மை அமைப்பு' })}
         </span>
       </a>
       <div className="flex items-center shrink-0">
@@ -108,14 +108,14 @@ export function Hero() {
 
       <Reveal className="relative z-10 w-full px-5 sm:px-6 lg:px-12 pb-[9vh] sm:pb-[11vh] pt-28" gap={0.12} delay={0.25}>
         <RevealItem as="h1" className="h-display text-white text-[clamp(33px,5.8vw,86px)] max-w-[15ch]">
-          {t({ en: 'Your proposal.', ta: 'உங்கள் யோசனை.' })}<br />
+          {t({ en: 'Your proposal.', ta: 'உங்கள் முன்மொழிவு.' })}<br />
           <em className="not-italic text-haze-300">{t({ en: 'Before the Hon’ble Minister.', ta: 'மாண்புமிகு அமைச்சரின் முன்.' })}</em>
         </RevealItem>
 
         <RevealItem className="relative inline-block mt-7 sm:mt-9">
           <MagneticButton strength={22}>
             <Button variant="gold" size="md" onClick={() => scrollToId('desks', NAV_OFFSET)}>
-              {t({ en: 'Give your idea for the betterment of tomorrow →', ta: 'நாளைய நலனுக்காக உங்கள் யோசனையை வழங்குங்கள் →' })}
+              {t({ en: 'Give your idea for the betterment of tomorrow →', ta: 'நாளைய நலனுக்காக உங்கள் முன்மொழிவை வழங்குங்கள் →' })}
             </Button>
           </MagneticButton>
           <ClickHint />
@@ -182,7 +182,7 @@ export function About() {
             <Eyebrow>{t({ en: 'About Nam Kural', ta: 'நம் குரல் பற்றி' })}</Eyebrow>
           </RevealItem>
           <RevealItem as="h2" className="h-display text-white text-[clamp(26px,4vw,52px)] mt-5 mb-2 leading-[1.12]">
-            {t({ en: 'One official channel — from your idea to the Hon’ble Minister’s desk.', ta: 'உங்கள் யோசனையிலிருந்து மாண்புமிகு அமைச்சரின் மேசை வரை — ஒரே அதிகாரப்பூர்வ வழி.' })}
+            {t({ en: 'One official channel — from your idea to the Hon’ble Minister’s desk.', ta: 'உங்கள் முன்மொழிவிலிருந்து மாண்புமிகு அமைச்சரின் மேசை வரை — ஒரே அதிகாரப்பூர்வ வழி.' })}
           </RevealItem>
         </Reveal>
 
@@ -198,7 +198,7 @@ export function About() {
             <RevealItem as="p" className="text-white/70 text-[14.5px] sm:text-[15.5px] leading-[1.8] max-w-[62ch] mt-5">
               {t({
                 en: 'We welcome proposals that strengthen the education ecosystem — improving student learning outcomes, empowering teachers, enhancing school administration, and bringing proven innovation and best practice into the School Education Department.',
-                ta: 'மாணவர் கற்றல் விளைவுகளை மேம்படுத்தும், ஆசிரியர்களை வலுப்படுத்தும், பள்ளி நிர்வாகத்தை மேம்படுத்தும், மற்றும் நிரூபிக்கப்பட்ட புதுமைகளையும் சிறந்த நடைமுறைகளையும் பள்ளிக் கல்வித் துறையில் கொண்டுவரும் யோசனைகளை நாங்கள் வரவேற்கிறோம்.',
+                ta: 'மாணவர் கற்றல் விளைவுகளை மேம்படுத்தும், ஆசிரியர்களை வலுப்படுத்தும், பள்ளி நிர்வாகத்தை மேம்படுத்தும், மற்றும் நிரூபிக்கப்பட்ட புதுமைகளையும் சிறந்த நடைமுறைகளையும் பள்ளிக் கல்வித் துறையில் கொண்டுவரும் முன்மொழிவுகளை நாங்கள் வரவேற்கிறோம்.',
               })}
             </RevealItem>
           </div>
@@ -243,7 +243,7 @@ export function About() {
         {/* closing */}
         <Reveal className="mt-16 sm:mt-20 border-t border-white/10 pt-9 sm:pt-11 flex flex-col md:flex-row md:items-end md:justify-between gap-7">
           <RevealItem as="p" className="font-disp text-haze-100 text-[clamp(17px,2.1vw,25px)] leading-[1.45] max-w-[26ch]">
-            {t({ en: 'Your idea has the potential to shape the future of education in Tamil Nadu.', ta: 'உங்கள் யோசனை தமிழ்நாட்டின் கல்வியின் எதிர்காலத்தை வடிவமைக்கும் ஆற்றல் கொண்டது.' })}
+            {t({ en: 'Your idea has the potential to shape the future of education in Tamil Nadu.', ta: 'உங்கள் முன்மொழிவு தமிழ்நாட்டின் கல்வியின் எதிர்காலத்தை வடிவமைக்கும் ஆற்றல் கொண்டது.' })}
           </RevealItem>
           <RevealItem className="shrink-0 self-start md:self-auto">
             <MagneticButton strength={18}>
@@ -273,7 +273,7 @@ export function CtaBand() {
       <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-ink-950/40 to-transparent pointer-events-none" aria-hidden="true" />
       <Reveal className="relative px-5 sm:px-6" gap={0.1}>
         <RevealItem as="h2" className="h-display text-[clamp(26px,4.4vw,62px)] max-w-[20ch] mx-auto mb-5">
-          {t({ en: 'Give your idea for the betterment of tomorrow.', ta: 'நாளைய நலனுக்காக உங்கள் யோசனையை வழங்குங்கள்.' })}
+          {t({ en: 'Give your idea for the betterment of tomorrow.', ta: 'நாளைய நலனுக்காக உங்கள் முன்மொழிவை வழங்குங்கள்.' })}
         </RevealItem>
         <RevealItem as="p" className="max-w-[54ch] mx-auto text-white/85 text-[15px] sm:text-[16.5px] leading-relaxed">
           {t({ en: 'Ten minutes of your thought can outlast a generation. The Ministry is listening: formally, transparently, in your language.', ta: 'உங்கள் பத்து நிமிட சிந்தனை ஒரு தலைமுறையைத் தாண்டி நிலைக்கும். அமைச்சகம் கேட்கிறது: முறையாக, வெளிப்படையாக, உங்கள் மொழியில்.' })}
@@ -294,7 +294,7 @@ export function Footer() {
           <p className="text-[13px] leading-relaxed">
             {t({
               en: 'The digital proposal channel of the Office of the Hon\'ble Minister for Education, Government of Tamil Nadu. This system records and routes institutional proposals for review. Submission does not guarantee approval; every submission receives a reasoned response.',
-              ta: 'தமிழ்நாடு அரசின் மாண்புமிகு கல்வி அமைச்சர் அலுவலகத்தின் டிஜிட்டல் யோசனை வழி. சமர்ப்பிப்பு ஒப்புதலுக்கு உத்தரவாதம் அல்ல; ஒவ்வொரு சமர்ப்பிப்பும் காரணத்துடன் பதில் பெறும்.',
+              ta: 'தமிழ்நாடு அரசின் மாண்புமிகு கல்வி அமைச்சர் அலுவலகத்தின் டிஜிட்டல் முன்மொழிவு வழி. சமர்ப்பிப்பு ஒப்புதலுக்கு உத்தரவாதம் அல்ல; ஒவ்வொரு சமர்ப்பிப்பும் காரணத்துடன் பதில் பெறும்.',
             })}
           </p>
         </div>

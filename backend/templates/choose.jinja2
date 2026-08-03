@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>நம் குரல் · Nam Kural</title>
+  <meta name="theme-color" content="#081831">
+
+  <!-- One font, loaded non-blocking (display=swap): system fonts paint instantly on
+       a weak connection, Catamaran (covers Latin + Tamil in one family) swaps in when
+       it arrives. Deliberately no framework, no images — everything below is inline so
+       this bridge screen is a single tiny request that opens fast in low-network areas. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Catamaran:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --navy-0: #0A1E3D;
+      --navy-1: #081831;   /* ink-950 — brand navy */
+      --navy-2: #060F24;
+      --cream:  #F3E7D3;
+      --gold:   #E9B84C;
+      --gold-2: #C9902B;
+      --haze:   #C9D6F0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+    body {
+      font-family: 'Catamaran', system-ui, -apple-system, 'Noto Sans Tamil', sans-serif;
+      background: var(--navy-1);
+      color: #fff;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Ambient navy field + two soft brand glows. Pure CSS gradients — no image
+       requests. The whole stage fades out on selection via .leaving. */
+    .bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(60rem 38rem at 82% 6%,  rgba(59,130,196,0.18), transparent 68%),
+        radial-gradient(48rem 32rem at 8% 96%,  rgba(233,184,76,0.12), transparent 70%),
+        linear-gradient(160deg, var(--navy-0) 0%, var(--navy-1) 48%, var(--navy-2) 100%);
+    }
+
+    .stage {
+      position: relative; z-index: 1;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+      padding:
+        calc(env(safe-area-inset-top) + 32px)
+        22px
+        calc(env(safe-area-inset-bottom) + 26px);
+      transition: opacity .28s ease, transform .28s ease;
+    }
+    body.leaving .stage { opacity: 0; transform: translateY(-6px) scale(.985); }
+
+    /* ── brand lockup ─────────────────────────────────────────────────────── */
+    .brand { text-align: center; margin-bottom: clamp(30px, 6vh, 52px); }
+    .wordmark {
+      width: clamp(172px, 52vw, 220px);
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      filter: drop-shadow(0 10px 30px rgba(0,0,0,.45));
+    }
+    .tagline {
+      margin-top: 20px;
+      font-size: clamp(15px, 4.2vw, 18px);
+      font-weight: 600;
+      color: #fff;
+      line-height: 1.5;
+    }
+    .tagline .en {
+      display: block;
+      margin-top: 4px;
+      font-size: clamp(11.5px, 3vw, 13px);
+      font-weight: 500;
+      letter-spacing: .02em;
+      color: var(--haze);
+      opacity: .78;
+    }
+
+    /* ── choice cards ─────────────────────────────────────────────────────── */
+    .choices { width: 100%; display: flex; flex-direction: column; gap: 14px; }
+
+    .choice {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      /* both cards share one height so the two options read as a matched pair,
+         whatever the length of each label */
+      min-height: 104px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      text-decoration: none;
+      color: #fff;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform .2s cubic-bezier(.22,.9,.24,1),
+                  border-color .2s ease, background .2s ease, box-shadow .2s ease;
+    }
+    .choice:active { transform: scale(.985); }
+
+    /* Petition — the primary path (most scans). Warm gold, raised. */
+    .choice--petition {
+      background: linear-gradient(140deg, rgba(246,227,180,0.16) 0%, rgba(233,184,76,0.12) 100%);
+      border: 1.5px solid rgba(233,184,76,0.55);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 16px 40px -22px rgba(233,184,76,.5);
+    }
+    .choice--petition:hover { border-color: rgba(233,184,76,0.9); transform: translateY(-2px); }
+
+    /* Proposal — the secondary path. Cool glass. */
+    .choice--proposal {
+      background: rgba(255,255,255,0.05);
+      border: 1.5px solid rgba(255,255,255,0.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .choice--proposal:hover { border-color: rgba(255,255,255,0.42); background: rgba(255,255,255,0.08); transform: translateY(-2px); }
+
+    .ic {
+      flex: 0 0 auto;
+      width: 42px; height: 42px;
+      border-radius: 12px;
+      display: grid; place-items: center;
+    }
+    .choice--petition .ic { background: rgba(233,184,76,0.18); color: var(--gold); }
+    .choice--proposal .ic { background: rgba(201,214,240,0.12); color: var(--haze); }
+    .ic svg { width: 22px; height: 22px; }
+
+    .body { flex: 1; min-width: 0; }
+    /* Stack the three text rows as blocks so the Tamil title and the English
+       label never flow into each other (that inline wrap was what made the
+       longer "முன்மொழிவு சமர்ப்பிக்க" card look off). Title sized to hold one line. */
+    .body .ta {
+      display: block;
+      font-size: clamp(13.5px, 3.8vw, 18px);
+      font-weight: 700;
+      line-height: 1.28;
+    }
+    .body .en {
+      display: block;
+      font-size: clamp(11.5px, 3.3vw, 13px);
+      font-weight: 500;
+      color: var(--haze);
+      opacity: .82;
+      margin-top: 2px;
+    }
+    .body .hint {
+      display: block;
+      margin-top: 5px;
+      font-size: clamp(11.5px, 3.1vw, 12.5px);
+      font-weight: 500;
+      color: rgba(255,255,255,.55);
+      line-height: 1.45;
+    }
+    .arrow { flex: 0 0 auto; color: rgba(255,255,255,.4); transition: transform .2s ease, color .2s ease; }
+    .choice:hover .arrow { color: #fff; transform: translateX(3px); }
+    .choice--petition .arrow { color: rgba(233,184,76,.7); }
+
+    .footnote {
+      margin-top: clamp(22px, 5vh, 34px);
+      text-align: center;
+      font-size: 11.5px;
+      line-height: 1.6;
+      color: rgba(255,255,255,.42);
+    }
+
+    /* ── entrance (lightweight, GPU-only transforms) ──────────────────────── */
+    .rise { opacity: 0; animation: rise .6s cubic-bezier(.22,.9,.24,1) forwards; }
+    @keyframes rise {
+      from { opacity: 0; transform: translate3d(0, 14px, 0); }
+      to   { opacity: 1; transform: none; }
+    }
+    .wordmark          { opacity: 0; animation: pop .6s cubic-bezier(.22,.9,.24,1) .05s forwards; }
+    @keyframes pop {
+      from { opacity: 0; transform: translate3d(0, 8px, 0) scale(.94); }
+      to   { opacity: 1; transform: none; }
+    }
+    .tagline           { animation-delay: .30s; }
+    .choice:nth-child(1) { animation-delay: .46s; }
+    .choice:nth-child(2) { animation-delay: .58s; }
+    .footnote          { animation-delay: .74s; }
+
+    /* Very narrow phones (≈320px): the longer proposal title can't hold one line
+       at a readable size, so it takes two. Reserve equal height so the two cards
+       still read as a matched pair there too. */
+    @media (max-width: 335px) {
+      .choice { min-height: 166px; }
+    }
+
+    /* Respect the OS preference — show everything instantly, no motion. */
+    @media (prefers-reduced-motion: reduce) {
+      .rise, .wordmark { animation: none !important; opacity: 1 !important; transform: none !important; }
+      .stage { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"></div>
+
+  <main class="stage">
+    <div class="brand">
+      <!-- Nam Kural wordmark — the OFFICIAL brand asset, the same logo the
+           /proposal site uses (public/brand/logo.png), copied into the backend
+           assets and served at /static/assets/brand/. Using the real file keeps
+           it pixel-identical to the rest of the app (no hand-drawn drift). -->
+      <img class="wordmark" src="/static/assets/brand/logo.png"
+           alt="நம் குரல் · Nam Kural" width="619" height="483" />
+
+      <p class="tagline rise">
+        நீங்கள் எதைச் செய்ய விரும்புகிறீர்கள்?
+        <span class="en">What brings you here today?</span>
+      </p>
+    </div>
+
+    <nav class="choices" aria-label="Intake options">
+      <!-- Petition → the existing citizen form (token carries the verified session). -->
+      <a class="choice choice--petition rise" href="/form?token={{ session_token }}" data-nav>
+        <span class="ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+            <path d="M14 3v5h5"/>
+            <path d="M9 13h6M9 17h4"/>
+          </svg>
+        </span>
+        <span class="body">
+          <span class="ta">மனு அளிக்க</span>
+          <span class="en">File a petition</span>
+          <span class="hint">தீர்க்க வேண்டிய பிரச்சினை அல்லது கோரிக்கை · A grievance or request to resolve</span>
+        </span>
+        <span class="arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+      </a>
+
+      <!-- Proposal → the branded /proposal site (same origin; its own OTP flow). -->
+      <a class="choice choice--proposal rise" href="/proposal" data-nav>
+        <span class="ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18h6M10 21h4"/>
+            <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/>
+          </svg>
+        </span>
+        <span class="body">
+          <span class="ta">முன்மொழிவு சமர்ப்பிக்க</span>
+          <span class="en">Submit a proposal</span>
+          <span class="hint">வழங்க விரும்பும் முன்மொழிவு அல்லது தீர்வு · An idea or solution to offer</span>
+        </span>
+        <span class="arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+      </a>
+    </nav>
+
+    <p class="footnote rise">
+      அமைச்சர் அலுவலகம் · உங்கள் மொழியில், முறையாக<br>
+      Office of the Hon'ble Minister · in your language, on the record
+    </p>
+  </main>
+
+  <script>
+    /* Smooth click-out: fade the stage, then navigate. Progressive enhancement —
+       the <a> links work on their own, so a JS failure or slow network never traps
+       the citizen. Reduced-motion users skip the fade. */
+    (function () {
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var links = document.querySelectorAll('a[data-nav]');
+      for (var i = 0; i < links.length; i++) {
+        links[i].addEventListener('click', function (e) {
+          var href = this.getAttribute('href');
+          if (reduce || e.metaKey || e.ctrlKey || e.shiftKey) return; // let the browser handle it
+          e.preventDefault();
+          document.body.classList.add('leaving');
+          window.setTimeout(function () { window.location.href = href; }, 260);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

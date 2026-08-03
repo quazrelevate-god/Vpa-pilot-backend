@@ -50,7 +50,7 @@ export const CATEGORIES = [
     tag: { en: 'Primary to higher secondary', ta: 'தொடக்கம் முதல் மேல்நிலை வரை' },
     blurb: {
       en: 'Management and administration of primary, middle, high and higher secondary schools across the state. Proposals that strengthen how Tamil Nadu teaches are received here.',
-      ta: 'மாநிலம் முழுவதும் தொடக்க, நடுநிலை, உயர்நிலை, மேல்நிலைப் பள்ளிகளின் நிர்வாகம். தமிழ்நாடு கற்பிக்கும் விதத்தை வலுப்படுத்தும் யோசனைகள் இங்கே.',
+      ta: 'மாநிலம் முழுவதும் தொடக்க, நடுநிலை, உயர்நிலை, மேல்நிலைப் பள்ளிகளின் நிர்வாகம். தமிழ்நாடு கற்பிக்கும் விதத்தை வலுப்படுத்தும் முன்மொழிவுகள் இங்கே.',
     },
     types: [
       { en: 'School infrastructure & digital classrooms', ta: 'பள்ளி உள்கட்டமைப்பு & டிஜிட்டல் வகுப்பறைகள்' },
@@ -101,7 +101,7 @@ export const CATEGORIES = [
     tag: { en: 'Licensing, welfare, industry', ta: 'உரிமம், நலன், தொழில்' },
     blurb: {
       en: 'Regulation of cinema licensing, film industry welfare and the related acts. Proposals touching theatres, studios, workers and film preservation come to this desk.',
-      ta: 'திரையரங்கு உரிமம், திரைத்துறை நலன், தொடர்புடைய சட்டங்கள். திரையரங்குகள், படப்பிடிப்பகங்கள், தொழிலாளர், படப் பாதுகாப்பு தொடர்பான யோசனைகள் இங்கே.',
+      ta: 'திரையரங்கு உரிமம், திரைத்துறை நலன், தொடர்புடைய சட்டங்கள். திரையரங்குகள், படப்பிடிப்பகங்கள், தொழிலாளர், படப் பாதுகாப்பு தொடர்பான முன்மொழிவுகள் இங்கே.',
     },
     types: [
       { en: 'Theatre licensing & safety compliance', ta: 'திரையரங்கு உரிமம் & பாதுகாப்பு' },
@@ -190,8 +190,8 @@ export const STEPS = [
     ack: { en: () => 'Secured. You will never wonder where your file is.', ta: () => 'பாதுகாக்கப்பட்டது. உங்கள் கோப்பு எங்கே என்று இனி யோசிக்க வேண்டாம்.' } },
 
   { key: 'docs', type: 'files',
-    q: { en: 'Now place your proposal on the table.', ta: 'இப்போது உங்கள் யோசனையை மேசையில் வையுங்கள்.' },
-    help: { en: `Attach the proposal document, and any annexures that support it. PDF only, up to ${MAX_DOCS} files, ${MAX_DOC_MB} MB each. This is the same folder you would have carried to the office.`, ta: `யோசனை ஆவணத்தையும் அதற்குரிய இணைப்புகளையும் சேர்க்கவும். PDF மட்டும், அதிகபட்சம் ${MAX_DOCS} கோப்புகள், ஒன்று ${MAX_DOC_MB} MB வரை. அலுவலகத்திற்கு நீங்கள் எடுத்துச் சென்றிருக்கும் அதே கோப்புறை.` },
+    q: { en: 'Now place your proposal on the table.', ta: 'இப்போது உங்கள் முன்மொழிவை மேசையில் வையுங்கள்.' },
+    help: { en: `Attach the proposal document, and any annexures that support it. PDF only, up to ${MAX_DOCS} files, ${MAX_DOC_MB} MB each. This is the same folder you would have carried to the office.`, ta: `முன்மொழிவு ஆவணத்தையும் அதற்குரிய இணைப்புகளையும் சேர்க்கவும். PDF மட்டும், அதிகபட்சம் ${MAX_DOCS} கோப்புகள், ஒன்று ${MAX_DOC_MB} MB வரை. அலுவலகத்திற்கு நீங்கள் எடுத்துச் சென்றிருக்கும் அதே கோப்புறை.` },
     ack: { en: (n) => `${n} document${n === 1 ? '' : 's'} received. Sealing the file.`, ta: (n) => `${n} ஆவணம் பெறப்பட்டது. கோப்பு முத்திரையிடப்படுகிறது.` } },
 ]
 
@@ -200,7 +200,7 @@ export const STEPS = [
 export const PROCESSING = [
   { ms: 900,  en: 'Establishing secure channel to the Ministry', ta: 'அமைச்சகத்துடன் பாதுகாப்பான இணைப்பு' },
   { ms: 1250, en: 'Routing to the concerned department',        ta: 'சம்பந்தப்பட்ட துறைக்கு அனுப்புகிறோம்' },
-  { ms: 1400, en: 'Analysing the proposal document',            ta: 'யோசனை ஆவணம் பகுப்பாய்வு செய்யப்படுகிறது' },
+  { ms: 1400, en: 'Analysing the proposal document',            ta: 'முன்மொழிவு ஆவணம் பகுப்பாய்வு செய்யப்படுகிறது' },
   { ms: 1200, en: 'Segregating key details for review',         ta: 'ஆய்வுக்கான முக்கிய விவரங்கள் பிரிக்கப்படுகின்றன' },
   { ms: 1050, en: 'Setting review priority',                    ta: 'ஆய்வு முன்னுரிமை நிர்ணயிக்கப்படுகிறது' },
   { ms: 1100, en: 'Generating official tracking reference',     ta: 'அதிகாரப்பூர்வ கண்காணிப்பு எண் உருவாக்கம்' },

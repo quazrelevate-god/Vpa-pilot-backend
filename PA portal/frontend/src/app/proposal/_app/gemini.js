@@ -159,13 +159,13 @@ export function localKeynote(ctx) {
   const name = ctx.personName ? `, ${ctx.personName}` : ''
 
   return {
-    title: lang === 'ta' ? 'உங்கள் யோசனை, பதிவாகியது' : 'Your proposal, received',
+    title: lang === 'ta' ? 'உங்கள் முன்மொழிவு, பதிவாகியது' : 'Your proposal, received',
     focus: '',
     beneficiary: pick(d.who, lang),
     highlights: pick(d.hi, lang),
     keynote:
       lang === 'ta'
-        ? `நன்றி${name}. **${pick(d.field, 'ta')}** மேம்படுத்த **${org}** முன்வைத்த இந்த யோசனை இப்போது **அரசுப் பதிவில்** உள்ளது. **${pick(d.who, 'ta')}** சார்பாக, உங்கள் குரலுக்கு தமிழ்நாடு நன்றி சொல்கிறது.`
+        ? `நன்றி${name}. **${pick(d.field, 'ta')}** மேம்படுத்த **${org}** முன்வைத்த இந்த முன்மொழிவு இப்போது **அரசுப் பதிவில்** உள்ளது. **${pick(d.who, 'ta')}** சார்பாக, உங்கள் குரலுக்கு தமிழ்நாடு நன்றி சொல்கிறது.`
         : `Thank you${name}. The idea **${org}** has brought forward — to strengthen **${pick(d.field, 'en')}** — is now **on the state's record**. On behalf of **${pick(d.who, 'en')}**, Tamil Nadu is grateful you lent your voice.`,
     source: 'local',
   }
