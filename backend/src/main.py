@@ -152,6 +152,16 @@ app.include_router(admin_v1.router)          # /api/v1/admin/* (super_admin + fe
 
 
 @app.on_event("startup")
+async def _verify_crypto():
+    """Prove the PII encryption key works before serving any traffic. Unlike the
+    other startup hooks this deliberately does NOT swallow errors — a broken or
+    missing key must stop the boot, not degrade silently (see P0-4)."""
+    from src.core.crypto import verify_crypto
+    verify_crypto()
+    logging.getLogger("startup").info("crypto self-test passed")
+
+
+@app.on_event("startup")
 async def _load_admin_lookup():
     """Pre-warm the admin lookup cache so every service can resolve FK ids."""
     from src.core.database import AsyncSessionLocal

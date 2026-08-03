@@ -82,6 +82,22 @@ def is_encrypted(value: Optional[str]) -> bool:
     return bool(value) and value.startswith("gAAAAA")
 
 
+def verify_crypto() -> None:
+    """Startup self-test: prove the configured key can encrypt AND decrypt.
+
+    Called at app startup (see main.py). If the Fernet key is malformed or the
+    round-trip fails, this raises and the app refuses to boot — far better than
+    discovering a broken key on the first citizen submission. Note this only
+    validates the key is *usable*; it cannot detect that a changed key has made
+    previously-stored ciphertext unreadable (that's a data-continuity concern,
+    guarded by requiring ENCRYPTION_KEY in prod — see config)."""
+    probe = "crypto-self-test"
+    if decrypt(encrypt(probe)) != probe:
+        raise RuntimeError("Crypto self-test failed: encrypt/decrypt round-trip mismatch.")
+    if not settings.ENCRYPTION_KEY and not settings.DEBUG:
+        raise RuntimeError("ENCRYPTION_KEY is not set in production — refusing to start.")
+
+
 def blind_index(value: Optional[str]) -> Optional[str]:
     """Deterministic, non-reversible index for equality lookups (e.g. mobile dedup).
     Normalises by stripping non-digits so '+91 99999' and '99999' match."""

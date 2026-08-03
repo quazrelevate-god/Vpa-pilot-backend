@@ -201,6 +201,26 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode='after')
+    def _enforce_production_encryption_key(self):
+        """In production, require a dedicated ENCRYPTION_KEY. Without it, crypto
+        falls back to SECRET_KEY — so any future SECRET_KEY rotation (a routine
+        ops action) would permanently corrupt every Fernet-encrypted PII column.
+
+        WARNING when first setting this on an existing deployment: the value MUST
+        match the key that currently encrypts your data (i.e. your existing
+        SECRET_KEY, since that's the fallback in use today). A *new* random value
+        makes all existing PII unreadable — there is no recovery."""
+        if self.DEBUG:
+            return self
+        if not self.ENCRYPTION_KEY:
+            raise ValueError(
+                "Refusing to start in production (DEBUG=False) without ENCRYPTION_KEY. "
+                "Set it in backend/.env to the key currently encrypting your data "
+                "(your existing SECRET_KEY) so existing PII stays readable."
+            )
+        return self
+
 
 @lru_cache()
 def get_settings() -> Settings:
