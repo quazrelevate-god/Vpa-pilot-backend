@@ -28,6 +28,8 @@ from src.models.login_models import (
     Login,
     ROLE_EVENT_REVIEWER,
     ROLE_EVENT_UPLOADER,
+    hash_password,
+    needs_rehash,
     verify_password,
 )
 
@@ -86,6 +88,9 @@ async def verify_events_credentials(
         return None
     if not verify_password(password, row.password):
         return None
+    if needs_rehash(row.password):        # migrate legacy hash → PBKDF2
+        row.password = hash_password(password)
+        await db.commit()
     if not row.has_any_role(*ALL_EVENT_ROLES):
         return None
     return row

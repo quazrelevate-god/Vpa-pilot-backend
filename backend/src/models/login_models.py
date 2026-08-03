@@ -7,8 +7,6 @@ RBAC surface. Lives on the main declarative Base so cross-table FKs
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, String, UniqueConstraint, text
@@ -16,7 +14,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
-from src.core.config import settings
+# Password hashing lives in one place (src.core.passwords). Re-exported here so
+# the many `from src.models.login_models import ..., verify_password` call sites
+# keep working unchanged.
+from src.core.passwords import hash_password, needs_rehash, verify_password  # noqa: F401
 
 
 # Primary dashboard role (the coarse RBAC axis for the PA portal). One-per-user
@@ -43,14 +44,8 @@ ALL_EVENT_ROLES = (ROLE_EVENT_UPLOADER, ROLE_EVENT_REVIEWER)
 # capability role is introduced — nothing else in the code needs to know.
 ALL_CAPABILITY_ROLES = ALL_EVENT_ROLES
 
-
-def hash_password(password: str) -> str:
-    """HMAC-SHA256 keyed on SECRET_KEY — matches the department_account bar."""
-    return hmac.new(settings.SECRET_KEY.encode(), password.encode(), hashlib.sha256).hexdigest()
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    return hmac.compare_digest(hash_password(password), password_hash or "")
+# hash_password / verify_password / needs_rehash are imported from
+# src.core.passwords at the top of this module (re-exported for call sites).
 
 
 class Login(Base):

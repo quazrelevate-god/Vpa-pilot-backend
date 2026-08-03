@@ -24,7 +24,7 @@ from src.core.database import get_db
 from src.core.dash_auth import require_auth
 from src.core.dept_auth import require_department, create_dept_session_cookie, clear_dept_session_cookie
 from src.core.rate_limit import limiter
-from src.models.department_account import DepartmentAccount, verify_password
+from src.models.department_account import DepartmentAccount, verify_password, needs_rehash, hash_password
 from src.models.school_department import SchoolDepartment, department_label, SCHOOL_DEPARTMENT_DISPLAY
 from src.services import department_service
 from src.services.storage_service import save_file
@@ -83,6 +83,9 @@ async def dept_login(request: Request, username: str = Form(...), password: str 
     )).scalar_one_or_none()
     if acct is None or not verify_password(password, acct.password_hash):
         return JSONResponse({"error": "Invalid username or password."}, status_code=401)
+    if needs_rehash(acct.password_hash):        # migrate legacy hash → PBKDF2
+        acct.password_hash = hash_password(password)
+        await db.commit()
     resp = JSONResponse({"ok": True, "department": acct.department, "label": department_label(acct.department)})
     create_dept_session_cookie(resp, acct.department)
     return resp

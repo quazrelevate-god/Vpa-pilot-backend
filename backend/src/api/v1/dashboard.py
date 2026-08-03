@@ -248,11 +248,14 @@ async def login_submit(
         return response
 
     # Non-env users: check the `login` table.
-    from src.models.login_models import Login, verify_password
+    from src.models.login_models import Login, verify_password, needs_rehash, hash_password
     row = (await db.execute(
         select(Login).where(Login.login_name == username, Login.is_active == True)  # noqa: E712
     )).scalar_one_or_none()
     if row and verify_password(password, row.password):
+        if needs_rehash(row.password):        # migrate legacy hash → PBKDF2
+            row.password = hash_password(password)
+            await db.commit()
         response = RedirectResponse(url="/appointments", status_code=302)
         create_session_cookie(response, username)
         return response
@@ -281,7 +284,9 @@ async def unified_login(
     uname = username.strip()
 
     # 1) PA staff — env super-admin fallback, then the `login` table.
-    from src.models.login_models import Login, verify_password as verify_staff
+    from src.models.login_models import (
+        Login, verify_password as verify_staff, needs_rehash, hash_password,
+    )
     staff_ok = False
     staff_role = "pa"
     if uname == settings.DASHBOARD_USERNAME and password == settings.DASHBOARD_PASSWORD:
@@ -294,6 +299,9 @@ async def unified_login(
             select(Login).where(Login.login_name == uname, Login.is_active == True)  # noqa: E712
         )).scalar_one_or_none()
         if row and verify_staff(password, row.password):
+            if needs_rehash(row.password):        # migrate legacy hash → PBKDF2
+                row.password = hash_password(password)
+                await db.commit()
             staff_ok = True
             staff_role = row.role
     if staff_ok:
@@ -306,12 +314,18 @@ async def unified_login(
         return resp
 
     # 2) Department shared account.
-    from src.models.department_account import DepartmentAccount, verify_password as verify_dept
+    from src.models.department_account import (
+        DepartmentAccount, verify_password as verify_dept,
+        needs_rehash as dept_needs_rehash, hash_password as dept_hash,
+    )
     from src.core.dept_auth import create_dept_session_cookie
     acct = (await db.execute(
         select(DepartmentAccount).where(DepartmentAccount.username == uname)
     )).scalar_one_or_none()
     if acct and verify_dept(password, acct.password_hash):
+        if dept_needs_rehash(acct.password_hash):   # migrate legacy hash → PBKDF2
+            acct.password_hash = dept_hash(password)
+            await db.commit()
         resp = JSONResponse({"ok": True, "role": "department", "redirect": "/department"})
         create_dept_session_cookie(resp, acct.department)
         resp.delete_cookie("dash_session", path="/", httponly=True, samesite="lax")

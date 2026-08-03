@@ -5,23 +5,14 @@ Ten rows, one per SchoolDepartment. Department staff sign in with the account's
 username + password; the session cookie carries the department so every action
 is scoped + attributed to that department. Seed with scripts/seed_departments.py.
 """
-import hashlib
-import hmac
-
 from sqlalchemy import Column, Integer, String, DateTime
 from datetime import datetime
 
 from src.core.database import Base
-from src.core.config import settings
-
-
-def hash_password(password: str) -> str:
-    """Salted SHA-256 (keyed on SECRET_KEY). Matches the project's simple-auth bar."""
-    return hmac.new(settings.SECRET_KEY.encode(), password.encode(), hashlib.sha256).hexdigest()
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    return hmac.compare_digest(hash_password(password), password_hash or "")
+# Shared password hashing (salted PBKDF2, with legacy-HMAC verify). Re-exported
+# so existing `from src.models.department_account import ..., verify_password`
+# imports keep working.
+from src.core.passwords import hash_password, needs_rehash, verify_password  # noqa: F401
 
 
 class DepartmentAccount(Base):
