@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.dash_auth import require_auth
 from src.core.database import get_db
 from src.services.appointment_service import appointment_service
 
@@ -26,8 +27,8 @@ router = APIRouter(prefix="/petition", tags=["Scan Petition"])
 
 
 @router.get("/scan", response_class=HTMLResponse)
-async def scan_petition_page(request: Request):
-    """Render the handwritten petition upload page (open for testing)."""
+async def scan_petition_page(request: Request, _staff: str = Depends(require_auth)):
+    """Render the handwritten petition upload page. Staff-only (dash_session)."""
     return templates.TemplateResponse("upload_petition.jinja2", {"request": request})
 
 
@@ -39,6 +40,7 @@ async def scan_petition_submit(
     constituency: str = Form(default="Tamil Nadu", description="Constituency / ward"),
     files: List[UploadFile] = File(..., description="Scanned images or PDF (max 10 files)"),
     db: AsyncSession  = Depends(get_db),
+    _staff: str       = Depends(require_auth),
 ):
     """Process uploaded petition pages — creates appointment + fires Gemini."""
     result = await appointment_service.process_manual_petition(
