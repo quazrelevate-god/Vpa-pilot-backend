@@ -224,6 +224,26 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode='after')
+    def _enforce_production_base_url(self):
+        """In production, require a real SERVER_BASE_URL. The QR / referral /
+        dashboard link builders fall back to request.base_url (derived from the
+        client-controlled Host header) ONLY while SERVER_BASE_URL is still the
+        localhost default — so an attacker could otherwise mint links pointing at
+        an arbitrary host. Requiring it here means those code paths always use
+        the configured URL in prod and never touch the Host header. Dev keeps the
+        fallback for LAN/mobile testing."""
+        if self.DEBUG:
+            return self
+        if not self.SERVER_BASE_URL or self.SERVER_BASE_URL == "http://localhost:8000":
+            raise ValueError(
+                "Refusing to start in production (DEBUG=False) with the default "
+                "SERVER_BASE_URL. Set it in backend/.env to the public base URL "
+                "(e.g. https://namkural.in) so generated links can't be spoofed "
+                "via the Host header."
+            )
+        return self
+
 
 @lru_cache()
 def get_settings() -> Settings:
