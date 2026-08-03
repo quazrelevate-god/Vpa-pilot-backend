@@ -13,6 +13,7 @@ only fills columns that are still NULL, so a concurrent PATCH always wins.
 from __future__ import annotations
 
 import asyncio
+import os
 from urllib.parse import quote
 import logging
 from datetime import date, datetime, time as dtime, timedelta, timezone
@@ -53,6 +54,12 @@ _ALLOWED_AUDIO_MIMES = {
 }
 _EXTRACT_TIMEOUT_S = 120
 _STALE_MINUTES = 15
+
+# Bound concurrent Gemini extractions. process_event is fired as an unbounded
+# create_task per photo (a 30-card batch = 30 tasks), which would otherwise hit
+# the tier's RPS ceiling and rack up cost. Tasks still enqueue immediately; only
+# this many run the extraction at once. Sized via EVENT_EXTRACT_MAX_CONCURRENCY.
+_EVENT_EXTRACT_GATE = asyncio.Semaphore(max(1, int(os.getenv("EVENT_EXTRACT_MAX_CONCURRENCY", "4"))))
 # Audio > 60s starts to feel long for a "speak the event" input. 90s is our
 # voluntary cap on the frontend recorder — long enough for a rambling PA to
 # describe the entire card without hitting Gemini's larger multi-minute limits.
@@ -435,12 +442,15 @@ async def process_event(event_id: int) -> None:
             raise RuntimeError(f"Stored image not readable: {image_path}")
 
         svc = _get_extractor()
-        result = await asyncio.wait_for(
-            asyncio.to_thread(
-                svc.extract, file_bytes=file_bytes, mime_type=image_mime,
-            ),
-            timeout=_EXTRACT_TIMEOUT_S,
-        )
+        # Hold a global permit only for the expensive Gemini call so a big batch
+        # can't fan out unbounded concurrent extractions.
+        async with _EVENT_EXTRACT_GATE:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    svc.extract, file_bytes=file_bytes, mime_type=image_mime,
+                ),
+                timeout=_EXTRACT_TIMEOUT_S,
+            )
 
         async with AsyncSessionLocal() as db:
             event = await db.get(InvitationEvent, event_id)
