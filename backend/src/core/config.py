@@ -160,6 +160,12 @@ class Settings(BaseSettings):
     # Defaults to localhost; override in .env for LAN/mobile testing.
     SERVER_BASE_URL: str = "http://localhost:8000"
     
+    # DB connection pool sizing (SQLAlchemy async engine). Defaults match the
+    # historical hardcoded values; expose them so prod can tune to its worker
+    # count / Postgres max_connections without a code change (optimization O-2).
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 10
+
     # Application Metadata
     APP_NAME: str = "Citizen Scheduler API"
     APP_VERSION: str = "1.0.0"

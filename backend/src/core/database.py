@@ -33,8 +33,8 @@ if _DATABASE_URL:
 engine = create_async_engine(
     _DATABASE_URL,
     echo=False,  # Never echo SQL — use sqlalchemy.engine logger level if needed
-    pool_size=20,  # Number of persistent connections
-    max_overflow=10,  # Additional connections when pool is exhausted
+    pool_size=settings.DB_POOL_SIZE,       # persistent connections (env: DB_POOL_SIZE, default 20)
+    max_overflow=settings.DB_MAX_OVERFLOW, # extra connections when the pool is exhausted (env: DB_MAX_OVERFLOW, default 10)
     pool_pre_ping=True,  # Verify connections before using them
     pool_recycle=3600,  # Recycle connections after 1 hour
     use_insertmanyvalues=False,  # Fix for psycopg3 parameter binding
