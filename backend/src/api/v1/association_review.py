@@ -10,6 +10,7 @@ Mounted under /api/v1/admin/associations. Every route requires super_admin.
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -144,7 +145,7 @@ async def decide_association(
     row.status = target
     row.decision_note = (body.note or "").strip() or None
     row.reviewed_by = getattr(current, "full_name", None) or getattr(current, "login_name", None) or f"login:{current.id}"
-    row.reviewed_at = datetime.utcnow()
+    row.reviewed_at = now_utc()
     await db.commit()
     await db.refresh(row)
     return _detail(row)

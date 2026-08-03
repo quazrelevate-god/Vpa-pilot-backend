@@ -7,6 +7,7 @@ render timelines in the PA portal and answer "who did what when".
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import (
     BigInteger, Column, DateTime, ForeignKey, Index, String, Text,
@@ -40,7 +41,7 @@ class Activity(Base):
         comment="Structured event data, e.g. {from: 'medium', to: 'low'} — "
                 "used by PA portal to render change arrows.",
     )
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
 
     __table_args__ = (
         Index("ix_activity_appt_created", "appointment_id", "created_at"),

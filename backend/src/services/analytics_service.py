@@ -12,6 +12,7 @@ ministry), citizens (decrypted name/mobile for the table).
 from __future__ import annotations
 
 from datetime import datetime, timedelta, date
+from src.core.timeutil import now_utc
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select, func, and_, desc, distinct, case
@@ -271,7 +272,7 @@ class AnalyticsService:
             build(Ticket.created_at, GSR.priority, need_gsr=True)
             .where(Ticket.status.notin_(_CLOSED_TICKET_STATUSES))
         )).all()
-        now = datetime.utcnow()
+        now = now_utc()
         breached = due_soon = on_track = 0
         for created_at, prio in open_rows:
             if not created_at:

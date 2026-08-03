@@ -11,6 +11,7 @@ Table: grievance_summary_records
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import (
     BigInteger,
@@ -179,7 +180,7 @@ class GrievanceSummaryRecord(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=now_utc,
         comment="When this summary record was created (UTC)",
     )
 

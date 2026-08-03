@@ -13,6 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from src.core.database import Base
 
@@ -84,7 +85,7 @@ class OTPVerification(Base):
                 "Set at form-submit time so we can trace OTP → appointment.",
     )
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
     expires_at = Column(DateTime, nullable=False)
 
     __table_args__ = (
@@ -112,7 +113,7 @@ class Citizen(Base):
         comment="Deterministic HMAC of the mobile for dedup",
     )
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
 
     appointments = relationship(
         "Appointment", back_populates="citizen",
@@ -225,7 +226,7 @@ class Appointment(Base):
     # v1 attr → v2 DB column "venue"
     venue_id = Column("venue", String(100), nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
 
     queue_position = Column(Integer, nullable=True)
     waiting_since = Column(DateTime, nullable=True)
@@ -289,7 +290,7 @@ class AppointmentAttachment(Base):
     storage_url = Column(Text, nullable=False)
     file_size_bytes = Column(Integer, nullable=False)
     mime_type = Column(String(100), nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
 
     appointment = relationship("Appointment", back_populates="attachments")
 

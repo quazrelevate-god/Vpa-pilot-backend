@@ -5,6 +5,7 @@ Uses itsdangerous for tamper-proof token signing and PostgreSQL for state manage
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+from src.core.timeutil import now_utc
 from typing import Dict, Any
 from urllib.parse import quote
 from itsdangerous import TimestampSigner, BadSignature, SignatureExpired
@@ -58,7 +59,7 @@ class QRService:
         # Step 1: Generate cryptographic signature with embedded timestamp.
         # A random nonce is appended so concurrent/rapid reloads (same venue_id,
         # same second) never produce the same signature hash.
-        created_at = datetime.utcnow()
+        created_at = now_utc()
         nonce = secrets.token_hex(6)
         timestamp_ms = int(created_at.timestamp() * 1000000)
         payload = f"{venue_id}:{nonce}:{timestamp_ms}"
@@ -160,7 +161,7 @@ class QRService:
         # allow a new scan so the citizen can submit another grievance.
         qr_signature_hash = hashlib.sha256(signature_string.encode('utf-8')).hexdigest()
 
-        current_time = datetime.utcnow()
+        current_time = now_utc()
         duplicate_scan_stmt = (
             select(GatekeeperSession)
             .where(GatekeeperSession.qr_signature_hash == qr_signature_hash)

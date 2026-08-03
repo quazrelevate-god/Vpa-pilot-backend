@@ -7,6 +7,7 @@ is scoped + attributed to that department. Seed with scripts/seed_departments.py
 """
 from sqlalchemy import Column, Integer, String, DateTime
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from src.core.database import Base
 # Shared password hashing (salted PBKDF2, with legacy-HMAC verify). Re-exported
@@ -24,4 +25,4 @@ class DepartmentAccount(Base):
     username = Column(String(60), nullable=False, unique=True, index=True)
     password_hash = Column(String(128), nullable=False)
     display_name = Column(String(150), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)

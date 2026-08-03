@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
+from src.core.timeutil import now_utc
 from typing import Any, Optional
 
 from sqlalchemy import update
@@ -83,7 +84,7 @@ async def send_push(
     ok, status = await asyncio.to_thread(_blocking_send)
 
     if ok:
-        subscription.last_seen_at = datetime.utcnow()
+        subscription.last_seen_at = now_utc()
         return True
 
     # Dead endpoint — stop trying. Mark inactive; caller commits so this

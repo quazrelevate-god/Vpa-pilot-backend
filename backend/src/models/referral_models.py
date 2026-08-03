@@ -18,6 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime, time
+from src.core.timeutil import now_utc
 
 from src.core.database import Base
 
@@ -43,7 +44,7 @@ class ReferralAvailability(Base):
     end_time   = Column(Time,        nullable=False, default=FIXED_END_TIME)
     status     = Column(String(20),  nullable=False, default="ACTIVE",
                         comment="ACTIVE or CANCELLED")
-    created_at = Column(DateTime,    nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime,    nullable=False, default=now_utc)
     created_by = Column(String(100), nullable=True)
 
     slots = relationship(
@@ -80,7 +81,7 @@ class ReferralSlot(Base):
     max_capacity    = Column(Integer,    nullable=False, default=MAX_CAPACITY)
     booked_count    = Column(Integer,    nullable=False, default=0,
                              comment="Number of BOOKINGS in this slot (num_persons is informational, not counted)")
-    created_at      = Column(DateTime,   nullable=False, default=datetime.utcnow)
+    created_at      = Column(DateTime,   nullable=False, default=now_utc)
 
     availability = relationship("ReferralAvailability", back_populates="slots")
     bookings     = relationship(
@@ -112,7 +113,7 @@ class ReferralBooking(Base):
     scheduled_date       = Column(Date,        nullable=False)
     scheduled_start_time = Column(Time,        nullable=False)
     scheduled_end_time   = Column(Time,        nullable=False)
-    created_at           = Column(DateTime,    nullable=False, default=datetime.utcnow)
+    created_at           = Column(DateTime,    nullable=False, default=now_utc)
 
     slot = relationship("ReferralSlot", back_populates="bookings")
 

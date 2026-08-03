@@ -8,6 +8,7 @@ RBAC surface. Lives on the main declarative Base so cross-table FKs
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -63,7 +64,7 @@ class Login(Base):
         comment="fine-grained permissions object (e.g. {department: 'scert'} for dept officers)",
     )
     is_active  = Column(Boolean, nullable=False, server_default=text("true"))
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
 
     # Capability roles — many-to-many. Eager-loaded because every request that
     # resolves a Login (events auth, dashboard rbac) needs the role set to
@@ -101,7 +102,7 @@ class UserRole(Base):
     login_id   = Column(BigInteger, ForeignKey("login.id", ondelete="CASCADE"), nullable=False, index=True)
     role       = Column(String(40), nullable=False, index=True,
                         comment="capability role — e.g. event_uploader, event_reviewer")
-    granted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    granted_at = Column(DateTime, nullable=False, default=now_utc)
 
     login = relationship("Login", back_populates="capability_roles")
 

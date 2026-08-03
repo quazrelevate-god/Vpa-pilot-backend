@@ -18,6 +18,7 @@ Table: proposal_submissions
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import BigInteger, Column, DateTime, Index, Text, VARCHAR
 from sqlalchemy.dialects.postgresql import JSONB
@@ -80,12 +81,20 @@ class ProposalSubmission(Base):
     reviewed_at   = Column(DateTime,     nullable=True)
     decision_note = Column(Text,         nullable=True, comment="Reviewer's reason / note on the decision")
 
+    # ── Provenance (set only by the petition→proposal migration tooling) ────────
+    # appointment.id this proposal was migrated from. Plain BigInteger, NOT a FK:
+    # proposal_submissions stays isolated, and the source appointment is
+    # hard-deleted after migration — an FK would block that or null this out.
+    # NULL for proposals submitted directly through the /proposal form.
+    source_appointment_id = Column(BigInteger, nullable=True)
+
     # ── Timestamps ──────────────────────────────────────────────────────────────
-    created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at   = Column(DateTime, nullable=False, default=now_utc)
     processed_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("ix_proposal_submissions_status", "status"),
         Index("ix_proposal_submissions_created", "created_at"),
         Index("ix_proposal_submissions_category", "category"),
+        Index("ix_proposal_submissions_source_appointment_id", "source_appointment_id"),
     )

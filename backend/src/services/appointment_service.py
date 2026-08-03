@@ -10,6 +10,7 @@ import secrets
 import os
 import time
 from datetime import date, datetime, timedelta
+from src.core.timeutil import now_utc
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
@@ -319,7 +320,7 @@ class AppointmentService:
         Does NOT mark is_used — that happens on form submission.
         Brute-force protection: max 3 attempts, then record is locked.
         """
-        current_time = datetime.utcnow()
+        current_time = now_utc()
 
         stmt = select(OTPVerification).where(
             OTPVerification.mobile_number == mobile_number,
@@ -372,7 +373,7 @@ class AppointmentService:
         still be uploading documents when they hit submit. Raises 400 if there is
         no verified, unused OTP for the number within that window.
         """
-        cutoff = datetime.utcnow() - timedelta(minutes=30)
+        cutoff = now_utc() - timedelta(minutes=30)
         stmt = select(OTPVerification).where(
             OTPVerification.mobile_number == mobile_number,
             OTPVerification.is_verified == True,   # noqa: E712
@@ -441,7 +442,7 @@ class AppointmentService:
                 )
             
             # Check if session has expired
-            current_time = datetime.utcnow()
+            current_time = now_utc()
             if session.expires_at < current_time:
                 raise HTTPException(
                     status_code=400,
@@ -573,7 +574,7 @@ class AppointmentService:
         """
         import uuid
 
-        current_time = datetime.utcnow()
+        current_time = now_utc()
 
         # Validate: a 10-digit Indian mobile (tolerate an unstripped 91 prefix).
         digits = re.sub(r"\D", "", mobile_number or "")
@@ -710,7 +711,7 @@ class AppointmentService:
             # available before appointment.id exists): attachments/{token}/...
             # token_hex guards against two blobs saved in the same wall-clock
             # second for one token colliding on the second-granularity timestamp.
-            filename = f"audio_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}.webm"
+            filename = f"audio_{now_utc().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}.webm"
             relative_path = f"attachments/{token_number}/{filename}"
             
             from src.services.storage_service import save_file
@@ -775,7 +776,7 @@ class AppointmentService:
                 )
             
             # Generate unique filename
-            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+            timestamp = now_utc().strftime('%Y%m%d_%H%M%S')
             safe_filename = f"{folder_id}_{timestamp}_{secrets.token_hex(8)}_{self._sanitize_filename(file.filename)}"
 
             # Save via storage_service (MinIO on VPS if configured, else local disk)
@@ -877,7 +878,7 @@ class AppointmentService:
         """
         try:
             # Step 1: Look up the pre-verified OTP record
-            current_time = datetime.utcnow()
+            current_time = now_utc()
 
             stmt = select(OTPVerification).where(
                 OTPVerification.mobile_number == mobile,
@@ -1427,7 +1428,7 @@ class AppointmentService:
             file_contents.append((raw, mime, f.filename))
 
         try:
-            current_time = datetime.utcnow()
+            current_time = now_utc()
 
             # ── Token assignment (IST, collision-safe) ────────────────────────
             token_assigned, legacy_slot_ref = await self._assign_daily_token(db, current_time)
@@ -1620,7 +1621,7 @@ class AppointmentService:
         take_slot_path = schedule_meeting or is_courtesy
 
         try:
-            current_time = datetime.utcnow()
+            current_time = now_utc()
             token_assigned, legacy_slot_ref = await self._assign_daily_token(db, current_time)
 
             encrypted_name = self._encrypt_field(name.strip())

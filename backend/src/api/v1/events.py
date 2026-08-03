@@ -8,6 +8,7 @@ the background — see event_service), edit/delete/retry, and authenticated
 image serving. Everything is scoped to the events_session cookie.
 """
 from datetime import date
+from src.core.timeutil import now_utc
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
@@ -450,7 +451,7 @@ async def push_subscribe(
         existing.auth         = auth
         existing.device_label = device_label
         existing.is_active    = True
-        existing.last_seen_at = _dt.utcnow()
+        existing.last_seen_at = now_utc()
         sub = existing
     else:
         sub = PushSubscription(

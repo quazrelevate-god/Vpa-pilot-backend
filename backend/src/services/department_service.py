@@ -9,6 +9,7 @@ portal can render a complete "who did what when" timeline. Department actions
 verify the acting department owns the ticket.
 """
 from datetime import datetime
+from src.core.timeutil import now_utc
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -102,7 +103,7 @@ async def forward_external(db: AsyncSession, ticket_id: int, ministry: str,
     t = await _get(db, ticket_id)
     t.status = TicketStatus.FORWARDED_TO_DEPT.value
     t.forwarded_to_dept = ministry
-    t.forwarded_at = datetime.utcnow()
+    t.forwarded_at = now_utc()
     t.forwarded_by = actor
     t.forwarded_notes = reason
     _event(db, ticket_id, TicketEventType.FORWARDED_TO_DEPT.value, actor,
@@ -138,7 +139,7 @@ async def close_ticket(db: AsyncSession, ticket_id: int, actor: str,
     if t.status not in (TicketStatus.RESOLVED.value, TicketStatus.FORWARDED_TO_DEPT.value):
         raise HTTPException(status_code=409, detail="Only resolved/forwarded tickets can be closed.")
     t.status = TicketStatus.CLOSED.value
-    t.closed_at = datetime.utcnow()
+    t.closed_at = now_utc()
     t.closure_reason = closure_reason
     _event(db, ticket_id, TicketEventType.CLOSED.value, actor,
            note=note, payload={"closure_reason": closure_reason})
@@ -152,7 +153,7 @@ async def reopen_ticket(db: AsyncSession, ticket_id: int, actor: str,
     t = await _get(db, ticket_id)
     t.status = (TicketStatus.IN_PROGRESS.value if t.department
                 else TicketStatus.OPEN.value)
-    t.reopened_at = datetime.utcnow()
+    t.reopened_at = now_utc()
     t.reopen_count = (t.reopen_count or 0) + 1
     t.closed_at = None
     _event(db, ticket_id, TicketEventType.REOPENED.value, actor, note=note)
@@ -187,7 +188,7 @@ async def dept_accept(db: AsyncSession, ticket_id: int, department: str) -> dict
     if t.status not in (TicketStatus.ASSIGNED.value, TicketStatus.AWAITING_DEPARTMENT.value):
         raise HTTPException(status_code=409, detail="Only tickets awaiting acceptance can be accepted.")
     t.status = TicketStatus.IN_PROGRESS.value
-    t.accepted_at = datetime.utcnow()
+    t.accepted_at = now_utc()
     t.accepted_by = department
     _event(db, ticket_id, TicketEventType.DEPARTMENT_ACCEPTED.value, department)
     await db.commit()
@@ -245,7 +246,7 @@ async def dept_resolve(db: AsyncSession, ticket_id: int, department: str,
             original_filename=a.get("original_filename"), uploaded_by=department,
         ))
     t.status = TicketStatus.RESOLVED.value
-    t.resolved_at = datetime.utcnow()
+    t.resolved_at = now_utc()
     t.resolution_notes = remarks
     t.progress_pct = 100
     _event(db, ticket_id, TicketEventType.RESOLVED.value, department,

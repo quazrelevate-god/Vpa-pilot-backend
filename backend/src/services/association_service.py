@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from src.core.timeutil import now_utc
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +44,7 @@ class AssociationService:
             document_date=ex.document_date,
             extraction_json=ex.model_dump(mode="json"),
             status=STATUS_AWAITING_REVIEW,
-            created_at=datetime.utcnow(),
+            created_at=now_utc(),
         )
         db.add(row)
         await db.commit()

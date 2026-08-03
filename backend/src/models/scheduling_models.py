@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime, time
+from src.core.timeutil import now_utc
 
 from src.core.database import Base
 
@@ -41,7 +42,7 @@ class MLA(Base):
     contact_email  = Column(String(100), nullable=True)
     office_address = Column(Text,        nullable=True)
     is_active      = Column(Boolean,     nullable=False, default=True)
-    created_at     = Column(DateTime,    nullable=False, default=datetime.utcnow)
+    created_at     = Column(DateTime,    nullable=False, default=now_utc)
 
     availabilities = relationship(
         "MLADailyAvailability",

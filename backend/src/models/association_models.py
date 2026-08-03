@@ -13,6 +13,7 @@ Table: association_submissions
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import BigInteger, Column, DateTime, Index, Text, VARCHAR
 from sqlalchemy.dialects.postgresql import JSONB
@@ -31,7 +32,7 @@ class AssociationSubmission(Base):
     __tablename__ = "association_submissions"
 
     id         = Column(BigInteger, primary_key=True, autoincrement=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
 
     # Provenance — where the document came from (router-created).
     source     = Column(VARCHAR(40), nullable=True, comment="ai_upload | scan | qr | manual")

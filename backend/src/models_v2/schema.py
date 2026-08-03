@@ -16,6 +16,7 @@ Tables:
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Index, Integer,
@@ -59,7 +60,7 @@ class Login(Base):
     scope      = Column(JSONB, nullable=False, server_default="{}",
                         comment="permissions / roles object")
     is_active  = Column(Boolean, nullable=False, server_default=text("true"))
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
 
 
 # ── QR / access ───────────────────────────────────────────────────────────────
@@ -69,7 +70,7 @@ class QrLog(Base):
     id                 = Column(BigInteger, primary_key=True, autoincrement=True)
     venue_id           = Column(String(100), nullable=False)
     qr_signature_hash  = Column(String(255), nullable=False, unique=True, index=True)
-    created_at         = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at         = Column(DateTime, nullable=False, default=now_utc)
     expires_at         = Column(DateTime, nullable=False, index=True)
 
     __table_args__ = (
@@ -88,7 +89,7 @@ class Verification(Base):
     hashed_otp    = Column(String(64), nullable=False, comment="SHA-256")
     attempts      = Column(Integer, nullable=False, server_default="0")
     is_verified   = Column(Boolean, nullable=False, server_default=text("false"))
-    created_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at    = Column(DateTime, nullable=False, default=now_utc)
     expires_at    = Column(DateTime, nullable=False)
 
 
@@ -105,7 +106,7 @@ class Gatekeeper(Base):
     qr_signature_hash  = Column(String(255), nullable=True,
                                 comment="prevents same QR re-scan on same device")
     is_used            = Column(Boolean, nullable=False, server_default=text("false"))
-    created_at         = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at         = Column(DateTime, nullable=False, default=now_utc)
     expires_at         = Column(DateTime, nullable=False, index=True)
 
     __table_args__ = (
@@ -123,7 +124,7 @@ class Citizen(Base):
     encrypted_mobile = Column(String(512), nullable=False, comment="Fernet")
     identity_index   = Column(String(64), nullable=False, unique=True,
                               comment="HMAC of normalised name|mobile — (name,mobile) uniqueness")
-    created_at       = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at       = Column(DateTime, nullable=False, default=now_utc)
 
 
 # ── Scheduling ────────────────────────────────────────────────────────────────
@@ -174,7 +175,7 @@ class Appointment(Base):
     venue        = Column(String(100), nullable=True)
     num_persons  = Column(Integer, nullable=False, server_default="1")
     category     = Column(String(50), nullable=True, comment="denormalised quick-filter")
-    created_at   = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at   = Column(DateTime, nullable=False, default=now_utc, index=True)
 
 
 # ── Ticket ────────────────────────────────────────────────────────────────────
@@ -192,7 +193,7 @@ class Ticket(Base):
     forwarded_to   = Column(String(60), nullable=True, comment="ministry/department value")
     notes          = Column(Text, nullable=True)
     reopen_count   = Column(Integer, nullable=False, server_default="0")
-    created_at     = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at     = Column(DateTime, nullable=False, default=now_utc)
 
 
 # ── Shared: attachments + activity (span appointment and ticket) ──────────────
@@ -221,7 +222,7 @@ class Activity(Base):
     user           = Column(String(100), nullable=False, comment="login_name or 'system'")
     action_type    = Column(String(40), nullable=False)
     message        = Column(Text, nullable=True)
-    created_at     = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at     = Column(DateTime, nullable=False, default=now_utc)
 
     __table_args__ = (
         Index("ix_activity_appt_created", "appointment_id", "created_at"),

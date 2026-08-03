@@ -31,6 +31,7 @@ Tables
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 from enum import Enum
 
 from sqlalchemy import (
@@ -335,14 +336,14 @@ class Ticket(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=now_utc,
     )
 
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=now_utc,
+        onupdate=now_utc,
     )
 
     # ── Relationships ──────────────────────────────────────────────────────────
@@ -410,7 +411,7 @@ class TicketAttachment(Base):
         comment="Department account (or PA) that uploaded it",
     )
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=now_utc)
 
     ticket = relationship("Ticket", back_populates="attachments")
 

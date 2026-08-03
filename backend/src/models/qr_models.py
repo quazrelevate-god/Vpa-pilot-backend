@@ -5,6 +5,7 @@ All models use explicit table names and indexes for query optimization.
 from sqlalchemy import Column, BigInteger, String, DateTime, Boolean, Index, text
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from src.core.database import Base
 
@@ -48,7 +49,7 @@ class QRLog(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=now_utc,
         comment="Timestamp when QR code was generated"
     )
     
@@ -126,7 +127,7 @@ class GatekeeperSession(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=now_utc,
         comment="Timestamp when session token was created"
     )
     

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime, timedelta
+from src.core.timeutil import now_utc
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -573,7 +574,7 @@ async def forward_to_dept(
     t = await _load(db, ticket_id)
     if t is None:
         return None
-    now = datetime.utcnow()
+    now = now_utc()
     t.status = TicketStatus.FORWARDED_TO_DEPT.value
     t.status_id = v2.ticket_status_id(TicketStatus.FORWARDED_TO_DEPT.value)
     t.forwarded_to_dept = department
@@ -616,7 +617,7 @@ async def mark_resolved(
     t = await _load(db, ticket_id)
     if t is None:
         return None
-    now = datetime.utcnow()
+    now = now_utc()
     t.status = TicketStatus.RESOLVED.value
     t.status_id = v2.ticket_status_id(TicketStatus.RESOLVED.value)
     t.resolution_notes = resolution_notes.strip()
@@ -637,7 +638,7 @@ async def mark_closed(
     t = await _load(db, ticket_id)
     if t is None:
         return None
-    now = datetime.utcnow()
+    now = now_utc()
     t.status = TicketStatus.CLOSED.value
     t.status_id = v2.ticket_status_id(TicketStatus.CLOSED.value)
     t.closure_reason = closure_reason
@@ -660,7 +661,7 @@ async def reopen(
     t = await _load(db, ticket_id)
     if t is None:
         return None
-    now = datetime.utcnow()
+    now = now_utc()
     t.status = TicketStatus.REOPENED.value
     t.status_id = v2.ticket_status_id(TicketStatus.REOPENED.value)
     t.reopened_at = now
@@ -723,7 +724,7 @@ async def revert_ticket(
         # concurrent Accept mid-revert would land here.
         raise ValueError("Department has just accepted this ticket — revert aborted.")
 
-    now = datetime.utcnow()
+    now = now_utc()
     prev_status = t.status
 
     # 1) Ticket → REVERTED. Keep the row + audit; wipe any accidental routing

@@ -12,6 +12,7 @@ the auto-forward workflow.
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, String, text
 
@@ -30,9 +31,9 @@ class DepartmentRegistry(Base):
     is_builtin  = Column(Boolean, nullable=False, server_default=text("false"),
                          comment="TRUE for the 10 seeded SchoolDepartments; can't be deleted")
     created_by  = Column(String(100), nullable=True)
-    created_at  = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at  = Column(DateTime, nullable=False, default=datetime.utcnow,
-                         onupdate=datetime.utcnow)
+    created_at  = Column(DateTime, nullable=False, default=now_utc)
+    updated_at  = Column(DateTime, nullable=False, default=now_utc,
+                         onupdate=now_utc)
 
 
 class MinistryRegistry(Base):
@@ -44,8 +45,8 @@ class MinistryRegistry(Base):
     display_ta  = Column(String(200), nullable=True)
     email       = Column(String(255), nullable=True)
     is_active   = Column(Boolean, nullable=False, server_default=text("true"))
-    updated_at  = Column(DateTime, nullable=False, default=datetime.utcnow,
-                         onupdate=datetime.utcnow)
+    updated_at  = Column(DateTime, nullable=False, default=now_utc,
+                         onupdate=now_utc)
 
 
 class VenueRegistry(Base):
@@ -63,6 +64,6 @@ class VenueRegistry(Base):
     is_builtin  = Column(Boolean, nullable=False, server_default=text("false"),
                          comment="TRUE for the seeded default venue(s); can't be deleted")
     created_by  = Column(String(100), nullable=True)
-    created_at  = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at  = Column(DateTime, nullable=False, default=datetime.utcnow,
-                         onupdate=datetime.utcnow)
+    created_at  = Column(DateTime, nullable=False, default=now_utc)
+    updated_at  = Column(DateTime, nullable=False, default=now_utc,
+                         onupdate=now_utc)

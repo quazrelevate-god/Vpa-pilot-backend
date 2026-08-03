@@ -15,6 +15,7 @@ import logging
 import secrets
 import time
 from datetime import datetime, timedelta
+from src.core.timeutil import now_utc
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, UploadFile
@@ -46,7 +47,7 @@ _PREFIX = {"school": "SCH", "tamil": "TAM", "information": "INF", "film": "FLM"}
 def _mint_tracking_ref(category: Optional[str]) -> str:
     key = _PREFIX.get((category or "").strip().lower(), "GEN")
     token = secrets.token_hex(3).upper()[:5]
-    return f"NK/{key}/{datetime.utcnow().year}/{token}"
+    return f"NK/{key}/{now_utc().year}/{token}"
 
 
 class ProposalService:
@@ -110,7 +111,7 @@ class ProposalService:
             phone_index=crypto.blind_index(phone),
             documents=documents,
             status=STATUS_QUEUED,
-            created_at=datetime.utcnow(),
+            created_at=now_utc(),
         )
         db.add(row)
         await db.commit()
@@ -147,7 +148,7 @@ class ProposalService:
 
     async def recover_stale(self, max_minutes: int = _STALE_PROCESSING_MIN) -> int:
         """Re-queue rows left PROCESSING by a crash/restart. max_minutes=0 re-queues all."""
-        cutoff = datetime.utcnow() - timedelta(minutes=max_minutes)
+        cutoff = now_utc() - timedelta(minutes=max_minutes)
         async with AsyncSessionLocal() as db:
             res = await db.execute(
                 update(ProposalSubmission)
@@ -175,7 +176,7 @@ class ProposalService:
             if row is None:
                 return None
             row.status = STATUS_PROCESSING
-            row.processed_at = datetime.utcnow()
+            row.processed_at = now_utc()
             await db.commit()
             return row.id
 
@@ -225,7 +226,7 @@ class ProposalService:
                 row.document_date = result.document_date
                 row.status = STATUS_AWAITING_REVIEW
                 row.error_message = None
-                row.processed_at = datetime.utcnow()
+                row.processed_at = now_utc()
                 await db.commit()
             logger.info("proposal id=%s extracted → AWAITING_REVIEW", sub_id)
 
@@ -237,7 +238,7 @@ class ProposalService:
                     if row is not None:
                         row.status = STATUS_FAILED
                         row.error_message = str(exc)[:1000]
-                        row.processed_at = datetime.utcnow()
+                        row.processed_at = now_utc()
                         await db.commit()
             except Exception:
                 logger.exception("proposal id=%s: could not mark FAILED", sub_id)

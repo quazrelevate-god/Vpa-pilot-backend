@@ -17,6 +17,7 @@ import os
 from urllib.parse import quote
 import logging
 from datetime import date, datetime, time as dtime, timedelta, timezone
+from src.core.timeutil import now_utc
 from secrets import token_hex
 from typing import Optional
 
@@ -278,8 +279,8 @@ async def create_manual_event(
         note=(note or "").strip() or None,
         status=STATUS_READY,
         created_by=created_by,
-        created_at=datetime.utcnow(),
-        processed_at=datetime.utcnow(),
+        created_at=now_utc(),
+        processed_at=now_utc(),
     )
     db.add(event)
     await db.commit()
@@ -312,7 +313,7 @@ async def create_event(
         note=(note or "").strip() or None,
         status=STATUS_QUEUED,
         created_by=created_by,
-        created_at=datetime.utcnow(),
+        created_at=now_utc(),
     )
     db.add(event)
     await db.commit()
@@ -411,8 +412,8 @@ async def create_voice_event(
         error_message=None,
         extraction_json=result.model_dump(),
         created_by=created_by,
-        created_at=datetime.utcnow(),
-        processed_at=datetime.utcnow(),
+        created_at=now_utc(),
+        processed_at=now_utc(),
     )
     db.add(event)
     await db.commit()
@@ -433,7 +434,7 @@ async def process_event(event_id: int) -> None:
             if event is None or event.status not in (STATUS_QUEUED, STATUS_PROCESSING):
                 return
             event.status = STATUS_PROCESSING
-            event.processed_at = datetime.utcnow()   # start marker for stale recovery
+            event.processed_at = now_utc()   # start marker for stale recovery
             image_path, image_mime = event.image_path, event.image_mime
             await db.commit()
 
@@ -487,7 +488,7 @@ async def process_event(event_id: int) -> None:
             event.extraction_json = result.model_dump()
             event.status = STATUS_READY
             event.error_message = None
-            event.processed_at = datetime.utcnow()
+            event.processed_at = now_utc()
             await db.commit()
             logger.info("event %d extracted | date=%s type=%s | en=%r ta=%r",
                         event_id, event.event_date, event.event_type,
@@ -501,7 +502,7 @@ async def process_event(event_id: int) -> None:
                 if event is not None and event.status != STATUS_READY:
                     event.status = STATUS_FAILED
                     event.error_message = str(exc)[:1000]
-                    event.processed_at = datetime.utcnow()
+                    event.processed_at = now_utc()
                     await db.commit()
         except Exception:
             logger.exception("event %d: could not record failure", event_id)
@@ -523,7 +524,7 @@ async def recover_stale() -> int:
     which meant a QUEUED row uploaded 1 minute before a restart sat idle
     for 15 minutes AND needed a second restart to get picked up.
     """
-    cutoff = datetime.utcnow() - timedelta(minutes=_STALE_MINUTES)
+    cutoff = now_utc() - timedelta(minutes=_STALE_MINUTES)
     async with AsyncSessionLocal() as db:
         queued = await db.execute(
             select(InvitationEvent.id).where(InvitationEvent.status == STATUS_QUEUED)
@@ -600,7 +601,7 @@ async def list_needs_review(db: AsyncSession) -> list[InvitationEvent]:
     Rolling 30-day window (by created_at) plus a hard LIMIT so a stale pile
     of undated invitations can never balloon this endpoint.
     """
-    cutoff = datetime.utcnow() - timedelta(days=_NEEDS_REVIEW_DAYS)
+    cutoff = now_utc() - timedelta(days=_NEEDS_REVIEW_DAYS)
     today = _ist_today()
     result = await db.execute(
         select(InvitationEvent)
@@ -920,7 +921,7 @@ async def update_event(
         event.status = STATUS_READY
         event.error_message = None
 
-    event.updated_at = datetime.utcnow()
+    event.updated_at = now_utc()
     if updated_by:
         event.updated_by = updated_by[:100]
     await db.commit()
@@ -982,7 +983,7 @@ async def approve_event(
         return event
     event.is_approved = True
     event.approved_by = approved_by
-    event.approved_at = datetime.utcnow()
+    event.approved_at = now_utc()
     await db.commit()
     await db.refresh(event)
     return event

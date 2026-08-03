@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from src.core.database import get_db
 from src.core.utils import generate_device_fingerprint
@@ -55,7 +56,7 @@ async def _validate_session(request: Request, token: str, db: AsyncSession):
         return None, RedirectResponse(
             "/form/error?" + urlencode({"type": "device_mismatch"}), status_code=302
         )
-    if session.expires_at < datetime.utcnow():
+    if session.expires_at < now_utc():
         return None, RedirectResponse(
             "/form/error?" + urlencode({"type": "session_expired"}), status_code=302
         )

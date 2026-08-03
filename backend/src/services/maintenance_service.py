@@ -8,6 +8,7 @@ audit/debugging. Run from the standalone worker (see src/worker.py).
 """
 import logging
 from datetime import datetime, timedelta
+from src.core.timeutil import now_utc
 
 from sqlalchemy import text
 
@@ -21,7 +22,7 @@ RETENTION_HOURS = 24
 
 async def cleanup_expired(retention_hours: int = RETENTION_HOURS) -> dict:
     """Delete expired OTP + gatekeeper-session rows older than the grace window."""
-    cutoff = datetime.utcnow() - timedelta(hours=retention_hours)
+    cutoff = now_utc() - timedelta(hours=retention_hours)
     async with AsyncSessionLocal() as db:
         otp = await db.execute(
             text("DELETE FROM otp_verification WHERE expires_at < :cutoff"),

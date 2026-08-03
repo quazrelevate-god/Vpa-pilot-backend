@@ -18,6 +18,7 @@ Table: invitation_events
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime, Index, Text, Time, VARCHAR, text,
@@ -110,7 +111,7 @@ class InvitationEvent(Base):
 
     # ── Timestamps / audit ──────────────────────────────────────────────────────
     created_by   = Column(VARCHAR(100), nullable=False, comment="events_session username")
-    created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at   = Column(DateTime, nullable=False, default=now_utc)
     processed_at = Column(DateTime, nullable=True)
     updated_at   = Column(DateTime, nullable=True)
     updated_by   = Column(VARCHAR(100), nullable=True, comment="events_session username of the last PATCH")

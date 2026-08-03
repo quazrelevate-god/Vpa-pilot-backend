@@ -16,6 +16,7 @@ Table: ai_uploads
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import (
     BigInteger, Column, DateTime, ForeignKey, Index, Integer, Text, VARCHAR,
@@ -86,7 +87,7 @@ class AiUpload(Base):
     ticket_number = Column(VARCHAR(20), nullable=True)
 
     # ── Timestamps ──────────────────────────────────────────────────────────────
-    created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at   = Column(DateTime, nullable=False, default=now_utc)
     processed_at = Column(DateTime, nullable=True)
     reviewed_at  = Column(DateTime, nullable=True)
     reviewed_by  = Column(VARCHAR(100), nullable=True)

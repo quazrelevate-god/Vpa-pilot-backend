@@ -9,6 +9,7 @@ See alembic migration 041 for the exact schema + indexes.
 from __future__ import annotations
 
 from datetime import datetime
+from src.core.timeutil import now_utc
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer,
@@ -40,7 +41,7 @@ class PushSubscription(Base):
     # We stop trying but keep the row for audit until the user opts out.
     is_active    = Column(Boolean, nullable=False, default=True, server_default=text("true"))
 
-    created_at   = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("now()"))
+    created_at   = Column(DateTime, nullable=False, default=now_utc, server_default=text("now()"))
     last_seen_at = Column(DateTime, nullable=True)
 
     __table_args__ = (

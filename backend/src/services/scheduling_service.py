@@ -13,6 +13,7 @@ Booking stays concurrency-safe via SELECT ... FOR UPDATE on the slot row.
 """
 import logging
 from datetime import datetime, date, time, timedelta
+from src.core.timeutil import now_utc
 from typing import Optional, Dict, List
 
 from sqlalchemy import select, func
@@ -82,7 +83,7 @@ class SchedulingService:
             available_to = time(16, 0)
         if available_from >= available_to:
             raise ValueError("available_from must be before available_to.")
-        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        now_ist = now_utc() + timedelta(hours=5, minutes=30)
         today_ist = now_ist.date()
         if target_date < today_ist:
             raise ValueError(
@@ -187,7 +188,7 @@ class SchedulingService:
         target_date: Optional[date] = None,
     ) -> Dict:
         if target_date is None:
-            target_date = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
+            target_date = (now_utc() + timedelta(hours=5, minutes=30)).date()
 
         avail = await db.scalar(
             select(MLADailyAvailability)
@@ -211,7 +212,7 @@ class SchedulingService:
         slots = result.scalars().all()
 
         # For today, a slot whose start time has passed can't be booked.
-        now_ist  = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        now_ist  = now_utc() + timedelta(hours=5, minutes=30)
         is_today = target_date == now_ist.date()
         now_t    = now_ist.time()
 
@@ -249,7 +250,7 @@ class SchedulingService:
     # ── Citizen: list open dates ─────────────────────────────────────────────
 
     async def list_open_dates_public(self, db: AsyncSession) -> List[Dict]:
-        today_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
+        today_ist = (now_utc() + timedelta(hours=5, minutes=30)).date()
         result = await db.execute(
             select(MLADailyAvailability)
             .where(MLADailyAvailability.is_open == True)  # noqa: E712
@@ -272,7 +273,7 @@ class SchedulingService:
 
     async def has_meeting_availability(self, db: AsyncSession) -> Dict:
         from sqlalchemy import and_, or_
-        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        now_ist = now_utc() + timedelta(hours=5, minutes=30)
         today   = now_ist.date()
         now_t   = now_ist.time()
         count = await db.scalar(
@@ -317,7 +318,7 @@ class SchedulingService:
         avail_date = await db.scalar(
             select(MLADailyAvailability.date).where(MLADailyAvailability.id == slot.availability_id)
         )
-        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        now_ist = now_utc() + timedelta(hours=5, minutes=30)
         if avail_date == now_ist.date() and slot.start_time <= now_ist.time():
             raise ValueError("That time slot has already passed. Please pick a later one.")
 
@@ -409,12 +410,12 @@ class SchedulingService:
             bookings = list(booked_appts_result.scalars().all())
 
             avail = await db.get(MLADailyAvailability, slot.availability_id)
-            today_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
+            today_ist = (now_utc() + timedelta(hours=5, minutes=30)).date()
             slot_date = avail.date if avail else today_ist
             is_today = (slot_date == today_ist)
 
             if is_today:
-                now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+                now = now_utc() + timedelta(hours=5, minutes=30)
                 current_time = now.time()
 
                 other_slots = await db.execute(
@@ -561,7 +562,7 @@ class SchedulingService:
     # ── Admin: list open dates ───────────────────────────────────────────────
 
     async def get_open_dates(self, db: AsyncSession) -> List[Dict]:
-        today_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
+        today_ist = (now_utc() + timedelta(hours=5, minutes=30)).date()
         result = await db.execute(
             select(MLADailyAvailability)
             .where(MLADailyAvailability.is_open == True)  # noqa: E712
@@ -656,7 +657,7 @@ class SchedulingService:
         target_date = dt.date()
         requested_time = dt.time()
 
-        if target_date < (datetime.utcnow() + timedelta(hours=5, minutes=30)).date():
+        if target_date < (now_utc() + timedelta(hours=5, minutes=30)).date():
             raise ValueError("Cannot reschedule to a past date.")
 
         avail = await db.scalar(
@@ -767,7 +768,7 @@ class SchedulingService:
     ) -> Dict:
         appointment.status        = "WAITING"
         appointment.status_id     = v2.appointment_status_id("WAITING")
-        appointment.waiting_since = datetime.utcnow()
+        appointment.waiting_since = now_utc()
 
         # v2: schedule_meeting column removed — a "meeting" appointment is
         # one that had a slot_id (now cleared as it enters the queue) OR was
@@ -823,7 +824,7 @@ class SchedulingService:
     # ── Auto-allocate waiting queue to today's available slots ──────────────
 
     async def auto_allocate_waiting_queue(self, db: AsyncSession) -> Dict:
-        today = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
+        today = (now_utc() + timedelta(hours=5, minutes=30)).date()
 
         avail = await db.scalar(
             select(MLADailyAvailability)
@@ -833,7 +834,7 @@ class SchedulingService:
         if not avail:
             raise ValueError("No availability opened for today.")
 
-        now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        now = now_utc() + timedelta(hours=5, minutes=30)
         current_time = now.time()
 
         slot_result = await db.execute(
@@ -906,7 +907,7 @@ class SchedulingService:
         Called by the PA's "Cancel All" button, which now sends the date
         currently selected in the scheduling grid — not just today.
         """
-        target_date = target_date or (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
+        target_date = target_date or (now_utc() + timedelta(hours=5, minutes=30)).date()
 
         appt_result = await db.execute(
             select(Appointment)
@@ -923,7 +924,7 @@ class SchedulingService:
             await self.release_slot(db, appt, commit=False)
             appt.status        = "WAITING"
             appt.status_id     = v2.appointment_status_id("WAITING")
-            appt.waiting_since = datetime.utcnow()
+            appt.waiting_since = now_utc()
             queue_count = await db.scalar(
                 select(func.count(Appointment.id))
                 .where(Appointment.status == "WAITING")
@@ -962,7 +963,7 @@ class SchedulingService:
             .where(Appointment.status == "WAITING")
         ) or 0
 
-        today = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date()
+        today = (now_utc() + timedelta(hours=5, minutes=30)).date()
         # Scheduled today = appointment.slot_id → slot → availability with date=today
         scheduled_today = await db.scalar(
             select(func.count(Appointment.id))
@@ -986,7 +987,7 @@ class SchedulingService:
             .order_by(Appointment.waiting_since.asc())
             .limit(1)
         )
-        oldest_days = (datetime.utcnow() - oldest_waiting).days if oldest_waiting else 0
+        oldest_days = (now_utc() - oldest_waiting).days if oldest_waiting else 0
 
         return {
             "waiting_count":       waiting_count,

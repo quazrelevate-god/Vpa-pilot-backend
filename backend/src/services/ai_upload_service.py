@@ -20,6 +20,7 @@ import secrets
 import time
 import uuid
 from datetime import datetime, timedelta
+from src.core.timeutil import now_utc
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, UploadFile
@@ -125,7 +126,7 @@ class AiUploadService:
                 # ignored (see process_upload) so this preview would be
                 # misleading — the row would flip categories after extraction.
                 source=(source or "ai_scan").strip() or "ai_scan",
-                created_at=datetime.utcnow(),
+                created_at=now_utc(),
             )
             db.add(row)
             await db.flush()
@@ -175,7 +176,7 @@ class AiUploadService:
         or a call hung). Called at worker start and on app startup. max_minutes=0
         re-queues every PROCESSING row (used on startup — nothing is really running).
         """
-        cutoff = datetime.utcnow() - timedelta(minutes=max_minutes)
+        cutoff = now_utc() - timedelta(minutes=max_minutes)
         async with AsyncSessionLocal() as db:
             res = await db.execute(
                 update(AiUpload)
@@ -204,7 +205,7 @@ class AiUploadService:
             if row is None:
                 return None
             row.status = STATUS_PROCESSING
-            row.processed_at = datetime.utcnow()   # start marker for stale recovery
+            row.processed_at = now_utc()   # start marker for stale recovery
             await db.commit()
             return row.id
 
@@ -271,7 +272,7 @@ class AiUploadService:
                 row.summary_json       = payload
                 row.error_message      = None
                 row.status             = STATUS_AWAITING_REVIEW
-                row.processed_at       = datetime.utcnow()
+                row.processed_at       = now_utc()
                 await db.commit()
             logger.info("ai_upload id=%s → AWAITING_REVIEW (%dms)", upload_id, latency_ms)
 
@@ -283,7 +284,7 @@ class AiUploadService:
                     if row:
                         row.status = STATUS_FAILED
                         row.error_message = str(exc)[:500]
-                        row.processed_at = datetime.utcnow()
+                        row.processed_at = now_utc()
                         await db.commit()
             except Exception as inner:
                 logger.warning("ai_upload could not mark FAILED id=%s: %s", upload_id, inner)
@@ -723,7 +724,7 @@ class AiUploadService:
             .where(AiUpload.id == upload_id, AiUpload.status == STATUS_AWAITING_REVIEW)
             .values(
                 status=STATUS_DISMISSED,
-                reviewed_at=datetime.utcnow(),
+                reviewed_at=now_utc(),
                 reviewed_by=reviewed_by,
             )
         )
@@ -806,7 +807,7 @@ class AiUploadService:
                 "to read the name from this petition. Please fill in the name in "
                 "the review drawer before approving."
             )
-        now = datetime.utcnow()
+        now = now_utc()
 
         # ── 1) Citizen + Appointment (AWAITING_REVIEW) + summary record ─────────
         enc_name   = appointment_service._encrypt_field(name)

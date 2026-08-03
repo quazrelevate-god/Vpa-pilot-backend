@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 from datetime import date, datetime, timedelta
+from src.core.timeutil import now_utc
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -223,7 +224,7 @@ async def get_stats(
     unique_citizens = await db.scalar(citizens_q) or 0
 
     # Meetings held — scheduled appointments whose slot end has passed
-    now = datetime.utcnow()
+    now = now_utc()
     meetings_held_q = _count([
         Appointment.schedule_meeting == True,   # noqa: E712
         Appointment.created_at.isnot(None),
@@ -864,7 +865,7 @@ async def add_case_attachment(
     # cap, so a 1000+ char name could exceed MinIO's key limit and 500 at store.
     from src.services.appointment_service import appointment_service
     safe = appointment_service._sanitize_filename(filename)
-    ts = _dt.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = now_utc().strftime("%Y%m%d_%H%M%S")
     # Same unified folder as citizen uploads: attachments/{token}/...
     rel = f"attachments/{appt.token_assigned}/pa_{ts}_{secrets.token_hex(6)}_{safe}"
     storage_url = await asyncio.to_thread(save_file, raw, rel, mime)
@@ -1040,7 +1041,7 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
             if slot_obj:
                 avail = await db.get(MLADailyAvailability, slot_obj.availability_id)
                 slot_dt = datetime.combine(avail.date, slot_obj.start_time) if avail else None
-                if slot_dt and slot_dt > datetime.utcnow():
+                if slot_dt and slot_dt > now_utc():
                     await scheduling_service.release_slot(db, appt, commit=False)
         appt.status = "REVIEWED"
         appt.status_id = v2.appointment_status_id("REVIEWED")
@@ -1063,7 +1064,7 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         #   3. Ticket already alive in any other state → no-op (this path
         #      shouldn't fire normally; approve_petition only runs from
         #      Awaiting Review).
-        current_time = datetime.utcnow()
+        current_time = now_utc()
         existing_ticket = (await db.execute(
             select(Ticket).where(Ticket.appointment_id == appointment_id)
         )).scalar_one_or_none()
@@ -1133,7 +1134,7 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
             if slot_obj:
                 avail = await db.get(MLADailyAvailability, slot_obj.availability_id)
                 slot_dt = datetime.combine(avail.date, slot_obj.start_time) if avail else None
-                if slot_dt and slot_dt > datetime.utcnow():
+                if slot_dt and slot_dt > now_utc():
                     await scheduling_service.release_slot(db, appt, commit=False)
         appt.schedule_meeting = False
         appt.status = "AWAITING_REVIEW"
