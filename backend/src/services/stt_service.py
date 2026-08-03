@@ -58,8 +58,8 @@ def _get_audio_duration_seconds(audio_bytes: bytes, mime_type: str) -> Optional[
         try:
             with wave.open(io.BytesIO(audio_bytes), "rb") as w:
                 return w.getnframes() / float(w.getframerate())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("WAV duration probe failed, trying mutagen: %s", e)
 
     # 2) MP3 / M4A / OGG / FLAC / Opus via mutagen
     try:
@@ -70,8 +70,8 @@ def _get_audio_duration_seconds(audio_bytes: bytes, mime_type: str) -> Optional[
             length = getattr(f.info, "length", None)
             if length and length > 0:
                 return float(length)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("mutagen duration probe failed: %s", e)
 
     return None
 
@@ -368,7 +368,8 @@ class SarvamSTTService:
                     try:
                         with open(fpath, encoding="utf-8") as fh:
                             out = _json.load(fh)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("skipping unreadable transcript output %s: %s", fpath, e)
                         continue
                     raw_outputs.append(out)
                     t = (out.get("transcript") or "").strip()
@@ -385,8 +386,8 @@ class SarvamSTTService:
                 try:
                     import shutil
                     shutil.rmtree(outputs_dir, ignore_errors=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("transcript temp cleanup failed for %s: %s", outputs_dir, e)
 
             full_transcript = "\n".join(transcripts).strip()
             return STTResult(

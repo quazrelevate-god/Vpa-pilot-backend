@@ -781,7 +781,7 @@ class AiUploadService:
                         r.status = STATUS_AWAITING_REVIEW
                         await db2.commit()
             except Exception:
-                pass
+                logger.exception("failed to revert upload %s status after build error", upload_id)
             raise
 
     async def _build_case(self, db: AsyncSession, upload_id: int, reviewed_by: str) -> Dict[str, Any]:

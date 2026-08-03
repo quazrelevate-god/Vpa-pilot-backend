@@ -11,6 +11,7 @@ v2 schema notes:
 
 Booking stays concurrency-safe via SELECT ... FOR UPDATE on the slot row.
 """
+import logging
 from datetime import datetime, date, time, timedelta
 from typing import Optional, Dict, List
 
@@ -33,6 +34,8 @@ from src.models.scheduling_models import (
 from src.models.appointment_models import Appointment, Citizen
 from src.models.activity_models import Activity
 from src.core.utils import utc_iso
+
+logger = logging.getLogger(__name__)
 
 
 def _decrypt(ciphertext: str) -> str:
@@ -500,7 +503,7 @@ class SchedulingService:
                         ctx={"actor": "pa", "reason": "slot_blocked"},
                     ))
             except Exception:
-                pass
+                logger.warning("failed to schedule reschedule_cancel notifications for blocked slot %s", slot_id, exc_info=True)
 
         result = {"slot_id": slot_id, "status": "BLOCKED"}
         if booked_count > 0:
