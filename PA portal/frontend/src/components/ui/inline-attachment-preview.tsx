@@ -9,8 +9,18 @@ import { cn } from "@/lib/utils";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { AudioPlayer } from "@/components/ui/audio-player";
 
-interface InlineAttachmentPreviewProps {
+export interface AttachmentSection {
+  label: string;
   attachments: GalleryAttachment[];
+  tone?: "brand" | "success";   // header + chip color family
+}
+
+interface InlineAttachmentPreviewProps {
+  /** Single-section mode (backwards-compatible). */
+  attachments?: GalleryAttachment[];
+  /** Multi-section mode — renders each section's label + chips on top, then
+   *  ONE shared preview area below. */
+  sections?: AttachmentSection[];
   audioTranscript?: string | null;
   className?: string;
 }
@@ -21,6 +31,13 @@ const TYPE_ICON = {
   VIDEO:    Film,
   AUDIO:    Mic,
 } as const;
+
+const TYPE_LABEL: Record<GalleryAttachment["type"], string> = {
+  IMAGE:    "img",
+  DOCUMENT: "doc",
+  VIDEO:    "video",
+  AUDIO:    "audio",
+};
 
 /**
  * Inline preview gallery:
@@ -38,13 +55,33 @@ const TYPE_ICON = {
  * exist to make accidental / casual download out of reach for PA staff
  * looking at sensitive citizen attachments.
  */
-export function InlineAttachmentPreview({ attachments, audioTranscript, className }: InlineAttachmentPreviewProps) {
-  const [activeIdx, setActiveIdx] = useState<number>(0);
+export function InlineAttachmentPreview({ attachments, sections, audioTranscript, className }: InlineAttachmentPreviewProps) {
+  // Normalize to sections[]. Single-`attachments` mode becomes one unlabeled
+  // section so the render path is uniform.
+  const normSections: AttachmentSection[] = sections
+    ? sections.filter((s) => s.attachments.length > 0)
+    : (attachments && attachments.length > 0
+        ? [{ label: "", attachments, tone: "brand" }]
+        : []);
 
-  // Reset selection when the attachment set changes (drawer row swap).
-  useEffect(() => { setActiveIdx(0); }, [attachments]);
+  // Active selection identifies (sectionIdx, attachmentIdx) — only ONE chip
+  // across all sections is active at a time. Clicking active → close;
+  // clicking any other chip → switch preview immediately.
+  const [active, setActive] = useState<{ s: number; a: number } | null>(null);
 
-  if (attachments.length === 0) {
+  // Reset when the attachment set fundamentally changes (drawer row swap).
+  // Use a stable signature — sizes + file names — NOT URLs. Presigned MinIO
+  // URLs regenerate on every fetch; keying on them would nuke the active
+  // chip mid-render and unmount the AudioPlayer before it could play.
+  const sigParts: string[] = [];
+  for (const s of normSections) {
+    sigParts.push(s.label + ":" + s.attachments.length);
+    for (const a of s.attachments) sigParts.push(a.name + "#" + a.type);
+  }
+  const signature = sigParts.join("|");
+  useEffect(() => { setActive(null); }, [signature]);
+
+  if (normSections.length === 0) {
     return (
       <div className={cn("flex h-24 items-center justify-center rounded-xl border border-dashed border-border bg-card text-sm text-muted-foreground", className)}>
         <Paperclip className="mr-2 h-4 w-4" /> No files attached
@@ -52,66 +89,88 @@ export function InlineAttachmentPreview({ attachments, audioTranscript, classNam
     );
   }
 
-  const active = attachments[Math.min(activeIdx, attachments.length - 1)];
+  const activeAtt =
+    active && normSections[active.s]
+      ? normSections[active.s].attachments[Math.min(active.a, normSections[active.s].attachments.length - 1)] ?? null
+      : null;
 
   return (
     <div className={cn("flex h-full flex-col gap-3", className)}>
-      {/* Thumb strip */}
-      <div className="flex flex-shrink-0 gap-2 overflow-x-auto pb-1">
-        {attachments.map((a, i) => {
-          const Icon = TYPE_ICON[a.type] ?? Paperclip;
-          const isActive = i === activeIdx;
+      {/* Section rows — each label with its own chips beside it */}
+      <div className="flex flex-shrink-0 flex-col gap-2">
+        {normSections.map((section, si) => {
+          const tone = section.tone ?? "brand";
           return (
-            <button
-              key={a.url + i}
-              onClick={() => setActiveIdx(i)}
-              title={a.name}
-              className={cn(
-                "group relative flex h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border-2 bg-card transition",
-                isActive
-                  ? "border-brand shadow-card-md ring-2 ring-brand/30"
-                  : "border-border hover:border-brand/40"
-              )}
-            >
-              {a.type === "IMAGE" ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={a.url}
-                  alt={a.name}
-                  className="h-full w-full object-cover"
-                  draggable={false}
-                  onContextMenu={(e) => e.preventDefault()}
-                />
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-muted/60 px-1 text-muted-foreground">
-                  <Icon className="h-6 w-6" />
-                  <span className="line-clamp-1 text-[10px] font-medium uppercase tracking-wider">
-                    {a.type === "DOCUMENT" ? "Doc" : a.type === "VIDEO" ? "Video" : "Audio"}
+            <div key={(section.label || "s") + si} className="flex flex-wrap items-center gap-2">
+              {section.label && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider",
+                    tone === "success" ? "text-emerald-600" : "text-muted-foreground",
+                  )}
+                >
+                  {section.label}
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 text-[10px] font-bold",
+                      tone === "success" ? "bg-emerald-100 text-emerald-700" : "bg-brand/10 text-brand",
+                    )}
+                  >
+                    {section.attachments.length}
                   </span>
-                </div>
+                </span>
               )}
-              <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition group-hover:opacity-100">
-                {a.name}
-              </span>
-            </button>
+              <div className="flex flex-wrap gap-2">
+                {section.attachments.map((a, ai) => {
+                  const Icon = TYPE_ICON[a.type] ?? Paperclip;
+                  const isActive = active?.s === si && active?.a === ai;
+                  return (
+                    <button
+                      key={a.url + ai}
+                      type="button"
+                      onClick={() =>
+                        setActive((cur) =>
+                          cur && cur.s === si && cur.a === ai ? null : { s: si, a: ai },
+                        )
+                      }
+                      title={a.name}
+                      aria-pressed={isActive}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition",
+                        isActive
+                          ? tone === "success"
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                            : "border-brand bg-brand/10 text-brand"
+                          : "border-border bg-card text-muted-foreground hover:border-brand/40 hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {TYPE_LABEL[a.type] ?? "file"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>
 
-      {/* Inline preview area */}
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-card">
-        <div className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-[12px]">
-          <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="truncate font-semibold text-foreground" title={active.name}>{active.name}</span>
-          <span className="ml-auto rounded bg-background px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            {active.type}
-          </span>
-        </div>
+      {/* Shared preview — fills all remaining space; only one chip active. */}
+      {activeAtt && (
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-card">
+          <div className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-[12px]">
+            <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="truncate font-semibold text-foreground" title={activeAtt.name}>{activeAtt.name}</span>
+            <span className="ml-auto rounded bg-background px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              {activeAtt.type}
+            </span>
+          </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-          <PreviewBody attachment={active} audioTranscript={audioTranscript} />
+          <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+            <PreviewBody attachment={activeAtt} audioTranscript={audioTranscript} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

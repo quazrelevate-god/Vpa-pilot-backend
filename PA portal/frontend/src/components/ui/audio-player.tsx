@@ -113,11 +113,15 @@ export function AudioPlayer({ src, className }: AudioPlayerProps) {
   };
   const onBarPointerUp = () => { dragRef.current = false; };
 
+  // Presigned MinIO URLs regenerate on every parent fetch — the query string
+  // (`?X-Amz-Signature=…`) changes but the audio itself is identical. Keying
+  // the reset on the full URL would wipe playback state on every drawer
+  // re-render. Use only the path portion, which is stable for the same file.
+  const srcKey = src.split("?")[0];
   useEffect(() => {
-    // Reset when src changes (drawer swap)
     durationFixed.current = false;
     setPlaying(false); setCurrent(0); setDuration(0); setReady(false); setErrored(false);
-  }, [src]);
+  }, [srcKey]);
 
   const pct = duration > 0 ? Math.min(100, (current / duration) * 100) : 0;
 

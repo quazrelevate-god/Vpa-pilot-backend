@@ -334,37 +334,20 @@ export default function TicketDetailDrawer({
 
         {t ? (
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            {/* Preview pane — uploads at-a-glance */}
+            {/* Preview pane — uploads at-a-glance. Both sections' chips sit on
+                top; clicking any chip fills the shared preview area below. */}
             <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[52%] lg:border-b-0 lg:border-r">
-              <div className="mb-3 flex flex-shrink-0 items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                <span className="grid h-6 w-6 place-items-center rounded-md bg-brand/10 text-brand">
-                  <ImageIcon className="h-3.5 w-3.5" />
-                </span>
-                {tr("petition.citizenUploads")}
-                {(t.attachments?.length ?? 0) > 0 && (
-                  <span className="rounded-full bg-brand/10 px-1.5 text-[10px] font-bold text-brand">
-                    {t.attachments!.length}
-                  </span>
-                )}
-              </div>
               <div className="min-h-0 flex-1">
-                <InlineAttachmentPreview attachments={t.attachments ?? []} audioTranscript={t.audio_transcript} />
+                <InlineAttachmentPreview
+                  sections={[
+                    { label: tr("petition.citizenUploads"), attachments: t.attachments ?? [], tone: "brand" },
+                    ...(resAtt.length > 0
+                      ? [{ label: "Resolution proof", attachments: resAtt, tone: "success" as const }]
+                      : []),
+                  ]}
+                  audioTranscript={t.audio_transcript}
+                />
               </div>
-
-              {/* Resolution proof — attachments the department uploaded on resolve */}
-              {resAtt.length > 0 && (
-                <div className="mt-4 flex min-h-0 flex-1 flex-col border-t border-border pt-4">
-                  <div className="mb-3 flex flex-shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600">
-                    <FileCheck2 className="h-3.5 w-3.5" /> Resolution proof
-                    <span className="rounded-full bg-emerald-100 px-1.5 text-[10px] font-bold text-emerald-700">
-                      {resAtt.length}
-                    </span>
-                  </div>
-                  <div className="min-h-0 flex-1">
-                    <InlineAttachmentPreview attachments={resAtt} />
-                  </div>
-                </div>
-              )}
             </aside>
 
             <Tabs value={tab} onValueChange={setTab} className="flex min-w-0 min-h-0 flex-1 flex-col">
