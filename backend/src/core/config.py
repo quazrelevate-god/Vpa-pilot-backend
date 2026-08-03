@@ -44,13 +44,12 @@ class Settings(BaseSettings):
     # and never changed (changing it makes existing data unreadable). Falls back to
     # SECRET_KEY in dev. Generate one with: python -c "import secrets;print(secrets.token_urlsafe(48))"
     ENCRYPTION_KEY: Optional[str] = None
-    # Master switch for slowapi rate limiting (login + OTP). ON by default —
-    # the limit decorators on login/OTP are a credential-stuffing / OTP-
-    # enumeration defence and must not silently no-op in production. Dev opts
-    # out explicitly with RATE_LIMIT_ENABLED=false in .env. If nginx isn't yet
-    # passing the real client IP (X-Forwarded-For), fix that rather than
-    # disabling the limiter.
-    RATE_LIMIT_ENABLED: bool = True
+    # Master switch for slowapi rate limiting (login + OTP). OFF by default (per
+    # request) — turn it ON in production by setting RATE_LIMIT_ENABLED=true in
+    # .env. NOTE: the limit decorators on login/OTP are a credential-stuffing /
+    # OTP-enumeration defence, so this SHOULD be true in prod; confirm the real
+    # client IP (X-Forwarded-For) is flowing from nginx, then enable it.
+    RATE_LIMIT_ENABLED: bool = False
     # Enforce "one petition per phone per day" on submit. On in prod, off in dev
     # so QA can repeatedly test the same phone number without waiting a day.
     ONE_PETITION_PER_DAY: bool = True
