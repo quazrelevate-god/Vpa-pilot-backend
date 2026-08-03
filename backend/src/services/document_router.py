@@ -18,9 +18,11 @@ Safety: a proposal/association verdict at LOW confidence is downgraded to petiti
 from __future__ import annotations
 
 import logging
+import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from src.models.document_classification import DocumentType, ClassificationConfidence
 from src.services.classification_service import ClassificationService
@@ -30,6 +32,23 @@ from src.services.proposal_identity_extraction import ProposalIdentityExtraction
 from src.services.association_extraction import AssociationExtractionService
 
 logger = logging.getLogger(__name__)
+
+# Concurrency governance for the (blocking) Gemini extraction calls this router
+# makes. Previously route() built a fresh ThreadPoolExecutor per call, so N
+# concurrent bulk-upload requests spawned N×2 threads each blocking a Gemini
+# call — no global cap, no back-pressure, uncontrolled spend. Now:
+#   • one shared pool runs the proposal content+identity pair in parallel;
+#   • one process-wide bounded semaphore caps TOTAL in-flight extractions,
+#     sized to the paid Gemini tier via DOC_ROUTER_MAX_CONCURRENCY.
+_MAX_CONCURRENT_EXTRACTIONS = max(1, int(os.getenv("DOC_ROUTER_MAX_CONCURRENCY", "4")))
+_PARALLEL_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="docrouter")
+_GEMINI_GATE = threading.BoundedSemaphore(_MAX_CONCURRENT_EXTRACTIONS)
+
+
+def _gated(fn: Callable, /, **kwargs):
+    """Run a blocking extraction call while holding a global concurrency permit."""
+    with _GEMINI_GATE:
+        return fn(**kwargs)
 
 
 @dataclass
@@ -58,26 +77,29 @@ class DocumentRouter:
         extraction: Optional[Any] = None
         identity: Optional[Any] = None
         if final == DocumentType.PETITION:
-            extraction = PetitionExtractionService.from_settings().extract(
-                file_bytes=file_bytes, mime_type=mime_type, filename=filename
+            extraction = _gated(
+                PetitionExtractionService.from_settings().extract,
+                file_bytes=file_bytes, mime_type=mime_type, filename=filename,
             )
         elif final == DocumentType.PROPOSAL:
             # Scanned proposal has no intake form — run the CONTENT agent and the
             # IDENTITY agent IN PARALLEL and merge (pitch + org/contact off the page).
+            # Shared pool + per-call semaphore (see _gated) instead of a fresh
+            # ThreadPoolExecutor per request.
             content_svc = ProposalExtractionService.from_settings()
             identity_svc = ProposalIdentityExtractionService.from_settings()
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                f_content = pool.submit(
-                    content_svc.extract, file_bytes=file_bytes, mime_type=mime_type, filename=filename
-                )
-                f_identity = pool.submit(
-                    identity_svc.extract, file_bytes=file_bytes, mime_type=mime_type, filename=filename
-                )
-                extraction = f_content.result()
-                identity = f_identity.result()
+            f_content = _PARALLEL_POOL.submit(
+                _gated, content_svc.extract, file_bytes=file_bytes, mime_type=mime_type, filename=filename
+            )
+            f_identity = _PARALLEL_POOL.submit(
+                _gated, identity_svc.extract, file_bytes=file_bytes, mime_type=mime_type, filename=filename
+            )
+            extraction = f_content.result()
+            identity = f_identity.result()
         elif final == DocumentType.ASSOCIATION:
-            extraction = AssociationExtractionService.from_settings().extract(
-                file_bytes=file_bytes, mime_type=mime_type, filename=filename
+            extraction = _gated(
+                AssociationExtractionService.from_settings().extract,
+                file_bytes=file_bytes, mime_type=mime_type, filename=filename,
             )
         # COURTESY -> no extraction
 
