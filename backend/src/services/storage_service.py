@@ -42,6 +42,10 @@ def _get_client():
             config=Config(
                 signature_version="s3v4",
                 s3={"addressing_style": "path"},
+                # T-10: retry transient MinIO errors (restart, network blip)
+                # with botocore's exponential backoff instead of failing the
+                # upload/read outright.
+                retries={"max_attempts": 5, "mode": "standard"},
             ),
         )
     except Exception as e:
