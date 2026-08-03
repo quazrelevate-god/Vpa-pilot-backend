@@ -1194,7 +1194,7 @@ class AppointmentService:
             for att in attachments_created:
                 if att["attachment_type"] == "IMAGE":
                     try:
-                        attachment_bytes = get_file_bytes(att["storage_url"])
+                        attachment_bytes = await asyncio.to_thread(get_file_bytes, att["storage_url"])
                         if attachment_bytes is None:
                             raise FileNotFoundError(f"File not found in storage: {att['storage_url']}")
                         attachment_mime = att["mime_type"]
@@ -1209,7 +1209,7 @@ class AppointmentService:
                 for att in attachments_created:
                     if att["attachment_type"] == "DOCUMENT":
                         try:
-                            attachment_bytes = get_file_bytes(att["storage_url"])
+                            attachment_bytes = await asyncio.to_thread(get_file_bytes, att["storage_url"])
                             if attachment_bytes is None:
                                 raise FileNotFoundError(f"File not found in storage: {att['storage_url']}")
                             attachment_mime = att["mime_type"]
@@ -1237,7 +1237,7 @@ class AppointmentService:
             audio_bytes_for_gemini: Optional[bytes] = None
             if audio_path:
                 try:
-                    audio_bytes_for_gemini = get_file_bytes(audio_path)
+                    audio_bytes_for_gemini = await asyncio.to_thread(get_file_bytes, audio_path)
                     if audio_bytes_for_gemini is None:
                         raise FileNotFoundError(f"File not found in storage: {audio_path}")
                 except Exception as read_err:
@@ -1777,7 +1777,7 @@ class AppointmentService:
             attachments: List[tuple] = []
             for snap in attachment_snapshots:
                 try:
-                    raw = get_file_bytes(snap["storage_url"])
+                    raw = await asyncio.to_thread(get_file_bytes, snap["storage_url"])
                     if raw is None:
                         raise FileNotFoundError(f"File not found in storage: {snap['storage_url']}")
                     attachments.append((raw, snap["mime_type"], snap.get("filename")))

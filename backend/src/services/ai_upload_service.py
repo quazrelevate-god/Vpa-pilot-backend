@@ -960,7 +960,7 @@ class AiUploadService:
         storage_ok = 0
         storage_fail = 0
         for r in rows:
-            if r.storage_url and delete_file(r.storage_url):
+            if r.storage_url and await asyncio.to_thread(delete_file, r.storage_url):
                 storage_ok += 1
             elif r.storage_url:
                 storage_fail += 1
