@@ -56,7 +56,7 @@ export const CATEGORIES = [
       { en: 'School infrastructure & digital classrooms', ta: 'பள்ளி உள்கட்டமைப்பு & டிஜிட்டல் வகுப்பறைகள்' },
       { en: 'Teacher training & curriculum design', ta: 'ஆசிரியர் பயிற்சி & பாடத்திட்டம்' },
       { en: 'Scholarships & student welfare', ta: 'உதவித்தொகை & மாணவர் நலன்' },
-      { en: 'Industry–school partnerships', ta: 'தொழில்–பள்ளி கூட்டாண்மை' },
+      { en: 'Industry and school partnerships', ta: 'தொழில் மற்றும் பள்ளிக் கூட்டாண்மை' },
     ],
   },
   {
@@ -66,8 +66,8 @@ export const CATEGORIES = [
     title: { en: 'Tamil Language, Culture and Archaeology', ta: 'தமிழ் மொழி, பண்பாடு மற்றும் தொல்லியல்' },
     tag: { en: 'Language, culture, excavation', ta: 'மொழி, பண்பாடு, அகழாய்வு' },
     blurb: {
-      en: 'Promotion, development and administrative implementation of Tamil as the official language, alongside the cultural programmes that carry it forward — and the state excavation sites, artefact preservation and historical research that recover its past.',
-      ta: 'ஆட்சிமொழியாகத் தமிழை வளர்த்து, மேம்படுத்தி, நிர்வாகத்தில் நடைமுறைப்படுத்துதல்; அதனுடன் பண்பாட்டுத் திட்டங்கள். மாநில அகழாய்வுத் தளங்கள், தொல்பொருள் பாதுகாப்பு, வரலாற்று ஆய்வும் இதில் அடங்கும்.',
+      en: 'Promotion, development and administrative implementation of Tamil as the official language, alongside the cultural programmes that carry it forward. Also the state excavation sites, artefact preservation and historical research that recover its past.',
+      ta: 'ஆட்சி மொழியாகத் தமிழை வளர்த்து, மேம்படுத்தி, நிர்வாகத்தில் நடைமுறைப்படுத்துவது; அதனுடன் தமிழைப் பரப்பும் பண்பாட்டு நிகழ்வுகள். மாநில அகழாய்வுத் தளங்கள், தொல்பொருள் பேணுதல், வரலாற்று ஆய்வும் இதன் கீழ் வரும்.',
     },
     types: [
       { en: 'Tamil in administration, e-governance & language technology', ta: 'நிர்வாகத்தில் தமிழ், மின்னாட்சி & மொழித் தொழில்நுட்பம்' },
@@ -83,8 +83,8 @@ export const CATEGORIES = [
     title: { en: 'Information and Publicity', ta: 'தகவல் மற்றும் மக்கள் தொடர்பு' },
     tag: { en: 'Media, newsprint, government press', ta: 'ஊடகம், செய்தித்தாள், அரசு அச்சகம்' },
     blurb: {
-      en: 'State public relations, media coordination and official announcements. This desk also holds newsprint control — the allocation and regulation of newsprint supply — and the government presses handling official printing and stationery distribution.',
-      ta: 'மாநில மக்கள் தொடர்பு, ஊடக ஒருங்கிணைப்பு, அரசு அறிவிப்புகள். செய்தித்தாள் ஒதுக்கீடு மற்றும் ஒழுங்குமுறை, அரசு அச்சகங்கள், எழுதுபொருள் விநியோகமும் இந்த மேசையின் கீழ் வரும்.',
+      en: 'State public relations, media coordination and official announcements. This desk also holds newsprint control (the allocation and regulation of newsprint supply) and the government presses handling official printing and stationery distribution.',
+      ta: 'மாநில மக்கள் தொடர்பு, ஊடக ஒருங்கிணைப்பு, அரசு அறிவிப்புகள். செய்தித்தாள் ஒதுக்கீடு மற்றும் ஒழுங்குமுறை, அரசு அச்சகங்கள், எழுதுபொருள் விநியோகம் ஆகியனவும் இந்த மேசையின் கீழ் வரும்.',
     },
     types: [
       { en: 'Public information campaigns & digital outreach', ta: 'பொதுத் தகவல் பிரச்சாரங்கள் & இணைய தொடர்பு' },
@@ -170,7 +170,7 @@ export const STEPS = [
       en: `And who is representing ${a.org || 'this organisation'}?`,
       ta: `${a.org || 'இந்த நிறுவனம்'} சார்பாக பிரதிநிதித்துவப்படுத்துபவர் யார்?`,
     }),
-    help: { en: 'The person the Minister\'s office will correspond with. Designation matters — it sets the level at which your file is read.', ta: 'அமைச்சர் அலுவலகம் தொடர்பு கொள்ளும் நபர். பதவி முக்கியம் — உங்கள் கோப்பு எந்த நிலையில் படிக்கப்படும் என்பதை அது தீர்மானிக்கிறது.' },
+    help: { en: 'The person the Minister\'s office will correspond with. Designation matters. It sets the level at which your file is read.', ta: 'அமைச்சர் அலுவலகம் தொடர்பு கொள்ளும் நபர். பதவி முக்கியம். உங்கள் கோப்பு எந்த நிலையில் படிக்கப்படும் என்பதை அதுவே தீர்மானிக்கிறது.' },
     fields: [
       { key: 'personName', ph: { en: 'Full name', ta: 'முழுப்பெயர்' } },
       { key: 'designation', ph: { en: 'Designation', ta: 'பதவி' } },

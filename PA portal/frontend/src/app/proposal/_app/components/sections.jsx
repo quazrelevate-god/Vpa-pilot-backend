@@ -92,6 +92,8 @@ export function Nav() {
 /* ================= HERO ================= */
 export function Hero() {
   const t = useT()
+  const { lang } = useLang()
+  const isTa = lang === 'ta'
   return (
     <header id="top" className="relative h-screen min-h-[600px] sm:min-h-[700px] bg-ink-950 overflow-hidden flex items-end">
       <div className="absolute inset-0" aria-hidden="true">
@@ -107,15 +109,15 @@ export function Hero() {
       </div>
 
       <Reveal className="relative z-10 w-full px-5 sm:px-6 lg:px-12 pb-[9vh] sm:pb-[11vh] pt-28" gap={0.12} delay={0.25}>
-        <RevealItem as="h1" className="h-display text-white text-[clamp(33px,5.8vw,86px)] max-w-[15ch]">
-          {t({ en: 'Your proposal.', ta: 'உங்கள் முன்மொழிவு.' })}<br />
+        <RevealItem as="h1" className={`h-display text-white ${isTa ? 'text-[clamp(26px,4.2vw,62px)] max-w-[22ch] leading-[1.15]' : 'text-[clamp(33px,5.8vw,86px)] max-w-[15ch]'}`}>
+          {t({ en: 'Your proposal.', ta: 'உங்கள் திட்ட முன்மொழிவு.'})}<br />
           <em className="not-italic text-haze-300">{t({ en: 'Before the Hon’ble Minister.', ta: 'மாண்புமிகு அமைச்சரின் முன்.' })}</em>
         </RevealItem>
 
         <RevealItem className="relative inline-block mt-7 sm:mt-9">
           <MagneticButton strength={22}>
             <Button variant="gold" size="md" onClick={() => scrollToId('desks', NAV_OFFSET)}>
-              {t({ en: 'Give your idea for the betterment of tomorrow →', ta: 'நாளைய நலனுக்காக உங்கள் முன்மொழிவை வழங்குங்கள் →' })}
+              {t({ en: 'Give your idea for the betterment of tomorrow →', ta: 'நாளைக்காக உங்கள் திட்ட முன்மொழிவைப் பகிருங்கள் →' })}
             </Button>
           </MagneticButton>
           <ClickHint />
@@ -159,9 +161,9 @@ const FLOW = [
   { n: '01', title: { en: 'Recorded', ta: 'பதிவு' },
     desc: { en: 'Formally logged on the state’s record the moment you submit.', ta: 'சமர்ப்பித்த நொடியிலேயே அரசுப் பதிவில் முறையாக பதிவு.' } },
   { n: '02', title: { en: 'Acknowledged', ta: 'ஒப்புகை' },
-    desc: { en: 'A written acknowledgement reaches you — no wondering where it went.', ta: 'எழுத்துப்பூர்வ ஒப்புகை உங்களை அடையும் — எங்கே சென்றது என்ற கேள்வி இல்லை.' } },
+    desc: { en: 'A written acknowledgement reaches you, so you never have to wonder where it went.', ta: 'எழுத்துப்பூர்வ ஒப்புகை உங்களுக்கு வரும். எங்கே போனது என்ற சந்தேகம் இருக்காது.' } },
   { n: '03', title: { en: 'Forwarded', ta: 'அனுப்பப்பட்டது' },
-    desc: { en: 'Routed to the right department for evaluation through the prescribed process.', ta: 'உரிய துறைக்கு நிர்ணயிக்கப்பட்ட நடைமுறையில் மதிப்பீட்டிற்காக அனுப்பப்படும்.' } },
+    desc: { en: 'Routed to the right department for evaluation through the prescribed process.', ta: 'உரிய துறைக்கு, நடைமுறைப்படி மதிப்பீட்டிற்காக அனுப்பப்படும்.' } },
 ]
 
 export function About() {
@@ -182,7 +184,7 @@ export function About() {
             <Eyebrow>{t({ en: 'About Nam Kural', ta: 'நம் குரல் பற்றி' })}</Eyebrow>
           </RevealItem>
           <RevealItem as="h2" className="h-display text-white text-[clamp(26px,4vw,52px)] mt-5 mb-2 leading-[1.12]">
-            {t({ en: 'One official channel — from your idea to the Hon’ble Minister’s desk.', ta: 'உங்கள் முன்மொழிவிலிருந்து மாண்புமிகு அமைச்சரின் மேசை வரை — ஒரே அதிகாரப்பூர்வ வழி.' })}
+            {t({ en: 'One official channel, from your idea to the Hon’ble Minister’s desk.', ta: 'உங்கள் திட்ட முன்மொழிவை அமைச்சரிடம் நேரடியாகச் சமர்ப்பிக்க ஒரே அதிகாரப்பூர்வ வழி.' })}
           </RevealItem>
         </Reveal>
 
@@ -192,13 +194,13 @@ export function About() {
             <RevealItem as="p" className="text-white/85 text-[clamp(15px,1.5vw,18px)] leading-[1.78] max-w-[62ch]">
               {t({
                 en: 'Nam Kural is the official platform through which corporates, educational institutions, startups, research organisations, technology companies, industry associations, professional bodies, NGOs and subject experts submit innovative ideas, research findings, technology solutions, policy recommendations and project proposals directly to the Hon’ble Minister for School Education, Government of Tamil Nadu.',
-                ta: 'நிறுவனங்கள், கல்வி நிலையங்கள், ஸ்டார்ட்அப்கள், ஆராய்ச்சி நிறுவனங்கள், தொழில்நுட்ப நிறுவனங்கள், தொழில் சங்கங்கள், தொழில்முறை அமைப்புகள், தொண்டு நிறுவனங்கள் மற்றும் துறை வல்லுநர்கள் — தங்கள் புதுமையான யோசனைகள், ஆராய்ச்சி முடிவுகள், தொழில்நுட்பத் தீர்வுகள், கொள்கை பரிந்துரைகள் மற்றும் திட்ட முன்மொழிவுகளை தமிழ்நாடு அரசின் மாண்புமிகு பள்ளிக் கல்வி அமைச்சரின் முன் நேரடியாக சமர்ப்பிக்கும் அதிகாரப்பூர்வ தளமே நம் குரல்.',
+                ta: 'நிறுவனங்கள், கல்வி நிலையங்கள், ஸ்டார்ட்அப்கள், ஆராய்ச்சி நிறுவனங்கள், தொழில்நுட்ப நிறுவனங்கள், தொழில் சங்கங்கள், தொழில்முறை அமைப்புகள், தொண்டு நிறுவனங்கள், துறை வல்லுநர்கள் ஆகியோர் தங்கள் புதுமையான யோசனைகள், ஆராய்ச்சி முடிவுகள், தொழில்நுட்பத் தீர்வுகள், கொள்கை பரிந்துரைகள், திட்ட முன்மொழிவுகள் ஆகியவற்றைத் தமிழ்நாடு அரசின் மாண்புமிகு பள்ளிக் கல்வி அமைச்சரின் முன் நேரடியாகச் சமர்ப்பிக்கும் அதிகாரப்பூர்வத் தளமே நம் குரல்.',
               })}
             </RevealItem>
             <RevealItem as="p" className="text-white/70 text-[14.5px] sm:text-[15.5px] leading-[1.8] max-w-[62ch] mt-5">
               {t({
-                en: 'We welcome proposals that strengthen the education ecosystem — improving student learning outcomes, empowering teachers, enhancing school administration, and bringing proven innovation and best practice into the School Education Department.',
-                ta: 'மாணவர் கற்றல் விளைவுகளை மேம்படுத்தும், ஆசிரியர்களை வலுப்படுத்தும், பள்ளி நிர்வாகத்தை மேம்படுத்தும், மற்றும் நிரூபிக்கப்பட்ட புதுமைகளையும் சிறந்த நடைமுறைகளையும் பள்ளிக் கல்வித் துறையில் கொண்டுவரும் முன்மொழிவுகளை நாங்கள் வரவேற்கிறோம்.',
+                en: 'We welcome proposals that strengthen the education ecosystem: improving student learning outcomes, empowering teachers, enhancing school administration, and bringing proven innovation and best practice into the School Education Department.',
+                ta: 'மாணவர்களின் கற்றலை மேம்படுத்தும், ஆசிரியர்களை வலுவூட்டும், பள்ளி நிர்வாகத்தைச் சிறப்பாக்கும், நிரூபிக்கப்பட்ட புதுமைகளையும் சிறந்த நடைமுறைகளையும் பள்ளிக் கல்வித் துறையில் கொண்டுவரும் முன்மொழிவுகளை வரவேற்கிறோம்.',
               })}
             </RevealItem>
           </div>
@@ -220,7 +222,7 @@ export function About() {
         <Reveal className="mt-16 sm:mt-20 flex items-stretch gap-5">
           <RevealItem className="shrink-0 w-1 rounded bg-gradient-to-b from-gold-400 to-gold-600" />
           <RevealItem as="p" className="h-display text-white text-[clamp(21px,3vw,38px)] leading-[1.2]">
-            {t({ en: 'No intermediaries. No unnecessary delays.', ta: 'இடைத்தரகர் இல்லை. தேவையற்ற தாமதம் இல்லை.' })}
+            {t({ en: 'No intermediaries. No unnecessary delays.', ta: 'இடைத்தரகர் இல்லாத நேர்மை; தேவையற்ற தாமதம் இல்லாத வேகம்.' })}
           </RevealItem>
         </Reveal>
 
@@ -243,7 +245,7 @@ export function About() {
         {/* closing */}
         <Reveal className="mt-16 sm:mt-20 border-t border-white/10 pt-9 sm:pt-11 flex flex-col md:flex-row md:items-end md:justify-between gap-7">
           <RevealItem as="p" className="font-disp text-haze-100 text-[clamp(17px,2.1vw,25px)] leading-[1.45] max-w-[26ch]">
-            {t({ en: 'Your idea has the potential to shape the future of education in Tamil Nadu.', ta: 'உங்கள் முன்மொழிவு தமிழ்நாட்டின் கல்வியின் எதிர்காலத்தை வடிவமைக்கும் ஆற்றல் கொண்டது.' })}
+            {t({ en: 'Your idea has the potential to shape the future of education in Tamil Nadu.', ta: 'உங்கள் முன்மொழிவு தமிழகக் கல்வியின் எதிர்காலத்தைத் தீர்மானிக்கும் ஆற்றல் கொண்டது எனில், அதனை நேரடியாகச் சமர்ப்பியுங்கள்.' })}
           </RevealItem>
           <RevealItem className="shrink-0 self-start md:self-auto">
             <MagneticButton strength={18}>
@@ -273,10 +275,10 @@ export function CtaBand() {
       <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-ink-950/40 to-transparent pointer-events-none" aria-hidden="true" />
       <Reveal className="relative px-5 sm:px-6" gap={0.1}>
         <RevealItem as="h2" className="h-display text-[clamp(26px,4.4vw,62px)] max-w-[20ch] mx-auto mb-5">
-          {t({ en: 'Give your idea for the betterment of tomorrow.', ta: 'நாளைய நலனுக்காக உங்கள் முன்மொழிவை வழங்குங்கள்.' })}
+          {t({ en: 'Give your idea for the betterment of tomorrow.', ta: 'வளமான தமிழகத்தை உருவாக்க, உங்கள் புதிய சிந்தனைகளை எங்களுடன் பகிர்ந்து கொள்ளுங்கள்.' })}
         </RevealItem>
         <RevealItem as="p" className="max-w-[54ch] mx-auto text-white/85 text-[15px] sm:text-[16.5px] leading-relaxed">
-          {t({ en: 'Ten minutes of your thought can outlast a generation. The Ministry is listening: formally, transparently, in your language.', ta: 'உங்கள் பத்து நிமிட சிந்தனை ஒரு தலைமுறையைத் தாண்டி நிலைக்கும். அமைச்சகம் கேட்கிறது: முறையாக, வெளிப்படையாக, உங்கள் மொழியில்.' })}
+          {t({ en: 'Ten minutes of your thought can outlast a generation. The Ministry is listening: formally, transparently, in your language.', ta: 'தலைமுறைகள் கடந்து நிலைத்து நிற்கும் தொலைநோக்குச் சிந்தனைகளை, உரிய நெறிமுறைகளுடனும் முழு வெளிப்படைத்தன்மையுடனும் உங்கள் தாய்மொழியிலேயே சமர்ப்பியுங்கள். கல்வி அமைச்சகம் உங்கள் மேலான கருத்துக்களை வரவேற்கிறது.' })}
         </RevealItem>
       </Reveal>
     </section>
@@ -294,7 +296,7 @@ export function Footer() {
           <p className="text-[13px] leading-relaxed">
             {t({
               en: 'The digital proposal channel of the Office of the Hon\'ble Minister for Education, Government of Tamil Nadu. This system records and routes institutional proposals for review. Submission does not guarantee approval; every submission receives a reasoned response.',
-              ta: 'தமிழ்நாடு அரசின் மாண்புமிகு கல்வி அமைச்சர் அலுவலகத்தின் டிஜிட்டல் முன்மொழிவு வழி. சமர்ப்பிப்பு ஒப்புதலுக்கு உத்தரவாதம் அல்ல; ஒவ்வொரு சமர்ப்பிப்பும் காரணத்துடன் பதில் பெறும்.',
+              ta: 'தமிழ்நாடு அரசின் மாண்புமிகு கல்வி அமைச்சர் அலுவலகத்தின் டிஜிட்டல் முன்மொழிவு தளம். சமர்ப்பிப்பு ஒப்புதலுக்கான உத்தரவாதம் அல்ல; ஒவ்வொரு சமர்ப்பிப்புக்கும் காரணத்துடன் பதில் வழங்கப்படும்.',
             })}
           </p>
         </div>

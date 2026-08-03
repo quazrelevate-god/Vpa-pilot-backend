@@ -190,7 +190,7 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
         setError(true)
         setAck(ta
           ? 'சரியான 10 இலக்க கைபேசி எண்ணை உள்ளிடவும் (OTP இந்த எண்ணுக்கே அனுப்பப்படும்).'
-          : 'Enter a valid 10-digit mobile number — the OTP is sent to this number.')
+          : 'Enter a valid 10-digit mobile number. The OTP is sent to this number.')
         return
       }
     }
@@ -292,8 +292,8 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
                 <ShieldPhone className="w-[18px] h-[18px] shrink-0 mt-px text-gold-400" />
                 <span>
                   {ta
-                    ? 'இந்த கைபேசி எண் OTP சரிபார்ப்புக்குப் பயன்படுத்தப்படும் — அடுத்த படியில் ஒரு முறை பயன்படுத்தும் குறியீட்டை (OTP) SMS-ல் அனுப்புவோம்.'
-                    : "This mobile number will be used for OTP verification — we'll text a one-time code (OTP) to it in the next step."}
+                    ? 'இந்த கைபேசி எண்ணுக்கே OTP அனுப்பப்படும். அடுத்த படியில், ஒரு முறை பயன்படுத்தும் குறியீட்டை (OTP) SMS மூலம் அனுப்புகிறோம்.'
+                    : "This mobile number will be used for OTP verification. In the next step, we'll text a one-time code (OTP) to it."}
                 </span>
               </p>
             )}
@@ -583,7 +583,7 @@ function OtpGate({ phone, ta, onVerified, onBack }) {
     <div className="w-full max-w-xl my-auto text-center qcard enter-r">
       <div className="eyebrow text-gold-400 mb-3.5">{ta ? 'கடைசிப் படி' : 'Final step'}</div>
       <h2 className="h-display text-[clamp(23px,3vw,36px)] mb-3">
-        {ta ? 'உங்கள் எண்ணை உறுதி செய்யுங்கள்' : 'Confirm it is really you'}
+        {ta ? 'இது நீங்கள்தான் என உறுதி செய்யுங்கள்' : 'Confirm it is really you'}
       </h2>
       <p className="text-white/60 text-[14px] leading-relaxed max-w-[42ch] mx-auto mb-9">
         {state === 'sending'
@@ -665,7 +665,7 @@ function OtpGate({ phone, ta, onVerified, onBack }) {
       {/* Dev hint — only present when the server is in dummy mode (SMS not configured). */}
       {devCode && (
         <p className="text-[11px] text-gold-300/70 mt-8 leading-relaxed">
-          {ta ? 'டெவலப்மென்ட்: SMS அமைக்கப்படவில்லை — குறியீடு' : 'Dev mode: SMS not configured — code is'}{' '}
+          {ta ? 'டெவலப்மென்ட்: SMS அமைக்கப்படவில்லை. குறியீடு' : 'Dev mode: SMS not configured. Code is'}{' '}
           <b className="tracking-[0.25em] text-gold-200">{devCode}</b>
         </p>
       )}
@@ -730,7 +730,7 @@ function Processing({ run, category, ta, t, onDone }) {
 
       <div className="eyebrow text-haze-300 mb-3">{ta ? 'செயலாக்கத்தில்' : 'In progress'}</div>
       <h2 className="h-display text-[clamp(22px,2.6vw,32px)] mb-2">
-        {ta ? 'உங்கள் முன்மொழிவு வாசிக்கப்படுகிறது' : 'Reading and understanding your proposal'}
+        {ta ? 'உங்கள் முன்மொழிவைப் படித்து புரிந்துகொள்கிறோம்' : 'Reading and understanding your proposal'}
       </h2>
       {category && (
         <p className="text-white/50 text-[13px] mb-9">{ta ? 'செல்லும் இடம்' : 'Routing to'} · {t(category.dept)}</p>
@@ -763,7 +763,7 @@ function Processing({ run, category, ta, t, onDone }) {
       </ul>
 
       <p className="text-[11.5px] text-white/30 mt-10 tracking-wide2">
-        {ta ? 'இந்த சாளரத்தை மூட வேண்டாம்' : 'Please do not close this window'}
+        {ta ? 'இந்த சாளரத்தை மூடாதீர்கள்' : 'Please do not close this window'}
       </p>
     </div>
   )

@@ -42,6 +42,15 @@ export function useLenis() {
   }, []);
 }
 
+/** Ask Lenis (and the browser) to recompute scrollable extents. Call after a
+ *  DOM change that resizes the page (language toggle rewriting long Tamil copy
+ *  is the concrete case): Lenis caches the max scroll on mount, and without a
+ *  refresh the page silently clamps at the pre-change height. Safe to call
+ *  when Lenis is inactive (reduced-motion / SSR); it's a no-op then. */
+export function refreshScroll() {
+  if (_lenis && typeof _lenis.resize === 'function') _lenis.resize();
+}
+
 /** Scroll to an element id. Uses the live Lenis instance when present (so the
  *  inertial feel is consistent), else falls back to native smooth/instant
  *  scrolling — which is also the reduced-motion path. `offset` accounts for
