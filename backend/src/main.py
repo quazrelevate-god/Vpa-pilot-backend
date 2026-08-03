@@ -170,6 +170,19 @@ async def _verify_crypto():
 
 
 @app.on_event("startup")
+async def _ensure_storage_bucket():
+    """Ensure the MinIO bucket exists once at boot (T-2) instead of on every
+    write. Logs loudly on failure but does not block startup — read paths that
+    don't touch storage should still serve while MinIO recovers."""
+    import asyncio as _asyncio
+    from src.services import storage_service
+    try:
+        await _asyncio.to_thread(storage_service.ensure_bucket)
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger("startup").error("storage bucket check failed at boot: %s", repr(e))
+
+
+@app.on_event("startup")
 async def _load_admin_lookup():
     """Pre-warm the admin lookup cache so every service can resolve FK ids."""
     from src.core.database import AsyncSessionLocal

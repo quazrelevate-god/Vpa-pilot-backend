@@ -57,6 +57,20 @@ def _bucket() -> str:
     return getattr(settings, "FILE_STORAGE_BUCKET", "vpa-uploads")
 
 
+def ensure_bucket() -> None:
+    """Ensure the MinIO bucket exists. Called once at startup (T-2) so save_file
+    no longer pays a head_bucket round-trip (and a create on 404) on every
+    single write. No-op in local-disk mode; raises if the bucket can't be
+    reached/created so the misconfiguration surfaces at boot, not mid-upload."""
+    client = _get_client()
+    if client is None:
+        return  # storage not configured — save_file raises on first use
+    try:
+        client.head_bucket(Bucket=_bucket())
+    except Exception:
+        client.create_bucket(Bucket=_bucket())
+
+
 def healthcheck() -> tuple[bool, str]:
     """Lightweight storage reachability check for /health/deps.
 
@@ -93,11 +107,8 @@ def save_file(data: bytes, relative_path: str, content_type: str = None) -> str:
             "FILE_STORAGE_ACCESS_KEY, FILE_STORAGE_SECRET_KEY and FILE_STORAGE_BUCKET. "
             "Refusing to write uploads to local disk."
         )
-    # Ensure bucket exists (create if missing)
-    try:
-        client.head_bucket(Bucket=_bucket())
-    except Exception:
-        client.create_bucket(Bucket=_bucket())
+    # Bucket existence is ensured once at startup (see ensure_bucket / T-2),
+    # so writes go straight to put_object without a per-call head+create.
     kwargs = {"Bucket": _bucket(), "Key": relative_path, "Body": data}
     if content_type:
         kwargs["ContentType"] = content_type
