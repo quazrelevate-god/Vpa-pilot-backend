@@ -19,7 +19,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { EventItem } from "../_lib/types";
 import { displayTitle, typeMeta } from "../_lib/types";
-import { AttendanceDot } from "./AttendanceDot";
 import { dayName, fmtTime, pad2, sameDay, toISO, toMinutes, weekDays } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 
@@ -104,7 +103,10 @@ function EventBlock({ placed, onOpen, lang }: {
         processing && "animate-pulse",
       )}>
       <div className="flex items-center gap-1 truncate text-[0.75rem] font-bold leading-tight text-slate-800">
-        <AttendanceDot value={e.attendance} />
+        {/* Approved (= attended / committed) events get a small green dot as
+            the at-a-glance marker; unapproved stays plain. Replaces the old
+            three-state AttendanceDot. */}
+        {e.is_approved && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />}
         <span className="truncate">{displayTitle(e, lang)}</span>
       </div>
       <div className="truncate font-mono text-[0.68rem] font-medium tabular-nums text-slate-500">

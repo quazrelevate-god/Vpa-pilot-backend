@@ -14,10 +14,19 @@ Base = declarative_base()
 
 
 # Ensure the async engine uses the async psycopg driver.
-# If the .env uses the sync form (postgresql+psycopg), rewrite it.
+# The async engine REQUIRES an async driver; coerce the two common sync
+# spellings to the async psycopg3 driver:
+#   postgresql://            (bare — Railway/Heroku connection strings)
+#   postgresql+psycopg://    (explicit sync psycopg3)
+# both → postgresql+psycopg_async://
+# (Alembic reads settings.DATABASE_URL separately and forces the *sync*
+#  driver in its own env.py, so this rewrite never affects migrations.)
 _DATABASE_URL = settings.DATABASE_URL
-if _DATABASE_URL and _DATABASE_URL.startswith("postgresql+psycopg://"):
-    _DATABASE_URL = _DATABASE_URL.replace("postgresql+psycopg://", "postgresql+psycopg_async://", 1)
+if _DATABASE_URL:
+    if _DATABASE_URL.startswith("postgresql+psycopg://"):
+        _DATABASE_URL = _DATABASE_URL.replace("postgresql+psycopg://", "postgresql+psycopg_async://", 1)
+    elif _DATABASE_URL.startswith("postgresql://"):
+        _DATABASE_URL = _DATABASE_URL.replace("postgresql://", "postgresql+psycopg_async://", 1)
 
 # Create async engine with psycopg driver
 # Connection pool configured for high-traffic scenarios

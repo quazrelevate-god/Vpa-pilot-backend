@@ -75,4 +75,13 @@ export const api = {
   createManual: (fd: FormData): Promise<EventItem> =>
     fetch("/events/api/events/manual", { method: "POST", credentials: "include", body: fd })
       .then((r) => readJSON<EventItem>(r)),
+
+  // ── web push (event reminders) ──
+  // 503 from vapidPublicKey / subscribe means "push disabled server-side" —
+  // callers should treat it as feature-off and skip the permission dance.
+  vapidPublicKey: () => getJSON<{ public_key: string }>("/events/api/push/vapid-public-key"),
+  pushSubscribe: (body: { endpoint: string; keys: { p256dh: string; auth: string }; device_label?: string }) =>
+    send<{ id: number; is_active: boolean }>("/events/api/push/subscribe", "POST", body),
+  pushUnsubscribe: (endpoint: string) =>
+    send<{ ok: boolean }>("/events/api/push/unsubscribe", "POST", { endpoint }),
 };

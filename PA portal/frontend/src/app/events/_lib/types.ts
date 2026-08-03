@@ -2,9 +2,6 @@
 
 export type EventStatus = "QUEUED" | "PROCESSING" | "READY" | "FAILED";
 
-/** Post-event outcome, set manually by the PA. Null = not marked yet. */
-export type Attendance = "attended" | "not_attended" | null;
-
 export type EventItem = {
   id: number;
   /** note ?? title_en ?? title_ta ?? "Untitled" — plain fallback string.
@@ -38,15 +35,25 @@ export type EventItem = {
   /** Approval gate — false until a reviewer clicks Approve after Minister
    *  confirmation. Only approved events appear on the calendar; unapproved
    *  rows sit in Needs Review. */
+  /** Doubles as the ATTENDED marker under the new semantics: true means the
+   *  reviewer marked the Minister as attending (or already having attended).
+   *  Approve is only possible on today/future events. */
   is_approved: boolean;
   approved_by: string | null;
   approved_at: string | null;
-  attendance: Attendance;
   error_message: string | null;
   /** null for manually-created events with no photo uploaded. */
   image_url: string | null;
   /** false for manually-created events with no photo uploaded. */
   has_photo: boolean;
+  /** True on voice-captured events (has audio_url + transcripts). */
+  has_audio: boolean;
+  audio_url: string | null;
+  /** Sarvam STT source-language transcript (usually Tamil). "" when
+   *  the event wasn't voice-captured. */
+  transcript_ta: string;
+  /** Sarvam STT English translation. */
+  transcript_en: string;
   created_by: string;
   created_at: string | null;
   /** Who last edited this row + when. Null on rows never edited. */
@@ -88,14 +95,22 @@ export type NeedsReviewFeed = { items: EventItem[]; count: number };
 export type EventsOverview = {
   today: number;
   this_week: number;
-  this_month: number;
+  /** Subset of `this_week` — how many are already approved / confirmed. */
+  this_week_confirmed: number;
+  /** Split of the calendar month. Replaces the old ambiguous `this_month`
+   *  (which overlapped with `upcoming`). Disjoint: past + upcoming = total. */
+  past_this_month: number;
+  upcoming_this_month: number;
   upcoming: number;
   awaiting_approval: number;
   needs_attention: number;
   week_range: { start: string; end: string };
   next_events: EventItem[];
   by_type_this_week: { type: string; count: number }[];
-  attendance_this_month: { attended: number; not_attended: number; not_marked: number };
+  attendance_this_month: { attended: number; not_attended: number };
+  /** Rolling 30-day attendance. `rate` null when denominator is zero — UI
+   *  should show a dash rather than dividing. */
+  attendance_last_30d: { attended: number; total: number; rate: number | null };
   volume_last_8_weeks: { week_start: string; count: number }[];
 };
 

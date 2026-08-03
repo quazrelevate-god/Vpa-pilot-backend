@@ -14,6 +14,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.core.database import get_db
 from src.core.events_auth import (
     create_events_cookie, clear_events_cookie,
@@ -229,6 +230,31 @@ async def create_event(
 
 # ── Manual creation (all fields supplied by the user, no OCR) ──────────────────
 
+@router.post("/api/events/voice", status_code=201)
+async def create_voice_event(
+    file: UploadFile = File(...),
+    note: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+    login: Login = Depends(require_events_upload),
+):
+    """Voice-captured event: the PA records a short audio memo and this
+    endpoint transcribes it (Sarvam) + extracts structured event fields
+    (Gemini) synchronously — the caller waits ~3-6s and gets back the
+    fully-populated event, ready to appear in Needs Review for approval.
+
+    Uploader-or-reviewer only (same rule as the photo capture endpoint).
+    """
+    audio_bytes = await file.read()
+    event = await event_service.create_voice_event(
+        db,
+        audio_bytes=audio_bytes,
+        mime_type=file.content_type or "",
+        note=note,
+        created_by=login.login_name,
+    )
+    return event_service.serialize(event)
+
+
 @router.post("/api/events/manual", status_code=201)
 async def create_manual_event(
     # Legacy single-language fields — kept optional so an older client that
@@ -358,3 +384,114 @@ async def events_serve_file(
     from src.api.v1.dashboard import serve_stored_file
 
     return await serve_stored_file(normalized, request)
+
+
+# ── Web push (event reminders) ──────────────────────────────────────────────────
+
+@router.get("/api/push/vapid-public-key")
+async def push_vapid_public_key(
+    login: Login = Depends(require_events_api),
+):
+    """Return the VAPID public key so the browser can subscribe.
+
+    Not a secret — the public half is safe to expose. Returns 503 when the
+    feature is off (VAPID keys not configured on the server), which the
+    frontend uses to skip the whole permission dance gracefully.
+    """
+    from src.services.push_service import vapid_configured
+    if not vapid_configured():
+        return JSONResponse({"error": "push disabled"}, status_code=503)
+    return JSONResponse({"public_key": settings.VAPID_PUBLIC_KEY})
+
+
+@router.post("/api/push/subscribe")
+async def push_subscribe(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    login: Login = Depends(require_events_review),
+):
+    """Register (or refresh) a browser push endpoint against the current user.
+
+    Reviewer-only — reminders are a reviewer-role feature; other events users
+    won't ever hit this because the frontend hides the enable UI for them.
+
+    Idempotent: same `endpoint` → we upsert (replaces keys, flips is_active
+    back on, bumps timestamps). A re-subscribe after a browser reinstall
+    reuses the row; there's never a duplicate.
+
+    Body shape (the browser's PushSubscription.toJSON() output):
+        { endpoint, keys: {p256dh, auth}, device_label? }
+    """
+    from src.services.push_service import vapid_configured
+    if not vapid_configured():
+        return JSONResponse({"error": "push disabled"}, status_code=503)
+
+    endpoint = (payload.get("endpoint") or "").strip()
+    keys     = payload.get("keys") or {}
+    p256dh   = (keys.get("p256dh") or "").strip()
+    auth     = (keys.get("auth") or "").strip()
+    if not endpoint or not p256dh or not auth:
+        raise HTTPException(422, "endpoint + keys.p256dh + keys.auth are required")
+
+    device_label = (payload.get("device_label") or "")[:200] or None
+
+    from sqlalchemy import select as _select
+    from src.models.push_models import PushSubscription
+
+    # Upsert on endpoint (unique). If someone else's account had this
+    # endpoint before (rare — device shared across logins), reassign it.
+    from datetime import datetime as _dt
+    existing = (await db.execute(
+        _select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+    )).scalar_one_or_none()
+    if existing:
+        existing.login_id     = login.id
+        existing.p256dh       = p256dh
+        existing.auth         = auth
+        existing.device_label = device_label
+        existing.is_active    = True
+        existing.last_seen_at = _dt.utcnow()
+        sub = existing
+    else:
+        sub = PushSubscription(
+            login_id=login.id,
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth,
+            device_label=device_label,
+            is_active=True,
+        )
+        db.add(sub)
+    await db.commit()
+    await db.refresh(sub)
+    return {"id": sub.id, "is_active": sub.is_active}
+
+
+@router.post("/api/push/unsubscribe")
+async def push_unsubscribe(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    login: Login = Depends(require_events_api),
+):
+    """Deactivate a push subscription (opt-out from this device).
+
+    We flip is_active=false rather than delete so a re-subscribe from the
+    same endpoint restores the row's created_at + audit trail. Only the
+    subscription's owner can deactivate it.
+    """
+    endpoint = (payload.get("endpoint") or "").strip()
+    if not endpoint:
+        raise HTTPException(422, "endpoint is required")
+
+    from sqlalchemy import select as _select
+    from src.models.push_models import PushSubscription
+    sub = (await db.execute(
+        _select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+    )).scalar_one_or_none()
+    if sub is None:
+        return {"ok": True}  # idempotent — already gone
+    if sub.login_id != login.id:
+        raise HTTPException(403, "not your subscription")
+    sub.is_active = False
+    await db.commit()
+    return {"ok": True}

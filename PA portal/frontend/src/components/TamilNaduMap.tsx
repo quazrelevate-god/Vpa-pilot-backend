@@ -6,9 +6,8 @@ import { useLang } from "@/lib/lang-context";
 
 // Each polygon is coloured, labelled, and filtered by its OWN district key, so
 // the number on a district always equals what clicking it filters to. The
-// bundled boundary set predates the 2004–2020 splits, so 8 newer districts have
-// no polygon; their petitions still appear (and are clickable) in the ranked
-// "Ranked by volume" list beside the map.
+// bundled boundary set covers the current 38 districts (post-2020
+// reorganisation) and its keys mirror DISTRICT_DISPLAY in lib/enums.ts exactly.
 
 export interface DistrictCount { key: string; label: string; count: number }
 interface MapPath { key: string; name: string; d: string; cx: number; cy: number }

@@ -50,6 +50,18 @@ class InvitationEvent(Base):
     image_path = Column(Text,         nullable=False, comment="storage_service key, e.g. events/<hex>.jpg")
     image_mime = Column(VARCHAR(100), nullable=False)
 
+    # ── Voice-capture (a spoken invitation instead of a photo) ──────────────────
+    # image_path stays set to the sentinel ("events/manual") for voice events so
+    # the NOT-NULL constraint doesn't fail; the has_photo/serialize logic picks
+    # audio_path over image_path for these rows. Both null on a normal photo or
+    # manual event; both set only on voice-created events.
+    audio_path    = Column(Text,         nullable=True, comment="storage_service key, e.g. events/<hex>.webm")
+    audio_mime    = Column(VARCHAR(100), nullable=True)
+    # Sarvam STT gives us the source-language transcript plus (in translate
+    # mode) an English rendering — we keep both so the reviewer can audit.
+    transcript_ta = Column(Text,         nullable=True)
+    transcript_en = Column(Text,         nullable=True)
+
     # PA's optional note — takes display priority over the extracted title.
     note       = Column(Text, nullable=True)
 
@@ -78,21 +90,23 @@ class InvitationEvent(Base):
     # Full raw Gemini extraction (audit/debug; columns above are the truth).
     extraction_json = Column(JSONB, nullable=True)
 
-    # ── Attendance (post-event) ─────────────────────────────────────────────────
-    # Simple three-state marker set by the PA after the event: NULL means not
-    # yet reviewed / not applicable; 'attended' / 'not_attended' record the
-    # outcome. Kept as a plain string (not an enum) so a future third state —
-    # e.g. 'sent_representative' — can be added without a schema migration.
-    attendance = Column(VARCHAR(20), nullable=True, comment="attended | not_attended | NULL")
-
-    # ── Approval gate ──────────────────────────────────────────────────────────
-    # Every new event lands with is_approved=False. It stays out of the
-    # calendar view and sits in Needs Review until a reviewer confirms with the
-    # Minister and clicks Approve. Existing rows were backfilled to True in
-    # migration 038 so they stay visible on rollout.
+    # ── Approval / attendance ──────────────────────────────────────────────────
+    # is_approved now doubles as the attendance flag: reviewer approves a
+    # today+ event to mark it as attended (or committed-to-attend). The old
+    # `attendance` column was dropped in migration 040. False = not attended,
+    # True = attended. The calendar shows every event regardless of this flag
+    # (see event_service.list_events); it's a marker, not a visibility gate.
     is_approved  = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     approved_by  = Column(VARCHAR(100), nullable=True, comment="events_session username who approved")
     approved_at  = Column(DateTime, nullable=True)
+
+    # ── Reminder-fired flags (web-push scheduler) ──────────────────────────────
+    # Each is flipped inside the same DB tx that dispatches the corresponding
+    # reminder, so a scheduler-tick crash mid-fan-out can't cause a duplicate
+    # send. See notification_scheduler.py.
+    notified_night_before = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    notified_morning      = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    notified_1h           = Column(Boolean, nullable=False, default=False, server_default=text("false"))
 
     # ── Timestamps / audit ──────────────────────────────────────────────────────
     created_by   = Column(VARCHAR(100), nullable=False, comment="events_session username")

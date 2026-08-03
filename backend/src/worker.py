@@ -37,6 +37,7 @@ import src.models.ai_upload_models          # noqa: F401
 import src.models.qr_models                 # noqa: F401
 import src.models.login_models              # noqa: F401
 import src.models.activity_models           # noqa: F401
+import src.models.proposal_models           # noqa: F401
 
 POLL_SECONDS = 5
 CLEANUP_EVERY_SECONDS = 3600  # prune expired OTP/session rows hourly
@@ -50,6 +51,7 @@ async def main() -> None:
 
     from src.services.ai_upload_service import ai_upload_service
     from src.services.appointment_service import appointment_service
+    from src.services.proposal_service import proposal_service
     from src.services import maintenance_service
 
     last_cleanup = 0.0
@@ -62,6 +64,14 @@ async def main() -> None:
                 if upload_id is None:
                     break
                 await ai_upload_service._process_one(upload_id)
+
+            # 1b) Proposal extractions (own queue, own destination — never a ticket).
+            await proposal_service.recover_stale()
+            while True:  # drain everything currently queued
+                sub_id = await proposal_service._claim_next_queued()
+                if sub_id is None:
+                    break
+                await proposal_service._process_one(sub_id)
 
             # 2) Petition summarisation (durable, restart-safe). recover_stale_
             # summaries re-queues anything a crashed web/worker left PROCESSING.

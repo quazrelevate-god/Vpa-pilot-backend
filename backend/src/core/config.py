@@ -98,6 +98,26 @@ class Settings(BaseSettings):
     EVENTS_USERNAME: str = "events"
     EVENTS_PASSWORD: str = "events123"
 
+    # ── Web push reminders for the events PWA ────────────────────────────────
+    # VAPID key pair identifies THIS server to browser push services (FCM,
+    # Mozilla, Apple). Generate once and never rotate mid-flight — a new
+    # key invalidates every existing subscription.
+    #   $ python -c "from py_vapid import Vapid; v=Vapid(); v.generate_keys(); \
+    #                v.save_key('vapid_private.pem'); v.save_public_key('vapid_public.pem')"
+    # Set VAPID_SUBJECT to a mailto: URL you own — push services require it
+    # so they can contact you about abuse. Feature is off when private key
+    # is missing (subscribe endpoint will still 503 gracefully).
+    VAPID_PUBLIC_KEY:  Optional[str] = None  # base64-url of the raw 65-byte P-256 public point
+    VAPID_PRIVATE_KEY: Optional[str] = None  # base64-url of the 32-byte private scalar (OR a PEM path)
+    VAPID_SUBJECT:     str = "mailto:admin@example.com"
+    # Reminder cadence. Times are IST (the office's local clock). Cron sweeps
+    # every EVENTS_REMINDER_TICK_SECONDS seconds; a reminder fires when the
+    # tick lands inside the ±TICK window of the scheduled minute.
+    EVENTS_REMINDER_NIGHT_BEFORE_HOUR_IST: int = 21   # 9 PM prior day
+    EVENTS_REMINDER_MORNING_HOUR_IST:      int = 9    # 9 AM day of
+    EVENTS_REMINDER_PRE_EVENT_MINUTES:     int = 60   # T-60 min before start_time
+    EVENTS_REMINDER_TICK_SECONDS:          int = 60   # 1-minute sweep
+
     # Frontend Configuration
     FRONTEND_FORM_BASE_URL: str = "http://localhost:8000/form"
 

@@ -10,6 +10,8 @@ import CalendarScreen from "./CalendarScreen";
 import OverviewScreen from "./OverviewScreen";
 import NeedsReviewScreen from "./NeedsReviewScreen";
 import EventPopup from "./EventPopup";
+import RemindersBanner from "./RemindersBanner";
+import { useEventReminders } from "../_lib/reminders";
 
 export type View = "overview" | "calendar" | "review";
 
@@ -24,6 +26,13 @@ export default function EventsApp() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const canReview = roles.includes("event_reviewer");
+
+  // Reminders are a reviewer-role feature: the hook silently subscribes
+  // when permission is already granted, and surfaces the state so the
+  // banner below can prompt the user for a click-driven grant when it's
+  // still `default`. Guard on `ready` so we don't POST /session in a race.
+  const { permission: reminderPermission, enable: enableReminders, busy: reminderBusy } =
+    useEventReminders(ready && canReview);
 
   // Session gate: the middleware already redirects logged-out page loads, but
   // an expired cookie mid-session surfaces here as a 401 → back to login.
@@ -74,6 +83,14 @@ export default function EventsApp() {
   return (
     <div className="flex min-h-screen flex-col">
       <TopBar onLogout={logout} />
+
+      {canReview && (
+        <RemindersBanner
+          permission={reminderPermission}
+          busy={reminderBusy}
+          onEnable={enableReminders}
+        />
+      )}
 
       <main className="flex-1 pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+8px)]">
         {view === "overview" && <OverviewScreen />}

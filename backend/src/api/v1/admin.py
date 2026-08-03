@@ -205,6 +205,26 @@ async def features() -> dict:
     return {"superadmin_ui": settings.FEATURE_SUPERADMIN_UI}
 
 
+# ── /departments — read-only registry for the ticket / review dropdowns ──────
+# Any authenticated user (PA, reviewer, dept staff) can list active departments;
+# they need the current names to assign a ticket or filter their queue. Writes
+# stay under /admin/departments (super-admin only).
+@public_router.get("/departments")
+async def list_active_departments(
+    _current: Login = Depends(get_current_login),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    rows = (await db.execute(
+        select(DepartmentRegistry)
+        .where(DepartmentRegistry.is_active.is_(True))
+        .order_by(DepartmentRegistry.is_builtin.desc(), DepartmentRegistry.display_en)
+    )).scalars().all()
+    return [
+        {"key": r.key, "display_en": r.display_en, "display_ta": r.display_ta}
+        for r in rows
+    ]
+
+
 # ── Users ────────────────────────────────────────────────────────────────────
 
 def _user_row(r: Login) -> UserRow:

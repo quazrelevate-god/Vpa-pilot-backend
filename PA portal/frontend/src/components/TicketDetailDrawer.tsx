@@ -18,8 +18,8 @@ import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR,
   MINISTRY_DISPLAY, CATEGORY_DISPLAY, CATEGORY_DISPLAY_TA, CLOSURE_REASON_DISPLAY,
   closureReasonOptions, priorityOptions,
-  SCHOOL_DEPARTMENTS, SCHOOL_DEPT_LABEL,
 } from "@/lib/enums";
+import { useDepartments, departmentText, type Department } from "@/lib/departments";
 import { useLang } from "@/lib/lang-context";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
@@ -59,9 +59,6 @@ const EVENT_ICON: Record<string, React.ElementType> = {
   department_forwarded: ArrowRight, progress_update: MessageSquare,
   resolved: CheckCircle2, closed: Lock, reopened: RotateCcw,
 };
-
-// Department actions log the department key as the actor — show its full name.
-const prettyActor = (a: string) => SCHOOL_DEPT_LABEL[a] ?? a;
 
 // Tamil Nadu districts (38 as of 2020). Keys mirror the backend District enum
 // exactly — do not localise the key. Display labels are English here; Tamil
@@ -131,6 +128,8 @@ export default function TicketDetailDrawer({
   const [tab, setTab] = useState("details");
   const [activeAction, setActiveAction] = useState<Action | null>(null);
   const { lang, t: tr } = useLang();
+  // Active department registry — DB-backed so Settings additions flow through.
+  const { rows: departments } = useDepartments();
 
   const [commentText, setCommentText] = useState("");
   const attachRef = useRef<HTMLInputElement>(null);
@@ -448,7 +447,11 @@ export default function TicketDetailDrawer({
                               <Select value={effDept || undefined} onValueChange={(v) => setPendingDept(v)} disabled={!canEdit || assigning}>
                                 <SelectTrigger className="h-10"><SelectValue placeholder={tr("tkt.assignPlaceholder")} /></SelectTrigger>
                                 <SelectContent>
-                                  {SCHOOL_DEPARTMENTS.map((d) => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
+                                  {departments.map((d) => (
+                                    <SelectItem key={d.key} value={d.key}>
+                                      {lang === "ta" ? (d.display_ta ?? d.display_en) : d.display_en}
+                                    </SelectItem>
+                                  ))}
                                 </SelectContent>
                               </Select>
                             )}
@@ -695,7 +698,7 @@ export default function TicketDetailDrawer({
                       const Icon = EVENT_ICON[e.event_type] ?? Clock;
                       const last = idx === t.events.length - 1;
                       const title = eventTitle(e.event_type, tr);
-                      const renderedBody = renderEventBody(e);
+                      const renderedBody = renderEventBody(e, departments, lang);
                       return (
                         <li key={e.id} className="flex gap-3">
                           <div className="flex flex-col items-center">
@@ -707,7 +710,7 @@ export default function TicketDetailDrawer({
                           <div className="min-w-0 flex-1 pb-4">
                             <div className="text-sm font-medium text-foreground">{title}</div>
                             <div className="text-[11px] text-muted-foreground">
-                              by <b className="font-semibold text-foreground/80">{prettyActor(e.actor)}</b> · {formatDateTime(e.created_at)}
+                              by <b className="font-semibold text-foreground/80">{departmentText(e.actor, departments, lang, e.actor)}</b> · {formatDateTime(e.created_at)}
                             </div>
                             {renderedBody}
                           </div>
@@ -904,7 +907,11 @@ function ChangeArrow({ from, to, format }: { from: unknown; to: unknown; format?
   );
 }
 
-function renderEventBody(e: { event_type: string; note?: string | null; payload?: Record<string, unknown> | null }) {
+function renderEventBody(
+  e: { event_type: string; note?: string | null; payload?: Record<string, unknown> | null },
+  departments: Department[],
+  lang?: string,
+) {
   const p = e.payload ?? {};
 
   // Status & priority deltas — use payload, not the raw note.
@@ -950,7 +957,7 @@ function renderEventBody(e: { event_type: string; note?: string | null; payload?
         {to && (
           <div className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
             <Building2 className="h-3 w-3" />
-            {SCHOOL_DEPT_LABEL[to] ?? to.replace(/_/g, " ")}
+            {departmentText(to, departments, lang, to.replace(/_/g, " "))}
           </div>
         )}
         {e.note && <p className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/60 p-2 text-sm text-foreground/80">{e.note}</p>}

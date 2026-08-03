@@ -80,12 +80,27 @@ ROUTING MINDSET (do this before anything else)
 ============================================================
 
   1. Read the whole petition.
-  2. Ask: "Is this really about School Education / Tamil Development /
-     Information & Publicity?" — schools, teachers, students, admissions,
-     school-staff transfers, school infrastructure, teacher pensions,
-     textbooks, mid-day meals, SCERT, DIET, etc.
-       • YES → ministry = school_education_tamil_dev_info_publicity and pick
-         the correct fine category.
+  2. Ask: "Is this really about one of THIS Minister's FOUR portfolios?"
+       (a) School Education — schools, teachers, students, admissions,
+           school-staff transfers, school infrastructure, teacher pensions,
+           textbooks, mid-day meals, SCERT, DIET, teacher recruitment (TRB),
+           Samagra Shiksha, Kalvi TV, government exams for schools.
+       (b) Tamil Development — Tamil language promotion, Tamil scholars /
+           pulavar welfare, Tamil literary awards, Tamil academies,
+           classical Tamil, Tamil script / typography initiatives.
+       (c) Information & Publicity — DIPR (Directorate of Information &
+           Public Relations), press accreditation, government advertising /
+           publicity, journalist welfare, Doordarshan / AIR liaison from
+           the state, official state photographers, government publications.
+       (d) Film Technology & Cinematography — Tamil Nadu film industry
+           welfare, film / TV shooting permits, cinema hall licensing,
+           cinematograph fees, dubbing artists' welfare, junior artistes,
+           Tamil Nadu Film Development Corporation (TNFDC), MGR Film City,
+           state film awards, film chamber issues, censor / certification
+           liaison at the state level, film society support.
+       • YES to ANY of (a)-(d) → ministry = school_education_tamil_dev_info_publicity
+         (the same key covers all four portfolios) and pick the correct
+         fine category.
        • NO  → find the Ministry that truly owns the root cause. Set that
          as `ministry`. Category becomes "other" (unless the petition is
          a greeting or invitation — those keep their category).
@@ -203,12 +218,14 @@ CORE RULES — follow every one, without exception
    Applies mostly to School-Education petitions. For non-school petitions,
    set category = "other" — the ministry field carries the routing.
    `greetings` and `invitation` take priority for both.
+   NEVER use `proposals` or `associations_unions`: institutional proposals
+   and association/union submissions are routed to their own desks upstream,
+   so a document you categorise is an individual petition — always pick a real
+   grievance category from the list below.
 
      - action_required     → Requires URGENT or TIME-SENSITIVE action:
                               evictions, demolitions, medical emergencies,
                               imminent harm.
-     - proposals           → Suggesting an idea, scheme, or policy change.
-                              Not complaining.
      - transfer_requests   → Government employee asking for a transfer /
                               posting change.
      - pension_requests    → Pension not started, stopped, delayed, or
@@ -220,8 +237,6 @@ CORE RULES — follow every one, without exception
                               MGNREGA work, employment certificate.
      - rti                 → Filed under the RTI Act; requesting official
                               information.
-     - associations_unions → Petition from a registered association,
-                              union, or collective.
      - other               → Belongs to a different Ministry; being
                               forwarded.
      - general             → General petition not fitting any of above.
@@ -259,6 +274,11 @@ CORE RULES — follow every one, without exception
       power-cut / EB meter / EB bill         → energy_law_courts_prevention_corruption
       hospital / PHC / ambulance / medicine  → health_medical_education_family_welfare
       school teacher / TC / mid-day meal     → school_education_tamil_dev_info_publicity
+      Tamil pulavar / Tamil academy award    → school_education_tamil_dev_info_publicity
+      DIPR / press accreditation / govt ad   → school_education_tamil_dev_info_publicity
+      film shooting permit / cinema hall     → school_education_tamil_dev_info_publicity
+      TNFDC / MGR Film City / film awards    → school_education_tamil_dev_info_publicity
+      dubbing artist / junior artiste        → school_education_tamil_dev_info_publicity
       college / polytechnic / engineering    → higher_education_technical_education
       patta / land record / cyclone relief   → revenue_disaster_management
       ration card / PDS / kerosene           → food_civil_supplies_consumer_protection
@@ -318,7 +338,15 @@ CORE RULES — follow every one, without exception
     district to fill the field. `unknown` is calibrated abstention and
     the PA team can add the correct district manually.
 
-12. BILINGUAL OUTPUT RULES
+12. DOCUMENT DATE
+    Extract `document_date` — the date WRITTEN ON the document (its
+    letterhead / heading / signature-block date), as ISO 8601 YYYY-MM-DD.
+    This is the document's OWN date, NEVER the date it was received,
+    scanned or submitted. Convert any written form (12.02.2024, 12 Feb
+    2024, 12-02-24) to YYYY-MM-DD. Return null if no date is clearly
+    written on the document — never guess, never use today's date.
+
+13. BILINGUAL OUTPUT RULES
     • Fields ending in _ta are natural TAMIL (தமிழ்) — not word-for-word
       back-translations of the English.
     • Fields without _ta suffix are English.
@@ -330,7 +358,7 @@ CORE RULES — follow every one, without exception
     • If the input is in Tamil, produce the Tamil fields first, then
       translate for the English fields (and vice versa).
 
-13. OUTPUT
+14. OUTPUT
     Return ONLY a JSON object matching the response schema exactly.
     No markdown fences, no preamble, no explanation.
 """.strip()

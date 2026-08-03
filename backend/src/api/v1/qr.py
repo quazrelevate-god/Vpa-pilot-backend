@@ -225,7 +225,11 @@ async def verify_qr_code(
         )
 
         session_token = session_data["session_token"]
-        redirect_url = f"{settings.FRONTEND_FORM_BASE_URL}?token={session_token}"
+        # Land on the branded intake fork (petition vs proposal) rather than the
+        # form directly. FRONTEND_FORM_BASE_URL points at ".../form", so its
+        # "/choose" child is same-origin — the token gates both, and "petition"
+        # carries it on to the form.
+        redirect_url = f"{settings.FRONTEND_FORM_BASE_URL}/choose?token={session_token}"
         return RedirectResponse(url=redirect_url, status_code=307)
 
     except ValueError as e:

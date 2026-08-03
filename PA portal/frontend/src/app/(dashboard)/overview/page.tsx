@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Users, Megaphone, Flame, Handshake, RefreshCw, Download, X,
   ChevronLeft, ChevronRight, ArrowUpDown, AudioLines, CheckCircle2,
-  Timer, Gauge, TrendingUp, TrendingDown, Landmark, MapPin, Building2,
+  Timer, Gauge, TrendingUp, TrendingDown, Landmark, MapPin,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar as RBar, PieChart, Pie, Cell,
@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { AppointmentRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
-import { CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, ministryText, districtText, schoolDeptText } from "@/lib/enums";
+import { CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, ministryText, districtText } from "@/lib/enums";
 
 // ── Aurora chart palette (matches globals.css tokens) ────────────────────────
 const C = {
@@ -63,12 +63,9 @@ interface Petition {
   source_label: string; schedule_meeting: boolean; created_at: string | null;
   citizen_ask?: string | null;
 }
-interface DeptPerf {
-  key: string; label: string; open: number; resolved: number; total: number;
-  resolution_rate: number; avg_resolution_days: number | null; on_time_pct: number | null;
-  avg_accept_minutes: number | null; active_load: number; avg_progress: number;
-}
-interface Operations { departments: DeptPerf[]; districts: Bar[] }
+// Department performance lives in /ticket-insights — the overview page only
+// consumes the district roll-up from /api/analytics/operations.
+interface Operations { districts: Bar[] }
 type Filters = { category?: string; priority?: string; ministry?: string; channel?: string; district?: string };
 
 // ── Date presets ─────────────────────────────────────────────────────────────
@@ -121,7 +118,7 @@ export default function OverviewPage() {
   const [sort, setSort] = useState<{ by: string; dir: "asc" | "desc" }>({ by: "created_at", dir: "desc" });
   const [selected, setSelected] = useState<AppointmentRow | null>(null);
 
-  // operations (Phase 2): department performance, districts, recent activity
+  // operations (Phase 2): district roll-up for the choropleth
   const [ops, setOps] = useState<Operations | null>(null);
 
   async function openDetail(id: number) {
@@ -200,10 +197,6 @@ export default function OverviewPage() {
     () => (ops?.districts ?? null)?.map(d => ({ ...d, label: districtText(d.key, lang, d.label) })) ?? null,
     [ops, lang],
   );
-  const localisedDepts = useMemo(
-    () => (ops?.departments ?? null)?.map(d => ({ ...d, label: schoolDeptText(d.key, lang, d.label) })) ?? null,
-    [ops, lang],
-  );
 
   return (
     <>
@@ -251,19 +244,29 @@ export default function OverviewPage() {
             <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>
           )}
 
-          {/* KPI cards */}
+          {/* Headline KPIs — the six numbers the Minister's office scans first */}
           {!data ? (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[116px] rounded-2xl" />)}</div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[120px] w-full rounded-2xl" />)}
+            </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <KpiCard icon={Users} tone="brand" label={t("ov.kpiCitizens")} value={fmt(k!.citizens)} caption={t("ov.capUnique")} />
-              <KpiCard icon={Megaphone} tone="violet" label={t("ov.kpiReceived")} value={fmt(k!.received)}
-                caption={t("ov.capPeriod")} delta={k!.growth_pct} series={data.trend.map(t => t.received)} />
-              <KpiCard icon={Gauge} tone="mint" label={t("ov.kpiResolution")} value={`${k!.resolution_rate}%`}
-                caption={`${fmt(k!.resolved)} ${t("ov.capResolved")}`} series={data.trend.map(t => t.resolved)} seriesColor={C.mint} />
-              <KpiCard icon={Timer} tone="amber" label={t("ov.kpiAvgResponse")} value={fmtDuration(k!.avg_response_hours)} caption={t("ov.capResolvedCases")} />
-              <KpiCard icon={Handshake} tone="brand" label={t("ov.kpiCitizensMet")} value={fmt(k!.meeting_persons)} caption={`${fmt(k!.meetings)} ${t("ov.capAppointments")}`} />
-              <KpiCard icon={CheckCircle2} tone="mint" label={t("ov.kpiOnTime")} value={`${k!.on_time_pct}%`} caption={t("ov.capWithinSla")} />
+              <KpiCard icon={Megaphone} tone="brand" label={t("ov.kpiReceived")}
+                value={fmt(k?.received)} caption={t("ov.capPeriod")}
+                delta={k?.growth_pct ?? null}
+                series={data.trend.map(p => p.received)} seriesColor={C.brand} />
+              <KpiCard icon={Users} tone="violet" label={t("ov.kpiCitizens")}
+                value={fmt(k?.citizens)} caption={t("ov.capUnique")} />
+              <KpiCard icon={CheckCircle2} tone="mint" label={t("ov.kpiResolution")}
+                value={k ? `${k.resolution_rate}%` : "—"}
+                caption={`${fmt(k?.resolved)} ${t("ov.capResolved")}`}
+                series={data.trend.map(p => p.resolved)} seriesColor={C.mint} />
+              <KpiCard icon={Timer} tone="amber" label={t("ov.kpiAvgResponse")}
+                value={fmtDuration(k?.avg_response_hours)} caption={t("ov.capResolvedCases")} />
+              <KpiCard icon={Handshake} tone="brand" label={t("ov.kpiCitizensMet")}
+                value={fmt(k?.meetings)} caption={t("ov.capAppointments")} />
+              <KpiCard icon={Gauge} tone="mint" label={t("ov.kpiOnTime")}
+                value={k ? `${k.on_time_pct}%` : "—"} caption={t("ov.capWithinSla")} />
             </div>
           )}
 
@@ -292,14 +295,6 @@ export default function OverviewPage() {
                 onBar={(key) => toggle("ministry", key)} loading={!data} />
             </Card>
           </div>
-
-          {/* Department performance */}
-          <Card className="overflow-hidden p-0">
-            <div className="border-b border-border p-4">
-              <ChartHead icon={Building2} title={t("ov.deptPerf")} sub={t("ov.deptPerfSub")} />
-            </div>
-            <DeptTable rows={localisedDepts} />
-          </Card>
 
           {/* Geographic district distribution — counts on the map; click to filter */}
           <Card className="p-4">
@@ -566,62 +561,6 @@ function CategoryBars(props: Omit<Parameters<typeof HBars>[0], "color" | "height
 }
 function MinistryBars(props: Omit<Parameters<typeof HBars>[0], "color" | "height">) {
   return <HBars {...props} color="#6D28D9" height={300} />;
-}
-
-// ── Department performance table (Phase 2) ───────────────────────────────────
-function DeptTable({ rows }: { rows: DeptPerf[] | null }) {
-  const { t } = useLang();
-  if (rows == null) return <div className="p-4"><Skeleton className="h-40 w-full" /></div>;
-  if (rows.length === 0) return <div className="grid h-32 place-items-center text-[12px] italic text-muted-foreground">{t("ov.noDepts")}</div>;
-  const rateTone = (r: number) => r >= 80 ? "text-[#0F8B4C]" : r >= 50 ? "text-[#B45309]" : "text-[#C0362C]";
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[860px] text-left text-sm">
-        <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
-          <tr>
-            <th className="px-4 py-2.5">{t("ov.colDept")}</th>
-            <th className="px-3 py-2.5 text-right">{t("ov.colOpen")}</th>
-            <th className="px-3 py-2.5 text-right">{t("ov.colResolvedH")}</th>
-            <th className="px-3 py-2.5 text-right">{t("ov.colResolutionH")}</th>
-            <th className="px-3 py-2.5 text-right">{t("ov.colAvgTime")}</th>
-            <th className="px-3 py-2.5 text-right">{t("ov.colOnTimeH")}</th>
-            <th className="px-3 py-2.5 text-right">{t("ov.colAcceptance")}</th>
-            <th className="px-4 py-2.5">{t("ov.colProgress")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(d => (
-            <tr key={d.key} className="border-t border-border/70 hover:bg-[#EFF3FB]">
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-brand/10 text-brand"><Building2 className="h-3.5 w-3.5" /></span>
-                  <span className="truncate font-medium text-foreground">{d.label}</span>
-                </div>
-              </td>
-              <td className="px-3 py-3 text-right font-mono tabular-nums text-foreground">{d.open}</td>
-              <td className="px-3 py-3 text-right font-mono tabular-nums text-foreground">{d.resolved}</td>
-              <td className={cn("px-3 py-3 text-right font-mono font-semibold tabular-nums", rateTone(d.resolution_rate))}>{d.resolution_rate}%</td>
-              <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{d.avg_resolution_days != null ? `${d.avg_resolution_days}d` : "—"}</td>
-              <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{d.on_time_pct != null ? `${d.on_time_pct}%` : "—"}</td>
-              <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{fmtAccept(d.avg_accept_minutes)}</td>
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-brand" style={{ width: `${d.avg_progress}%` }} /></div>
-                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{d.avg_progress}%</span>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-function fmtAccept(min: number | null): string {
-  if (min == null) return "—";
-  if (min < 60) return `${Math.round(min)}m`;
-  if (min < 1440) return `${(min / 60).toFixed(1)}h`;
-  return `${(min / 1440).toFixed(1)}d`;
 }
 
 // ── District leaders — compact text ranking beside the map (Phase 2) ─────────

@@ -361,6 +361,35 @@ class AppointmentService:
 
         return {"verified": True, "message": "OTP verified successfully."}
 
+    async def consume_verified_otp(self, mobile_number: str, db: AsyncSession) -> bool:
+        """
+        Confirm the mobile has an already-verified OTP and CONSUME it (mark
+        is_used) so a session-less form submission can only go through once per
+        verification. Binds the /proposal submit to a completed OTP without
+        re-entering the code.
+
+        Uses a 30-minute grace window from issue (not the 3-minute code-entry
+        expiry): once the code is verified the phone is proven, and the user may
+        still be uploading documents when they hit submit. Raises 400 if there is
+        no verified, unused OTP for the number within that window.
+        """
+        cutoff = datetime.utcnow() - timedelta(minutes=30)
+        stmt = select(OTPVerification).where(
+            OTPVerification.mobile_number == mobile_number,
+            OTPVerification.is_verified == True,   # noqa: E712
+            OTPVerification.is_used == False,       # noqa: E712
+            OTPVerification.created_at > cutoff,
+        ).order_by(OTPVerification.created_at.desc()).limit(1)
+        otp_record = (await db.execute(stmt)).scalar_one_or_none()
+        if not otp_record:
+            raise HTTPException(
+                status_code=400,
+                detail="Please verify your mobile number with the OTP before submitting.",
+            )
+        otp_record.is_used = True
+        await db.commit()
+        return True
+
     async def create_otp_request(
         self,
         session_token: UUID,
@@ -513,7 +542,100 @@ class AppointmentService:
                 status_code=500,
                 detail=f"Failed to create OTP request: {str(e)}"
             )
-    
+
+    async def create_open_otp_request(
+        self,
+        mobile_number: str,
+        db: AsyncSession,
+    ) -> Dict[str, Any]:
+        """
+        Send an OTP for a *session-less* flow — the public /proposal form, which is
+        shared as a plain link and is not reached only via a QR gatekeeper session.
+
+        How it differs from create_otp_request:
+          - The caller passes no session_token. Because otp_verifications.session_token
+            is a NOT-NULL FK to gatekeeper, we mint a lightweight gatekeeper row here
+            (device_fingerprint="proposal-web") so the FK stays satisfied — no schema
+            change, and verify_otp() (which keys off mobile_number only) works as-is.
+          - No "one petition per phone per day" guard: that is citizen-petition logic;
+            an institutional proposal is not a petition.
+          - A short per-number cooldown mitigates SMS spamming even when the global
+            rate-limit switch (settings.RATE_LIMIT_ENABLED) is off.
+
+        Uses the same APM SMS gateway as the citizen flow; in dummy mode (no
+        APM_SMS_API_KEY) it generates the code locally and returns it in `otp_code`.
+        """
+        import uuid
+
+        current_time = datetime.utcnow()
+
+        # Validate: a 10-digit Indian mobile (tolerate an unstripped 91 prefix).
+        digits = re.sub(r"\D", "", mobile_number or "")
+        if len(digits) == 12 and digits.startswith("91"):
+            digits = digits[2:]
+        if not re.fullmatch(r"[6-9]\d{9}", digits):
+            raise HTTPException(status_code=400, detail="Enter a valid 10-digit mobile number.")
+        mobile_number = digits
+
+        # Cooldown: refuse a resend if a live OTP for this number was issued <30s ago.
+        recent = await db.scalar(
+            select(func.count()).select_from(OTPVerification).where(
+                OTPVerification.mobile_number == mobile_number,
+                OTPVerification.is_used == False,
+                OTPVerification.expires_at > current_time,
+                OTPVerification.created_at > current_time - timedelta(seconds=30),
+            )
+        )
+        if recent and recent > 0:
+            raise HTTPException(
+                status_code=429,
+                detail="An OTP was just sent to this number. Please wait a moment before requesting another.",
+            )
+
+        try:
+            # Mint a lightweight gatekeeper session so the OTP FK is satisfied.
+            gatekeeper = GatekeeperSession(
+                session_token=uuid.uuid4(),
+                device_fingerprint="proposal-web",
+                expires_at=current_time + timedelta(minutes=self.OTP_EXPIRY_MINUTES),
+            )
+            db.add(gatekeeper)
+            await db.flush()  # gatekeeper row must exist before the FK insert
+
+            # APM generates + sends the code and returns it; dummy mode → local.
+            otp_from_api = await self._send_otp_sms(mobile_number)
+            dummy_mode = otp_from_api is None
+            otp_code = self._generate_otp_code() if dummy_mode else otp_from_api
+            if dummy_mode:
+                logger.info(f"[PROPOSAL OTP DUMMY] APM not configured. OTP for {mobile_number}: {otp_code}")
+
+            expires_at = current_time + timedelta(minutes=self.OTP_EXPIRY_MINUTES)
+            db.add(OTPVerification(
+                session_token=gatekeeper.session_token,
+                mobile_number=mobile_number,
+                hashed_otp_code=self._hash_otp_code(otp_code),
+                attempts_count=0,
+                is_used=False,
+                created_at=current_time,
+                expires_at=expires_at,
+            ))
+            await db.commit()
+
+            masked_mobile = "*" * (len(mobile_number) - 4) + mobile_number[-4:]
+            return {
+                "message": "OTP sent successfully" if not dummy_mode else "OTP generated (dummy mode — SMS not configured)",
+                "expires_at": expires_at.isoformat(),
+                "mobile_number": masked_mobile,
+                "expires_in_seconds": self.OTP_EXPIRY_MINUTES * 60,
+                "otp_code": otp_code if dummy_mode else None,
+            }
+        except HTTPException:
+            await db.rollback()
+            raise
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to send OTP: {str(e)}")
+
     def _determine_attachment_type(self, mime_type: str) -> Optional[str]:
         """
         Determine attachment type category from MIME type.
