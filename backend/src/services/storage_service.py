@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -16,8 +17,16 @@ from src.core.config import settings
 logger = logging.getLogger("storage")
 
 
+@lru_cache(maxsize=1)
 def _get_client():
-    """Return a boto3 S3 client pointed at MinIO, or None if not configured."""
+    """Return a boto3 S3 client pointed at MinIO, or None if not configured.
+
+    Memoized (T-1): the client is thread-safe and construction is lazy (no
+    network), so building it once and reusing it saves re-parsing config and
+    re-negotiating TLS on every save/get/delete — a real p95 win on the file
+    server, which fetches many objects per page. Settings don't change at
+    runtime, so a size-1 cache is correct.
+    """
     endpoint = getattr(settings, "FILE_STORAGE_ENDPOINT", None)
     if not endpoint:
         return None
