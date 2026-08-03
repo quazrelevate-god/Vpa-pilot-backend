@@ -13,6 +13,7 @@ from starlette.datastructures import MutableHeaders
 
 from src.core.config import settings
 from src.core.logging_config import setup_logging, init_sentry
+from src.core.request_context import request_id_var, new_request_id, incoming_request_id
 
 setup_logging()
 init_sentry()
@@ -104,11 +105,18 @@ class _SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Correlate the request across its log lines. Honour an inbound
+        # X-Request-ID (e.g. stamped by nginx) or mint one; expose it on the
+        # response and in every log record for this request (see request_context).
+        rid = incoming_request_id(scope) or new_request_id()
+        request_id_var.set(rid)
+
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
                 headers["X-Content-Type-Options"] = "nosniff"
                 headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                headers["X-Request-ID"] = rid
                 if settings.COOKIE_SECURE:  # only meaningful over HTTPS
                     headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             await send(message)

@@ -9,6 +9,7 @@ import logging
 import sys
 
 from src.core.config import settings
+from src.core.request_context import RequestIdFilter
 
 _CONFIGURED = False
 
@@ -20,9 +21,12 @@ def setup_logging() -> None:
     level = logging.DEBUG if settings.DEBUG else logging.INFO
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+        "%(asctime)s %(levelname)-7s %(name)s [%(request_id)s] | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     ))
+    # Stamp the per-request correlation id (default "-") onto every record so
+    # the [%(request_id)s] field always resolves.
+    handler.addFilter(RequestIdFilter())
     root = logging.getLogger()
     root.setLevel(level)
     # Avoid duplicate handlers on reload
