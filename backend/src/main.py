@@ -246,6 +246,29 @@ async def _stop_event_reminder_scheduler():
         _reminder_task = None
 
 
+# Module-level handles + stop signals so shutdown can drain these loops cleanly
+# instead of letting SIGTERM cancel them mid-sleep (which leaks the open DB
+# session and spews CancelledError). Mirrors _reminder_task above.
+_auto_reschedule_task = None
+_auto_reschedule_stop = None
+_courtesy_stt_task = None
+_courtesy_stt_stop = None
+
+
+async def _stoppable_shutdown(task, stop, log_name):
+    """Signal a loop to exit, await it briefly, cancel if it overruns."""
+    import asyncio as _asyncio
+    if stop is not None:
+        stop.set()
+    if task is not None:
+        try:
+            await _asyncio.wait_for(task, timeout=5)
+        except _asyncio.TimeoutError:
+            task.cancel()
+        except Exception:
+            logging.getLogger(log_name).exception("%s shutdown noisy", log_name)
+
+
 @app.on_event("startup")
 async def _start_auto_reschedule_loop():
     """
@@ -257,6 +280,8 @@ async def _start_auto_reschedule_loop():
     from src.services.dashboard_service import auto_reschedule_stale_scheduled
     from datetime import datetime, timedelta
     import asyncio as _asyncio
+    global _auto_reschedule_task, _auto_reschedule_stop
+    _auto_reschedule_stop = _asyncio.Event()
     log = logging.getLogger("auto_reschedule")
 
     async def _sweep_once():
@@ -272,14 +297,26 @@ async def _start_auto_reschedule_loop():
         # Immediate sweep on boot — a crash right after midnight would otherwise
         # leave yesterday's rows sitting on the Scheduled tab until tomorrow.
         await _sweep_once()
-        while True:
+        while not _auto_reschedule_stop.is_set():
             now = datetime.now()
-            # Next fire: 00:05 tomorrow.
+            # Next fire: 00:05 tomorrow. Sleep on the stop event so shutdown
+            # wakes us immediately instead of after the (up to 24h) delay.
             target = (now + timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
-            await _asyncio.sleep(max(60, (target - now).total_seconds()))
-            await _sweep_once()
+            delay = max(60, (target - now).total_seconds())
+            try:
+                await _asyncio.wait_for(_auto_reschedule_stop.wait(), timeout=delay)
+                break  # stop signalled
+            except _asyncio.TimeoutError:
+                await _sweep_once()
 
-    _asyncio.create_task(_loop())
+    _auto_reschedule_task = _asyncio.create_task(_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_auto_reschedule_loop():
+    global _auto_reschedule_task
+    await _stoppable_shutdown(_auto_reschedule_task, _auto_reschedule_stop, "auto_reschedule")
+    _auto_reschedule_task = None
 
 
 @app.on_event("startup")
@@ -294,6 +331,8 @@ async def _start_courtesy_transcript_loop():
     """
     from src.services.appointment_service import appointment_service
     import asyncio as _asyncio
+    global _courtesy_stt_task, _courtesy_stt_stop
+    _courtesy_stt_stop = _asyncio.Event()
     log = logging.getLogger("courtesy_stt")
 
     async def _drain_once():
@@ -308,11 +347,21 @@ async def _start_courtesy_transcript_loop():
         # Immediate sweep on boot so a crash mid-transcription doesn't wait
         # 5 minutes to recover.
         await _drain_once()
-        while True:
-            await _asyncio.sleep(5 * 60)
-            await _drain_once()
+        while not _courtesy_stt_stop.is_set():
+            try:
+                await _asyncio.wait_for(_courtesy_stt_stop.wait(), timeout=5 * 60)
+                break  # stop signalled
+            except _asyncio.TimeoutError:
+                await _drain_once()
 
-    _asyncio.create_task(_loop())
+    _courtesy_stt_task = _asyncio.create_task(_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_courtesy_transcript_loop():
+    global _courtesy_stt_task
+    await _stoppable_shutdown(_courtesy_stt_task, _courtesy_stt_stop, "courtesy_stt")
+    _courtesy_stt_task = None
 
 
 @app.get("/health", tags=["Health Check"])
