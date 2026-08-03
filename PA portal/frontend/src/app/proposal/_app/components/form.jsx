@@ -210,11 +210,14 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
     } ${error ? 'border-red-400' : 'border-white/25 focus:border-gold-500'}`
 
   return (
-    <div className="fixed inset-0 z-50 bg-ink-950 text-white overflow-hidden" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 form-aura" aria-hidden="true" />
+    <div className="fixed inset-0 z-50 bg-ink-950 text-white flex flex-col overflow-hidden" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 form-aura pointer-events-none" aria-hidden="true" />
 
       {/* ---------- top bar ---------- */}
-      <div className="absolute top-0 inset-x-0 z-20 px-4 sm:px-6 lg:px-10 pt-4 sm:pt-5">
+      {/* In normal flow (shrink-0) with an OPAQUE backdrop, so question cards
+          scroll cleanly UNDERNEATH it instead of bleeding through — the header
+          no longer overlaps the content on short mobile viewports. */}
+      <div className="relative z-20 shrink-0 bg-ink-950/95 backdrop-blur-md px-4 sm:px-6 lg:px-10 pt-4 sm:pt-5 pb-3 sm:pb-4">
         <div className="flex justify-between items-center gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <span className="font-disp font-bold text-[14px] sm:text-[15px] whitespace-nowrap">நம் குரல்</span>
@@ -254,9 +257,11 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
       </div>
 
       {/* ---------- stage ---------- */}
-      {/* items-start + my-auto centres the card but lets a tall one scroll
-          instead of being clipped at the top */}
-      <div ref={stageRef} className="h-full overflow-y-auto flex items-start justify-center px-5 sm:px-6 lg:px-[8vw] pt-28 sm:pt-36 pb-40 sm:pb-36">
+      {/* flex-1 + min-h-0 makes THIS the only scroll region, bounded between the
+          top bar and the kural rail. items-start + my-auto centres a short card
+          yet lets a tall one (e.g. the contact step) scroll from the top, so its
+          Submit button is always reachable on small screens. */}
+      <div ref={stageRef} className="relative z-10 flex-1 min-h-0 overflow-y-auto flex items-start justify-center px-5 sm:px-6 lg:px-[8vw] py-7 sm:py-10">
 
         {phase === 'form' && (
           <div className={`w-full max-w-3xl my-auto qcard ${anim}`}>
@@ -430,7 +435,7 @@ function KuralRail({ kural, keyed, ta, t }) {
   // public/brand/valluvar.* (transparent) overrides the drawn icon when present
   const valluvarImg = useBrandFile('valluvar')
   return (
-    <div className="absolute bottom-0 inset-x-0 border-t border-white/15 bg-ink-900/85 backdrop-blur-md px-4 sm:px-6 lg:px-10 py-3.5 sm:py-4">
+    <div className="relative z-20 shrink-0 border-t border-white/15 bg-ink-900/85 backdrop-blur-md px-4 sm:px-6 lg:px-10 py-3 sm:py-4">
       <div key={keyed} className="fact-in flex items-start gap-3 sm:gap-4 max-w-5xl">
         {valluvarImg ? (
           <span className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 grid place-items-center" title={ta ? 'திருவள்ளுவர்' : 'Thiruvalluvar'}>

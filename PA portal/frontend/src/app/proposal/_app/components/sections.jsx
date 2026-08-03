@@ -121,11 +121,11 @@ export function Hero() {
           <ClickHint />
         </RevealItem>
 
-        <RevealItem className="mt-9 sm:mt-11 pt-5 border-t border-white/25 max-w-2xl hidden md:block">
-          <p className="font-disp text-haze-100 text-[15px] leading-loose">
-            "எப்பொருள் யார்யார்வாய்க் கேட்பினும் அப்பொருள்<br />மெய்ப்பொருள் காண்பது அறிவு" · திருக்குறள் 423
+        <RevealItem className="mt-7 sm:mt-11 pt-4 sm:pt-5 border-t border-white/25 max-w-2xl">
+          <p className="font-disp text-haze-100 text-[12.5px] sm:text-[15px] leading-loose">
+            "எப்பொருள் யார்யார்வாய்க் கேட்பினும் அப்பொருள்<br className="hidden sm:block" /> மெய்ப்பொருள் காண்பது அறிவு" · திருக்குறள் 423
           </p>
-          <p className="text-white/65 text-[12.5px] italic mt-1.5">
+          <p className="text-white/65 text-[11.5px] sm:text-[12.5px] italic mt-1.5">
             {t({ en: 'To discern the truth in everything, by whomsoever spoken. That is wisdom. Tirukkural 423', ta: 'யார் சொன்னாலும் அதில் உள்ள உண்மையை காண்பதே அறிவு.' })}
           </p>
         </RevealItem>
