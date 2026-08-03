@@ -49,6 +49,12 @@ const nextConfig = {
       { source: "/api/v1/me", destination: `${API_BASE}/api/v1/me` },
       { source: "/api/v1/features", destination: `${API_BASE}/api/v1/features` },
       { source: "/api/v1/departments", destination: `${API_BASE}/api/v1/departments` },
+      // Citizen appointment + OTP flow mounts on bare /api/v1 in FastAPI. These
+      // MUST precede the generic /api/:path* rule below, which would otherwise
+      // rewrite them to /dashboard/api/* → 404 the moment any React surface
+      // calls them (they're only reached via the Jinja form today).
+      { source: "/api/v1/otp/:path*", destination: `${API_BASE}/api/v1/otp/:path*` },
+      { source: "/api/v1/appointments/:path*", destination: `${API_BASE}/api/v1/appointments/:path*` },
       { source: "/api/files/:path*", destination: `${API_BASE}/dashboard/api/files/:path*` },
       { source: "/api/:path*", destination: `${API_BASE}/dashboard/api/:path*` },
       // Department workspace API (its own auth cookie, separate from the PA portal).
