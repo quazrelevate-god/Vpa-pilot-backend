@@ -584,6 +584,10 @@ async def create_dept_account(
     # Attach the plaintext initial password to the response body so the super
     # admin can hand it to the department. Ephemeral: never stored, never
     # retrievable later.
+    # SECURITY (P1-11): this response body contains a plaintext credential.
+    # NEVER logger.*() a /api/v1/admin/* response, and never echo `initial`
+    # into a URL/query string. If a "resend" flow is ever needed, issue a
+    # signed one-time reveal URL rather than returning the password again.
     return {**DeptAccountRow.model_validate(row, from_attributes=True).model_dump(),
             "initial_password": initial}
 
