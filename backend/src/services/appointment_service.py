@@ -291,7 +291,6 @@ class AppointmentService:
         if phone.startswith("91") and len(phone) == 12:
             phone = phone[2:]
         
-        # TODO: Replace with dedicated status update template
         message = f"Dear {citizen_name}, your appointment status has been updated to {new_status}. Token: {token_number}."
         
         try:

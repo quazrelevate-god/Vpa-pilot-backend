@@ -388,32 +388,7 @@ async def submit_appointment(
         )
 
 
-@router.get(
-    "/appointments/{appointment_id}",
-    summary="Get Appointment Details",
-    description="Retrieve appointment details by ID (for future use)"
-)
-async def get_appointment(
-    appointment_id: int,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Retrieve appointment details by ID.
-    
-    This endpoint is a placeholder for future functionality to query
-    appointment status, view attachments, or update appointment details.
-    
-    Args:
-        appointment_id: Appointment ID
-        db: Injected database session
-    
-    Returns:
-        Dict: Appointment details
-    
-    TODO: Implement full appointment retrieval logic
-    """
-    # Placeholder implementation
-    return {
-        "message": "Appointment retrieval endpoint - to be implemented",
-        "appointment_id": appointment_id
-    }
+# NOTE: a GET /appointments/{id} placeholder used to live here — it was
+# unauthenticated and returned fake {"message": "to be implemented"} data with
+# no real lookup. Removed as dead code (P2). Reintroduce with proper auth +
+# real retrieval if/when a client actually needs appointment-detail-by-id.
