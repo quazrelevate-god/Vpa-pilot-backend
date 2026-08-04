@@ -22,6 +22,7 @@ import {
   type DeptAccountRow, type DepartmentRow,
 } from "../_lib/adminApi";
 import { useLang } from "@/lib/lang-context";
+import { invalidateDepartments } from "@/lib/departments";
 
 export default function DeptAccountsTab() {
   const { lang } = useLang();
@@ -140,6 +141,7 @@ export default function DeptAccountsTab() {
                     toast.success("Account deleted");
                     setConfirmDelete(null);
                     load();
+                    invalidateDepartments();   // refresh the ticket assign-to dropdown live
                   } catch (e) {
                     toast.error("Delete failed", { description: (e as Error).message });
                   }
@@ -160,6 +162,7 @@ export default function DeptAccountsTab() {
             setShowCreate(false);
             setReveal({ username: row.username, password: initialPassword, department: row.department });
             load();
+            invalidateDepartments();   // refresh the ticket assign-to dropdown live
           }}
         />
       </Dialog>

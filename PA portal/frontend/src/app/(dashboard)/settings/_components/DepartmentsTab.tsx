@@ -16,6 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useLang } from "@/lib/lang-context";
+import { invalidateDepartments } from "@/lib/departments";
 import {
   listDepartments, createDepartment, updateDepartment, deleteDepartment,
   type DepartmentRow,
@@ -51,6 +52,7 @@ export default function DepartmentsTab() {
             onSubmit={async (values) => {
               try {
                 await createDepartment(values);
+                invalidateDepartments();   // live-refresh the ticket assign-to dropdown
                 toast.success(t("set.deptAddedToast"));
                 setOpenCreate(false);
                 load();
@@ -100,6 +102,7 @@ export default function DepartmentsTab() {
                     onClick={async () => {
                       try {
                         await updateDepartment(d.id, { is_active: !d.is_active });
+                        invalidateDepartments();   // enable/disable changes the assignable list
                         toast.success(d.is_active ? t("set.disabledTag") : t("set.enabledTag"));
                         load();
                       } catch (e) {
@@ -143,6 +146,7 @@ export default function DepartmentsTab() {
                 onClick={async () => {
                   try {
                     await deleteDepartment(confirmDelete.id);
+                    invalidateDepartments();   // live-refresh the ticket assign-to dropdown
                     toast.success(t("set.deptDeletedToast"));
                     setConfirmDelete(null);
                     load();
@@ -167,6 +171,7 @@ export default function DepartmentsTab() {
             onSubmit={async (values) => {
               try {
                 await updateDepartment(editing.id, values);
+                invalidateDepartments();   // label/email edits show in the assign dropdown
                 toast.success(t("set.saved"));
                 setEditing(null);
                 load();
