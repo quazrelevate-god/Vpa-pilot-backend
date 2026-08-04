@@ -22,7 +22,7 @@ from google import genai
 from google.genai import types
 
 from src.models.proposal_extraction import ProposalExtraction
-from src.prompts import PROPOSAL_EXTRACTION_PROMPT
+from src.prompts.proposal_extraction import PROPOSAL_EXTRACTION_PROMPT
 # Reuse the summariser's model chain + retry tuning so behaviour stays consistent.
 from src.services.summarisation import (
     PRIMARY_MODEL, FALLBACK_MODEL, FALLBACK_MODEL2,

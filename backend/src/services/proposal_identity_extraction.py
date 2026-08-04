@@ -17,7 +17,7 @@ from google import genai
 from google.genai import types
 
 from src.models.proposal_identity import ProposalIdentity
-from src.prompts import PROPOSAL_IDENTITY_PROMPT
+from src.prompts.proposal_identity import PROPOSAL_IDENTITY_PROMPT
 from src.services.summarisation import (
     PRIMARY_MODEL, FALLBACK_MODEL, FALLBACK_MODEL2,
     SERVICE_TIER, _TRANSIENT_MARKERS,

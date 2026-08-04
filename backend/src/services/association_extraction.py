@@ -19,7 +19,7 @@ from google import genai
 from google.genai import types
 
 from src.models.association_extraction import AssociationExtraction
-from src.prompts import ASSOCIATION_EXTRACTION_PROMPT
+from src.prompts.association_extraction import ASSOCIATION_EXTRACTION_PROMPT
 from src.services.summarisation import (
     PRIMARY_MODEL, FALLBACK_MODEL, FALLBACK_MODEL2,
     SERVICE_TIER, _TRANSIENT_MARKERS,
