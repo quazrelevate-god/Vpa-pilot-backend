@@ -73,6 +73,17 @@ class Settings(BaseSettings):
     # fastest, most reliable latency (requires a paid/billed project).
     GEMINI_SERVICE_TIER: str = "priority"
 
+    # ── Vertex AI (preferred; falls back to the direct Gemini API on error) ──
+    # When VERTEX_AI_ENABLED=true, PetitionExtractionService routes calls to
+    # Vertex first (data-residency, VPC-SC, IAM audit) and only falls through
+    # to the api_key-backed Gemini path if Vertex fails on every configured
+    # model. Set the JSON path or leave to the ADC/GOOGLE_APPLICATION_CREDENTIALS
+    # env var. Region should be an asia-south1 for TN data residency.
+    VERTEX_AI_ENABLED: bool = False
+    VERTEX_PROJECT_ID: Optional[str] = None
+    VERTEX_LOCATION: str = "asia-south1"
+    VERTEX_SERVICE_ACCOUNT_JSON: Optional[str] = None
+
     # Sarvam AI Configuration — Indian-language speech-to-text (Tamil-first).
     # Used by src/services/stt_service.py.  Get a key at https://www.sarvam.ai/
     SARVAM_API_KEY: Optional[str] = None
