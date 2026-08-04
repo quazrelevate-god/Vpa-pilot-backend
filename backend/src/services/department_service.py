@@ -41,6 +41,7 @@ class TicketEventType(str, Enum):
     PROGRESS_UPDATE      = "progress_update"
     RESOLVED             = "resolved"
 from src.models.school_department import SchoolDepartment, department_label
+from src.models.registry_models import DepartmentRegistry
 from src.core.utils import utc_iso
 
 
@@ -65,11 +66,30 @@ def _event(db: AsyncSession, ticket_id: int, event_type: str, actor: str,
     ))
 
 
-def _valid_department(value: str) -> str:
-    try:
-        return SchoolDepartment(value).value
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Unknown department '{value}'.")
+async def valid_department(db: AsyncSession, value: str) -> str:
+    """Validate a department key against the DB-backed registry.
+
+    Previously this called ``SchoolDepartment(value)`` — the *hardcoded* enum.
+    That silently broke the ticket-assign flow the moment Settings > Dept
+    Accounts added a custom department: the frontend read from DB (11 rows),
+    the user picked the new one, the write side rejected it as "Unknown".
+    Now the check hits ``department_registry`` (source of truth for both read
+    and write) and accepts any active row.
+    """
+    if not (value or "").strip():
+        raise HTTPException(status_code=400, detail="Department is required.")
+    exists = await db.scalar(
+        select(DepartmentRegistry.key)
+        .where(DepartmentRegistry.key == value)
+        .where(DepartmentRegistry.is_active.is_(True))
+    )
+    if exists is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown or inactive department '{value}'. "
+                   "Add it under Settings > Departments, or activate it, first.",
+        )
+    return value
 
 
 # ── PA (monitoring) actions ───────────────────────────────────────────────────
@@ -82,7 +102,7 @@ async def route_to_department(db: AsyncSession, ticket_id: int, department: str,
     the row. The department accepts to move it to IN_PROGRESS. AWAITING_DEPARTMENT
     is kept in the enum for backward compat but new assigns don't use it.
     """
-    dept = _valid_department(department)
+    dept = await valid_department(db, department)
     t = await _get(db, ticket_id)
     prev = t.department
     t.department = dept
@@ -200,7 +220,7 @@ async def dept_forward(db: AsyncSession, ticket_id: int, department: str,
     """Department forwards to another department — must re-accept there."""
     if not (reason or "").strip():
         raise HTTPException(status_code=400, detail="A reason is required to forward.")
-    to_dept = _valid_department(to_department)
+    to_dept = await valid_department(db, to_department)
     if to_dept == department:
         raise HTTPException(status_code=400, detail="Cannot forward to the same department.")
     t = await _get_owned(db, ticket_id, department)

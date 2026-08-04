@@ -26,6 +26,7 @@ from src.core.dept_auth import require_department, create_dept_session_cookie, c
 from src.core.rate_limit import limiter
 from src.models.department_account import DepartmentAccount, verify_password, needs_rehash, hash_password
 from src.models.school_department import SchoolDepartment, department_label, SCHOOL_DEPARTMENT_DISPLAY
+from src.models.registry_models import DepartmentRegistry
 from src.services import department_service
 from src.services.storage_service import save_file
 
@@ -36,10 +37,23 @@ _ALLOWED_MIMES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 _MAX_BYTES = 15 * 1024 * 1024
 
 
-# ── Reference (both panels use this to populate the department dropdown) ───────
+# ── Reference (dept-workspace "forward to another dept" dropdown) ────────────
+# DB-backed for parity with the PA-portal /api/v1/departments endpoint. Using
+# the SchoolDepartment enum here silently returned the ORIGINAL 10 hardcoded
+# departments, so a dept officer trying to forward to a Settings-added dept
+# either didn't see it in the picker (this endpoint) OR the write side rejected
+# it as "Unknown" (department_service._valid_department pre-fix).
 @dept_router.get("/api/departments")
-async def list_departments():
-    return JSONResponse([{"key": d.value, "label": department_label(d.value)} for d in SchoolDepartment])
+async def list_departments(db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(DepartmentRegistry)
+        .where(DepartmentRegistry.is_active.is_(True))
+        .order_by(DepartmentRegistry.is_builtin.desc(), DepartmentRegistry.display_en)
+    )).scalars().all()
+    return JSONResponse([
+        {"key": r.key, "label": r.display_en, "label_ta": r.display_ta}
+        for r in rows
+    ])
 
 
 # ── Authenticated file serving for department users ────────────────────────────

@@ -37,6 +37,7 @@ from src.models.login_models import (
 )
 from src.models.registry_models import DepartmentRegistry, MinistryRegistry, VenueRegistry
 from src.models.department_account import DepartmentAccount, hash_password as dept_hash
+from src.services.department_service import valid_department
 
 
 router = APIRouter(
@@ -297,6 +298,9 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db)):
     if body.role == ROLE_DEPT_OFFICER:
         if not body.department:
             raise HTTPException(422, "A department is required for a department officer.")
+        # Validate against the DB registry so a typo (or an inactive dept)
+        # doesn't create an orphan account no ticket can ever route to.
+        await valid_department(db, body.department)
         scope = {"department": body.department}
 
     capability_roles = _validate_capability_roles(body.capability_roles)
@@ -365,6 +369,8 @@ async def update_user(
         dept = body.department if body.department is not None else (row.scope or {}).get("department")
         if not dept:
             raise HTTPException(422, "A department is required for a department officer.")
+        # Same DB-backed validation as create — reject typos/inactive depts.
+        await valid_department(db, dept)
         row.scope = {"department": dept}
     else:
         row.scope = {}
@@ -559,6 +565,9 @@ async def create_dept_account(
     body: DeptAccountCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    # DB-backed validation — a dept-account for a non-existent department key
+    # is an orphan no ticket can ever route to. Reject at the door.
+    await valid_department(db, body.department)
     # One account per department — enforced by the unique index on department.
     existing = await db.scalar(
         select(DepartmentAccount).where(DepartmentAccount.department == body.department)
