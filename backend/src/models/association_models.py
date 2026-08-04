@@ -66,8 +66,16 @@ class AssociationSubmission(Base):
     reviewed_at   = Column(DateTime,     nullable=True)
     decision_note = Column(Text,         nullable=True)
 
+    # ── Provenance (set only by the petition→association migration tooling) ─────
+    # appointment.id this association was migrated from. Plain BigInteger, NOT a
+    # FK: association_submissions stays isolated and the source appointment is
+    # hard-deleted after migration — an FK would block that or null this out.
+    # NULL for associations created directly by the intake router.
+    source_appointment_id = Column(BigInteger, nullable=True)
+
     __table_args__ = (
         Index("ix_association_submissions_status", "status"),
         Index("ix_association_submissions_created", "created_at"),
         Index("ix_association_submissions_category", "category"),
+        Index("ix_association_submissions_source_appointment_id", "source_appointment_id"),
     )

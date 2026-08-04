@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CalendarDays, ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Clock, Ticket, Landmark, UserPlus, Sparkles, ClipboardCheck, QrCode,
-  BarChart3, Lightbulb,
+  BarChart3, Lightbulb, Users2,
   Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -51,6 +51,7 @@ const NAV_ITEMS: { href: string; tKey: string; icon: typeof CalendarDays; badge?
   { href: "/appointments",  tKey: "nav.appointments", icon: CalendarDays },
   { href: "/ai-review",     tKey: "nav.aiReview",     icon: ClipboardCheck, badge: "awaitingReview", badgeTone: "red" },
   { href: "/proposal-review", tKey: "nav.proposalReview", icon: Lightbulb },
+  { href: "/association-review", tKey: "nav.associationReview", icon: Users2 },
   { href: "/tickets",       tKey: "nav.tickets",      icon: Ticket, badge: "openTickets", badgeTone: "orange" },
   { href: "/ticket-insights", tKey: "nav.ticketInsights", icon: BarChart3 },
   { href: "/scheduling",    tKey: "nav.scheduling",   icon: Clock },
@@ -61,7 +62,7 @@ const NAV_ITEMS: { href: string; tKey: string; icon: typeof CalendarDays; badge?
 
 // Rooms reserved for super_admin. Everyone else — including pa/auditor, who
 // otherwise see every room — never gets these in the nav.
-const SUPER_ADMIN_ONLY: string[] = ["/overview", "/referrals", "/proposal-review"];
+const SUPER_ADMIN_ONLY: string[] = ["/overview", "/referrals", "/proposal-review", "/association-review"];
 
 // Settings is a real page; only visible to super_admin with the feature
 // flag on. When neither condition holds it disappears from the nav entirely
