@@ -255,3 +255,8 @@ public_key.pem
 *.pem
 private_key.pem
 public_key.pem
+
+# GCP / Vertex AI service-account keys — NEVER commit these (live credentials)
+backend/namkural-*.json
+*-service-account*.json
+**/gcp-*.json
