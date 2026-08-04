@@ -507,13 +507,10 @@ function AiReviewPageInner() {
     return p.toString();
   }, [page, pageSize, fStatus, fCategory, fPriority, fSource, batchFilter, dateFrom, dateTo, q, sort]);
 
-  // The facets endpoint's `distribution` reflects the current tab (so the
-  // chart Total matches the tab count), while `counts_by_status` ignores
-  // status server-side. Passing status here scopes the chart only — the tab
-  // counts stay honest. Category is still an axis, never a filter here.
   const buildFacetsQuery = useCallback((): string => {
     const p = new URLSearchParams();
     if (fStatus)     p.set("status",    fStatus);
+    if (fCategory)   p.set("category",  fCategory);
     if (fPriority)   p.set("priority",  fPriority);
     if (fSource)     p.set("source",    fSource);
     if (batchFilter) p.set("batch_id",  batchFilter);
@@ -521,7 +518,7 @@ function AiReviewPageInner() {
     if (dateTo)      p.set("to_date",   dateTo);
     if (q.trim())    p.set("q",         q.trim());
     return p.toString();
-  }, [fStatus, fPriority, fSource, batchFilter, dateFrom, dateTo, q]);
+  }, [fStatus, fCategory, fPriority, fSource, batchFilter, dateFrom, dateTo, q]);
 
   // Aggregates take the same filters EXCEPT status + category — those are
   // what /aggregates COUNTS across (see backend `list_aggregates`).

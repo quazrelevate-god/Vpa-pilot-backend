@@ -128,30 +128,16 @@ export default function TicketDetail({ detail, departments, myDept, onClose, onD
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           {/* Preview pane */}
           <aside className="flex min-h-0 flex-shrink-0 flex-col border-b border-border bg-muted/30 p-5 lg:w-[54%] lg:border-b-0 lg:border-r">
-            <div className="mb-3 flex flex-shrink-0 items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              <span className="grid h-6 w-6 place-items-center rounded-md bg-brand/10 text-brand">
-                <ImageIcon className="h-3.5 w-3.5" />
-              </span>
-              {t("detail.attachments")}
-              {petitionAtt.length > 0 && (
-                <span className="rounded-full bg-brand/10 px-1.5 text-[10px] font-bold text-brand">{petitionAtt.length}</span>
-              )}
-            </div>
             <div className="min-h-0 flex-1">
-              <InlineAttachmentPreview attachments={petitionAtt} />
+              <InlineAttachmentPreview
+                sections={[
+                  { label: t("detail.attachments"), attachments: petitionAtt, tone: "brand" },
+                  ...(resAtt.length > 0
+                    ? [{ label: t("detail.proofs"), attachments: resAtt, tone: "success" as const }]
+                    : []),
+                ]}
+              />
             </div>
-
-            {resAtt.length > 0 && (
-              <div className="mt-4 flex min-h-0 flex-1 flex-col border-t border-border pt-4">
-                <div className="mb-3 flex flex-shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600">
-                  <FileCheck2 className="h-3.5 w-3.5" /> {t("detail.proofs")}
-                  <span className="rounded-full bg-emerald-100 px-1.5 text-[10px] font-bold text-emerald-700">{resAtt.length}</span>
-                </div>
-                <div className="min-h-0 flex-1">
-                  <InlineAttachmentPreview attachments={resAtt} />
-                </div>
-              </div>
-            )}
           </aside>
 
           {/* Right — tabs + action bar */}

@@ -161,6 +161,9 @@ export default function RegisterWizard({
       .catch((e) => { setBusy(false); toast.error(e?.message || t("Failed — try again", "தோல்வி — மீண்டும்")); });
   }
 
+  // Toggle to re-enable the waiting-list flow (currently disabled).
+  const WAITLIST_ENABLED = false;
+
   const canBook = !!slot;
   // Any capacity left today or on an upcoming open date? Drives the "all full"
   // notice and turns the meeting button into "Join waiting list".
@@ -206,10 +209,15 @@ export default function RegisterWizard({
                   <strong className="font-bold">
                     {t("All meeting slots are currently full.", "தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.")}
                   </strong>{" "}
-                  {t(
-                    "You can still submit the petition, or join the waiting list — we'll contact them as soon as a slot opens.",
-                    "நீங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் தொடர்பு கொள்வோம்.",
-                  )}
+                  {WAITLIST_ENABLED
+                    ? t(
+                        "You can still submit the petition, or join the waiting list — we'll contact them as soon as a slot opens.",
+                        "நீங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் தொடர்பு கொள்வோம்.",
+                      )
+                    : t(
+                        "Please try again later — if a slot opens, you can book an appointment for the meeting. For now, submit a petition only.",
+                        "பிறகு மீண்டும் முயற்சிக்கவும் — இடம் கிடைத்தால் சந்திப்பு பதிவு செய்யலாம். இப்போது மனுவை மட்டும் சமர்ப்பிக்கவும்.",
+                      )}
                 </div>
               </div>
             )}
@@ -240,13 +248,15 @@ export default function RegisterWizard({
             </Button>
             {/* Meeting — books the picked slot, or joins the waiting list when
                 nothing is free (same fallback as the QR form). */}
-            <Button onClick={() => submit(true)} disabled={busy}
-              className={cn("h-12 flex-1 rounded-xl px-2 text-[13px] font-bold leading-tight text-white",
-                canBook ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}>
-              {canBook
-                ? t("Book Appointment", "சந்திப்பு பதிவு")
-                : t("Join Waiting List", "காத்திருப்பு பட்டியல்")}
-            </Button>
+            {(canBook || WAITLIST_ENABLED) && (
+              <Button onClick={() => submit(true)} disabled={busy}
+                className={cn("h-12 flex-1 rounded-xl px-2 text-[13px] font-bold leading-tight text-white",
+                  canBook ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}>
+                {canBook
+                  ? t("Book Appointment", "சந்திப்பு பதிவு")
+                  : t("Join Waiting List", "காத்திருப்பு பட்டியல்")}
+              </Button>
+            )}
           </>
         )}
       </div>

@@ -38,8 +38,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 // Appointments is meeting-centric. Direct petitions (Awaiting Review / Reviewed)
 // live in Petition Review, so the tabs here are meeting states only.
-const TABS = ["Scheduled", "Waiting", "Rescheduled", "All"] as const;
-type Tab = (typeof TABS)[number];
+// Toggle to re-enable the waiting-list tab (currently disabled).
+const WAITLIST_ENABLED = false;
+const ALL_TABS = ["Scheduled", "Waiting", "Rescheduled", "All"] as const;
+const TABS = WAITLIST_ENABLED ? ALL_TABS : (["Scheduled", "Rescheduled", "All"] as const);
+type Tab = (typeof ALL_TABS)[number];
 const DEFAULT_TAB: Tab = "Scheduled";
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
@@ -65,7 +68,9 @@ const TAB_KEYS: Record<Tab, string> = {
   "All": "appts.tabAll",
 };
 
-const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Waiting", "Rescheduled"];
+const STATUS_OPTIONS: AppointmentStatus[] = WAITLIST_ENABLED
+  ? ["Scheduled", "Waiting", "Rescheduled"]
+  : ["Scheduled", "Rescheduled"];
 
 type QuickChip = "today" | "tomorrow" | "this_week";
 
@@ -1083,7 +1088,7 @@ function CategoryDistributionCard({
   const cats = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of rows) {
-      const key = (r.category || "—").toLowerCase();
+      const key = (r.category_key || r.category || "—").toLowerCase();
       m.set(key, (m.get(key) ?? 0) + 1);
     }
     return Array.from(m, ([key, count]) => ({ key, count }));

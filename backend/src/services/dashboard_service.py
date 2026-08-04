@@ -760,6 +760,7 @@ def build_appointment_row(appt) -> Dict[str, Any]:
         "name_ta": _decode(appt.encrypted_name_ta) if appt.encrypted_name_ta else None,
         "mobile": mobile,
         "category": _category_label(appt.grievance_category),
+        "category_key": appt.grievance_category or None,
         "ministry": (summary_rec.ministry if summary_rec else None),
         "status_db": appt.status,
         "status": _resolve_display_status(appt),

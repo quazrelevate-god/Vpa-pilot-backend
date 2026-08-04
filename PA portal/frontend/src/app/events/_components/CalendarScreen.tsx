@@ -61,9 +61,9 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
   function navigate(dir: -1 | 0 | 1) {
     setFocusISO(null);
     if (dir === 0) { setAnchor(new Date()); return; }
-    setAnchor((a) => mode === "week"
-      ? addDays(a, dir * 7)
-      : new Date(a.getFullYear(), a.getMonth() + dir, 1));
+    setAnchor((a) => mode === "month"
+      ? new Date(a.getFullYear(), a.getMonth() + dir, 1)
+      : addDays(a, dir * 7));
   }
 
   /** Month cell tapped → open that date in week mode, scrolled into view. */
