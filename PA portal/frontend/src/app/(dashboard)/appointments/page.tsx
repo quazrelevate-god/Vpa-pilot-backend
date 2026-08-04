@@ -397,7 +397,7 @@ function AppointmentsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as Tab) || DEFAULT_TAB;
-  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : DEFAULT_TAB);
+  const [tab, setTab] = useState<Tab>((TABS as readonly Tab[]).includes(initialTab) ? initialTab : DEFAULT_TAB);
   const [search, setSearch] = useState("");
   // sort: "" | "priority" | "appt_date_asc" | "appt_date_desc"
   const [sort, setSort] = useState<string>("");
