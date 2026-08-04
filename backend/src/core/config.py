@@ -189,65 +189,56 @@ class Settings(BaseSettings):
 
         raise ValueError("Either DATABASE_URL or all DB_* parameters (DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME) must be provided")
 
-    @model_validator(mode='after')
-    def _enforce_production_credentials(self):
-        """In production (DEBUG=False), refuse to boot on default/blank staff
-        credentials. A prod deploy missing a value in .env would otherwise fall
-        back to the world's most-guessable creds with the whole dashboard behind
-        them. Dev keeps the defaults for zero-config startup."""
-        if self.DEBUG:
-            return self
-        offenders = [
-            name for name, default in _DEFAULT_STAFF_CREDENTIALS.items()
-            if not getattr(self, name) or getattr(self, name) == default
-        ]
-        if offenders:
-            raise ValueError(
-                "Refusing to start in production (DEBUG=False) with default or "
-                f"unset staff credentials: {', '.join(sorted(offenders))}. "
-                "Set strong values in backend/.env before deploying."
-            )
-        return self
 
-    @model_validator(mode='after')
-    def _enforce_production_encryption_key(self):
-        """In production, require a dedicated ENCRYPTION_KEY. Without it, crypto
-        falls back to SECRET_KEY — so any future SECRET_KEY rotation (a routine
-        ops action) would permanently corrupt every Fernet-encrypted PII column.
+def assert_production_ready(cfg: "Settings") -> None:
+    """Fail-fast production preflight — call at APP STARTUP, not at Settings
+    construction.
 
-        WARNING when first setting this on an existing deployment: the value MUST
-        match the key that currently encrypts your data (i.e. your existing
-        SECRET_KEY, since that's the fallback in use today). A *new* random value
-        makes all existing PII unreadable — there is no recovery."""
-        if self.DEBUG:
-            return self
-        if not self.ENCRYPTION_KEY:
-            raise ValueError(
-                "Refusing to start in production (DEBUG=False) without ENCRYPTION_KEY. "
-                "Set it in backend/.env to the key currently encrypting your data "
-                "(your existing SECRET_KEY) so existing PII stays readable."
-            )
-        return self
+    These checks used to be pydantic validators, but that ran them on every
+    import of this module — including alembic's env.py and one-off scripts,
+    which only need DATABASE_URL and shouldn't require the app's runtime
+    secrets. Coupling `alembic upgrade` to the dashboard password was wrong.
+    Enforcing at app startup instead keeps the running app protected in prod
+    while leaving DB tooling free.
 
-    @model_validator(mode='after')
-    def _enforce_production_base_url(self):
-        """In production, require a real SERVER_BASE_URL. The QR / referral /
-        dashboard link builders fall back to request.base_url (derived from the
-        client-controlled Host header) ONLY while SERVER_BASE_URL is still the
-        localhost default — so an attacker could otherwise mint links pointing at
-        an arbitrary host. Requiring it here means those code paths always use
-        the configured URL in prod and never touch the Host header. Dev keeps the
-        fallback for LAN/mobile testing."""
-        if self.DEBUG:
-            return self
-        if not self.SERVER_BASE_URL or self.SERVER_BASE_URL == "http://localhost:8000":
-            raise ValueError(
-                "Refusing to start in production (DEBUG=False) with the default "
-                "SERVER_BASE_URL. Set it in backend/.env to the public base URL "
-                "(e.g. https://namkural.in) so generated links can't be spoofed "
-                "via the Host header."
-            )
-        return self
+    In production (DEBUG=False) this refuses to start when:
+      • any staff credential is still a shipped default / blank — a missing
+        value would otherwise fall back to the world's most-guessable creds;
+      • ENCRYPTION_KEY is unset — crypto would fall back to SECRET_KEY, so a
+        future SECRET_KEY rotation would permanently corrupt all encrypted PII
+        (set it to the key currently encrypting your data — today's SECRET_KEY);
+      • SERVER_BASE_URL is the localhost default — the QR/referral/dashboard
+        link builders would then fall back to the client-controlled Host header.
+    """
+    if cfg.DEBUG:
+        return
+
+    problems: list[str] = []
+
+    offenders = [
+        name for name, default in _DEFAULT_STAFF_CREDENTIALS.items()
+        if not getattr(cfg, name) or getattr(cfg, name) == default
+    ]
+    if offenders:
+        problems.append(
+            "default or unset staff credentials: " + ", ".join(sorted(offenders))
+        )
+    if not cfg.ENCRYPTION_KEY:
+        problems.append(
+            "ENCRYPTION_KEY is unset (set it to the key currently encrypting your "
+            "data — your existing SECRET_KEY — or existing PII becomes unreadable)"
+        )
+    if not cfg.SERVER_BASE_URL or cfg.SERVER_BASE_URL == "http://localhost:8000":
+        problems.append(
+            "SERVER_BASE_URL is the localhost default (set it to the public base "
+            "URL, e.g. https://namkural.in, to block Host-header link spoofing)"
+        )
+
+    if problems:
+        raise RuntimeError(
+            "Refusing to start in production (DEBUG=False). Fix in backend/.env:\n  - "
+            + "\n  - ".join(problems)
+        )
 
 
 @lru_cache()

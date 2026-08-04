@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 
-from src.core.config import settings
+from src.core.config import settings, assert_production_ready
 from src.core.logging_config import setup_logging, init_sentry
 from src.core.request_context import request_id_var, new_request_id, incoming_request_id
 
@@ -157,6 +157,15 @@ app.include_router(ticketing.pa_router)
 from src.api.v1 import admin as admin_v1  # noqa: E402
 app.include_router(admin_v1.public_router)   # /api/v1/me + /api/v1/features (auth only)
 app.include_router(admin_v1.router)          # /api/v1/admin/* (super_admin + feature flag)
+
+
+@app.on_event("startup")
+async def _production_preflight():
+    """Fail fast in prod if required secrets are unset/default. This lives at
+    startup (not in Settings construction) so `alembic upgrade` and one-off
+    scripts — which only need DATABASE_URL — aren't blocked by the app's runtime
+    secrets. See config.assert_production_ready."""
+    assert_production_ready(settings)
 
 
 @app.on_event("startup")
