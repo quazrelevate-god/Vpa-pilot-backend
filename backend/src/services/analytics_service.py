@@ -135,8 +135,8 @@ class AnalyticsService:
         case = await self._case_kpis(db, f)
 
         # Charts — each excludes its own dimension for cross-filtering
-        categories = await self._group(db, f, Appointment.grievance_category, exclude="category", labels=CATEGORY_DISPLAY_EN)
-        ministries = await self._group(db, f, GSR.ministry, exclude="ministry", labels=MINISTRY_DISPLAY, force_gsr=True, limit=8)
+        categories = await self._group(db, f, Appointment.category_id, exclude="category", labels=CATEGORY_DISPLAY_EN)
+        ministries = await self._group(db, f, GSR.ministry_id, exclude="ministry", labels=MINISTRY_DISPLAY, force_gsr=True, limit=8)
         # v2: source column removed — channels dimension returns empty for now.
         channels: List[Dict[str, Any]] = []
         priority = await self._priority(db, f)
@@ -242,13 +242,15 @@ class AnalyticsService:
         build = self._ticket_base(f)
 
         # ── Status mix (live queue shape) ────────────────────────────────────
+        from src.services.admin_lookup import admin
         status_rows = (await db.execute(
-            build(Ticket.status, func.count(Ticket.id)).group_by(Ticket.status)
+            build(Ticket.status_id, func.count(Ticket.id)).group_by(Ticket.status_id)
         )).all()
         by_status = [
-            {"key": s, "label": _TICKET_STATUS_LABEL.get(s, (s or "").replace("_", " ").title()),
+            {"key": (s := admin.display_name(s_id)),
+             "label": _TICKET_STATUS_LABEL.get(s, (s or "").replace("_", " ").title()),
              "count": int(n or 0)}
-            for s, n in status_rows if s
+            for s_id, n in status_rows if s_id
         ]
         by_status.sort(key=lambda r: r["count"], reverse=True)
         total = sum(r["count"] for r in by_status)
@@ -256,9 +258,9 @@ class AnalyticsService:
 
         # ── Priority split (AI review priority, via GSR) ─────────────────────
         prio_rows = (await db.execute(
-            build(GSR.priority, func.count(Ticket.id), need_gsr=True).group_by(GSR.priority)
+            build(GSR.priority_id, func.count(Ticket.id), need_gsr=True).group_by(GSR.priority_id)
         )).all()
-        prio_counts = {(p or "").lower(): int(n or 0) for p, n in prio_rows if p}
+        prio_counts = {(admin.display_name(p_id) or "").lower(): int(n or 0) for p_id, n in prio_rows if p_id}
         by_priority = [
             {"key": k, "label": k.title(), "count": prio_counts.get(k, 0)}
             for k in ("critical", "high", "medium", "low")
@@ -426,13 +428,14 @@ class AnalyticsService:
         return out
 
     async def _district_breakdown(self, db, f: Filters) -> List[Dict[str, Any]]:
+        from src.services.admin_lookup import admin
         stmt = _scoped(
-            select(GSR.district, func.count(Appointment.id)),
+            select(GSR.district_id, func.count(Appointment.id)),
             f, exclude="district", force_gsr=True,
-        ).where(GSR.district.isnot(None)).group_by(GSR.district).order_by(desc(func.count(Appointment.id)))
+        ).where(GSR.district_id.isnot(None)).group_by(GSR.district_id).order_by(desc(func.count(Appointment.id)))
         rows = (await db.execute(stmt)).all()
         return [
-            {"key": k, "label": DISTRICT_DISPLAY.get(k, str(k).title()), "count": n}
+            {"key": admin.display_name(k), "label": DISTRICT_DISPLAY.get(admin.display_name(k), admin.display_name(k).title()), "count": n}
             for k, n in rows if k
         ]
 
@@ -450,20 +453,26 @@ class AnalyticsService:
             return None
         return round((received - prev) / prev * 100, 1)
 
-    async def _group(self, db, f: Filters, col, exclude, labels=None, force_gsr=False, limit=12):
-        stmt = _scoped(select(col, func.count(Appointment.id)), f, exclude=exclude, force_gsr=force_gsr)
-        stmt = stmt.group_by(col).order_by(desc(func.count(Appointment.id))).limit(limit)
+    async def _group(self, db, f: Filters, id_col, exclude, labels=None, force_gsr=False, limit=12):
+        # status/category/priority/ministry/district are id-only now; GROUP BY
+        # must group on the FK id (a correlated-subquery hybrid can't be grouped),
+        # then map id → name via the admin cache for the response key/label.
+        from src.services.admin_lookup import admin
+        stmt = _scoped(select(id_col, func.count(Appointment.id)), f, exclude=exclude, force_gsr=force_gsr)
+        stmt = stmt.group_by(id_col).order_by(desc(func.count(Appointment.id))).limit(limit)
         rows = (await db.execute(stmt)).all()
         out = []
-        for key, n in rows:
-            if key is None:
+        for id_val, n in rows:
+            if id_val is None:
                 continue
+            key = admin.display_name(id_val)
             out.append({"key": key, "label": (labels or {}).get(key, str(key).replace("_", " ").title()), "count": n})
         return out
 
     async def _priority(self, db, f: Filters):
-        stmt = _scoped(select(GSR.priority, func.count(Appointment.id)), f, exclude="priority", force_gsr=True).group_by(GSR.priority)
-        rows = {k: n for k, n in (await db.execute(stmt)).all() if k}
+        from src.services.admin_lookup import admin
+        stmt = _scoped(select(GSR.priority_id, func.count(Appointment.id)), f, exclude="priority", force_gsr=True).group_by(GSR.priority_id)
+        rows = {admin.display_name(k): n for k, n in (await db.execute(stmt)).all() if k}
         return {lvl: rows.get(lvl, 0) for lvl in ("critical", "high", "medium", "low")}
 
     async def _trend(self, db, f: Filters):

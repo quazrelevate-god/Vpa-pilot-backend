@@ -78,11 +78,16 @@ _VISIBLE_STATUS_KEYS = (_SK_AWAITING, _SK_REVIEWED, _SK_FAILED, _SK_DISMISSED)
 # reviewed, or awaiting review. FAILED is upload-only (extraction failure) —
 # petitions can never be FAILED, so counts_by_status for petitions always has
 # FAILED=0.
-_PETITION_STATUS_CASE = case(
-    (Appointment.status == "REVIEWED",  _SK_REVIEWED),
-    (Appointment.status == "DISMISSED", _SK_DISMISSED),
-    else_=_SK_AWAITING,
-)
+# Built at call time (not import) over the id column: appointment.status is now
+# id-only, so a groupable CASE must reference status_id (resolved via the admin
+# cache), never the correlated-subquery hybrid — which can't be grouped.
+def _petition_status_case():
+    from src.services.admin_lookup import admin
+    return case(
+        (Appointment.status_id == admin.appointment_status("REVIEWED"),  _SK_REVIEWED),
+        (Appointment.status_id == admin.appointment_status("DISMISSED"), _SK_DISMISSED),
+        else_=_SK_AWAITING,
+    )
 
 # Priority rank identical to the upload-side one, so cross-table sort matches.
 # Wrapped in a *scalar subquery* below (`_pet_priority_rank_subq`), not applied
@@ -241,15 +246,19 @@ class PetitionInboxService:
                 dist[cat_key] = dist.get(cat_key, 0) + n
 
         # ── UPLOADS ────────────────────────────────────────────────────────
+        # id-only: the status CASE and the category grouping must use the FK ids
+        # (a correlated-subquery hybrid can't be grouped). Map ids → names for the
+        # response via the admin cache.
+        from src.services.admin_lookup import admin as _admin
         upload_case = case(
-            (AiUpload.status == STATUS_REVIEWED,  _SK_REVIEWED),
-            (AiUpload.status == STATUS_DISMISSED, _SK_DISMISSED),
-            (AiUpload.status == STATUS_FAILED,    _SK_FAILED),
+            (AiUpload.status_id == _admin.ai_upload_status(STATUS_REVIEWED),  _SK_REVIEWED),
+            (AiUpload.status_id == _admin.ai_upload_status(STATUS_DISMISSED), _SK_DISMISSED),
+            (AiUpload.status_id == _admin.ai_upload_status(STATUS_FAILED),    _SK_FAILED),
             else_=_SK_AWAITING,
         )
         u_stmt = select(
             upload_case.label("sk"),
-            GrievanceSummaryRecord.category.label("cat"),
+            GrievanceSummaryRecord.category_id.label("cat_id"),
             func.count(AiUpload.id).label("n"),
         )
         u_stmt = ai_upload_service._apply_common_filters(
@@ -262,9 +271,9 @@ class PetitionInboxService:
         # ROUTED arm, so they'd fall through `else_` → AWAITING) and the "All"
         # total. Their own count is reported separately as counts["ROUTED"].
         u_stmt = u_stmt.where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING, STATUS_ROUTED]))
-        u_stmt = u_stmt.group_by("sk", "cat")
-        for sk, cat, n in (await db.execute(u_stmt)).all():
-            _absorb(sk, cat, int(n))
+        u_stmt = u_stmt.group_by(upload_case, GrievanceSummaryRecord.category_id)
+        for sk, cat_id, n in (await db.execute(u_stmt)).all():
+            _absorb(sk, _admin.display_name(cat_id) if cat_id is not None else None, int(n))
 
         # Routed count — its own tab on the ai-review page (the recovery view),
         # deliberately NOT added to counts[""], so the "All" petition total
@@ -281,10 +290,11 @@ class PetitionInboxService:
         if not batch_id:
             needs_search = bool(q and q.strip())
             if not needs_search:
+                pet_case = _petition_status_case()
                 p_stmt = (
                     select(
-                        _PETITION_STATUS_CASE.label("sk"),
-                        Appointment.grievance_category.label("cat"),
+                        pet_case.label("sk"),
+                        Appointment.category_id.label("cat_id"),
                         func.count(Appointment.id).label("n"),
                     )
                     .select_from(Appointment)
@@ -305,9 +315,9 @@ class PetitionInboxService:
                         .where(GrievanceSummaryRecord.priority == priority)
                     )
                     p_stmt = p_stmt.where(Appointment.id.in_(gsr_sub))
-                p_stmt = p_stmt.group_by("sk", "cat")
-                for sk, cat, n in (await db.execute(p_stmt)).all():
-                    _absorb(sk, cat, int(n))
+                p_stmt = p_stmt.group_by(pet_case, Appointment.category_id)
+                for sk, cat_id, n in (await db.execute(p_stmt)).all():
+                    _absorb(sk, _admin.display_name(cat_id) if cat_id is not None else None, int(n))
             else:
                 # Search branch: decrypt-and-bucket, then group in Python. Costs
                 # more but matches the list branch's search semantics exactly
@@ -315,7 +325,7 @@ class PetitionInboxService:
                 needle = q.strip().lower()
                 s_stmt = (
                     select(
-                        _PETITION_STATUS_CASE.label("sk"),
+                        _petition_status_case().label("sk"),
                         Appointment.grievance_category.label("cat"),
                         Citizen.encrypted_name, Citizen.encrypted_mobile,
                         Appointment.token_assigned, Appointment.encrypted_grievance,
@@ -432,7 +442,7 @@ class PetitionInboxService:
         # and made the pagination total overshoot the tab count.
         cols: List[Any] = [Appointment.id, Appointment.created_at, _pet_priority_rank_subq()]
         if include_status_col:
-            cols.append(_PETITION_STATUS_CASE)
+            cols.append(_petition_status_case())
         stmt = select(*cols).select_from(Appointment)
 
         # Two must-match filters that mirror the frontend's bulk petition fetch
@@ -500,7 +510,7 @@ class PetitionInboxService:
             select(
                 Appointment.id, Appointment.created_at,
                 _pet_priority_rank_subq(),
-                *([_PETITION_STATUS_CASE] if include_status_col else []),
+                *([_petition_status_case()] if include_status_col else []),
                 Citizen.encrypted_name, Citizen.encrypted_mobile,
                 Appointment.token_assigned, Appointment.encrypted_grievance,
             )

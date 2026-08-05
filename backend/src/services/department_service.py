@@ -466,12 +466,13 @@ async def get_detail(db: AsyncSession, ticket_id: int,
 
 
 async def department_counts(db: AsyncSession, department: str) -> Dict[str, int]:
+    from src.services.admin_lookup import admin
     rows = await db.execute(
-        select(Ticket.status, func.count(Ticket.id))
+        select(Ticket.status_id, func.count(Ticket.id))
         .where(Ticket.department == department)
-        .group_by(Ticket.status)
+        .group_by(Ticket.status_id)
     )
-    counts = {status: n for status, n in rows}
+    counts = {admin.display_name(status_id): n for status_id, n in rows if status_id is not None}
     # forwarded_out is a virtual segment computed from the activity log —
     # the tickets themselves no longer live under this dept.
     forwarded_out = await db.scalar(

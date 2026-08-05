@@ -684,12 +684,15 @@ class AiUploadService:
         they drive notification badges that must always show the true state,
         not the filtered state.
         """
+        # Status/category are id-only now; GROUP BY the FK id and map id → name
+        # via the admin cache (a correlated-subquery hybrid can't be grouped).
+        from src.services.admin_lookup import admin
         # Status-tab counts (excluding QUEUED/PROCESSING — hidden from the UI).
         stmt_status = self._apply_common_filters(
-            select(AiUpload.status, func.count(AiUpload.id)),
+            select(AiUpload.status_id, func.count(AiUpload.id)),
             q=q, priority=priority, source=source, batch_id=batch_id,
             from_date=from_date, to_date=to_date,
-        ).group_by(AiUpload.status)
+        ).group_by(AiUpload.status_id)
         rows_status = (await db.execute(stmt_status)).all()
         counts_by_status: Dict[str, int] = {
             STATUS_AWAITING_REVIEW: 0,
@@ -698,8 +701,9 @@ class AiUploadService:
             STATUS_DISMISSED: 0,
         }
         total_visible = 0
-        for status_val, n in rows_status:
+        for status_id_val, n in rows_status:
             n = int(n)
+            status_val = admin.display_name(status_id_val) if status_id_val is not None else None
             # QUEUED/PROCESSING are in-flight; ROUTED left the petition workflow
             # (classifier → proposal/association). None belong in the reviewable
             # "All" total — ROUTED is reported separately as routed_count below.
@@ -712,15 +716,15 @@ class AiUploadService:
         # (matches how the chart works on the client — "how do the visible rows
         # split across categories" so the PA can click one to filter).
         stmt_cat = self._apply_common_filters(
-            select(GrievanceSummaryRecord.category, func.count(AiUpload.id)),
+            select(GrievanceSummaryRecord.category_id, func.count(AiUpload.id)),
             q=q, priority=priority, source=source, batch_id=batch_id,
             from_date=from_date, to_date=to_date,
         ).where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING, STATUS_ROUTED])
-                ).group_by(GrievanceSummaryRecord.category)
+                ).group_by(GrievanceSummaryRecord.category_id)
         rows_cat = (await db.execute(stmt_cat)).all()
         distribution = [
-            {"key": (cat or "other"), "count": int(n)}
-            for cat, n in rows_cat
+            {"key": (admin.display_name(cat_id) if cat_id is not None else "other"), "count": int(n)}
+            for cat_id, n in rows_cat
         ]
         distribution.sort(key=lambda r: r["count"], reverse=True)
 
@@ -766,20 +770,22 @@ class AiUploadService:
         used by the per-batch Retry menu. Unfiltered — the batch panel always
         shows every batch, regardless of the review-page filters.
         """
+        from src.services.admin_lookup import admin
         stmt = (
             select(
                 AiUpload.batch_id,
-                AiUpload.status,
+                AiUpload.status_id,
                 func.count(AiUpload.id),
                 func.min(AiUpload.created_at),
             )
-            .group_by(AiUpload.batch_id, AiUpload.status)
+            .group_by(AiUpload.batch_id, AiUpload.status_id)
         )
         rows = (await db.execute(stmt)).all()
 
         # Aggregate rows into { batch_id: { counts: {}, earliest, ... } }.
         per_batch: Dict[str, Dict[str, Any]] = {}
-        for batch, status_val, n, earliest in rows:
+        for batch, status_id_val, n, earliest in rows:
+            status_val = admin.display_name(status_id_val) if status_id_val is not None else None
             b = per_batch.setdefault(batch, {
                 "id": batch,
                 "counts": {

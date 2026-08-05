@@ -139,19 +139,21 @@ async def get_stats(
 
     resolution_rate = round((reviewed / total * 100) if total else 0, 1)
 
-    # Category breakdown
+    # Category breakdown — classification is id-only; GROUP BY the FK id and map
+    # id → name via the admin cache (a correlated-subquery hybrid can't be grouped).
+    from src.services.admin_lookup import admin
     cat_q = (
-        select(Appointment.grievance_category, func.count(Appointment.id).label("cnt"))
+        select(Appointment.category_id, func.count(Appointment.id).label("cnt"))
         .select_from(Appointment)
-        .where(Appointment.grievance_category.isnot(None))
-        .group_by(Appointment.grievance_category)
+        .where(Appointment.category_id.isnot(None))
+        .group_by(Appointment.category_id)
         .order_by(func.count(Appointment.id).desc())
         .limit(8)
     )
     if _df():
         cat_q = cat_q.where(and_(*_df()))
     cat_rows  = await db.execute(cat_q)
-    categories = [{"label": _category_label(r[0]), "count": r[1]} for r in cat_rows]
+    categories = [{"label": _category_label(admin.display_name(r[0])), "count": r[1]} for r in cat_rows]
 
     # Appointments in range → used to filter GSR
     appt_ids_in_range = (
@@ -166,22 +168,23 @@ async def get_stats(
     ]
 
     priority_rows = await db.execute(
-        select(GrievanceSummaryRecord.priority, func.count(GrievanceSummaryRecord.id))
+        select(GrievanceSummaryRecord.priority_id, func.count(GrievanceSummaryRecord.id))
         .where(*gsr_filter)
-        .group_by(GrievanceSummaryRecord.priority)
+        .group_by(GrievanceSummaryRecord.priority_id)
     )
-    priority = {r[0]: r[1] for r in priority_rows}
+    priority = {admin.display_name(r[0]): r[1] for r in priority_rows if r[0] is not None}
 
     # Ministry breakdown — drives the routing KPI for the Minister.
     ministry_rows = await db.execute(
-        select(GrievanceSummaryRecord.ministry, func.count(GrievanceSummaryRecord.id))
+        select(GrievanceSummaryRecord.ministry_id, func.count(GrievanceSummaryRecord.id))
         .where(*gsr_filter)
-        .group_by(GrievanceSummaryRecord.ministry)
+        .group_by(GrievanceSummaryRecord.ministry_id)
         .order_by(func.count(GrievanceSummaryRecord.id).desc())
         .limit(10)
     )
     ministries = [
-        {"label": MINISTRY_DISPLAY.get(r[0], r[0]), "count": r[1]} for r in ministry_rows
+        {"label": MINISTRY_DISPLAY.get(admin.display_name(r[0]), admin.display_name(r[0])), "count": r[1]}
+        for r in ministry_rows if r[0] is not None
     ]
 
     # Trend — day-by-day within the selected range (or last 14 days)
@@ -303,8 +306,11 @@ async def get_stats(
 
     # SLA bucket health by priority (from the AI review) — actionable tickets only.
     sla_targets_days = {"critical": 3, "high": 7, "medium": 14, "low": 28}
+    # Select the FK id (not the hybrid — a hybrid selected into a subquery loses
+    # its name); resolve the level → id via the admin cache for the filter.
+    from src.services.admin_lookup import admin
     gsr_prio = (
-        select(GrievanceSummaryRecord.appointment_id, GrievanceSummaryRecord.priority)
+        select(GrievanceSummaryRecord.appointment_id, GrievanceSummaryRecord.priority_id)
         .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
         .subquery()
     )
@@ -315,7 +321,7 @@ async def get_stats(
             select(func.count(Ticket.id))
             .select_from(Ticket)
             .join(gsr_prio, gsr_prio.c.appointment_id == Ticket.appointment_id)
-            .where(gsr_prio.c.priority == level,
+            .where(gsr_prio.c.priority_id == admin.priority(level),
                    Ticket.status.in_(actionable_statuses))
         )
         on_track = await db.scalar(base.where(Ticket.created_at > threshold)) or 0
@@ -602,7 +608,8 @@ async def get_appointment_counts(
 
     # v2: schedule_meeting is the persistent citizen-intent flag (survives
     # slot release when moved to waiting queue).
-    base = select(Appointment.id, Appointment.status, Appointment.schedule_meeting)
+    # .label keeps the hybrid's name on the subquery column (sub.c.status).
+    base = select(Appointment.id, Appointment.status.label("status"), Appointment.schedule_meeting)
 
     if kind == "meeting":
         base = base.where(Appointment.schedule_meeting == True)   # noqa: E712

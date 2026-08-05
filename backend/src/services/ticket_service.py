@@ -345,7 +345,9 @@ async def get_ticket_counts(
 ) -> Dict[str, int]:
     """Per-segment ticket counts honouring the same secondary filters as
     `list_tickets`. Replaces the old 6× parallel call pattern."""
-    base = select(Ticket.id, Ticket.status)
+    # .label keeps the hybrid's name on the subquery column (sub.c.status);
+    # an unlabelled hybrid gets an anonymous label and sub.c.status vanishes.
+    base = select(Ticket.id, Ticket.status.label("status"))
 
     clauses = []
     if assigned_to:
