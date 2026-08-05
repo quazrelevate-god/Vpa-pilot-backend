@@ -21,7 +21,6 @@ from src.core.timeutil import now_utc
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, Text, VARCHAR,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 
 from src.core.database import Base
 
@@ -58,27 +57,20 @@ class AiUpload(Base):
 
     status = Column(
         VARCHAR(20), nullable=False, default=STATUS_QUEUED, server_default=STATUS_QUEUED,
-        comment="QUEUED | PROCESSING | AWAITING_REVIEW | REVIEWED | FAILED",
+        comment="QUEUED | PROCESSING | AWAITING_REVIEW | REVIEWED | FAILED | DISMISSED | ROUTED",
     )
 
-    # ── Extracted identity (editable by PA before approve) ──────────────────────
-    extracted_name    = Column(VARCHAR(200), nullable=True)
-    extracted_name_ta = Column(VARCHAR(200), nullable=True)
-    extracted_mobile  = Column(VARCHAR(20),  nullable=True)
+    # NOTE: all extracted content (name / mobile / category / priority / summary)
+    # moved to GrievanceSummaryRecord (linked via ai_upload_id). This table is
+    # now pipeline + review lifecycle + classifier routing only.
 
-    # ── Denormalised classification (table sort/filter) ─────────────────────────
-    grievance_category = Column(VARCHAR(50), nullable=True)
-    priority           = Column(VARCHAR(20), nullable=True)
-
-    # PA-chosen category for the whole batch. When set (and not 'general') it
-    # overrides whatever Gemini detects. NULL/'general' => use the AI value.
+    # PA-chosen category for the whole batch — an INPUT directive to extraction,
+    # not a result. When set (and not 'general') it may override the AI category
+    # on approve. NULL/'general' => use the AI value.
     forced_category    = Column(VARCHAR(50), nullable=True)
 
     # Source channel chosen at upload time (ai_scan / postal / cm_office / etc.)
     source             = Column(VARCHAR(50), nullable=False, server_default="ai_scan")
-
-    # ── Full Gemini extraction (used to build a GrievanceSummaryRecord on approve)
-    summary_json = Column(JSONB, nullable=True)
 
     error_message = Column(Text, nullable=True, comment="Reason a PROCESSING run FAILED")
 

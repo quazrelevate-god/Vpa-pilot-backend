@@ -16,6 +16,7 @@ from src.core.timeutil import now_utc
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -45,12 +46,33 @@ class GrievanceSummaryRecord(Base):
         comment="Primary key",
     )
 
-    # ── Foreign key ────────────────────────────────────────────────────────────
+    # ── Parent links (exactly one pre-approval; both after approve) ─────────────
+    # appointment_id is nullable: an AI-scan extraction exists before any
+    # appointment is created. A CHECK (see __table_args__) guarantees at least
+    # one of (appointment_id, ai_upload_id) is present so a record is never
+    # orphaned.
     appointment_id = Column(
         Integer,
         ForeignKey("appointment.id", ondelete="CASCADE"),
-        nullable=False,
-        comment="The appointment this summary belongs to",
+        nullable=True,
+        comment="The appointment this summary belongs to (NULL until an AI-scan "
+                "extraction is approved into an appointment)",
+    )
+
+    ai_upload_id = Column(
+        BigInteger,
+        ForeignKey("ai_uploads.id", ondelete="CASCADE"),
+        nullable=True,
+        comment="The AI-scan pipeline row this extraction came from. Set at "
+                "extraction time; kept as provenance after approval.",
+    )
+
+    # Pre-approval contact number read off the scan (plaintext until approve,
+    # where it is encrypted onto the Citizen). NULL for citizen-intake records.
+    contact_mobile = Column(
+        VARCHAR(20),
+        nullable=True,
+        comment="Extracted contact mobile, pipeline-only (encrypted onto Citizen on approve)",
     )
 
     # ── Versioning ─────────────────────────────────────────────────────────────
@@ -188,14 +210,21 @@ class GrievanceSummaryRecord(Base):
     @classmethod
     def from_gemini_response(
         cls,
-        appointment_id: int,
+        appointment_id: int | None,
         summary: "GrievanceSummary",  # noqa: F821 — forward ref
         gemini_model_used: str,
         gemini_latency_ms: int | None = None,
         audio_transcript: str | None = None,
         audio_stt_latency_ms: int | None = None,
+        ai_upload_id: int | None = None,
+        contact_mobile: str | None = None,
     ) -> "GrievanceSummaryRecord":
-        """Build a ready-to-persist record from a GrievanceSummary Pydantic object."""
+        """Build a ready-to-persist record from a GrievanceSummary Pydantic object.
+
+        Pass `appointment_id` for the citizen-intake path, or `ai_upload_id`
+        (+ optional `contact_mobile`) for an AI-scan extraction created before
+        an appointment exists. At least one parent id must be supplied.
+        """
         # District: Gemini returns "unknown" as calibrated abstention;
         # persist that as NULL so the frontend can treat missing / abstained
         # the same way and the "unknown" string never leaks into the DB.
@@ -205,6 +234,8 @@ class GrievanceSummaryRecord(Base):
 
         return cls(
             appointment_id=appointment_id,
+            ai_upload_id=ai_upload_id,
+            contact_mobile=contact_mobile,
             is_latest=True,
             # classification
             priority=summary.urgency.value,
@@ -236,11 +267,20 @@ class GrievanceSummaryRecord(Base):
         back_populates="grievance_summary",
     )
 
-    # ── Indexes ────────────────────────────────────────────────────────────────
+    # ── Constraints & indexes ──────────────────────────────────────────────────
     __table_args__ = (
+        CheckConstraint(
+            "appointment_id IS NOT NULL OR ai_upload_id IS NOT NULL",
+            name="ck_gsr_has_parent",
+        ),
         Index(
             "ix_gsr_appointment_latest",
             "appointment_id",
+            "is_latest",
+        ),
+        Index(
+            "ix_gsr_ai_upload_latest",
+            "ai_upload_id",
             "is_latest",
         ),
         Index("ix_gsr_priority", "priority"),

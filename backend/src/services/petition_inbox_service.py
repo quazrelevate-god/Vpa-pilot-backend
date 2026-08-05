@@ -249,7 +249,7 @@ class PetitionInboxService:
         )
         u_stmt = select(
             upload_case.label("sk"),
-            AiUpload.grievance_category.label("cat"),
+            GrievanceSummaryRecord.category.label("cat"),
             func.count(AiUpload.id).label("n"),
         )
         u_stmt = ai_upload_service._apply_common_filters(
@@ -394,9 +394,19 @@ class PetitionInboxService:
         return ai_upload_service._PRIORITY_RANK_CASE
 
     async def _hydrate_uploads(self, db: AsyncSession, ids: List[int]) -> Dict[int, Dict[str, Any]]:
-        stmt = select(AiUpload).where(AiUpload.id.in_(ids))
-        rows = (await db.execute(stmt)).scalars().all()
-        return {r.id: ai_upload_service._row_to_dict_light(r) for r in rows}
+        # Content lives on the linked latest GSR — outer-join it so the card
+        # payload (name/category/priority/citizen_ask) is populated.
+        stmt = (
+            select(AiUpload, GrievanceSummaryRecord)
+            .outerjoin(
+                GrievanceSummaryRecord,
+                (GrievanceSummaryRecord.ai_upload_id == AiUpload.id)
+                & (GrievanceSummaryRecord.is_latest == True),  # noqa: E712
+            )
+            .where(AiUpload.id.in_(ids))
+        )
+        rows = (await db.execute(stmt)).all()
+        return {up.id: ai_upload_service._row_to_dict_light(up, gsr) for up, gsr in rows}
 
     # ─── PETITIONS SIDE ───────────────────────────────────────────────────
 

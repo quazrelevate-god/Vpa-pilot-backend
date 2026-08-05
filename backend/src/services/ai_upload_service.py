@@ -24,7 +24,7 @@ from src.core.timeutil import now_utc
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import case, func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import AsyncSessionLocal
@@ -34,6 +34,14 @@ from src.models.ai_upload_models import (
     AiUpload,
     STATUS_QUEUED, STATUS_PROCESSING, STATUS_AWAITING_REVIEW,
     STATUS_REVIEWED, STATUS_FAILED, STATUS_DISMISSED, STATUS_ROUTED,
+)
+from src.models.grievance_summary_record import GrievanceSummaryRecord
+
+# Join predicate for the one live extraction record of an upload row. Exactly
+# one is_latest=True GSR exists per ai_upload_id, so an outer join stays 1:1.
+_LATEST_GSR_ON = and_(
+    GrievanceSummaryRecord.ai_upload_id == AiUpload.id,
+    GrievanceSummaryRecord.is_latest.is_(True),
 )
 
 logger = logging.getLogger(__name__)
@@ -305,27 +313,46 @@ class AiUploadService:
                 logger.warning("ai_upload could not mark FAILED id=%s: %s", upload_id, inner)
 
     async def _write_petition_result(self, upload_id: int, result, model_used: str, latency_ms: int) -> None:
-        """Persist a PetitionExtraction onto the ai_uploads row (AWAITING_REVIEW)."""
+        """Persist a PetitionExtraction as a GrievanceSummaryRecord (AWAITING_REVIEW).
+
+        The extraction content lives on the GSR (ai_upload_id set, appointment_id
+        NULL). The ai_uploads row only flips to AWAITING_REVIEW.
+        """
         final_category = result.category.value
-        payload = result.model_dump(mode="json")
-        payload["category"] = final_category
-        payload["_model_used"] = model_used
-        payload["_latency_ms"] = latency_ms
         async with AsyncSessionLocal() as db:
             row = await db.get(AiUpload, upload_id)
             if row is None:
                 return
+
+            # Re-extraction (retry / move-back) supersedes any earlier draft:
+            # archive the previous live record so is_latest stays unique.
+            await db.execute(
+                update(GrievanceSummaryRecord)
+                .where(
+                    GrievanceSummaryRecord.ai_upload_id == upload_id,
+                    GrievanceSummaryRecord.is_latest.is_(True),
+                )
+                .values(is_latest=False)
+            )
+
+            record = GrievanceSummaryRecord.from_gemini_response(
+                appointment_id=None,
+                ai_upload_id=upload_id,
+                summary=result,
+                gemini_model_used=model_used,
+                gemini_latency_ms=latency_ms,
+                contact_mobile=(result.mobile or None),
+            )
             # name_en → Latin display, name_ta → Tamil; gate on the strict
             # `citizen_name*` field so "empty = model wasn't sure" holds.
-            row.extracted_name    = result.name_en if result.citizen_name.strip()    else ""
-            row.extracted_name_ta = result.name_ta if result.citizen_name_ta.strip() else ""
-            row.extracted_mobile  = result.mobile
-            row.grievance_category = final_category
-            row.priority           = result.urgency.value
-            row.summary_json       = payload
-            row.error_message      = None
-            row.status             = STATUS_AWAITING_REVIEW
-            row.processed_at       = now_utc()
+            record.name_en = result.name_en if result.citizen_name.strip()    else ""
+            record.name_ta = result.name_ta if result.citizen_name_ta.strip() else ""
+            record.category = final_category
+            db.add(record)
+
+            row.error_message = None
+            row.status        = STATUS_AWAITING_REVIEW
+            row.processed_at  = now_utc()
             # clear any stale routing (e.g. a move-back that's now a petition)
             row.routed_to = None
             row.routed_ref_id = None
@@ -427,9 +454,10 @@ class AiUploadService:
     # re-fetches via GET /{id}, so the narrative belongs there, not in the
     # list card. See _row_to_dict_full for the shape write paths still use.
     @staticmethod
-    def _row_to_dict_light(row: AiUpload) -> Dict[str, Any]:
+    def _row_to_dict_light(
+        row: AiUpload, gsr: Optional[GrievanceSummaryRecord] = None
+    ) -> Dict[str, Any]:
         from src.services.storage_service import get_file_url
-        sj = row.summary_json or {}
         try:
             file_url = get_file_url(row.storage_url)
         except Exception:
@@ -441,22 +469,21 @@ class AiUploadService:
             "mime_type": row.mime_type,
             "file_url": file_url,
             "status": row.status,
-            "name": row.extracted_name,
-            "name_ta": row.extracted_name_ta,
-            "mobile": row.extracted_mobile,
-            "category": row.grievance_category,
+            # Content now lives on the linked GrievanceSummaryRecord (NULL for
+            # QUEUED/PROCESSING/FAILED/ROUTED rows that have no petition extraction).
+            "name": gsr.name_en if gsr else None,
+            "name_ta": gsr.name_ta if gsr else None,
+            "mobile": gsr.contact_mobile if gsr else None,
+            "category": gsr.category if gsr else None,
             "forced_category": row.forced_category,
-            "priority": row.priority,
+            "priority": gsr.priority if gsr else None,
             # citizen_ask + _ta stay in the light payload: they're the
             # "what the citizen wants" line shown on every list row.
-            "citizen_ask": sj.get("citizen_ask"),
-            "citizen_ask_ta": sj.get("citizen_ask_ta"),
-            "ministry": sj.get("ministry") or sj.get("department"),
-            "district": (
-                None
-                if (sj.get("district") in (None, "", "unknown"))
-                else sj.get("district")
-            ),
+            "citizen_ask": gsr.citizen_ask if gsr else None,
+            "citizen_ask_ta": gsr.citizen_ask_ta if gsr else None,
+            "ministry": gsr.ministry if gsr else None,
+            # district is already normalised to NULL (never "unknown") on the GSR.
+            "district": gsr.district if gsr else None,
             "error": row.error_message,
             "ticket_number": row.ticket_number,
             "appointment_id": row.appointment_id,
@@ -469,22 +496,28 @@ class AiUploadService:
         }
 
     @staticmethod
-    def _row_to_dict_full(row: AiUpload) -> Dict[str, Any]:
+    def _row_to_dict_full(
+        row: AiUpload, gsr: Optional[GrievanceSummaryRecord] = None
+    ) -> Dict[str, Any]:
         """Full detail — used by GET /{id} + returned from update / approve."""
-        light = AiUploadService._row_to_dict_light(row)
-        sj = row.summary_json or {}
+        light = AiUploadService._row_to_dict_light(row, gsr)
         light.update({
-            "summary": sj.get("summary"),
-            "summary_ta": sj.get("summary_ta"),
-            "key_details": sj.get("key_details") or [],
-            "key_details_ta": sj.get("key_details_ta") or [],
+            "summary": gsr.summary if gsr else None,
+            "summary_ta": gsr.summary_ta if gsr else None,
+            "key_details": (gsr.key_details if gsr else None) or [],
+            "key_details_ta": (gsr.key_details_ta if gsr else None) or [],
         })
         return light
 
-    # Backwards-compat alias — kept for the write paths (update/approve/dismiss)
-    # that return a hydrated row to the frontend, which still expects the full
-    # payload with summary + key_details.
-    _row_to_dict = _row_to_dict_full
+    # ── Load the one live extraction record for an upload ───────────────────────
+    @staticmethod
+    async def _latest_gsr(db: AsyncSession, upload_id: int) -> Optional[GrievanceSummaryRecord]:
+        return await db.scalar(
+            select(GrievanceSummaryRecord).where(
+                GrievanceSummaryRecord.ai_upload_id == upload_id,
+                GrievanceSummaryRecord.is_latest.is_(True),
+            )
+        )
 
     # ── Filter helpers ──────────────────────────────────────────────────────────
     _IST_OFFSET_MIN = 330   # IST = UTC+5:30
@@ -518,13 +551,19 @@ class AiUploadService:
     def _apply_common_filters(cls, stmt, *, status=None, q=None, category=None,
                               priority=None, source=None, batch_id=None,
                               from_date=None, to_date=None):
-        """Attach the shared WHERE clauses used by list + aggregates queries."""
+        """Attach the shared WHERE clauses used by list + aggregates queries.
+
+        Content filters (category / priority / name / mobile) now live on the
+        linked GrievanceSummaryRecord, so the statement is outer-joined to the
+        latest GSR. Callers build on `select(AiUpload, ...)` (or an aggregate).
+        """
+        stmt = stmt.outerjoin(GrievanceSummaryRecord, _LATEST_GSR_ON)
         if status:
             stmt = stmt.where(AiUpload.status == status.upper())
         if category:
-            stmt = stmt.where(AiUpload.grievance_category == category)
+            stmt = stmt.where(GrievanceSummaryRecord.category == category)
         if priority:
-            stmt = stmt.where(AiUpload.priority == priority)
+            stmt = stmt.where(GrievanceSummaryRecord.priority == priority)
         if source:
             stmt = stmt.where(AiUpload.source == source)
         if batch_id:
@@ -533,9 +572,9 @@ class AiUploadService:
             like = f"%{q.strip()}%"
             stmt = stmt.where(or_(
                 AiUpload.original_filename.ilike(like),
-                AiUpload.extracted_name.ilike(like),
-                AiUpload.extracted_name_ta.ilike(like),
-                AiUpload.extracted_mobile.ilike(like),
+                GrievanceSummaryRecord.name_en.ilike(like),
+                GrievanceSummaryRecord.name_ta.ilike(like),
+                GrievanceSummaryRecord.contact_mobile.ilike(like),
                 AiUpload.ticket_number.ilike(like),
             ))
         start_utc, end_utc = cls._ist_day_to_utc_range(from_date, to_date)
@@ -546,10 +585,10 @@ class AiUploadService:
         return stmt
 
     _PRIORITY_RANK_CASE = case(
-        (AiUpload.priority == "critical", 4),
-        (AiUpload.priority == "high",     3),
-        (AiUpload.priority == "medium",   2),
-        (AiUpload.priority == "low",      1),
+        (GrievanceSummaryRecord.priority == "critical", 4),
+        (GrievanceSummaryRecord.priority == "high",     3),
+        (GrievanceSummaryRecord.priority == "medium",   2),
+        (GrievanceSummaryRecord.priority == "low",      1),
         else_=0,
     )
 
@@ -580,7 +619,7 @@ class AiUploadService:
         page_size = max(1, min(page_size, 500))
 
         stmt = self._apply_common_filters(
-            select(AiUpload),
+            select(AiUpload, GrievanceSummaryRecord),
             status=status, q=q, category=category, priority=priority,
             source=source, batch_id=batch_id, from_date=from_date, to_date=to_date,
         )
@@ -616,10 +655,10 @@ class AiUploadService:
 
         offset = (page - 1) * page_size
         stmt = stmt.offset(offset).limit(page_size)
-        rows = (await db.execute(stmt)).scalars().all()
+        rows = (await db.execute(stmt)).all()   # (AiUpload, GrievanceSummaryRecord|None) tuples
 
         return {
-            "items": [self._row_to_dict_light(r) for r in rows],
+            "items": [self._row_to_dict_light(up, gsr) for up, gsr in rows],
             "total": total,
             "page": page,
             "page_size": page_size,
@@ -673,11 +712,11 @@ class AiUploadService:
         # (matches how the chart works on the client — "how do the visible rows
         # split across categories" so the PA can click one to filter).
         stmt_cat = self._apply_common_filters(
-            select(AiUpload.grievance_category, func.count(AiUpload.id)),
+            select(GrievanceSummaryRecord.category, func.count(AiUpload.id)),
             q=q, priority=priority, source=source, batch_id=batch_id,
             from_date=from_date, to_date=to_date,
         ).where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING, STATUS_ROUTED])
-                ).group_by(AiUpload.grievance_category)
+                ).group_by(GrievanceSummaryRecord.category)
         rows_cat = (await db.execute(stmt_cat)).all()
         distribution = [
             {"key": (cat or "other"), "count": int(n)}
@@ -813,7 +852,10 @@ class AiUploadService:
 
     async def get_upload(self, db: AsyncSession, upload_id: int) -> Optional[Dict[str, Any]]:
         row = await db.get(AiUpload, upload_id)
-        return self._row_to_dict_full(row) if row else None
+        if row is None:
+            return None
+        gsr = await self._latest_gsr(db, upload_id)
+        return self._row_to_dict_full(row, gsr)
 
     # ── PA edits ────────────────────────────────────────────────────────────────
     async def update_fields(self, db: AsyncSession, upload_id: int, fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -823,37 +865,40 @@ class AiUploadService:
         if row.status != STATUS_AWAITING_REVIEW:
             raise ValueError("Only rows awaiting review can be edited.")
 
-        sj = dict(row.summary_json or {})
-        # Map editable inputs onto both the columns and the summary_json.
-        mapping = {
-            "name":        ("extracted_name",    "citizen_name"),
-            "name_ta":     ("extracted_name_ta", "citizen_name_ta"),
-            "mobile":      ("extracted_mobile",  "mobile"),
-            "category":    ("grievance_category", "category"),
-            "priority":    ("priority",           "priority"),
-        }
-        for key, (col, json_key) in mapping.items():
+        gsr = await self._latest_gsr(db, upload_id)
+        if gsr is None:
+            # AWAITING_REVIEW always has an extraction record; a missing one
+            # means a half-processed row that shouldn't be editable yet.
+            raise ValueError("Extraction not ready — no summary to edit.")
+
+        # PA edits write straight to the single source of truth (the GSR).
+        # contact_mobile is nullable; name_en/name_ta/category/priority are
+        # NOT NULL, so a blank edit is ignored rather than nulling the column.
+        if "mobile" in fields and fields["mobile"] is not None:
+            gsr.contact_mobile = str(fields["mobile"]).strip() or None
+        for key, attr in (
+            ("name", "name_en"), ("name_ta", "name_ta"),
+            ("category", "category"), ("priority", "priority"),
+            ("ministry", "ministry"),
+        ):
             if key in fields and fields[key] is not None:
                 val = str(fields[key]).strip()
-                setattr(row, col, val or None)
-                sj[json_key] = val
-        # Ministry lives only in summary_json, not a column. Editing it here
-        # also decides the approve button (Accept vs Forward).
-        if "ministry" in fields and fields["ministry"] is not None:
-            sj["ministry"] = str(fields["ministry"]).strip() or None
-        # District — same story as ministry: summary_json only, no column.
-        # PA edits during review reach the GSR record via _build_case, which
-        # calls from_gemini_response(summary=extraction) and that factory
-        # already normalises "unknown"/empty to NULL on persist.
+                if val:
+                    setattr(gsr, attr, val)
+        # District is nullable and normalises the "unknown" sentinel to NULL.
         if "district" in fields and fields["district"] is not None:
-            sj["district"] = str(fields["district"]).strip() or "unknown"
-        # Free-text narrative edits (summary, citizen_ask + _ta)
-        for k in ("summary", "summary_ta", "citizen_ask", "citizen_ask_ta"):
-            if k in fields and fields[k] is not None:
-                sj[k] = str(fields[k])
-        row.summary_json = sj
+            d = str(fields["district"]).strip()
+            gsr.district = None if d in ("", "unknown") else d
+        # Free-text narrative edits (NOT NULL columns — only overwrite when sent).
+        for key, attr in (
+            ("summary", "summary"), ("summary_ta", "summary_ta"),
+            ("citizen_ask", "citizen_ask"), ("citizen_ask_ta", "citizen_ask_ta"),
+        ):
+            if key in fields and fields[key] is not None:
+                setattr(gsr, attr, str(fields[key]))
         await db.commit()
-        return self._row_to_dict(row)
+        await db.refresh(row)
+        return self._row_to_dict_full(row, gsr)
 
     # ── Dismiss → mark reviewed with NO ticket / citizen / appointment ─────────
     # For petitions the PA does not want to convert into a case: courtesy audio
@@ -877,7 +922,8 @@ class AiUploadService:
                 raise ValueError("Upload not found.")
             raise ValueError("Already reviewed or not awaiting review.")
         row = await db.get(AiUpload, upload_id)
-        return self._row_to_dict(row)
+        gsr = await self._latest_gsr(db, upload_id)
+        return self._row_to_dict_full(row, gsr)
 
     async def restore(self, db: AsyncSession, upload_id: int) -> Dict[str, Any]:
         """Undo a dismissal — send a DISMISSED upload back to AWAITING_REVIEW.
@@ -895,7 +941,8 @@ class AiUploadService:
                 raise ValueError("Upload not found.")
             raise ValueError("Only dismissed uploads can be restored to review.")
         row = await db.get(AiUpload, upload_id)
-        return self._row_to_dict(row)
+        gsr = await self._latest_gsr(db, upload_id)
+        return self._row_to_dict_full(row, gsr)
 
     # ── Approve → create the case + ticket ──────────────────────────────────────
     async def approve(self, db: AsyncSession, upload_id: int, reviewed_by: str) -> Dict[str, Any]:
@@ -931,19 +978,22 @@ class AiUploadService:
     async def _build_case(self, db: AsyncSession, upload_id: int, reviewed_by: str) -> Dict[str, Any]:
         from src.services.appointment_service import appointment_service
         from src.services import dashboard_service
-        from src.services.petition_extraction import PetitionExtraction
         from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment
-        from src.models.grievance_summary_record import GrievanceSummaryRecord
         from src.models.ticket_models import Ticket
 
         row = await db.get(AiUpload, upload_id)
-        sj = row.summary_json or {}
-        extraction = PetitionExtraction.model_validate(sj)   # enums back, edits included
-        # Strict extraction: Gemini leaves citizen_name empty when not confident.
+        # The extraction already lives as a GrievanceSummaryRecord (created at
+        # processing time, edited in review). We ADOPT that same record onto the
+        # new appointment — no second summary row is created.
+        gsr = await self._latest_gsr(db, upload_id)
+        if gsr is None:
+            raise ValueError("No extraction found for this upload — cannot approve.")
+
+        # Strict extraction: Gemini leaves the name empty when not confident.
         # PA must fill it via update_fields before approving — no "Unknown"
         # placeholders reach the citizen record.
-        name   = (row.extracted_name or extraction.citizen_name or "").strip()
-        mobile = (row.extracted_mobile or "").strip()
+        name   = (gsr.name_en or "").strip()
+        mobile = (gsr.contact_mobile or "").strip()
         if not name:
             raise ValueError(
                 "Citizen name is empty — the AI extractor was not confident enough "
@@ -951,8 +1001,9 @@ class AiUploadService:
                 "the review drawer before approving."
             )
         now = now_utc()
+        category_value = gsr.category
 
-        # ── 1) Citizen + Appointment (AWAITING_REVIEW) + summary record ─────────
+        # ── 1) Citizen + Appointment (AWAITING_REVIEW) ──────────────────────────
         enc_name   = appointment_service._encrypt_field(name)
         enc_mobile = appointment_service._encrypt_field(mobile or "")
         token_assigned, legacy_slot_ref = await appointment_service._assign_daily_token(db, now)
@@ -975,22 +1026,23 @@ class AiUploadService:
         from src.services.v2_helpers import v2
         ai_ids = v2.new_appointment_ids(
             status="AWAITING_REVIEW",
-            category=extraction.category.value,
+            category=category_value,
         )
         appt = Appointment(
             citizen_id=citizen.id,
             # v2: slot_id is a real FK — AI-scan rows never book a slot.
             slot_id=None,
             token_assigned=token_assigned,
-            # main's field priority (citizen_ask first); v2 keeps the name on Citizen only.
-            encrypted_grievance=appointment_service._encrypt_field(extraction.citizen_ask or extraction.summary or ""),
-            grievance_category=extraction.category.value,
+            encrypted_grievance=appointment_service._encrypt_field(
+                gsr.citizen_ask or gsr.summary or ""
+            ),
+            grievance_category=category_value,
             status="AWAITING_REVIEW",
             status_id=ai_ids["status_id"],
             priority_id=ai_ids["priority_id"],
             category_id=ai_ids.get("category_id"),
             schedule_meeting=False,
-            summary_status="DONE",  # ai_scan summarises inline below; keep the worker off it
+            summary_status="DONE",  # extraction already done; keep the worker off it
             # Carry the intake channel from the ai_upload row so the ticket
             # source filter reflects how the petition was actually submitted
             # (ai_scan / postal / cm_office) instead of always looking like a
@@ -1011,14 +1063,9 @@ class AiUploadService:
             created_at=now,
         ))
 
-        # Persist the AI summary against the appointment
-        record = GrievanceSummaryRecord.from_gemini_response(
-            appointment_id=appt.id,
-            summary=extraction,
-            gemini_model_used=str(sj.get("_model_used") or "gemini"),
-            gemini_latency_ms=sj.get("_latency_ms"),
-        )
-        db.add(record)
+        # Adopt the existing extraction record onto the appointment (keep
+        # ai_upload_id as provenance; it stays is_latest=True).
+        gsr.appointment_id = appt.id
         await db.flush()
 
         # ── 2) Flip to REVIEWED → creates the Ticket via the existing path.
@@ -1041,7 +1088,7 @@ class AiUploadService:
         # workflow. School stays OPEN so it can be routed to one of the 10
         # school departments ("Accept"). Shared with the QR/staff petition path.
         from src.services import department_service
-        dept_val = extraction.ministry.value if extraction.ministry else None
+        dept_val = gsr.ministry or None
         forwarded = (
             await department_service.forward_if_non_school(db, ticket.id, dept_val, reviewed_by)
             if ticket else False
