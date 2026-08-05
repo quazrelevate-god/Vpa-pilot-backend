@@ -20,9 +20,15 @@ from src.core.timeutil import now_utc
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, Text, VARCHAR,
+    select as sa_select, table as sa_table, column as sa_column,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from src.core.database import Base
+
+# Lightweight handle on the admin lookup so the hybrid status expression can
+# emit a correlated subquery id → name (see appointment_models).
+_ADMIN_LOOKUP = sa_table("admin", sa_column("id"), sa_column("entity"), sa_column("name"))
 
 
 # ── Status constants ────────────────────────────────────────────────────────────
@@ -55,10 +61,40 @@ class AiUpload(Base):
     storage_url       = Column(Text,         nullable=False, comment="storage_service key/path")
     mime_type         = Column(VARCHAR(100), nullable=False)
 
-    status = Column(
-        VARCHAR(20), nullable=False, default=STATUS_QUEUED, server_default=STATUS_QUEUED,
-        comment="QUEUED | PROCESSING | AWAITING_REVIEW | REVIEWED | FAILED | DISMISSED | ROUTED",
+    # Pipeline status is stored ONLY as a FK id into the admin lookup
+    # (entity=ai_upload). `status` is a hybrid over it — the getter/setter,
+    # query filters, AND Core update().values(status=...) all keep working
+    # (see the update_expression below), so the whole worker/service is unchanged.
+    status_id = Column(
+        BigInteger, ForeignKey("admin.id"), nullable=False, index=True,
+        comment="FK → admin.id (entity=ai_upload): QUEUED|PROCESSING|AWAITING_REVIEW|"
+                "REVIEWED|FAILED|DISMISSED|ROUTED",
     )
+
+    @hybrid_property
+    def status(self):
+        if self.status_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.status_id)
+
+    @status.setter
+    def status(self, value):
+        from src.services.admin_lookup import admin
+        self.status_id = admin.ai_upload_status(value) if value else None
+
+    @status.expression
+    def status(cls):
+        return (sa_select(_ADMIN_LOOKUP.c.name)
+                .where(_ADMIN_LOOKUP.c.id == cls.status_id,
+                       _ADMIN_LOOKUP.c.entity == "ai_upload").scalar_subquery())
+
+    @status.update_expression
+    def status(cls, value):
+        # Enables Core `update(AiUpload).values(status="REVIEWED")` — maps the
+        # name to status_id at statement-build time via the admin cache.
+        from src.services.admin_lookup import admin
+        return [(cls.status_id, admin.ai_upload_status(value))]
 
     # NOTE: all extracted content (name / mobile / category / priority / summary)
     # moved to GrievanceSummaryRecord (linked via ai_upload_id). This table is
@@ -99,7 +135,7 @@ class AiUpload(Base):
     reviewed_by  = Column(VARCHAR(100), nullable=True)
 
     __table_args__ = (
-        Index("ix_ai_uploads_status", "status"),
+        # status is now the FK status_id (indexed via index=True on the column).
         Index("ix_ai_uploads_batch", "batch_id"),
         Index("ix_ai_uploads_created", "created_at"),
     )
