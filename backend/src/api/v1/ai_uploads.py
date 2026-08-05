@@ -192,6 +192,24 @@ async def restore_upload(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@router.post("/{upload_id}/move-back")
+async def move_back_upload(
+    upload_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Recover a mis-classified upload: delete the proposal/association it was
+    routed to, and re-queue it for petition extraction (skipping the classifier
+    so it doesn't route out again). Use when the AI wrongly typed a petition as
+    a proposal/association."""
+    try:
+        return JSONResponse(await ai_upload_service.move_back_to_petition(upload_id, actor=user))
+    except Exception as e:
+        await db.rollback()
+        status = getattr(e, "status_code", 500)
+        return JSONResponse({"error": getattr(e, "detail", str(e))}, status_code=status)
+
+
 @router.post("/retry")
 async def retry_uploads(
     payload: dict = Body(...),

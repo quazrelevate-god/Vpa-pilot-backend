@@ -53,6 +53,7 @@ from src.models.ai_upload_models import (
     STATUS_PROCESSING,
     STATUS_QUEUED,
     STATUS_REVIEWED,
+    STATUS_ROUTED,
 )
 from src.models.appointment_models import Appointment, Citizen
 from src.models.grievance_summary_record import GrievanceSummaryRecord
@@ -255,10 +256,25 @@ class PetitionInboxService:
             u_stmt, status=None, q=q, category=None, priority=priority,
             source=source, batch_id=batch_id, from_date=from_date, to_date=to_date,
         )
-        u_stmt = u_stmt.where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING]))
+        # Exclude in-flight rows AND ROUTED rows. ROUTED uploads left the
+        # petition workflow (classifier sent them to proposal/association);
+        # counting them here would inflate the Awaiting tab (upload_case has no
+        # ROUTED arm, so they'd fall through `else_` → AWAITING) and the "All"
+        # total. Their own count is reported separately as counts["ROUTED"].
+        u_stmt = u_stmt.where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING, STATUS_ROUTED]))
         u_stmt = u_stmt.group_by("sk", "cat")
         for sk, cat, n in (await db.execute(u_stmt)).all():
             _absorb(sk, cat, int(n))
+
+        # Routed count — its own tab on the ai-review page (the recovery view),
+        # deliberately NOT added to counts[""], so the "All" petition total
+        # stays a petitions-only number. Same non-status filters as the tabs.
+        routed_stmt = ai_upload_service._apply_common_filters(
+            select(func.count(AiUpload.id)),
+            status=None, q=q, category=None, priority=priority,
+            source=source, batch_id=batch_id, from_date=from_date, to_date=to_date,
+        ).where(AiUpload.status == STATUS_ROUTED)
+        counts[STATUS_ROUTED] = int((await db.execute(routed_stmt)).scalar() or 0)
 
         # ── PETITIONS ──────────────────────────────────────────────────────
         # Batch filter is upload-only; petitions carry no batch_id.
@@ -363,7 +379,11 @@ class PetitionInboxService:
             source=source, batch_id=batch_id, from_date=from_date, to_date=to_date,
         )
         if not status:
-            stmt = stmt.where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING]))
+            # ROUTED rows are no longer petitions — the classifier moved them to
+            # the proposal/association workflow. They must not appear in the
+            # "All" petition list; the ai-review page's dedicated Routed tab
+            # asks for them explicitly (status="ROUTED"), which skips this block.
+            stmt = stmt.where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING, STATUS_ROUTED]))
         rows = (await db.execute(stmt)).all()
         return [tuple(r) for r in rows]
 

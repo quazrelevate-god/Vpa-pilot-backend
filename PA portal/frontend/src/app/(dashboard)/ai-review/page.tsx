@@ -8,7 +8,7 @@ import {
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
   ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
   CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2, MapPin,
-  Mail, Landmark, Archive, Paperclip, Layers, RotateCcw,
+  Mail, Landmark, Archive, Paperclip, Layers, RotateCcw, Route, Undo2, ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -33,7 +33,7 @@ import { uploadAppointmentAttachment } from "@/lib/api";
 import { MINISTRY_DISPLAY, DISTRICT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
 import type { AppointmentRow, AppointmentAttachment } from "@/lib/types";
 
-type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED" | "DISMISSED";
+type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED" | "DISMISSED" | "ROUTED";
 
 // Aggregate payload from GET /api/ai-uploads/aggregates.
 // Filter-scoped (all filters except status + category); the chart bars and
@@ -47,6 +47,7 @@ interface AggregatesPayload {
   total_awaiting: number;
   failed_count:   number;
   active_jobs:    number;
+  routed_count?:  number;   // uploads the classifier sent to proposal/association
 }
 
 // Batch summary — same shape as the ai-uploads page consumes. We only use
@@ -85,6 +86,10 @@ interface Upload {
   key_details: string[]; key_details_ta: string[];
   error: string | null; ticket_number: string | null; appointment_id: number | null; created_at: string | null;
   source?: string | null;
+  // Classifier routing (status === "ROUTED"): what the scan became and where,
+  // so the drawer can offer "open in that workflow" + "move back to petitions".
+  routed_to?: "proposal" | "association" | null;
+  routed_ref_id?: number | null;
   // Unified review drawer: petitions reuse this shape with a source tag +
   // their own attachments/audio (uploads keep the single-file preview).
   _kind?: "upload" | "petition";
@@ -129,6 +134,10 @@ const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
   // Dismissed rows (courtesy audio, blank scans, duplicates) used to be
   // reachable only via "All"; they get their own tab + count now.
   { key: "DISMISSED",       tKey: "petition.segDismissed" },
+  // Routed rows — scans the classifier sent to the proposal/association
+  // workflow. Kept out of the petition tabs; this is the recovery view where
+  // a PA can move a mis-classified scan back into the petition queue.
+  { key: "ROUTED",          tKey: "petition.segRouted" },
 ];
 
 const PRIORITY_CLS: Record<string, string> = {
@@ -159,6 +168,7 @@ const STATUS_TKEY: Record<StatusKey, string> = {
   REVIEWED:        "petition.statusReviewed",
   FAILED:          "petition.statusFailed",
   DISMISSED:       "petition.statusDismissed",
+  ROUTED:          "petition.statusRouted",
 };
 
 const STATUS_CLS: Record<StatusKey, string> = {
@@ -168,6 +178,7 @@ const STATUS_CLS: Record<StatusKey, string> = {
   REVIEWED:        "bg-emerald-100 text-emerald-700",
   FAILED:          "bg-red-100 text-red-700",
   DISMISSED:       "bg-slate-100 text-slate-500",
+  ROUTED:          "bg-violet-100 text-violet-700",
 };
 
 const STATUS_ICON: Record<StatusKey, typeof Clock> = {
@@ -177,6 +188,7 @@ const STATUS_ICON: Record<StatusKey, typeof Clock> = {
   REVIEWED:        Check,
   FAILED:          X,
   DISMISSED:       Archive,
+  ROUTED:          Route,
 };
 
 const pretty = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
@@ -661,12 +673,16 @@ function AiReviewPageInner() {
     return inboxItems.map((it) => {
       if (it._kind === "upload") {
         const u = it as unknown as Upload;
+        // Routed scans carry no extracted petition name/ask (they left the
+        // petition workflow), so fall back to the filename + a routed hint —
+        // otherwise the recovery list would be a column of dashes.
+        const routed = u.status === "ROUTED";
         return {
-          kind: "upload", id: u.id, name: u.name, name_ta: u.name_ta, mobile: u.mobile,
+          kind: "upload", id: u.id, name: u.name || (routed ? u.filename : u.name), name_ta: u.name_ta, mobile: u.mobile,
           token: u.ticket_number, categoryKey: u.category,
           priority: u.priority, statusKey: u.status, source: u.source || "ai_scan", venue: null, venue_label: null,
           created_at: u.created_at, ticket_number: u.ticket_number,
-          summary: u.citizen_ask ?? null, summary_ta: u.citizen_ask_ta ?? null,
+          summary: u.citizen_ask ?? (routed ? u.filename : null), summary_ta: u.citizen_ask_ta ?? null,
           upload: u,
         };
       }
@@ -702,6 +718,7 @@ function AiReviewPageInner() {
       REVIEWED:         c.REVIEWED          ?? 0,
       FAILED:           c.FAILED            ?? 0,
       DISMISSED:        c.DISMISSED         ?? 0,
+      ROUTED:           c.ROUTED            ?? 0,
     };
   }, [facets]);
 
@@ -860,6 +877,21 @@ function AiReviewPageInner() {
       const d = await r.json().catch(() => ({}));
       if (r.ok) { toast.success(t("petition.restoredToast")); setReview(null); load(); }
       else toast.error(d.error || t("petition.restoreFailed"));
+    } catch { toast.error(t("petition.networkError")); } finally { setBusy(false); }
+  }
+
+  // Recover a mis-classified scan — delete the proposal/association the
+  // classifier created and re-queue this upload for petition extraction (the
+  // backend locks it so it won't route out again). Uploads only; petitions are
+  // never routed.
+  async function moveBack() {
+    if (!review || review._kind === "petition") return;
+    setBusy(true);
+    try {
+      const r = await fetch(api(`/${review.id}/move-back`), { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { toast.success(t("petition.movedBackToast")); setReview(null); load(); }
+      else toast.error(d.error || t("petition.moveBackFailed"));
     } catch { toast.error(t("petition.networkError")); } finally { setBusy(false); }
   }
 
@@ -1366,7 +1398,8 @@ function AiReviewPageInner() {
               <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-5 md:px-7">
                 <div className="min-w-0">
                   <h2 className="text-2xl font-bold leading-snug text-foreground">
-                    {pick(review.citizen_ask, review.citizen_ask_ta) || review.name || "Petition"}
+                    {pick(review.citizen_ask, review.citizen_ask_ta) || review.name
+                      || (review._kind === "upload" ? review.filename : null) || "Petition"}
                   </h2>
                   <div className="mt-2.5 flex flex-wrap items-center gap-2">
                     <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", STATUS_CLS[review.status])}>
@@ -1548,6 +1581,36 @@ function AiReviewPageInner() {
                     {t("petition.restoreCta")}
                   </Button>
                 )}
+                {review.status === "ROUTED" && (() => {
+                  // The classifier moved this scan out of the petition workflow.
+                  // Offer to open it where it now lives, or pull it back if the
+                  // AI mis-typed a petition as a proposal/association.
+                  const isAssoc = review.routed_to === "association";
+                  const workflowLabel = isAssoc ? t("petition.routedAssociation") : t("petition.routedProposal");
+                  const workflowHref = isAssoc ? "/association-review" : "/proposal-review";
+                  return (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-3 text-[13px] leading-relaxed text-violet-900">
+                        <Route className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{t("petition.routedExplain").replace("{workflow}", workflowLabel)}</span>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button variant="outline" className="flex-1" onClick={() => router.push(workflowHref)} disabled={busy}>
+                          <ExternalLink className="mr-2 h-4 w-4" /> {t("petition.routedOpenCta").replace("{workflow}", workflowLabel)}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex-1 border-brand/40 text-brand hover:bg-brand/5"
+                          onClick={moveBack}
+                          disabled={busy}
+                        >
+                          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Undo2 className="mr-2 h-4 w-4" />}
+                          {t("petition.moveBackCta")}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {editing && <p className="mt-1.5 text-center text-xs text-muted-foreground">{t("petition.saveBeforeApprove")}</p>}
               </div>
             </div>
@@ -1753,7 +1816,7 @@ function DocPreview({ review, t }: { review: Upload; t: (k: string) => string })
     const att = [...(review.attachments ?? [])];
     if (review.audio_url && !att.some(a => a.type === "AUDIO")) att.push({ name: "Voice recording", url: review.audio_url, type: "AUDIO" });
     return att.length || review.audio_transcript
-      ? <InlineAttachmentPreview attachments={att} audioTranscript={review.audio_transcript} />
+      ? <InlineAttachmentPreview attachments={att} audioTranscript={review.audio_transcript} defaultOpenFirst />
       : <div className="grid h-full place-items-center text-muted-foreground">{t("petition.noPreview")}</div>;
   }
   if (review.file_url) {

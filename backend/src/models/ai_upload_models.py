@@ -19,7 +19,7 @@ from datetime import datetime
 from src.core.timeutil import now_utc
 
 from sqlalchemy import (
-    BigInteger, Column, DateTime, ForeignKey, Index, Integer, Text, VARCHAR,
+    BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, Text, VARCHAR,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -37,6 +37,11 @@ STATUS_FAILED          = "FAILED"
 # The row stays visible in "All" but hides from Awaiting / Reviewed / Failed
 # segments so the queue does not collect noise.
 STATUS_DISMISSED       = "DISMISSED"
+# The classifier decided this upload is a proposal / association, not a petition.
+# A row in proposal_submissions / association_submissions was created; this
+# ai_uploads row is kept as a recoverable audit trail (routed_to + routed_ref_id)
+# and drops out of the petition-review segments. A PA can move it back.
+STATUS_ROUTED          = "ROUTED"
 
 
 class AiUpload(Base):
@@ -76,6 +81,15 @@ class AiUpload(Base):
     summary_json = Column(JSONB, nullable=True)
 
     error_message = Column(Text, nullable=True, comment="Reason a PROCESSING run FAILED")
+
+    # ── Classifier routing (set when the doc is a proposal/association) ─────────
+    # routed_to: 'proposal' | 'association'. routed_ref_id: the id in that table.
+    # route_locked: a PA moved it back to petitions — the worker must NOT
+    # re-classify it (that would just route it out again), so it does a plain
+    # petition extraction on the next run.
+    routed_to     = Column(VARCHAR(20), nullable=True)
+    routed_ref_id = Column(BigInteger, nullable=True)
+    route_locked  = Column(Boolean, nullable=False, server_default="false")
 
     # ── Set on approve ──────────────────────────────────────────────────────────
     appointment_id = Column(

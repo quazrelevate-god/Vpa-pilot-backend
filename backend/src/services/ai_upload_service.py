@@ -29,10 +29,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import AsyncSessionLocal
 from src.core.utils import utc_iso
+from src.core import crypto
 from src.models.ai_upload_models import (
     AiUpload,
     STATUS_QUEUED, STATUS_PROCESSING, STATUS_AWAITING_REVIEW,
-    STATUS_REVIEWED, STATUS_FAILED, STATUS_DISMISSED,
+    STATUS_REVIEWED, STATUS_FAILED, STATUS_DISMISSED, STATUS_ROUTED,
 )
 
 logger = logging.getLogger(__name__)
@@ -210,8 +211,22 @@ class AiUploadService:
             return row.id
 
     async def _process_one(self, upload_id: int) -> None:
+        """Classify the document, then route it to the matching pipeline.
+
+        Every upload is classified first (petition | proposal | association |
+        courtesy). Proposals/associations are created in their own tables and
+        this ai_uploads row is marked ROUTED (a recoverable audit trail — a PA
+        can move it back). Petitions/courtesy keep the existing behaviour: the
+        row gets the AI petition summary and lands AWAITING_REVIEW.
+
+        A row a PA moved back (route_locked=True) skips the classifier and is
+        extracted straight as a petition — otherwise it would just route out
+        again.
+        """
         from src.services.petition_extraction import PetitionExtractionService
         from src.services.storage_service import get_file_bytes
+        from src.services.document_router import document_router
+        from src.models.document_classification import DocumentType
 
         logger.info("ai_upload processing id=%s", upload_id)
         try:
@@ -220,61 +235,61 @@ class AiUploadService:
                 if row is None:
                     return
                 storage_url, mime, fname = row.storage_url, row.mime_type, row.original_filename
-                forced_category = row.forced_category
+                route_locked = bool(getattr(row, "route_locked", False))
 
             raw = await asyncio.to_thread(get_file_bytes, storage_url)
             if raw is None:
                 raise FileNotFoundError(f"File missing in storage: {storage_url}")
 
-            svc = PetitionExtractionService.from_settings()
             loop = asyncio.get_running_loop()
             t0 = time.monotonic()
-            # Hard timeout so one hung Gemini call can't stall the whole queue.
-            result = await asyncio.wait_for(
+
+            # ── Move-back path: a PA reclaimed this as a petition. Do NOT
+            #    re-classify (that would route it right back out). ──────────────
+            if route_locked:
+                svc = PetitionExtractionService.from_settings()
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: svc.extract(file_bytes=raw, mime_type=mime, filename=fname)),
+                    timeout=_EXTRACTION_TIMEOUT,
+                )
+                await self._write_petition_result(
+                    upload_id, result, svc._model_name, int((time.monotonic() - t0) * 1000)
+                )
+                return
+
+            # ── Classify + route in one pass (router does classify + the
+            #    matching specialist extraction). Wider timeout: two model
+            #    calls (classify, then extract) instead of one. ────────────────
+            routed = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, lambda: svc.extract(file_bytes=raw, mime_type=mime, filename=fname)
+                    None, lambda: document_router.route(file_bytes=raw, mime_type=mime, filename=fname)
                 ),
-                timeout=_EXTRACTION_TIMEOUT,
+                timeout=_EXTRACTION_TIMEOUT * 2,
             )
             latency_ms = int((time.monotonic() - t0) * 1000)
 
-            # Category is always what Gemini classified. The PA-set
-            # forced_category on the batch is DEPRECATED — kept on the row
-            # only as an audit of what the PA thought the batch was — because
-            # PAs were frequently picking the wrong category and stomping the
-            # (more accurate) AI value. The PA can still fix an individual
-            # row from the drawer if the AI genuinely gets it wrong.
-            _ = forced_category  # intentionally unused — see comment above
-            final_category = result.category.value
+            if routed.type == DocumentType.PROPOSAL.value:
+                ref_id = await self._route_to_proposal(upload_id, storage_url, mime, fname, routed)
+                logger.info("ai_upload id=%s → ROUTED proposal #%s (%dms)", upload_id, ref_id, latency_ms)
+                return
+            if routed.type == DocumentType.ASSOCIATION.value:
+                ref_id = await self._route_to_association(upload_id, storage_url, mime, fname, routed)
+                logger.info("ai_upload id=%s → ROUTED association #%s (%dms)", upload_id, ref_id, latency_ms)
+                return
 
-            payload = result.model_dump(mode="json")
-            payload["category"] = final_category
-            payload["_model_used"] = svc._model_name
-            payload["_latency_ms"] = latency_ms
-
-            async with AsyncSessionLocal() as db:
-                row = await db.get(AiUpload, upload_id)
-                if row is None:
-                    return
-                # citizen_name / citizen_name_ta are Gemini's strict-confidence
-                # extraction (empty when it's unsure). But `citizen_name` is
-                # kept in the ORIGINAL script per the schema — for a Tamil
-                # petition it lands as Tamil, so it can't feed the English
-                # display column. Use the inherited bilingual pair
-                # (name_en → Latin, name_ta → Tamil) which Gemini also fills
-                # with proper transliteration; gate on the strict field so
-                # "empty = wasn't sure" still holds end-to-end.
-                row.extracted_name    = result.name_en if result.citizen_name.strip()    else ""
-                row.extracted_name_ta = result.name_ta if result.citizen_name_ta.strip() else ""
-                row.extracted_mobile  = result.mobile
-                row.grievance_category = final_category
-                row.priority           = result.urgency.value   # LLM field `urgency` -> `priority` column
-                row.summary_json       = payload
-                row.error_message      = None
-                row.status             = STATUS_AWAITING_REVIEW
-                row.processed_at       = now_utc()
-                await db.commit()
-            logger.info("ai_upload id=%s → AWAITING_REVIEW (%dms)", upload_id, latency_ms)
+            # petition / courtesy → petition summary. The router already ran the
+            # petition extraction for a petition verdict, so reuse it; courtesy
+            # returns no extraction, so extract now (rare).
+            result = routed.extraction
+            model_used = "classifier-route"
+            if result is None:
+                svc = PetitionExtractionService.from_settings()
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: svc.extract(file_bytes=raw, mime_type=mime, filename=fname)),
+                    timeout=_EXTRACTION_TIMEOUT,
+                )
+                model_used = svc._model_name
+            await self._write_petition_result(upload_id, result, model_used, latency_ms)
 
         except Exception as exc:
             logger.warning("ai_upload id=%s FAILED: %s", upload_id, exc)
@@ -288,6 +303,121 @@ class AiUploadService:
                         await db.commit()
             except Exception as inner:
                 logger.warning("ai_upload could not mark FAILED id=%s: %s", upload_id, inner)
+
+    async def _write_petition_result(self, upload_id: int, result, model_used: str, latency_ms: int) -> None:
+        """Persist a PetitionExtraction onto the ai_uploads row (AWAITING_REVIEW)."""
+        final_category = result.category.value
+        payload = result.model_dump(mode="json")
+        payload["category"] = final_category
+        payload["_model_used"] = model_used
+        payload["_latency_ms"] = latency_ms
+        async with AsyncSessionLocal() as db:
+            row = await db.get(AiUpload, upload_id)
+            if row is None:
+                return
+            # name_en → Latin display, name_ta → Tamil; gate on the strict
+            # `citizen_name*` field so "empty = model wasn't sure" holds.
+            row.extracted_name    = result.name_en if result.citizen_name.strip()    else ""
+            row.extracted_name_ta = result.name_ta if result.citizen_name_ta.strip() else ""
+            row.extracted_mobile  = result.mobile
+            row.grievance_category = final_category
+            row.priority           = result.urgency.value
+            row.summary_json       = payload
+            row.error_message      = None
+            row.status             = STATUS_AWAITING_REVIEW
+            row.processed_at       = now_utc()
+            # clear any stale routing (e.g. a move-back that's now a petition)
+            row.routed_to = None
+            row.routed_ref_id = None
+            await db.commit()
+        logger.info("ai_upload id=%s → AWAITING_REVIEW petition (%dms)", upload_id, latency_ms)
+
+    async def _route_to_proposal(self, upload_id: int, storage_url: str, mime: str, fname: str, routed) -> int:
+        """Create a ProposalSubmission from a scanned proposal + mark the upload ROUTED."""
+        from src.models.proposal_models import ProposalSubmission, STATUS_AWAITING_REVIEW as P_AWAIT
+        from src.services.proposal_service import _mint_tracking_ref
+        ident = routed.identity
+        ex = routed.extraction
+        docs = [{"original_filename": fname, "storage_url": storage_url, "mime_type": mime}]
+        g = lambda attr: (getattr(ident, attr, "") or "").strip() if ident else ""
+        async with AsyncSessionLocal() as db:
+            prop = ProposalSubmission(
+                tracking_ref=_mint_tracking_ref(None),
+                category=None,
+                org_name=g("org_name")[:300] or None,
+                person_name=g("person_name")[:200] or None,
+                designation=g("designation")[:200] or None,
+                email_enc=crypto.encrypt(g("email") or None),
+                phone_enc=crypto.encrypt(g("phone") or None),
+                phone_index=crypto.blind_index(g("phone")),
+                documents=docs,
+                extraction_json=(ex.model_dump(mode="json") if ex else None),
+                document_date=(getattr(ex, "document_date", None) if ex else None),
+                status=P_AWAIT,
+                created_at=now_utc(),
+                processed_at=now_utc(),
+            )
+            db.add(prop)
+            await db.commit()
+            await db.refresh(prop)
+            row = await db.get(AiUpload, upload_id)
+            if row:
+                row.status = STATUS_ROUTED
+                row.routed_to = "proposal"
+                row.routed_ref_id = prop.id
+                row.route_locked = False
+                row.processed_at = now_utc()
+                await db.commit()
+            return prop.id
+
+    async def _route_to_association(self, upload_id: int, storage_url: str, mime: str, fname: str, routed) -> int:
+        """Create an AssociationSubmission from a scanned union doc + mark ROUTED."""
+        from src.services.association_service import association_service
+        docs = [{"original_filename": fname, "storage_url": storage_url, "mime_type": mime}]
+        async with AsyncSessionLocal() as db:
+            assoc = await association_service.create_from_extraction(
+                extraction=routed.extraction, documents=docs,
+                source="ai_upload", source_ref=f"ai_upload:{upload_id}", db=db,
+            )
+            row = await db.get(AiUpload, upload_id)
+            if row:
+                row.status = STATUS_ROUTED
+                row.routed_to = "association"
+                row.routed_ref_id = assoc.id
+                row.route_locked = False
+                row.processed_at = now_utc()
+                await db.commit()
+            return assoc.id
+
+    async def move_back_to_petition(self, upload_id: int, actor: Optional[str] = None) -> Dict[str, Any]:
+        """Recover a mis-routed upload: delete the created proposal/association,
+        lock it against re-classification, and re-queue it for petition extraction."""
+        async with AsyncSessionLocal() as db:
+            row = await db.get(AiUpload, upload_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="Upload not found.")
+            if row.status != STATUS_ROUTED:
+                raise HTTPException(status_code=409, detail="This upload is not in a routed state.")
+            # Delete the downstream row so the mis-classification leaves no trace.
+            if row.routed_to == "proposal" and row.routed_ref_id:
+                from src.models.proposal_models import ProposalSubmission
+                target = await db.get(ProposalSubmission, row.routed_ref_id)
+                if target is not None:
+                    await db.delete(target)
+            elif row.routed_to == "association" and row.routed_ref_id:
+                from src.models.association_models import AssociationSubmission
+                target = await db.get(AssociationSubmission, row.routed_ref_id)
+                if target is not None:
+                    await db.delete(target)
+            row.routed_to = None
+            row.routed_ref_id = None
+            row.route_locked = True          # worker will petition-extract, not re-classify
+            row.status = STATUS_QUEUED
+            row.error_message = None
+            row.processed_at = None
+            await db.commit()
+        await self._ensure_worker()
+        return {"id": upload_id, "status": STATUS_QUEUED, "route_locked": True}
 
     # ── Read ────────────────────────────────────────────────────────────────────
     # Two shapes: `_light` for the list endpoint (no long narrative fields —
@@ -331,6 +461,10 @@ class AiUploadService:
             "ticket_number": row.ticket_number,
             "appointment_id": row.appointment_id,
             "source": row.source or "ai_scan",
+            # Classifier routing (ROUTED rows): what it became + where, so the
+            # AI-review UI can badge it and offer "move back to petitions".
+            "routed_to": getattr(row, "routed_to", None),
+            "routed_ref_id": getattr(row, "routed_ref_id", None),
             "created_at": utc_iso(row.created_at),
         }
 
@@ -527,7 +661,10 @@ class AiUploadService:
         total_visible = 0
         for status_val, n in rows_status:
             n = int(n)
-            if status_val in (STATUS_QUEUED, STATUS_PROCESSING):
+            # QUEUED/PROCESSING are in-flight; ROUTED left the petition workflow
+            # (classifier → proposal/association). None belong in the reviewable
+            # "All" total — ROUTED is reported separately as routed_count below.
+            if status_val in (STATUS_QUEUED, STATUS_PROCESSING, STATUS_ROUTED):
                 continue
             counts_by_status[status_val] = counts_by_status.get(status_val, 0) + n
             total_visible += n
@@ -539,7 +676,7 @@ class AiUploadService:
             select(AiUpload.grievance_category, func.count(AiUpload.id)),
             q=q, priority=priority, source=source, batch_id=batch_id,
             from_date=from_date, to_date=to_date,
-        ).where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING])
+        ).where(AiUpload.status.notin_([STATUS_QUEUED, STATUS_PROCESSING, STATUS_ROUTED])
                 ).group_by(AiUpload.grievance_category)
         rows_cat = (await db.execute(stmt_cat)).all()
         distribution = [
@@ -561,6 +698,11 @@ class AiUploadService:
                 AiUpload.status.in_([STATUS_QUEUED, STATUS_PROCESSING])
             )
         )).scalar() or 0)
+        # Routed rows recovered from mis-classification live in their own tab;
+        # a global count lets the UI badge it independent of the active filter.
+        routed_count = int((await db.execute(
+            select(func.count(AiUpload.id)).where(AiUpload.status == STATUS_ROUTED)
+        )).scalar() or 0)
 
         return {
             "counts_by_status": {
@@ -574,6 +716,7 @@ class AiUploadService:
             "total_awaiting": total_awaiting,
             "failed_count":   failed_count,
             "active_jobs":    active_jobs,
+            "routed_count":   routed_count,
         }
 
     async def list_batches(self, db: AsyncSession) -> Dict[str, Any]:
