@@ -75,17 +75,27 @@ def ensure_database() -> None:
 def seed_admin(session: Session) -> int:
     """Seed the admin lookup from existing enums + the new department list."""
     from src.models.ticket_models import TicketStatus, TicketPriority
-    from src.models.grievance_summary import GrievanceCategory, Department
+    # NOTE: the enum is `Ministry` (was `Department` before the rename); the old
+    # import raised ImportError and silently blocked the whole seed. `District`
+    # is seeded as its own entity (excluding the "unknown" sentinel — stored as
+    # NULL, never resolved to an id).
+    from src.models.grievance_summary import (
+        GrievanceCategory, Ministry, District,
+    )
 
     groups: dict[str, list[str]] = {
         "appointment": ["SCHEDULED", "WAITING", "RESCHEDULED",
                         "AWAITING_REVIEW", "REVIEWED", "NOT_CAME",
-                        "COURTESY_DONE"],
+                        "COURTESY_DONE", "DISMISSED"],
         "ticket":   [s.value for s in TicketStatus],
         "priority": [p.value for p in TicketPriority],
         "category": [c.value for c in GrievanceCategory],
-        "ministry": [d.value for d in Department],
-        "ai_upload": ["QUEUED", "PROCESSING", "AWAITING_REVIEW", "REVIEWED", "FAILED"],
+        "ministry": [m.value for m in Ministry],
+        "district": [d.value for d in District if d.value != "unknown"],
+        # DISMISSED (reviewed, no case) and ROUTED (classifier sent it to
+        # proposal/association) are real ai_upload states used by the worker.
+        "ai_upload": ["QUEUED", "PROCESSING", "AWAITING_REVIEW", "REVIEWED",
+                      "FAILED", "DISMISSED", "ROUTED"],
         "department": [
             "Director of School Education",
             "Directorate of Private Schools",
