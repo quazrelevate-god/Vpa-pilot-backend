@@ -23,6 +23,10 @@ interface InlineAttachmentPreviewProps {
   sections?: AttachmentSection[];
   audioTranscript?: string | null;
   className?: string;
+  /** Open the first attachment's preview immediately instead of waiting for a
+   *  chip click. Single-document review surfaces (proposal / association) want
+   *  the document rendered inline on open, not one click away. */
+  defaultOpenFirst?: boolean;
 }
 
 const TYPE_ICON = {
@@ -55,7 +59,7 @@ const TYPE_LABEL: Record<GalleryAttachment["type"], string> = {
  * exist to make accidental / casual download out of reach for PA staff
  * looking at sensitive citizen attachments.
  */
-export function InlineAttachmentPreview({ attachments, sections, audioTranscript, className }: InlineAttachmentPreviewProps) {
+export function InlineAttachmentPreview({ attachments, sections, audioTranscript, className, defaultOpenFirst }: InlineAttachmentPreviewProps) {
   // Normalize to sections[]. Single-`attachments` mode becomes one unlabeled
   // section so the render path is uniform.
   const normSections: AttachmentSection[] = sections
@@ -67,7 +71,9 @@ export function InlineAttachmentPreview({ attachments, sections, audioTranscript
   // Active selection identifies (sectionIdx, attachmentIdx) — only ONE chip
   // across all sections is active at a time. Clicking active → close;
   // clicking any other chip → switch preview immediately.
-  const [active, setActive] = useState<{ s: number; a: number } | null>(null);
+  const [active, setActive] = useState<{ s: number; a: number } | null>(
+    defaultOpenFirst ? { s: 0, a: 0 } : null,
+  );
 
   // Reset when the attachment set fundamentally changes (drawer row swap).
   // Use a stable signature — sizes + file names — NOT URLs. Presigned MinIO
@@ -79,7 +85,9 @@ export function InlineAttachmentPreview({ attachments, sections, audioTranscript
     for (const a of s.attachments) sigParts.push(a.name + "#" + a.type);
   }
   const signature = sigParts.join("|");
-  useEffect(() => { setActive(null); }, [signature]);
+  // On a row/document swap, reset to either the first attachment (single-doc
+  // review surfaces) or collapsed (galleries that open on click).
+  useEffect(() => { setActive(defaultOpenFirst ? { s: 0, a: 0 } : null); }, [signature, defaultOpenFirst]);
 
   if (normSections.length === 0) {
     return (

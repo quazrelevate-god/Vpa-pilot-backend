@@ -346,6 +346,7 @@ export default function TicketDetailDrawer({
                       : []),
                   ]}
                   audioTranscript={t.audio_transcript}
+                  defaultOpenFirst
                 />
               </div>
             </aside>

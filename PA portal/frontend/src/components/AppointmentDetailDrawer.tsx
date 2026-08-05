@@ -269,6 +269,7 @@ export default function AppointmentDetailDrawer({
                   <InlineAttachmentPreview
                     attachments={a.attachments ?? []}
                     audioTranscript={a.audio_transcript || a.description || null}
+                    defaultOpenFirst
                   />
                 </div>
               </aside>
