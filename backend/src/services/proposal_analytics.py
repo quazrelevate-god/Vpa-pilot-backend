@@ -13,9 +13,10 @@ row count never approaches a size where it matters.
 """
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +62,44 @@ def _pct(n: int, d: int) -> float:
 def _has_cost(row: ProposalSubmission) -> bool:
     c = ((row.extraction_json or {}).get("estimated_cost") or "").strip().lower()
     return bool(c) and c not in _NO_COST
+
+
+# Indian-numbering units for turning a free-text cost into a rupee figure.
+_COST_UNIT = {
+    "crore": 10**7, "crores": 10**7, "cr": 10**7,
+    "lakh": 10**5, "lakhs": 10**5, "lac": 10**5, "lacs": 10**5,
+    "billion": 10**9, "bn": 10**9, "million": 10**6, "mn": 10**6,
+    "thousand": 10**3, "k": 10**3,
+}
+# First number + optional Indian/SI unit. \b after the unit stops "5 kids" →
+# "5k". Best-effort: an unparseable or unitless "₹500" counts as 500 rupees.
+_COST_RE = re.compile(
+    r"(\d[\d,]*(?:\.\d+)?)\s*(?:(crore|crores|cr|lakhs|lakh|lacs|lac|billion|bn|million|mn|thousand|k)\b)?",
+    re.IGNORECASE,
+)
+
+
+def parse_cost(text: Optional[str]) -> int:
+    """Best-effort rupee value from a free-text ``estimated_cost``.
+
+    Handles "₹50 lakh", "Rs. 2 crore", "₹1.5 Cr", "5,00,000", "2 million".
+    Returns 0 when the field is absent / "Not specified" / unparseable — the
+    caller sums these into a headline "value in the pipeline", so a rough
+    figure is the point, not accounting precision.
+    """
+    if not text:
+        return 0
+    s = text.strip().lower()
+    if s in _NO_COST:
+        return 0
+    m = _COST_RE.search(s)
+    if not m:
+        return 0
+    try:
+        num = float(m.group(1).replace(",", ""))
+    except ValueError:
+        return 0
+    return int(num * _COST_UNIT.get(m.group(2) or "", 1))
 
 
 async def get_proposal_analytics(db: AsyncSession, trend_days: int = 90) -> Dict[str, Any]:
@@ -149,6 +188,22 @@ async def get_proposal_analytics(db: AsyncSession, trend_days: int = 90) -> Dict
     prior30  = _window(60, 30)
     growth_pct = _pct(recent30 - prior30, prior30) if prior30 else None
 
+    # ── Decision turnaround: avg days from received → decided ─────────────────
+    # Only proposals the Minister has actually acted on (a reviewed_at stamp),
+    # so this reads as "how long a proposal waits before it gets a verdict".
+    _DECIDED = {STATUS_APPROVED, STATUS_REJECTED, STATUS_NEEDS_CLARIFICATION}
+    spans = [
+        (r.reviewed_at - r.created_at).total_seconds() / 86400.0
+        for r in rows
+        if r.status in _DECIDED and r.reviewed_at and r.created_at and r.reviewed_at >= r.created_at
+    ]
+    avg_decision_days = round(sum(spans) / len(spans), 1) if spans else None
+
+    # ── Value in the pipeline: summed stated cost (best-effort) ───────────────
+    costed = [(r, parse_cost((r.extraction_json or {}).get("estimated_cost"))) for r in rows]
+    pipeline_cost_value = sum(v for _, v in costed if v > 0)
+    pipeline_cost_count = sum(1 for _, v in costed if v > 0)
+
     return {
         "kpis": {
             "total": total,
@@ -159,8 +214,12 @@ async def get_proposal_analytics(db: AsyncSession, trend_days: int = 90) -> Dict
             "processing": processing,
             "failed": failed,
             "decided": decided,
+            "decided_pct": _pct(decided, total),
             "approval_rate": _pct(approved, approved + rejected),
+            "avg_decision_days": avg_decision_days,
             "with_cost": with_cost_count(rows),
+            "pipeline_cost_value": pipeline_cost_value,
+            "pipeline_cost_count": pipeline_cost_count,
             "received_30d": recent30,
             "growth_pct": growth_pct,
         },

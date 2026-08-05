@@ -54,6 +54,7 @@ class ProposalListItem(BaseModel):
     status: str
     title: Optional[str] = None
     ai_recommendation: Optional[str] = None
+    estimated_cost: Optional[str] = None
     created_at: Optional[str] = None
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[str] = None
@@ -96,6 +97,7 @@ def _list_item(row: ProposalSubmission) -> ProposalListItem:
         status=row.status,
         title=ej.get("title") or None,
         ai_recommendation=ej.get("ai_recommendation"),
+        estimated_cost=ej.get("estimated_cost"),
         created_at=_iso(row.created_at),
         reviewed_by=row.reviewed_by,
         reviewed_at=_iso(row.reviewed_at),
