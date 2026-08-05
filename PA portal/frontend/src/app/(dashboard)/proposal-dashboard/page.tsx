@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Lightbulb, Inbox, CheckCircle2, XCircle, HelpCircle, IndianRupee,
-  Layers, Sparkles, TrendingUp, Building2, Search, RefreshCw, ArrowRight, Landmark,
+  Lightbulb, Inbox, CheckCircle2, Clock, Gauge, IndianRupee,
+  Layers, Sparkles, TrendingUp, Building2, Search, RefreshCw, ArrowRight, Landmark, X,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -14,12 +14,9 @@ import { cn } from "@/lib/utils";
 import { fetchMe } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
   StatTile, ChartCard, BarBreakdown, DonutBreakdown, TrendArea, RankedList,
-  NotAuthorized, C, SERIES, fmtInt,
+  NotAuthorized, C, fmtInt,
 } from "@/components/insights/DashboardKit";
-import {
-  getProposalAnalytics, listProposals,
-  type ProposalAnalytics, type ProposalRow,
-} from "./_lib/api";
+import { listProposals, analyze, fmtINR, type ProposalRow } from "./_lib/api";
 
 const CAT_LABEL: Record<string, string> = {
   school: "School Education", tamil: "Tamil & Heritage",
@@ -35,8 +32,8 @@ const STATUS_PILL: Record<string, { label: string; cls: string }> = {
   NEEDS_CLARIFICATION: { label: "Needs info",    cls: "bg-orange-100 text-orange-800" },
 };
 const REC_PILL: Record<string, { label: string; cls: string }> = {
-  review_closely:  { label: "Review closely", cls: "border-violet-300 bg-violet-50 text-violet-700" },
-  standard:        { label: "Standard",       cls: "border-slate-300 bg-slate-50 text-slate-600" },
+  review_closely:  { label: "Review closely",  cls: "border-violet-300 bg-violet-50 text-violet-700" },
+  standard:        { label: "Standard",        cls: "border-slate-300 bg-slate-50 text-slate-600" },
   needs_more_info: { label: "Needs more info", cls: "border-amber-300 bg-amber-50 text-amber-700" },
 };
 const TABS = [
@@ -58,14 +55,15 @@ type Gate = "loading" | "denied" | "ok";
 export default function ProposalDashboardPage() {
   const router = useRouter();
   const [gate, setGate] = useState<Gate>("loading");
-  const [a, setA] = useState<ProposalAnalytics | null>(null);
+  const [rows, setRows] = useState<ProposalRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [updated, setUpdated] = useState<string | null>(null);
 
-  // table
-  const [tab, setTab] = useState("");
+  // Cross-filters — every chart writes here, every number reads from here.
+  const [fStatus, setFStatus] = useState("");
+  const [fRec, setFRec] = useState("");
+  const [fCat, setFCat] = useState("");
   const [q, setQ] = useState("");
-  const [rows, setRows] = useState<ProposalRow[] | null>(null);
 
   // ── gate ──
   useEffect(() => {
@@ -80,11 +78,14 @@ export default function ProposalDashboardPage() {
     return () => ac.abort();
   }, [router]);
 
-  const loadAnalytics = useCallback(async (signal?: AbortSignal) => {
+  // ── one full fetch; the dashboard is computed client-side from it ──
+  const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await getProposalAnalytics(90, signal);
+      // Institutional proposals stay well under the endpoint's 200 cap; the
+      // whole dashboard is computed from this one fetch.
+      const res = await listProposals({ limit: 200 }, signal);
       if (!signal?.aborted) {
-        setA(res); setErr(null);
+        setRows(res.items); setErr(null);
         setUpdated(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
       }
     } catch (e) { if (!signal?.aborted) setErr((e as Error).message); }
@@ -93,25 +94,59 @@ export default function ProposalDashboardPage() {
   useEffect(() => {
     if (gate !== "ok") return;
     const ac = new AbortController();
-    loadAnalytics(ac.signal);
-    const iv = setInterval(() => loadAnalytics(ac.signal), 20000);
+    load(ac.signal);
+    const iv = setInterval(() => load(ac.signal), 20000);
     return () => { ac.abort(); clearInterval(iv); };
-  }, [gate, loadAnalytics]);
+  }, [gate, load]);
 
-  // table load (debounced on q)
-  useEffect(() => {
-    if (gate !== "ok") return;
-    const ac = new AbortController();
-    const id = setTimeout(() => {
-      listProposals({ status: tab || undefined, q: q || undefined, limit: 100 }, ac.signal)
-        .then((r) => { if (!ac.signal.aborted) setRows(r.items); })
-        .catch(() => { if (!ac.signal.aborted) setRows([]); });
-    }, 250);
-    return () => { ac.abort(); clearTimeout(id); };
-  }, [gate, tab, q]);
+  const matchQ = useCallback((r: ProposalRow) => {
+    const s = q.trim().toLowerCase();
+    if (!s) return true;
+    return (r.title || "").toLowerCase().includes(s)
+      || (r.org_name || "").toLowerCase().includes(s)
+      || (r.tracking_ref || "").toLowerCase().includes(s);
+  }, [q]);
 
-  const k = a?.kpis;
-  const trendSeries = useMemo(() => (a?.trend ?? []).map((p) => p.received), [a]);
+  // `base` = everything EXCEPT the status filter (so the status tabs/donut can
+  // still show their would-be counts). `filtered` adds the status filter.
+  const base = useMemo(
+    () => (rows ?? []).filter((r) =>
+      (!fRec || r.ai_recommendation === fRec) &&
+      (!fCat || (r.category || "other") === fCat) &&
+      matchQ(r)),
+    [rows, fRec, fCat, matchQ],
+  );
+  const filtered = useMemo(
+    () => base.filter((r) => !fStatus || r.status === fStatus),
+    [base, fStatus],
+  );
+  const view = useMemo(() => analyze(filtered), [filtered]);
+  const k = view.kpis;
+  const trendSeries = useMemo(() => view.trend.map((p) => p.received), [view]);
+
+  const statusCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const r of base) c[r.status] = (c[r.status] || 0) + 1;
+    return c;
+  }, [base]);
+  const countFor = (key: string) => (key === "" ? base.length : statusCounts[key] || 0);
+
+  const tableRows = useMemo(
+    () => [...filtered].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")),
+    [filtered],
+  );
+
+  const toggle = (cur: string, set: (v: string) => void) => (key: string) => set(cur === key ? "" : key);
+  const clearAll = () => { setFStatus(""); setFRec(""); setFCat(""); setQ(""); };
+
+  const chips: { label: string; clear: () => void }[] = [];
+  if (fStatus) chips.push({ label: `Status · ${STATUS_PILL[fStatus]?.label ?? fStatus}`, clear: () => setFStatus("") });
+  if (fRec) chips.push({ label: `AI · ${REC_PILL[fRec]?.label ?? fRec}`, clear: () => setFRec("") });
+  if (fCat) chips.push({ label: `Portfolio · ${CAT_LABEL[fCat] ?? fCat}`, clear: () => setFCat("") });
+  if (q.trim()) chips.push({ label: `“${q.trim()}”`, clear: () => setQ("") });
+  const anyFilter = chips.length > 0;
+
+  const loading = rows == null;
 
   if (gate === "loading") {
     return <><TopBar title="Proposal Dashboard" subtitle="Loading…" icon={<Lightbulb className="h-4 w-4" />} /><div className="p-8"><Card className="h-40 animate-pulse" /></div></>;
@@ -134,66 +169,93 @@ export default function ProposalDashboardPage() {
               Live
               {updated && <span className="ml-2 font-normal text-muted-foreground">Updated {updated}</span>}
             </span>
-            <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => loadAnalytics()}>
+            <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => load()}>
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
           </div>
 
           {err && <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{err}</div>}
 
-          {/* KPI row */}
-          {!a ? (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              {Array.from({ length: 6 }).map((_, i) => <Card key={i} className="h-[120px] animate-pulse" />)}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <StatTile icon={Lightbulb} tone="brand" label="Total proposals" value={fmtInt(k?.total)}
-                caption="all time" delta={k?.growth_pct} series={trendSeries} />
-              <StatTile icon={Inbox} tone="amber" label="Awaiting your decision" value={fmtInt(k?.awaiting)}
-                caption="on your desk" highlight />
-              <StatTile icon={CheckCircle2} tone="mint" label="Approved" value={fmtInt(k?.approved)}
-                caption={`${k?.approval_rate ?? 0}% approval rate`} />
-              <StatTile icon={XCircle} tone="rose" label="Rejected" value={fmtInt(k?.rejected)} caption="declined" />
-              <StatTile icon={HelpCircle} tone="amber" label="Needs clarification" value={fmtInt(k?.needs_clarification)} caption="sent back" />
-              <StatTile icon={IndianRupee} tone="violet" label="With a stated cost" value={fmtInt(k?.with_cost)}
-                caption={`of ${fmtInt(k?.total)} proposals`} />
+          {/* active cross-filters — click any chart to add one */}
+          {anyFilter && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/20 bg-brand/[0.04] px-3 py-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Filtered</span>
+              {chips.map((c, i) => (
+                <button key={i} onClick={c.clear}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-card px-2.5 py-1 text-[12px] font-medium text-brand transition-colors hover:bg-brand/10">
+                  {c.label} <X className="h-3 w-3" />
+                </button>
+              ))}
+              <button onClick={clearAll} className="text-[12px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                Clear all
+              </button>
+              <span className="ml-auto font-mono text-[12px] font-semibold tabular-nums text-foreground">
+                {fmtInt(filtered.length)} <span className="font-sans font-normal text-muted-foreground">of {fmtInt(rows?.length ?? 0)} proposals</span>
+              </span>
             </div>
           )}
 
-          {/* decision donut + AI recommendation */}
+          {/* KPIs — decision-first, then pipeline. All recompute under filters. */}
+          {loading ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i} className="h-[128px] animate-pulse" />)}</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i} className="h-[112px] animate-pulse" />)}</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <StatTile icon={Inbox} tone="amber" label="Awaiting your decision" value={fmtInt(k.awaiting)}
+                  caption={`of ${fmtInt(k.total)} · on your desk`} highlight />
+                <StatTile icon={CheckCircle2} tone="mint" label="Approval rate"
+                  value={k.decided > 0 ? `${k.approval_rate}%` : "—"}
+                  caption={k.decided > 0 ? `${fmtInt(k.approved)} approved of ${fmtInt(k.decided)} decided` : "no decisions yet"} />
+                <StatTile icon={Clock} tone="violet" label="Avg decision time"
+                  value={k.avg_decision_days != null ? `${k.avg_decision_days}d` : "—"}
+                  caption={k.avg_decision_days != null ? "received → decided" : "no decisions yet"} />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <StatTile icon={Lightbulb} tone="brand" label={fStatus || fRec || fCat ? "Proposals (filtered)" : "Total proposals"} value={fmtInt(k.total)}
+                  caption={anyFilter ? "in the current view" : "all time"} delta={anyFilter ? null : k.growth_pct} series={trendSeries} />
+                <StatTile icon={IndianRupee} tone="violet" label="Value in the pipeline"
+                  value={fmtINR(k.pipeline_cost_value)}
+                  caption={k.pipeline_cost_count > 0 ? `stated across ${fmtInt(k.pipeline_cost_count)} proposals` : "no costs stated"} />
+                <StatTile icon={Gauge} tone="mint" label="Decided so far" value={fmtInt(k.decided)}
+                  caption={`${k.decided_pct}% of this view`} />
+              </div>
+            </div>
+          )}
+
+          {/* decision donut + AI recommendation — both clickable */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <ChartCard icon={Layers} title="Where each proposal stands"
-              sub="The Minister’s decision pipeline">
-              <DonutBreakdown data={a ? a.by_status : null} centerLabel="proposals"
-                colors={["#B45309", "#0F8B4C", "#C0362C", "#EA8C0C"]} empty="No proposals yet" />
+            <ChartCard icon={Layers} title="Where each proposal stands" sub="Click a slice to filter · the Minister’s decision pipeline">
+              <DonutBreakdown data={loading ? null : view.by_status} centerLabel="proposals"
+                colors={["#B45309", "#0F8B4C", "#C0362C", "#EA8C0C"]} empty="No proposals in this view"
+                activeKey={fStatus} onSlice={toggle(fStatus, setFStatus)} />
             </ChartCard>
-            <ChartCard icon={Sparkles} title="What the AI flagged"
-              sub="A triage hint — never a decision">
-              <DonutBreakdown data={a ? a.by_recommendation : null} centerLabel="briefs"
-                colors={["#6D28D9", "#64748B", "#B45309"]} empty="No AI briefs yet" />
+            <ChartCard icon={Sparkles} title="What the AI flagged" sub="Completeness triage — click to filter · never a decision">
+              <DonutBreakdown data={loading ? null : view.by_recommendation} centerLabel="briefs"
+                colors={["#6D28D9", "#64748B", "#B45309"]} empty="No AI briefs in this view"
+                activeKey={fRec} onSlice={toggle(fRec, setFRec)} />
             </ChartCard>
           </div>
 
-          {/* portfolio bars + trend */}
+          {/* portfolio bars (clickable) + trend */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <ChartCard icon={Landmark} title="By portfolio"
-              sub="Which desk each idea targets">
-              <BarBreakdown data={a ? a.by_category : null} color={C.brand} empty="No proposals yet" />
+            <ChartCard icon={Landmark} title="By portfolio" sub="Click a bar to filter · which desk each idea targets">
+              <BarBreakdown data={loading ? null : view.by_category} color={C.brand} empty="No proposals in this view"
+                activeKey={fCat} onPick={toggle(fCat, setFCat)} />
             </ChartCard>
-            <ChartCard icon={TrendingUp} title="Proposals received"
-              sub="Last 90 days">
-              <TrendArea data={a ? a.trend : null} color={C.brand} label="Proposals" />
+            <ChartCard icon={TrendingUp} title="Proposals received" sub="Last 90 days">
+              <TrendArea data={loading ? null : view.trend} color={C.brand} label="Proposals" />
             </ChartCard>
           </div>
 
           {/* approval by portfolio + top orgs */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <ChartCard icon={CheckCircle2} title="Decision split by portfolio"
-              sub="Approved vs rejected, where decided">
-              {a && a.approval_by_category.length > 0 ? (
+            <ChartCard icon={CheckCircle2} title="Decision split by portfolio" sub="Approved vs rejected, where decided">
+              {!loading && view.approval_by_category.length > 0 ? (
                 <div className="space-y-3">
-                  {a.approval_by_category.map((r) => {
+                  {view.approval_by_category.map((r) => {
                     const tot = r.approved + r.rejected;
                     return (
                       <div key={r.key}>
@@ -214,20 +276,19 @@ export default function ProposalDashboardPage() {
                   })}
                 </div>
               ) : (
-                <div className="grid h-24 place-items-center text-[12.5px] italic text-muted-foreground">No decisions recorded yet</div>
+                <div className="grid h-24 place-items-center text-[12.5px] italic text-muted-foreground">No decisions in this view</div>
               )}
             </ChartCard>
-            <ChartCard icon={Building2} title="Who’s proposing"
-              sub="Most active organisations">
-              <RankedList items={a ? a.top_orgs : null}
-                valueOf={(o) => fmtInt(o.count)} empty="No organisations yet" />
+            <ChartCard icon={Building2} title="Who’s proposing" sub="Most active organisations">
+              <RankedList items={loading ? null : view.top_orgs} valueOf={(o) => fmtInt(o.count)} empty="No organisations in this view" />
             </ChartCard>
           </div>
 
-          {/* detail table */}
+          {/* detail table — shares the same filter state */}
           <Card className="overflow-hidden p-0">
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
-              <h2 className="type-card-heading">Every proposal</h2>
+              <h2 className="type-card-heading">Proposals</h2>
+              <span className="font-mono text-[12px] font-semibold tabular-nums text-muted-foreground">{fmtInt(tableRows.length)}</span>
               <div className="ml-auto flex items-center gap-2">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -238,31 +299,34 @@ export default function ProposalDashboardPage() {
             </div>
             <div className="flex flex-wrap gap-1.5 border-b border-border px-4 py-2.5">
               {TABS.map((tb) => (
-                <button key={tb.key || "all"} onClick={() => setTab(tb.key)}
-                  className={cn("rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors",
-                    tab === tb.key ? "bg-brand text-white" : "text-muted-foreground hover:bg-accent")}>
+                <button key={tb.key || "all"} onClick={() => setFStatus(tb.key)}
+                  className={cn("inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+                    fStatus === tb.key ? "bg-brand text-white" : "text-muted-foreground hover:bg-accent")}>
                   {tb.label}
+                  <span className={cn("num rounded-full px-1.5 text-[11px]", fStatus === tb.key ? "bg-white/20 text-white" : "bg-muted text-muted-foreground")}>{countFor(tb.key)}</span>
                 </button>
               ))}
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] text-left text-sm">
+              <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
                   <tr>
                     <th className="px-4 py-3">Proposal</th>
                     <th className="px-4 py-3">Organisation</th>
                     <th className="px-4 py-3">Portfolio</th>
-                    <th className="px-4 py-3">AI</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Received</th>
+                    <th className="w-36 px-4 py-3">AI</th>
+                    <th className="w-28 px-4 py-3">Status</th>
+                    <th className="w-28 px-4 py-3">Received</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows == null ? (
+                  {loading ? (
                     <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">Loading…</td></tr>
-                  ) : rows.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">No proposals match.</td></tr>
-                  ) : rows.map((p) => {
+                  ) : tableRows.length === 0 ? (
+                    <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                      No proposals match. {anyFilter && <button onClick={clearAll} className="font-medium text-brand hover:underline">Clear filters</button>}
+                    </td></tr>
+                  ) : tableRows.map((p) => {
                     const st = STATUS_PILL[p.status] || { label: p.status, cls: "bg-slate-100 text-slate-600" };
                     const rec = p.ai_recommendation ? REC_PILL[p.ai_recommendation] : null;
                     return (
@@ -275,9 +339,9 @@ export default function ProposalDashboardPage() {
                         <td className="px-4 py-3 text-[13px] text-foreground/85">{p.org_name || "—"}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-[13px] text-muted-foreground">{p.category ? (CAT_LABEL[p.category] || p.category) : "—"}</td>
                         <td className="px-4 py-3">
-                          {rec ? <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium", rec.cls)}>{rec.label}</span> : <span className="text-muted-foreground">—</span>}
+                          {rec ? <span className={cn("inline-flex w-fit whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium", rec.cls)}>{rec.label}</span> : <span className="text-muted-foreground">—</span>}
                         </td>
-                        <td className="px-4 py-3"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold", st.cls)}>{st.label}</span></td>
+                        <td className="px-4 py-3"><span className={cn("inline-flex w-fit whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold", st.cls)}>{st.label}</span></td>
                         <td className="whitespace-nowrap px-4 py-3 text-[12.5px] tabular-nums text-muted-foreground">{fmtDate(p.created_at)}</td>
                       </tr>
                     );
@@ -286,7 +350,7 @@ export default function ProposalDashboardPage() {
               </table>
             </div>
             <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2.5 text-[12px] text-muted-foreground">
-              <span>{rows?.length ?? 0} shown</span>
+              <span>{fmtInt(tableRows.length)} shown</span>
               <button onClick={() => router.push("/proposal-review")} className="inline-flex items-center gap-1 font-medium text-brand hover:underline">
                 Go to review queue <ArrowRight className="h-3.5 w-3.5" />
               </button>

@@ -154,24 +154,30 @@ export function BarBreakdown({
   );
 }
 
-// ── donut with legend ─────────────────────────────────────────────────────────
+// ── donut with legend (optionally clickable to cross-filter) ──────────────────
 export function DonutBreakdown({
-  data, colors = SERIES, centerLabel, empty = "No data yet",
+  data, colors = SERIES, centerLabel, empty = "No data yet", activeKey, onSlice,
 }: {
   data: Bar[] | null; colors?: string[]; centerLabel?: string; empty?: string;
+  activeKey?: string; onSlice?: (key: string) => void;
 }) {
   if (data == null) return <div className="grid h-[220px] place-items-center"><span className="text-[12px] text-muted-foreground">Loading…</span></div>;
   const rows = data.filter((r) => r.count > 0);
   if (rows.length === 0) return <EmptyRow text={empty} />;
   const total = rows.reduce((a, b) => a + b.count, 0);
+  const dim = (key: string) => (activeKey && activeKey !== key ? 0.28 : 1);
   return (
     <div className="flex flex-col items-center gap-4 sm:flex-row">
       <div className="relative h-[168px] w-[168px] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={rows} dataKey="count" nameKey="label" cx="50%" cy="50%"
-              innerRadius={54} outerRadius={78} paddingAngle={2} strokeWidth={0} isAnimationActive={false}>
-              {rows.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
+              innerRadius={54} outerRadius={78} paddingAngle={2} strokeWidth={0} isAnimationActive={false}
+              onClick={onSlice ? (_: unknown, i: number) => onSlice(rows[i].key) : undefined}>
+              {rows.map((r, i) => (
+                <Cell key={i} fill={colors[i % colors.length]}
+                  fillOpacity={dim(r.key)} cursor={onSlice ? "pointer" : "default"} />
+              ))}
             </Pie>
             <Tooltip
               formatter={(v: number, n) => [`${v} (${Math.round((v / total) * 100)}%)`, n as string]}
@@ -186,17 +192,31 @@ export function DonutBreakdown({
         </div>
       </div>
       <ul className="min-w-0 flex-1 space-y-1.5">
-        {rows.map((r, i) => (
-          <li key={r.key} className="flex items-center justify-between gap-3 text-[13px]">
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colors[i % colors.length] }} />
-              <span className="truncate text-foreground/85">{r.label}</span>
-            </span>
-            <span className="shrink-0 font-mono text-[12.5px] font-semibold tabular-nums">
-              {fmtInt(r.count)} <span className="text-muted-foreground">· {Math.round((r.count / total) * 100)}%</span>
-            </span>
-          </li>
-        ))}
+        {rows.map((r, i) => {
+          const active = activeKey === r.key;
+          const Row = (
+            <>
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colors[i % colors.length], opacity: dim(r.key) }} />
+                <span className={cn("truncate", active ? "font-semibold text-brand" : "text-foreground/85")}>{r.label}</span>
+              </span>
+              <span className="shrink-0 font-mono text-[12.5px] font-semibold tabular-nums">
+                {fmtInt(r.count)} <span className="text-muted-foreground">· {Math.round((r.count / total) * 100)}%</span>
+              </span>
+            </>
+          );
+          return onSlice ? (
+            <li key={r.key}>
+              <button type="button" onClick={() => onSlice(r.key)}
+                className={cn("flex w-full items-center justify-between gap-3 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-muted/60",
+                  active && "bg-brand/10")}>
+                {Row}
+              </button>
+            </li>
+          ) : (
+            <li key={r.key} className="flex items-center justify-between gap-3 px-1.5 py-1 text-[13px]">{Row}</li>
+          );
+        })}
       </ul>
     </div>
   );
