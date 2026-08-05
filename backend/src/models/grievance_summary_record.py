@@ -24,11 +24,19 @@ from sqlalchemy import (
     Integer,
     Text,
     VARCHAR,
+    select as sa_select,
+    table as sa_table,
+    column as sa_column,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from src.core.database import Base
+
+# Lightweight handle on the admin lookup so the hybrid classification
+# expressions can emit a correlated subquery id → name (see appointment_models).
+_ADMIN_LOOKUP = sa_table("admin", sa_column("id"), sa_column("entity"), sa_column("name"))
 
 
 class GrievanceSummaryRecord(Base):
@@ -83,36 +91,104 @@ class GrievanceSummaryRecord(Base):
         comment="True for the most recent summary; False for archived re-runs",
     )
 
-    # ── Classification (enum values — always English) ─────────────────────────
-    priority = Column(
-        VARCHAR(20),
-        nullable=False,
-        comment="Priority level (from AI review): low | medium | high | critical",
+    # ── Classification (stored ONLY as FK ids into the admin lookup) ───────────
+    # priority/category/ministry/district are computed hybrids (below) over these
+    # ids, so every call site — including from_gemini_response(summary=...) which
+    # passes the Gemini enum values as kwargs — keeps working while the redundant
+    # string columns are gone from storage. The migration seeds admin from the
+    # code enums and asserts every value resolves, so a Gemini output can never
+    # silently fail to map.
+    priority_id = Column(
+        BigInteger, ForeignKey("admin.id"), nullable=False, index=True,
+        comment="FK → admin.id (entity=priority): low | medium | high | critical",
+    )
+    category_id = Column(
+        BigInteger, ForeignKey("admin.id"), nullable=False, index=True,
+        comment="FK → admin.id (entity=category) — GrievanceCategory for routing",
+    )
+    ministry_id = Column(
+        BigInteger, ForeignKey("admin.id"), nullable=False, index=True,
+        comment="FK → admin.id (entity=ministry) — the owning ministry",
+    )
+    district_id = Column(
+        BigInteger, ForeignKey("admin.id"), nullable=True, index=True,
+        comment="FK → admin.id (entity=district). NULL when Gemini abstained "
+                "('unknown' is never stored — normalised to NULL).",
     )
 
-    category = Column(
-        VARCHAR(50),
-        nullable=False,
-        comment="GrievanceCategory enum value for routing",
-    )
+    # ── Hybrid string facades over the classification ids ──────────────────────
+    @hybrid_property
+    def priority(self):
+        if self.priority_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.priority_id)
 
-    ministry = Column(
-        VARCHAR(60),
-        nullable=False,
-        server_default="other",
-        comment="Ministry enum value — the ministry owning the root cause",
-    )
+    @priority.setter
+    def priority(self, value):
+        from src.services.admin_lookup import admin
+        self.priority_id = admin.priority(value) if value else None
 
-    district = Column(
-        VARCHAR(40),
-        nullable=True,
-        comment=(
-            "Tamil Nadu district enum value the petition originates from. "
-            "NULL when Gemini could not confidently extract a district; PA "
-            "may fill it manually from the detail drawer. Never store the "
-            "sentinel string 'unknown' — persist as NULL instead."
-        ),
-    )
+    @priority.expression
+    def priority(cls):
+        return (sa_select(_ADMIN_LOOKUP.c.name)
+                .where(_ADMIN_LOOKUP.c.id == cls.priority_id,
+                       _ADMIN_LOOKUP.c.entity == "priority").scalar_subquery())
+
+    @hybrid_property
+    def category(self):
+        if self.category_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.category_id)
+
+    @category.setter
+    def category(self, value):
+        from src.services.admin_lookup import admin
+        self.category_id = admin.category(value) if value else None
+
+    @category.expression
+    def category(cls):
+        return (sa_select(_ADMIN_LOOKUP.c.name)
+                .where(_ADMIN_LOOKUP.c.id == cls.category_id,
+                       _ADMIN_LOOKUP.c.entity == "category").scalar_subquery())
+
+    @hybrid_property
+    def ministry(self):
+        if self.ministry_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.ministry_id)
+
+    @ministry.setter
+    def ministry(self, value):
+        from src.services.admin_lookup import admin
+        self.ministry_id = admin.ministry(value) if value else None
+
+    @ministry.expression
+    def ministry(cls):
+        return (sa_select(_ADMIN_LOOKUP.c.name)
+                .where(_ADMIN_LOOKUP.c.id == cls.ministry_id,
+                       _ADMIN_LOOKUP.c.entity == "ministry").scalar_subquery())
+
+    @hybrid_property
+    def district(self):
+        if self.district_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.district_id)
+
+    @district.setter
+    def district(self, value):
+        # 'unknown' is a calibrated abstention — store NULL, never an id.
+        from src.services.admin_lookup import admin
+        self.district_id = admin.get("district", value) if (value and value != "unknown") else None
+
+    @district.expression
+    def district(cls):
+        return (sa_select(_ADMIN_LOOKUP.c.name)
+                .where(_ADMIN_LOOKUP.c.id == cls.district_id,
+                       _ADMIN_LOOKUP.c.entity == "district").scalar_subquery())
 
     # ISO YYYY-MM-DD date written ON the petition document (letterhead/signature
     # date), extracted by Gemini. NULL when none is written. Distinct from the
@@ -283,9 +359,7 @@ class GrievanceSummaryRecord(Base):
             "ai_upload_id",
             "is_latest",
         ),
-        Index("ix_gsr_priority", "priority"),
-        Index("ix_gsr_category", "category"),
-        Index("ix_gsr_ministry", "ministry"),
-        Index("ix_gsr_district", "district"),
+        # classification is now the FK ids (indexed via index=True on each id
+        # column); the old string indexes are gone with the string columns.
         Index("ix_gsr_created_at", "created_at"),
     )

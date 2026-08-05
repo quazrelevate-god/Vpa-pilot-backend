@@ -54,6 +54,17 @@ async def main() -> None:
     from src.services.proposal_service import proposal_service
     from src.services import maintenance_service
 
+    # Load the admin lookup cache once. This standalone process creates
+    # GrievanceSummaryRecords / appointments whose status/category/priority are
+    # id-normalised hybrids that resolve names → ids through this cache; the app
+    # process loads it in its lifespan, and the worker must do the same or the
+    # hybrid setters raise at write time.
+    from src.services.v2_helpers import v2
+    from src.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as _db:
+        await v2.init(_db)
+    log.info("admin lookup cache loaded")
+
     last_cleanup = 0.0
     while True:
         try:
