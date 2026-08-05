@@ -8,14 +8,21 @@ column names, so existing service code keeps working without renaming.
 """
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, Boolean,
-    DateTime, ForeignKey, Index
+    DateTime, ForeignKey, Index,
+    select as sa_select, table as sa_table, column as sa_column,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
 from datetime import datetime
 from src.core.timeutil import now_utc
 
 from src.core.database import Base
+
+# Lightweight handle on the `admin` lookup table (models_v2.schema.Admin) so the
+# hybrid status/category expressions can emit a correlated subquery id → name
+# without importing the v2 schema (which lives on a separate declarative Base).
+_ADMIN_LOOKUP = sa_table("admin", sa_column("id"), sa_column("entity"), sa_column("name"))
 
 
 # ── Ticket lifecycle states ───────────────────────────────────────────────────
@@ -201,18 +208,69 @@ class Appointment(Base):
     # v2: no audio_recording_url column — audio lives in attachments
     # (attachment_type='AUDIO').
 
-    # v1 attr → v2 DB column "category"
-    grievance_category = Column("category", String(50), nullable=True)
-
-    # Bridge: v1 services still write string status alongside status_id
-    status = Column(
-        String(20), nullable=False, default='SCHEDULED',
-        comment="Bridge column — v1 services still write this; v2 uses status_id",
+    # Classification is stored ONLY as FK ids into the admin lookup. The string
+    # `status` / `grievance_category` are computed hybrids (see below) so every
+    # existing call site — instance access (`appt.status`), writes
+    # (`appt.status = "REVIEWED"`), and queries (`Appointment.status == "X"`) —
+    # keeps working while the redundant string columns are gone from storage.
+    status_id = Column(
+        BigInteger, ForeignKey("admin.id"), nullable=True, index=True,
+        comment="FK → admin.id (entity=appointment) — the canonical status",
+    )
+    category_id = Column(
+        BigInteger, ForeignKey("admin.id"), nullable=True,
+        comment="FK → admin.id (entity=category) — the canonical grievance category",
     )
 
-    status_id = Column(BigInteger, nullable=True)
-    priority_id = Column(BigInteger, nullable=True)
-    category_id = Column(BigInteger, nullable=True)
+    # ── status (hybrid over status_id ↔ admin) ─────────────────────────────────
+    @hybrid_property
+    def status(self):
+        if self.status_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.status_id)
+
+    @status.setter
+    def status(self, value):
+        if value is None:
+            self.status_id = None
+            return
+        from src.services.admin_lookup import admin
+        self.status_id = admin.appointment_status(value)
+
+    @status.expression
+    def status(cls):
+        return (
+            sa_select(_ADMIN_LOOKUP.c.name)
+            .where(_ADMIN_LOOKUP.c.id == cls.status_id,
+                   _ADMIN_LOOKUP.c.entity == "appointment")
+            .scalar_subquery()
+        )
+
+    # ── grievance_category (hybrid over category_id ↔ admin) ───────────────────
+    @hybrid_property
+    def grievance_category(self):
+        if self.category_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.category_id)
+
+    @grievance_category.setter
+    def grievance_category(self, value):
+        if not value:
+            self.category_id = None
+            return
+        from src.services.admin_lookup import admin
+        self.category_id = admin.category(value)
+
+    @grievance_category.expression
+    def grievance_category(cls):
+        return (
+            sa_select(_ADMIN_LOOKUP.c.name)
+            .where(_ADMIN_LOOKUP.c.id == cls.category_id,
+                   _ADMIN_LOOKUP.c.entity == "category")
+            .scalar_subquery()
+        )
 
     num_persons = Column(Integer, nullable=False, default=1)
 
@@ -263,7 +321,8 @@ class Appointment(Base):
         Index('ix_appointments_citizen_id', 'citizen_id'),
         Index('ix_appointments_token_assigned', 'token_number', unique=True),
         Index('ix_appointments_slot_id', 'slot_id'),
-        Index('ix_appointments_status', 'status'),
+        # status is now the FK status_id (indexed via index=True on the column);
+        # the old string-status index is gone with the string column.
         Index('ix_appointments_created_at', 'created_at'),
         Index('ix_appointments_queue_position', 'queue_position'),
         Index('ix_appointments_waiting_since', 'waiting_since'),
