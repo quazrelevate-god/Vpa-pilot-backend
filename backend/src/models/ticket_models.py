@@ -43,8 +43,16 @@ from sqlalchemy import (
     Integer,
     Text,
     VARCHAR,
+    select as sa_select,
+    table as sa_table,
+    column as sa_column,
 )
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+
+# Lightweight handle on the admin lookup so the hybrid status/priority
+# expressions can emit a correlated subquery id → name (see appointment_models).
+_ADMIN_LOOKUP = sa_table("admin", sa_column("id"), sa_column("entity"), sa_column("name"))
 
 from src.core.database import Base
 
@@ -163,35 +171,75 @@ class Ticket(Base):
     )
 
     # ── Lifecycle ──────────────────────────────────────────────────────────────
-    status = Column(
-        VARCHAR(30),
-        nullable=False,
-        default=TicketStatus.OPEN.value,
-        server_default=TicketStatus.OPEN.value,
-        comment="TicketStatus enum value",
-    )
-
-    priority = Column(
-        VARCHAR(20),
-        nullable=True,
-        comment=(
-            "AI-review priority: low | medium | high | critical. Was VARCHAR(5) for "
-            "the legacy P0-P3 enum; widened in migration 031 so 'medium' and "
-            "'critical' fit."
-        ),
-    )
-
+    # Stored ONLY as FK ids into the admin lookup. The string `status` /
+    # `priority` are computed hybrids (below) so every call site keeps working
+    # while the redundant string columns are gone from storage.
     status_id = Column(
         BigInteger,
+        ForeignKey("admin.id"),
         nullable=True,
-        comment="FK to admin.id (entity=ticket) — v2 normalised status",
+        index=True,
+        comment="FK → admin.id (entity=ticket) — the canonical status",
     )
 
     priority_id = Column(
         BigInteger,
+        ForeignKey("admin.id"),
         nullable=True,
-        comment="FK to admin.id (entity=priority) — v2 normalised priority",
+        index=True,
+        comment="FK → admin.id (entity=priority) — the canonical priority "
+                "(low | medium | high | critical)",
     )
+
+    # ── status (hybrid over status_id ↔ admin) ─────────────────────────────────
+    @hybrid_property
+    def status(self):
+        if self.status_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.status_id)
+
+    @status.setter
+    def status(self, value):
+        if value is None:
+            self.status_id = None
+            return
+        from src.services.admin_lookup import admin
+        self.status_id = admin.ticket_status(value)
+
+    @status.expression
+    def status(cls):
+        return (
+            sa_select(_ADMIN_LOOKUP.c.name)
+            .where(_ADMIN_LOOKUP.c.id == cls.status_id,
+                   _ADMIN_LOOKUP.c.entity == "ticket")
+            .scalar_subquery()
+        )
+
+    # ── priority (hybrid over priority_id ↔ admin) ─────────────────────────────
+    @hybrid_property
+    def priority(self):
+        if self.priority_id is None:
+            return None
+        from src.services.admin_lookup import admin
+        return admin.display_name(self.priority_id)
+
+    @priority.setter
+    def priority(self, value):
+        if not value:
+            self.priority_id = None
+            return
+        from src.services.admin_lookup import admin
+        self.priority_id = admin.priority(value)
+
+    @priority.expression
+    def priority(cls):
+        return (
+            sa_select(_ADMIN_LOOKUP.c.name)
+            .where(_ADMIN_LOOKUP.c.id == cls.priority_id,
+                   _ADMIN_LOOKUP.c.entity == "priority")
+            .scalar_subquery()
+        )
 
     # v2 FK to login table (integer)
     assigned_to = Column(
@@ -365,8 +413,8 @@ class Ticket(Base):
 
     # ── Indexes (filter/sort surfaces in the PA portal) ────────────────────────
     __table_args__ = (
-        Index("ix_tickets_status", "status"),
-        Index("ix_tickets_priority", "priority"),
+        # status/priority are now the FK ids (indexed via index=True on the
+        # columns); the old string indexes are gone with the string columns.
         Index("ix_tickets_assigned_to", "assigned_to_pa"),
         Index("ix_tickets_created_at", "created_at"),
         Index("ix_tickets_forwarded_to_dept", "forwarded_to_dept"),
