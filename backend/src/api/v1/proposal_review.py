@@ -125,9 +125,23 @@ def _detail(row: ProposalSubmission) -> ProposalDetail:
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────────
+@router.get("/analytics", summary="Minister proposal dashboard aggregates")
+async def proposal_analytics(
+    trend_days: int = Query(90, ge=7, le=365),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """KPIs + chart series for the Minister's Proposal dashboard.
+
+    Declared before /{proposal_id} so the literal path wins unambiguously.
+    """
+    from src.services.proposal_analytics import get_proposal_analytics
+    return await get_proposal_analytics(db, trend_days=trend_days)
+
+
 @router.get("", response_model=ProposalListResponse, summary="List proposals")
 async def list_proposals(
     status: Optional[str] = Query(None, description="Filter by a single status"),
+    q: Optional[str] = Query(None, description="Search tracking ref / org / person / title"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -135,6 +149,14 @@ async def list_proposals(
     stmt = select(ProposalSubmission)
     if status:
         stmt = stmt.where(ProposalSubmission.status == status)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            ProposalSubmission.tracking_ref.ilike(like)
+            | ProposalSubmission.org_name.ilike(like)
+            | ProposalSubmission.person_name.ilike(like)
+            | ProposalSubmission.extraction_json["title"].astext.ilike(like)
+        )
     stmt = stmt.order_by(ProposalSubmission.created_at.desc()).limit(limit).offset(offset)
     rows = (await db.execute(stmt)).scalars().all()
 
