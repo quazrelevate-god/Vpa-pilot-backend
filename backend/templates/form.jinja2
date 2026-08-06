@@ -959,10 +959,15 @@
                         <input type="text" id="txtName" required placeholder="Enter full legal name" class="glass-field">
                     </div>
 
-                    <!-- Category -->
-                    <div class="field-group">
+                    <!-- Category — kept as a hidden <select> so the courtesy
+                         sub-picker can still write `grievance_category` into
+                         it, but no longer surfaced to the citizen. AI
+                         classification on the backend picks the real category
+                         from the document; asking the citizen up-front added
+                         friction and was often overridden anyway. -->
+                    <div class="field-group" id="categoryFieldGroup" style="display:none;">
                         <div class="label-container">
-                            <label for="ddlCategory"><span id="lbl-category">Category</span> <span class="req-star">*</span></label>
+                            <label for="ddlCategory"><span id="lbl-category">Category</span></label>
                         </div>
                         <div class="category-select-wrapper">
                             <select id="ddlCategory" name="grievance_category" class="glass-field">
@@ -1266,9 +1271,9 @@
                 // Greeting / invitation: sub-type picked + audio present.
                 return !!(name && _courtesyType() && hasAudio);
             }
-            // Petition: category + content (description OR files).
-            const hasCategory = document.getElementById('ddlCategory').value !== '';
-            return !!(name && hasCategory && (description || hasFiles));
+            // Petition: name + content (description OR files). Category is
+            // classified by AI on the backend, so we don't gate on it here.
+            return !!(name && (description || hasFiles));
         }
 
         function validateFormForOTP() {
@@ -1282,8 +1287,7 @@
             if (_submissionType() === 'courtesy') {
                 isValid = !!(name && mobile && _courtesyType() && hasAudio);
             } else {
-                const hasCategory = document.getElementById('ddlCategory').value !== '';
-                isValid = !!(name && mobile && hasCategory && (description || hasFiles));
+                isValid = !!(name && mobile && (description || hasFiles));
             }
             document.getElementById('btnGenOtp').disabled = !isValid;
 
@@ -1315,7 +1319,7 @@
                 submitting: "Submitting...",
                 networkError: "Network error. Please try again.",
                 micError: "Microphone access denied. Please allow microphone access to record audio.",
-                alertFillFields: "Please fill in Name, Category, and either upload files or record audio before requesting OTP.",
+                alertFillFields: "Please fill in Name and either upload files or record audio before requesting OTP.",
                 alertVerifyFirst: "Please verify your OTP before submitting.",
                 alertSessionMissing: "Session token not found. Please scan QR code again.",
                 submitError: "Submission failed. Please try again.",
@@ -1381,7 +1385,7 @@
                 submitting: "சமர்ப்பிக்கிறோம்...",
                 networkError: "இணைய பிழை. மீண்டும் முயற்சிக்கவும்.",
                 micError: "மைக்ரோஃபோன் அனுமதி மறுக்கப்பட்டது. தயவுசெய்து அனுமதியை வழங்கவும்.",
-                alertFillFields: "OTP கோருவதற்கு முன் பெயர், பிரிவு மற்றும் ஆவணம் அல்லது குரல் பதிவு உள்ளிடவும்.",
+                alertFillFields: "OTP கோருவதற்கு முன் பெயர் மற்றும் ஆவணம் அல்லது குரல் பதிவு உள்ளிடவும்.",
                 alertVerifyFirst: "சமர்ப்பிக்கும் முன் OTP சரிபார்க்கவும்.",
                 alertSessionMissing: "அமர்வு குறியீடு இல்லை. QR குறியீட்டை மீண்டும் ஸ்கேன் செய்யவும்.",
                 submitError: "சமர்ப்பிப்பு தோல்வியடைந்தது. மீண்டும் முயற்சிக்கவும்.",
@@ -1499,14 +1503,15 @@
         function applyCourtesyModeToUploadSection() {
             const uploadSection   = document.getElementById('sectionUpload');
             const voiceSection    = document.getElementById('sectionVoice');
-            const catField        = document.getElementById('ddlCategory')?.closest('.field-group');
             const noteEl          = document.getElementById('lbl-courtesy-audio-only');
             const copy            = dynamicLocalizationDictionary[runtimeActiveLanguage];
             const courtesy        = _isCourtesyCategory();
 
+            // Category is now permanently hidden (see #categoryFieldGroup HTML).
+            // AI classifies the petition on the backend; asking the citizen was
+            // duplicative and often wrong.
             if (uploadSection) uploadSection.style.display = courtesy ? 'none' : '';
             if (voiceSection)  voiceSection.style.display  = courtesy ? '' : 'none';
-            if (catField)      catField.style.display      = courtesy ? 'none' : '';
 
             if (courtesy) {
                 // Drop any queued files so the submission carries no attachments.
@@ -1999,11 +2004,9 @@
                     showOtpFieldError(copy.alertFillFields);
                     return;
                 }
-                const category = document.getElementById('ddlCategory').value;
-                if (!category) {
-                    alert(copy.alertSelectCategory);
-                    return;
-                }
+                // Category dropdown was retired from the citizen form —
+                // the AI classifies the petition on the backend from the
+                // uploaded document. No client-side check here.
             }
 
             if (hasAudio) {
