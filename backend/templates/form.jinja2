@@ -507,6 +507,68 @@
             box-shadow: 0 4px 16px rgba(29,78,216,0.35);
         }
 
+        /* ── Submission-type segmented control (top of Phase 1) ─────────
+           Two big tabs the citizen picks before anything else — Petition
+           (grievance + image) vs Greeting/Invitation (audio only). Larger
+           than a chip because it's a top-level branching decision the
+           rest of the form depends on. */
+        .submission-type-tabs {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;
+        }
+        .stype-tab {
+            display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+            padding: 0.85rem 1rem;
+            border: 2px solid rgba(148, 163, 184, 0.35);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.55);
+            color: #334155;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            text-align: left;
+        }
+        .stype-tab:hover  { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15,23,42,0.08); }
+        .stype-tab:active { transform: translateY(0) scale(0.98); }
+        .stype-tab .stype-icon { font-size: 1.15rem; opacity: 0.8; }
+        .stype-tab .stype-title { font-size: 1rem; font-weight: 700; line-height: 1.2; }
+        .stype-tab .stype-sub   { font-size: 0.78rem; color: #64748b; }
+
+        .stype-tab--petition.is-active {
+            border-color: #1d4ed8; background: #1d4ed8; color: #fff;
+            box-shadow: 0 4px 16px rgba(29,78,216,0.35);
+        }
+        .stype-tab--petition.is-active .stype-icon,
+        .stype-tab--petition.is-active .stype-title { color: #fff; }
+        .stype-tab--petition.is-active .stype-sub   { color: rgba(255,255,255,0.85); }
+
+        .stype-tab--courtesy.is-active {
+            border-color: #7c3aed; background: #7c3aed; color: #fff;
+            box-shadow: 0 4px 16px rgba(124,58,237,0.35);
+        }
+        .stype-tab--courtesy.is-active .stype-icon,
+        .stype-tab--courtesy.is-active .stype-title { color: #fff; }
+        .stype-tab--courtesy.is-active .stype-sub   { color: rgba(255,255,255,0.85); }
+
+        /* ── Courtesy sub-type pills (Greeting | Invitation) ────────────
+           Only visible when Greeting/Invitation is selected above. */
+        .courtesy-type-pills {
+            display: flex; gap: 0.5rem; flex-wrap: wrap;
+        }
+        .ctype-pill {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.6rem 1.1rem;
+            border: 1.5px solid rgba(148, 163, 184, 0.4);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.55);
+            color: #334155; font-weight: 600; font-size: 0.92rem;
+            cursor: pointer;
+            transition: all 0.16s ease;
+        }
+        .ctype-pill:hover { border-color: #7c3aed; color: #7c3aed; }
+        .ctype-pill.is-active {
+            border-color: #7c3aed; background: #7c3aed; color: #fff;
+            box-shadow: 0 3px 10px rgba(124,58,237,0.28);
+        }
+
         @keyframes choiceReveal {
             0%   { opacity: 0; transform: translateY(12px); }
             100% { opacity: 1; transform: translateY(0); }
@@ -839,6 +901,56 @@
                         <div class="phase-title" id="lbl-sec-title">Grievance Details</div>
                     </div>
 
+                    <!-- Submission type — top-level chooser (Petition vs
+                         Greeting/Invitation). Drives whether category dropdown,
+                         upload block, and voice block render below. Default =
+                         petition to preserve the historical QR flow. -->
+                    <div class="field-group" id="submissionTypeGroup">
+                        <div class="label-container">
+                            <label><span id="lbl-submission-type">What are you submitting?</span> <span class="req-star">*</span></label>
+                        </div>
+                        <div class="submission-type-tabs" role="tablist">
+                            <button type="button" class="stype-tab stype-tab--petition is-active"
+                                    data-stype="petition" role="tab" aria-selected="true"
+                                    onclick="setSubmissionType('petition')">
+                                <i class="fa-solid fa-file-lines stype-icon"></i>
+                                <span class="stype-title" id="lbl-stype-petition">Petition</span>
+                                <span class="stype-sub" id="lbl-stype-petition-sub">Grievance or request · attach a document</span>
+                            </button>
+                            <button type="button" class="stype-tab stype-tab--courtesy"
+                                    data-stype="courtesy" role="tab" aria-selected="false"
+                                    onclick="setSubmissionType('courtesy')">
+                                <i class="fa-solid fa-envelope-open-text stype-icon"></i>
+                                <span class="stype-title" id="lbl-stype-courtesy">Greeting / Invitation</span>
+                                <span class="stype-sub" id="lbl-stype-courtesy-sub">Speak your message · no document needed</span>
+                            </button>
+                        </div>
+                        <input type="hidden" id="submissionType" value="petition">
+                    </div>
+
+                    <!-- Courtesy sub-type — greeting or invitation. Only shown
+                         when submissionType=courtesy. Writes the derived
+                         grievance_category to a hidden input so the backend
+                         routes the row through the courtesy path unchanged. -->
+                    <div class="field-group" id="courtesyTypeGroup" style="display:none;">
+                        <div class="label-container">
+                            <label><span id="lbl-courtesy-type">Type</span> <span class="req-star">*</span></label>
+                        </div>
+                        <div class="courtesy-type-pills" role="tablist">
+                            <button type="button" class="ctype-pill" data-ctype="greetings"
+                                    role="tab" aria-selected="false" onclick="setCourtesyType('greetings')">
+                                <i class="fa-solid fa-hand-holding-heart"></i>
+                                <span id="lbl-ctype-greetings">Greeting</span>
+                            </button>
+                            <button type="button" class="ctype-pill" data-ctype="invitation"
+                                    role="tab" aria-selected="false" onclick="setCourtesyType('invitation')">
+                                <i class="fa-solid fa-calendar-days"></i>
+                                <span id="lbl-ctype-invitation">Invitation</span>
+                            </button>
+                        </div>
+                        <input type="hidden" id="courtesyType" value="">
+                    </div>
+
                     <!-- Name -->
                     <div class="field-group">
                         <div class="label-container">
@@ -1131,13 +1243,32 @@
             window.scrollTo({ top: top, behavior: 'smooth' });
         }
 
+        // Petition flow requires an image OR a description (audio isn't
+        // offered). Courtesy flow (greeting / invitation) requires audio
+        // only — no upload, no category dropdown (the sub-picker sets a
+        // hidden grievance_category on submit). Category itself is only
+        // gated in the petition path; courtesy uses the sub-picker instead.
+        function _submissionType() {
+            const el = document.getElementById('submissionType');
+            return (el && el.value) || 'petition';
+        }
+        function _courtesyType() {
+            const el = document.getElementById('courtesyType');
+            return (el && el.value) || '';
+        }
+
         function isPhase1Complete() {
             const name = document.getElementById('txtName').value.trim();
-            const hasCategory = document.getElementById('ddlCategory').value !== '';
+            const description = document.getElementById('txtDesc').value.trim();
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
-            const description = document.getElementById('txtDesc').value.trim();
-            return name && hasCategory && (description || hasFiles || hasAudio);
+            if (_submissionType() === 'courtesy') {
+                // Greeting / invitation: sub-type picked + audio present.
+                return !!(name && _courtesyType() && hasAudio);
+            }
+            // Petition: category + content (description OR files).
+            const hasCategory = document.getElementById('ddlCategory').value !== '';
+            return !!(name && hasCategory && (description || hasFiles));
         }
 
         function validateFormForOTP() {
@@ -1146,9 +1277,14 @@
             const description = document.getElementById('txtDesc').value.trim();
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
-            const hasCategory = document.getElementById('ddlCategory').value !== '';
 
-            const isValid = name && mobile && hasCategory && (description || hasFiles || hasAudio);
+            let isValid;
+            if (_submissionType() === 'courtesy') {
+                isValid = !!(name && mobile && _courtesyType() && hasAudio);
+            } else {
+                const hasCategory = document.getElementById('ddlCategory').value !== '';
+                isValid = !!(name && mobile && hasCategory && (description || hasFiles));
+            }
             document.getElementById('btnGenOtp').disabled = !isValid;
 
             updateStepper();
@@ -1206,6 +1342,14 @@
                 alertSelectCategory: "Please select a category.",
                 audioOnlyHint: "Kindly leave a short voice message with your invitation or greeting. No file upload is needed.",
                 audioHintCourtesy: "(Speak your reason)",
+                audioLabelCourtesy: "Voice Message",
+                // Submission-type chooser (top of Phase 1)
+                submissionType: "What are you submitting?",
+                stypePetition: "Petition", stypePetitionSub: "Grievance or request · attach a document",
+                stypeCourtesy: "Greeting / Invitation", stypeCourtesySub: "Speak your message · no document needed",
+                courtesyTypeLabel: "Type", ctypeGreetings: "Greeting", ctypeInvitation: "Invitation",
+                alertPickCourtesyType: "Please pick Greeting or Invitation.",
+                alertRecordVoiceFirst: "Please record a short voice message.",
                 choiceTitle: "Choose an option below",
                 choicePetitionSub: "Submit your petition for review",
                 choiceMeetingSub: "Book a slot to meet in person",
@@ -1264,6 +1408,13 @@
                 alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
                 audioOnlyHint: "உங்கள் வாழ்த்து அல்லது அழைப்பிதழுக்கான காரணத்தை ஒரு குறுகிய குரல் செய்தியாக பதிவு செய்யவும். ஆவணம் பதிவேற்ற வேண்டியதில்லை.",
                 audioHintCourtesy: "(உங்கள் காரணத்தை பேசுங்கள்)",
+                audioLabelCourtesy: "குரல் செய்தி",
+                submissionType: "நீங்கள் என்ன சமர்ப்பிக்கிறீர்கள்?",
+                stypePetition: "மனு", stypePetitionSub: "புகார் / கோரிக்கை · ஆவணத்தை இணைக்கவும்",
+                stypeCourtesy: "வாழ்த்து / அழைப்பு", stypeCourtesySub: "செய்தியை பேசுங்கள் · ஆவணம் தேவையில்லை",
+                courtesyTypeLabel: "வகை", ctypeGreetings: "வாழ்த்து", ctypeInvitation: "அழைப்பு",
+                alertPickCourtesyType: "வாழ்த்து அல்லது அழைப்பு என்று தேர்ந்தெடுக்கவும்.",
+                alertRecordVoiceFirst: "தயவுசெய்து ஒரு குறுகிய குரல் செய்தியை பதிவு செய்யவும்.",
                 choiceTitle: "கீழே ஒரு விருப்பத்தைத் தேர்ந்தெடுக்கவும்",
                 choicePetitionSub: "மனுவை பரிசீலிக்க சமர்பிக்கவும்",
                 choiceMeetingSub: "சந்திப்பிற்கு நேரம் பதிவு செய்யவும்",
@@ -1315,34 +1466,48 @@
             defaultOpt.value = '';
             defaultOpt.textContent = copy.categorySelect;
             ddl.appendChild(defaultOpt);
+            // Skip courtesy categories — they're moved into the top-level
+            // submission-type toggle so a petitioner never sees them in this
+            // dropdown. setCourtesyType() still injects the chosen one on
+            // the fly when the citizen picks Greeting / Invitation.
             CATEGORY_KEYS.forEach(key => {
+                if (COURTESY_CATEGORIES.has(key)) return;
                 const opt = document.createElement('option');
                 opt.value = key;
                 const labelKey = CATEGORY_LABEL_KEYS[key];
                 opt.textContent = (labelKey && copy[labelKey]) || _fallbackLabel(key);
                 ddl.appendChild(opt);
             });
-            ddl.value = prevValue;
+            ddl.value = COURTESY_CATEGORIES.has(prevValue) ? '' : prevValue;
         }
 
-        // Currently-selected category is a courtesy one.
+        // TRUE when the citizen picked "Greeting / Invitation" at the top.
+        // Kept as _isCourtesyCategory for the small handful of call-sites
+        // still using the old name (submitForm slot-picker copy, etc.) — the
+        // semantic is the same either way: does this submission bypass the
+        // petition/AI path and land in Appointments as-is?
         function _isCourtesyCategory() {
-            const ddl = document.getElementById('ddlCategory');
-            return !!(ddl && COURTESY_CATEGORIES.has(ddl.value));
+            return _submissionType() === 'courtesy';
         }
 
-        // Hide the file-upload block for invitation/greetings and show a short
-        // hint that voice is the only input needed. Any files already picked
-        // are cleared so they don't sneak into the submission. Re-runs on
-        // language switch too, so the hint stays localised.
+        // Drives every section that switches based on the top-level toggle.
+        // Petition:  category dropdown + upload,  no voice, no sub-picker.
+        // Courtesy:  sub-picker + voice,          no category dropdown, no upload.
+        //
+        // Called from setSubmissionType() + setCourtesyType() + language
+        // switch (so localised hints stay accurate).
         function applyCourtesyModeToUploadSection() {
-            const uploadSection = document.getElementById('sectionUpload');
-            const noteEl        = document.getElementById('lbl-courtesy-audio-only');
-            const copy          = dynamicLocalizationDictionary[runtimeActiveLanguage];
-            if (!uploadSection) return;
-            const courtesy = _isCourtesyCategory();
+            const uploadSection   = document.getElementById('sectionUpload');
+            const voiceSection    = document.getElementById('sectionVoice');
+            const catField        = document.getElementById('ddlCategory')?.closest('.field-group');
+            const noteEl          = document.getElementById('lbl-courtesy-audio-only');
+            const copy            = dynamicLocalizationDictionary[runtimeActiveLanguage];
+            const courtesy        = _isCourtesyCategory();
 
-            uploadSection.style.display = courtesy ? 'none' : '';
+            if (uploadSection) uploadSection.style.display = courtesy ? 'none' : '';
+            if (voiceSection)  voiceSection.style.display  = courtesy ? '' : 'none';
+            if (catField)      catField.style.display      = courtesy ? 'none' : '';
+
             if (courtesy) {
                 // Drop any queued files so the submission carries no attachments.
                 if (typeof registeredFileList !== 'undefined' && Array.isArray(registeredFileList)) {
@@ -1352,20 +1517,89 @@
                     const fi = document.getElementById('fileAttachments');
                     if (fi) fi.value = '';
                 }
+            } else {
+                // Leaving courtesy mode — clear any audio + the derived category so
+                // the petition submission doesn't accidentally carry them.
+                const audioData = document.getElementById('audioRecordingData');
+                if (audioData) audioData.value = '';
+                const audioPreview = document.getElementById('audioPreview');
+                if (audioPreview) audioPreview.style.display = 'none';
+                const ddl = document.getElementById('ddlCategory');
+                if (ddl && COURTESY_CATEGORIES.has(ddl.value)) ddl.value = '';
             }
             if (noteEl) {
                 noteEl.style.display   = courtesy ? '' : 'none';
                 noteEl.textContent     = copy.audioOnlyHint || '';
             }
-            // Swap the voice-recording hint too — "(Speak your reason)" for
-            // courtesy submissions, the standard "(Speak your grievance)" hint
-            // otherwise.
             const audioHintEl = document.getElementById('lbl-audio-hint');
             if (audioHintEl) {
                 audioHintEl.textContent = courtesy
                     ? (copy.audioHintCourtesy || copy.audioHint || '')
                     : (copy.audioHint || '');
             }
+            const audioLabelEl = document.getElementById('lbl-audio');
+            if (audioLabelEl) {
+                // Voice message vs voice recording — courtesy is a message
+                // for the Minister, not a grievance being logged.
+                audioLabelEl.textContent = courtesy
+                    ? (copy.audioLabelCourtesy || copy.audio || '')
+                    : (copy.audio || '');
+            }
+        }
+
+        // Segmented-tab click handler. Idempotent; safe on repeat clicks.
+        function setSubmissionType(type) {
+            const el = document.getElementById('submissionType');
+            if (!el) return;
+            el.value = (type === 'courtesy') ? 'courtesy' : 'petition';
+            // Toggle .is-active on the two stype-tabs.
+            document.querySelectorAll('.stype-tab').forEach(btn => {
+                const active = btn.dataset.stype === el.value;
+                btn.classList.toggle('is-active', active);
+                btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            // Reveal the courtesy sub-picker only for courtesy; drop selection
+            // when leaving so re-entering starts fresh.
+            const subGroup = document.getElementById('courtesyTypeGroup');
+            if (subGroup) subGroup.style.display = (el.value === 'courtesy') ? '' : 'none';
+            if (el.value !== 'courtesy') setCourtesyType('');
+            applyCourtesyModeToUploadSection();
+            validateFormForOTP();
+        }
+
+        // Sub-picker click handler. Empty string clears the pick (used when
+        // leaving courtesy mode). Writes the derived grievance_category into
+        // #ddlCategory too so the existing submit path picks it up without a
+        // second code path.
+        function setCourtesyType(type) {
+            const el  = document.getElementById('courtesyType');
+            const ddl = document.getElementById('ddlCategory');
+            if (!el) return;
+            const val = (type === 'greetings' || type === 'invitation') ? type : '';
+            el.value = val;
+            if (ddl) {
+                // In courtesy mode the dropdown is hidden but its .value is
+                // what the submitter reads. Push the sub-pick straight in.
+                if (val) {
+                    // Ensure the option exists before assigning.
+                    let opt = Array.from(ddl.options).find(o => o.value === val);
+                    if (!opt) {
+                        opt = document.createElement('option');
+                        opt.value = val;
+                        opt.textContent = val;
+                        ddl.appendChild(opt);
+                    }
+                    ddl.value = val;
+                } else if (COURTESY_CATEGORIES.has(ddl.value)) {
+                    ddl.value = '';
+                }
+            }
+            document.querySelectorAll('.ctype-pill').forEach(btn => {
+                const active = btn.dataset.ctype === val;
+                btn.classList.toggle('is-active', active);
+                btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            validateFormForOTP();
         }
 
         function switchLocalization(isChecked) {
@@ -1396,6 +1630,15 @@
             _setText('lbl-upload-hint', copy.uploadHint);
             _setText('lbl-category', copy.category);
             _populateCategoryDropdown();
+            // Submission-type chooser + courtesy sub-picker labels.
+            _setText('lbl-submission-type',      copy.submissionType);
+            _setText('lbl-stype-petition',       copy.stypePetition);
+            _setText('lbl-stype-petition-sub',   copy.stypePetitionSub);
+            _setText('lbl-stype-courtesy',       copy.stypeCourtesy);
+            _setText('lbl-stype-courtesy-sub',   copy.stypeCourtesySub);
+            _setText('lbl-courtesy-type',        copy.courtesyTypeLabel);
+            _setText('lbl-ctype-greetings',      copy.ctypeGreetings);
+            _setText('lbl-ctype-invitation',     copy.ctypeInvitation);
             _setText('lbl-slot-title',   copy.slotTitle);
             _setText('lbl-slot-confirm', copy.slotConfirm);
             _setText('lbl-slot-date',    copy.slotSelectDate);
@@ -1734,16 +1977,33 @@
             const description = document.getElementById('txtDesc').value.trim();
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
+            const stype = _submissionType();
 
-            if (!name || !mobile || (!description && !hasFiles && !hasAudio)) {
-                showOtpFieldError(copy.alertFillFields);
-                return;
-            }
-
-            const category = document.getElementById('ddlCategory').value;
-            if (!category) {
-                alert(copy.alertSelectCategory);
-                return;
+            // Per-submission-type validation. Courtesy path requires audio +
+            // a picked sub-type; petition path requires category + text/image.
+            if (stype === 'courtesy') {
+                if (!name || !mobile) {
+                    showOtpFieldError(copy.alertFillFields);
+                    return;
+                }
+                if (!_courtesyType()) {
+                    alert(copy.alertPickCourtesyType || 'Please pick Greeting or Invitation.');
+                    return;
+                }
+                if (!hasAudio) {
+                    alert(copy.alertRecordVoiceFirst || 'Please record a short voice message.');
+                    return;
+                }
+            } else {
+                if (!name || !mobile || (!description && !hasFiles)) {
+                    showOtpFieldError(copy.alertFillFields);
+                    return;
+                }
+                const category = document.getElementById('ddlCategory').value;
+                if (!category) {
+                    alert(copy.alertSelectCategory);
+                    return;
+                }
             }
 
             if (hasAudio) {
