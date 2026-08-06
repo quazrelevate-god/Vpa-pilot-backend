@@ -38,11 +38,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 // Appointments is meeting-centric. Direct petitions (Awaiting Review / Reviewed)
 // live in Petition Review, so the tabs here are meeting states only.
-// Toggle to re-enable the waiting-list tab (currently disabled).
-const WAITLIST_ENABLED = false;
-const ALL_TABS = ["Scheduled", "Waiting", "Rescheduled", "All"] as const;
-const TABS = WAITLIST_ENABLED ? ALL_TABS : (["Scheduled", "Rescheduled", "All"] as const);
-type Tab = (typeof ALL_TABS)[number];
+const TABS = ["Scheduled", "Rescheduled", "All"] as const;
+type Tab = (typeof TABS)[number];
 const DEFAULT_TAB: Tab = "Scheduled";
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
@@ -63,14 +60,11 @@ function pageList(current: number, last: number): (number | "…")[] {
 
 const TAB_KEYS: Record<Tab, string> = {
   "Scheduled": "appts.tabScheduled",
-  "Waiting": "appts.tabWaiting",
   "Rescheduled": "appts.tabRescheduled",
   "All": "appts.tabAll",
 };
 
-const STATUS_OPTIONS: AppointmentStatus[] = WAITLIST_ENABLED
-  ? ["Scheduled", "Waiting", "Rescheduled"]
-  : ["Scheduled", "Rescheduled"];
+const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Rescheduled"];
 
 type QuickChip = "today" | "tomorrow" | "this_week";
 
@@ -79,7 +73,6 @@ function statusClass(s: string) {
     Scheduled: "s-Scheduled",
     Rescheduled: "s-Rescheduled",
     Reviewed: "s-Reviewed",
-    Waiting: "s-Waiting",
     "Awaiting Review": "s-AwaitingReview",
     "Courtesy Done": "s-CourtesyDone",
     "Not Came": "s-NotCame",
@@ -148,7 +141,6 @@ function timeWindowText(
 /** Maps an AppointmentStatus enum value to its translation key. */
 const STATUS_LABEL_KEY: Record<string, string> = {
   Scheduled: "appts.statusScheduled",
-  Waiting: "appts.statusWaiting",
   Rescheduled: "appts.statusRescheduled",
   // Terminal for invitation/greetings that were handed over in person.
   "Courtesy Done": "appts.statusCourtesyDone",

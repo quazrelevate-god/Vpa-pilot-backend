@@ -44,8 +44,7 @@ type BadgeKey = "openTickets" | "awaitingReview";
 
 // Final-reference order: Overview → Appointments → Petition Review → Tickets
 // → Scheduling → AI Uploads → Referrals → Crowd QR.
-// (Waiting Queue lives inside the Appointments "Waiting" tab, so it's not a
-// separate nav room.) Alt+1…9 jumps by position in this list.
+// Alt+1…9 jumps by position in this list.
 const NAV_ITEMS: { href: string; tKey: string; icon: typeof CalendarDays; badge?: BadgeKey; badgeTone?: "violet" | "orange" | "red" }[] = [
   { href: "/overview",      tKey: "nav.performance",  icon: LayoutDashboard },
   { href: "/appointments",  tKey: "nav.appointments", icon: CalendarDays },

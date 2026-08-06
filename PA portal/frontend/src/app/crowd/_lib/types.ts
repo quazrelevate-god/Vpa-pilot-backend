@@ -68,7 +68,7 @@ export type IntakeResult = {
   appointment_id?: number;
   token_assigned?: number;
   token_display?: string;
-  status?: string; // SCHEDULED | WAITING | AWAITING_REVIEW
+  status?: string; // SCHEDULED | AWAITING_REVIEW
   scheduled_date?: string | null;
   scheduled_time?: string | null;
   slot_window?: string | null;

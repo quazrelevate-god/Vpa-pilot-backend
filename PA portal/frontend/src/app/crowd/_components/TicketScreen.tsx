@@ -15,15 +15,12 @@ export default function TicketScreen({ data, onDone }: { data: IntakeResult | nu
 
   const heading =
     status === "SCHEDULED" ? t("Scheduled Successfully!", "பதிவு வெற்றி!")
-    : status === "WAITING" ? t("Added to Waiting Queue", "காத்திருப்பில் சேர்க்கப்பட்டது")
     : t("Petition Submitted", "மனு சமர்ப்பிக்கப்பட்டது");
 
-  // Status-driven accent — emerald (scheduled), amber (waiting), brand blue (petition).
+  // Status-driven accent — emerald (scheduled), brand blue (petition).
   const tone =
     status === "SCHEDULED"
       ? { soft: "bg-emerald-100", fg: "text-emerald-600", accent: "#2E7D5B", pill: "bg-emerald-100 text-emerald-700", label: t("Scheduled", "பதிவானது") }
-    : status === "WAITING"
-      ? { soft: "bg-amber-100", fg: "text-amber-600", accent: "#CC6A1F", pill: "bg-amber-100 text-amber-700", label: t("Waiting queue", "காத்திருப்பு") }
       : { soft: "bg-[#1E40AF]/10", fg: "text-[#1E40AF]", accent: "#1E40AF", pill: "bg-[#1E40AF]/10 text-[#1E40AF]", label: t("Petition submitted", "மனு சமர்ப்பிக்கப்பட்டது") };
 
   const tokenNum = (d.token_display || "").replace(/^TKN/, "");

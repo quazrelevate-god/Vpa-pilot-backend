@@ -347,7 +347,6 @@
 .s-Rescheduled { background: #FBF3DC; color: #A8811C; }
 .s-Submitted   { background: #E6EFFE; color: #1B3A9E; }
 .s-Closed      { background: #F4F4F9; color: #6E7180; }
-.s-Waiting        { background: #FDEEDD; color: #C46A15; }
 .s-AwaitingReview { background: #E6EFFE; color: #1E40AF; }
 .s-Reviewed       { background: #E7F0FE; color: #1E40AF; }
 .s-CourtesyDone   { background: #E3F2F6; color: #35839B; }

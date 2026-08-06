@@ -38,8 +38,8 @@ interface OpenDate {
   total_capacity: number; booked: number; blocked_slots: number; remaining: number;
 }
 interface Stats {
-  waiting_count: number; scheduled_today: number;
-  rescheduled_today: number; oldest_waiting_days: number;
+  scheduled_today: number;
+  rescheduled_today: number;
 }
 
 const PERSON_OPTIONS = [2, 4, 6, 8, 10, 12, 15, 20];
@@ -91,8 +91,6 @@ export default function SchedulingPage() {
   const [showCancel,   setShowCancel]   = useState(false);
   const [cancelling,   setCancelling]   = useState(false);
   const [confirmSlot,  setConfirmSlot]  = useState<Slot | null>(null);
-  const [showAllocate, setShowAllocate] = useState(false);
-  const [allocating,   setAllocating]   = useState(false);
   const [maxCapacity,  setMaxCapacity]  = useState(12);
   const [availFrom,    setAvailFrom]    = useState("14:00");
   const [availTo,      setAvailTo]      = useState("16:00");
@@ -162,21 +160,6 @@ export default function SchedulingPage() {
       } else toast.error(data.error || "Failed to open date.");
     } catch { toast.error("Network error."); }
     finally  { setOpeningDate(false); }
-  }
-
-  async function handleAutoAllocate() {
-    setAllocating(true);
-    try {
-      const res  = await fetch("/api/v1/scheduling/admin/auto-allocate", { method: "POST" });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success("Auto-allocate complete", {
-          description: `${data.allocated} allocated, ${data.remaining_in_queue} remaining in queue.`,
-        });
-        loadGrid(selectedDate); loadStats();
-      } else toast.error(data.error || "Failed to auto-allocate.");
-    } catch { toast.error("Network error."); }
-    finally  { setAllocating(false); setShowAllocate(false); }
   }
 
   async function dispatchSlotAction(action: "block" | "unblock" | "close" | "reopen") {
@@ -260,10 +243,8 @@ export default function SchedulingPage() {
 
   const statCards = stats
     ? [
-        { icon: Users,         value: stats.waiting_count,       label: t("sched.waitingQueue"),         color: "text-amber-600",   bg: "bg-amber-100",   tab: "Waiting" },
-        { icon: CheckCircle2,  value: stats.scheduled_today,     label: t("sched.scheduledToday"),       color: "text-emerald-600", bg: "bg-emerald-100", tab: "Scheduled" },
-        { icon: CalendarClock, value: stats.rescheduled_today,   label: t("sched.statRescheduledToday"), color: "text-brand",       bg: "bg-accent",      tab: "Rescheduled" },
-        { icon: AlertCircle,   value: stats.oldest_waiting_days, label: t("sched.oldestWaiting"),        color: "text-red-600",     bg: "bg-red-100",     tab: null as string | null },
+        { icon: CheckCircle2,  value: stats.scheduled_today,     label: t("sched.scheduledToday"),       color: "text-emerald-600", bg: "bg-emerald-100", tab: "Scheduled" as string | null },
+        { icon: CalendarClock, value: stats.rescheduled_today,   label: t("sched.statRescheduledToday"), color: "text-brand",       bg: "bg-accent",      tab: "Rescheduled" as string | null },
       ]
     : [];
 
@@ -327,12 +308,6 @@ export default function SchedulingPage() {
                     <div className="font-mono text-[26px] font-bold leading-none tabular-nums text-foreground">{s.value}</div>
                     <div className="mt-1 text-[13px] text-muted-foreground">{s.label}</div>
                   </div>
-                  {s.tab === "Waiting" && s.value > 0 && (
-                    <Button size="sm" variant="outline" className="ml-auto shrink-0 rounded-lg border-amber-300 text-amber-700 hover:bg-amber-50"
-                      disabled={allocating} onClick={(e) => { e.stopPropagation(); setShowAllocate(true); }}>
-                      <RefreshCw className={cn("h-3.5 w-3.5", allocating && "animate-spin")} /> {t("sched.allocate")}
-                    </Button>
-                  )}
                 </Card>
               ))}
             </div>
@@ -518,23 +493,6 @@ export default function SchedulingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Auto-allocate confirmation dialog */}
-      <Dialog open={showAllocate} onOpenChange={(o) => { if (!o) setShowAllocate(false); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5 text-amber-600" /> {t("sched.allocateTitle")}
-            </DialogTitle>
-            <DialogDescription>{t("sched.allocateConfirm")}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <DialogClose asChild><Button variant="outline" size="sm">{t("sched.cancel")}</Button></DialogClose>
-            <Button size="sm" className="bg-amber-600 text-white hover:bg-amber-700" disabled={allocating} onClick={handleAutoAllocate}>
-              {allocating ? t("sched.allocating") : t("sched.allocateYes")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

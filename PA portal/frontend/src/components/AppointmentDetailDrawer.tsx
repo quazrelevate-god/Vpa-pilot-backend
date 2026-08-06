@@ -30,7 +30,7 @@ const PRIORITY_TKEY: Record<string, string> = {
   high: "petition.urgencyHigh", critical: "petition.urgencyCritical",
 };
 const APPT_STATUS_TKEY: Record<string, string> = {
-  "Scheduled": "appts.statusScheduled", "Waiting": "appts.statusWaiting",
+  "Scheduled": "appts.statusScheduled",
   "Rescheduled": "appts.statusRescheduled", "Courtesy Done": "appts.statusCourtesyDone",
   "Not Came": "appts.statusNotCame", "Awaiting Review": "petition.statusAwaitingReview",
   "Reviewed": "petition.statusReviewed",
@@ -42,10 +42,9 @@ interface AppointmentDetailDrawerProps {
   onStatusChange?: (row: AppointmentRow, next: AppointmentStatus) => void;
 }
 
-const STATUS_OPTIONS: AppointmentStatus[] = ["Waiting", "Scheduled", "Awaiting Review", "Reviewed", "Rescheduled"];
+const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Awaiting Review", "Reviewed", "Rescheduled"];
 const STATUS_COLOR: Record<string, string> = {
   Scheduled:        "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Waiting:          "bg-amber-100 text-amber-800 border-amber-200",
   Rescheduled:      "bg-blue-100 text-blue-700 border-blue-200",
   "Awaiting Review": "bg-orange-100 text-orange-700 border-orange-200",
   Reviewed:         "bg-blue-100 text-blue-700 border-blue-200",
@@ -181,7 +180,6 @@ export default function AppointmentDetailDrawer({
                 a colour-coded strip below the header:
 
                   Rescheduled — needs to be re-booked or converted to a petition
-                  Waiting     — same options; Schedule opens the same picker
                   Scheduled   — only convert-to-petition (the meeting is set)
 
                 All other statuses (Awaiting Review, Reviewed, Not Came,
@@ -195,12 +193,6 @@ export default function AppointmentDetailDrawer({
                   title: t("appt.needsReschedule"),
                   hint: t("appt.needsRescheduleHint"),
                   primary: { kind: "reschedule" as const, label: t("appt.rescheduleToNew") },
-                }
-                : s === "Waiting" ? {
-                  bg: "bg-amber-50/60", tone: "text-amber-700", sub: "text-amber-900/80",
-                  title: t("appt.inQueue"),
-                  hint: t("appt.inQueueHint"),
-                  primary: { kind: "reschedule" as const, label: t("appt.schedule") },
                 }
                 : s === "Scheduled" ? {
                   bg: "bg-emerald-50/60", tone: "text-emerald-700", sub: "text-emerald-900/80",
@@ -520,8 +512,6 @@ const APPT_EVENT_ICON: Record<string, React.ElementType> = {
   rescheduled: CalendarDays,
   slot_blocked: Clock,
   slot_unblocked: Clock,
-  moved_to_waiting: Clock,
-  auto_allocated: Check,
 };
 
 const APPT_PRETTY_EVENT: Record<string, string> = {
@@ -535,8 +525,6 @@ const APPT_PRETTY_EVENT: Record<string, string> = {
   rescheduled: "Rescheduled",
   slot_blocked: "Slot blocked",
   slot_unblocked: "Slot unblocked",
-  moved_to_waiting: "Moved to waiting queue",
-  auto_allocated: "Auto-allocated to slot",
 };
 
 function formatApptEventTitle(eventType: string): string {

@@ -129,8 +129,6 @@ export default function RegisterWizard({
    * `asMeeting` picks the outcome, mirroring the QR form's two-choice ending:
    *   false            -> petition only, lands in Petition Review
    *   true  + slot     -> booked appointment (SCHEDULED)
-   *   true  + no slot  -> waiting queue; the backend falls back to WAITING
-   *                       when schedule_meeting is set without a slot_id
    */
   function submit(asMeeting: boolean) {
     if (!name.trim()) { setStep(1); return toast.error(t("Name is required", "பெயர் தேவை")); }
@@ -139,7 +137,7 @@ export default function RegisterWizard({
       setStep(1);
       return toast.error(t("Enter a valid 10-digit mobile number", "சரியான 10 இலக்க கைபேசி எண்ணை உள்ளிடவும்"));
     }
-    // A petition needs something to review. A meeting/waitlist request doesn't —
+    // A petition needs something to review. A meeting request doesn't —
     // the citizen is asking to be seen, which is the content.
     if (!asMeeting && !desc.trim() && !photos.length) {
       return toast.error(t("Add a grievance or photo", "குறை அல்லது படம் தேவை"));
@@ -161,12 +159,9 @@ export default function RegisterWizard({
       .catch((e) => { setBusy(false); toast.error(e?.message || t("Failed — try again", "தோல்வி — மீண்டும்")); });
   }
 
-  // Toggle to re-enable the waiting-list flow (currently disabled).
-  const WAITLIST_ENABLED = false;
-
   const canBook = !!slot;
   // Any capacity left today or on an upcoming open date? Drives the "all full"
-  // notice and turns the meeting button into "Join waiting list".
+  // notice on the review step.
   const anySlotOpen =
     (slots ?? []).some((s) => s.available && s.remaining > 0) ||
     (dates ?? []).some((d) => (d.open ?? 0) > 0);
@@ -200,8 +195,8 @@ export default function RegisterWizard({
         )}
         {step === 3 && (
           <>
-            {/* Mirrors the QR form's "all slots full" notice so the floor team
-                can explain the waiting-list option in the citizen's language. */}
+            {/* Mirrors the QR form's "all slots full" notice — the floor team
+                can explain the citizen has to try later or submit petition-only. */}
             {!canBook && !anySlotOpen && (
               <div className="mb-3 flex gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-[13px] leading-relaxed text-amber-900">
                 <span aria-hidden className="text-base leading-none">⌛</span>
@@ -209,15 +204,10 @@ export default function RegisterWizard({
                   <strong className="font-bold">
                     {t("All meeting slots are currently full.", "தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.")}
                   </strong>{" "}
-                  {WAITLIST_ENABLED
-                    ? t(
-                        "You can still submit the petition, or join the waiting list — we'll contact them as soon as a slot opens.",
-                        "நீங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் தொடர்பு கொள்வோம்.",
-                      )
-                    : t(
-                        "Please try again later — if a slot opens, you can book an appointment for the meeting. For now, submit a petition only.",
-                        "பிறகு மீண்டும் முயற்சிக்கவும் — இடம் கிடைத்தால் சந்திப்பு பதிவு செய்யலாம். இப்போது மனுவை மட்டும் சமர்ப்பிக்கவும்.",
-                      )}
+                  {t(
+                    "Please try again later — if a slot opens, you can book an appointment for the meeting. For now, submit a petition only.",
+                    "பிறகு மீண்டும் முயற்சிக்கவும் — இடம் கிடைத்தால் சந்திப்பு பதிவு செய்யலாம். இப்போது மனுவை மட்டும் சமர்ப்பிக்கவும்.",
+                  )}
                 </div>
               </div>
             )}
@@ -246,15 +236,11 @@ export default function RegisterWizard({
               className="h-12 flex-1 rounded-xl bg-[#1E40AF] px-2 text-[13px] font-bold leading-tight text-white hover:bg-[#1A3796]">
               {t("Submit Petition", "மனு சமர்ப்பி")}
             </Button>
-            {/* Meeting — books the picked slot, or joins the waiting list when
-                nothing is free (same fallback as the QR form). */}
-            {(canBook || WAITLIST_ENABLED) && (
+            {/* Meeting — only shown when there's a picked slot to book. */}
+            {canBook && (
               <Button onClick={() => submit(true)} disabled={busy}
-                className={cn("h-12 flex-1 rounded-xl px-2 text-[13px] font-bold leading-tight text-white",
-                  canBook ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700")}>
-                {canBook
-                  ? t("Book Appointment", "சந்திப்பு பதிவு")
-                  : t("Join Waiting List", "காத்திருப்பு பட்டியல்")}
+                className="h-12 flex-1 rounded-xl bg-emerald-600 px-2 text-[13px] font-bold leading-tight text-white hover:bg-emerald-700">
+                {t("Book Appointment", "சந்திப்பு பதிவு")}
               </Button>
             )}
           </>

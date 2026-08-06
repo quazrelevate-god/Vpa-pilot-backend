@@ -5,7 +5,6 @@ export type Priority = "low" | "medium" | "high" | "critical";
 
 export type AppointmentStatus =
   | "Scheduled"
-  | "Waiting"
   | "Rescheduled"
   | "Awaiting Review"
   | "Reviewed";
@@ -22,7 +21,6 @@ export interface StatsResponse {
   scheduled: number;
   reviewed: number;
   awaiting_review: number;
-  waiting: number;
   rescheduled: number;
   ai_coverage: number;       // 0-100 (%)
   resolution_rate: number;   // 0-100 (%)
