@@ -31,10 +31,19 @@ from src.models.proposal_models import (
 
 logger = logging.getLogger(__name__)
 
-# Intake limits — mirror the /proposal form (PDF only, up to 5 files, 25 MB each).
+# Intake limits — aligned to what Gemini can actually extract inline.
+#
+# The extraction service sends each proposal document as a single
+# Part.from_bytes(...) inline attachment; Google's Gemini inline transport
+# caps the total request size at ~20 MB. A larger file passes the server but
+# then silently fails at Gemini with an opaque error. Keeping the per-file
+# cap at 20 MB means every accepted file is one the extractor can actually
+# read. If a future proposal needs larger files, switch to the Files API
+# (client.files.upload) — that path supports up to 2 GB per file but
+# requires additional lifecycle management.
 _ALLOWED_MIMES = {"application/pdf"}
 _MAX_FILES = 5
-_MAX_BYTES = 25 * 1024 * 1024
+_MAX_BYTES = 20 * 1024 * 1024
 _MAX_REQUEST_BYTES = 60 * 1024 * 1024
 
 _EXTRACTION_TIMEOUT = 90        # seconds — one hung Gemini call can't stall the queue
@@ -92,6 +101,15 @@ class ProposalService:
             raw = await f.read()
             if len(raw) > _MAX_BYTES:
                 raise HTTPException(status_code=400, detail=f"'{f.filename}' exceeds the 25 MB limit.")
+            # Magic-byte check: browsers can be told to send any Content-Type,
+            # so the MIME above is not enough. A real PDF starts with "%PDF-".
+            # Reject anything that lies about its shape — cheap defence against
+            # renamed .docx / .pptx / arbitrary blobs riding a PDF header.
+            if not raw.startswith(b"%PDF-"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"'{f.filename}' isn't a valid PDF. Please convert your document to PDF and try again.",
+                )
             total += len(raw)
             if total > _MAX_REQUEST_BYTES:
                 raise HTTPException(status_code=400, detail="Upload too large — send fewer / smaller documents.")

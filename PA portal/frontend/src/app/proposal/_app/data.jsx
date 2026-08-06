@@ -156,7 +156,14 @@ export const OTP_KURAL = {
 /* Four screens: who you are, who signs, where to reach you, and the document.
    `duo` renders two fields on one line. `ack` is the line the state says back. */
 export const MAX_DOCS = 5
-export const MAX_DOC_MB = 25
+// Total-request cap must match backend _MAX_REQUEST_BYTES so the user isn't
+// told "success" client-side and then rejected server-side.
+export const MAX_TOTAL_MB = 60
+// Per-file cap — aligned with the backend + Gemini's inline transport limit
+// (Part.from_bytes maxes out at ~20 MB per request). Anything larger passes
+// the server but fails silently at extraction; keeping the cap here in sync
+// avoids the "success screen for a proposal that can't be extracted" trap.
+export const MAX_DOC_MB = 20
 
 export const STEPS = [
   { key: 'org', type: 'text',
