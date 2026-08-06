@@ -2,7 +2,7 @@
 Staff dashboard routes — login, chart stats, appointments table, status updates.
 All page routes require cookie-based auth. API routes (/api/*) also require auth.
 """
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -494,6 +494,88 @@ async def api_approve_petition(
         await db.rollback()
         return JSONResponse({"error": str(e)}, status_code=400)
     return JSONResponse(result)
+
+
+# ── Signature-petition merging (v054) ────────────────────────────────────────
+@router.get("/api/appointments/{appointment_id}/similar")
+async def api_find_similar_petitions(
+    appointment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Read-only: list candidate petitions that look like duplicates of this
+    one — used by the review drawer's Find similar button. Same-status only
+    (AWAITING_REVIEW), blocked by category + district, scored by normalized-
+    ask trigram similarity."""
+    from src.services.petition_merge_service import find_similar
+    return JSONResponse(await find_similar(db, appointment_id))
+
+
+@router.post("/api/appointments/{appointment_id}/approve-with-signatories")
+async def api_approve_with_signatories(
+    appointment_id: int,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Approve a petition together with signatories that a reviewer curated
+    in the drawer. One ticket is created — the primary's — and every signatory
+    is flipped to REVIEWED and attached to the group as a co-signatory (no
+    ticket of their own). Signatories that fail validation are skipped."""
+    from src.services.petition_merge_service import approve_with_signatories
+    raw_ids = payload.get("signatory_ids") or []
+    if not isinstance(raw_ids, list):
+        return JSONResponse({"error": "signatory_ids must be a list."}, status_code=400)
+    try:
+        sids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "signatory_ids must be integers."}, status_code=400)
+    try:
+        result = await approve_with_signatories(db, appointment_id, sids, actor=user)
+        return JSONResponse(result)
+    except HTTPException as e:  # noqa: F821 (imported below)
+        await db.rollback()
+        return JSONResponse({"error": e.detail}, status_code=e.status_code)
+    except ValueError as e:
+        # e.g. audio-only petition refusal — surfaced from approve_petition
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@router.post("/api/tickets/{ticket_id}/split-signatory")
+async def api_split_signatory(
+    ticket_id: int,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Split one signatory off a merged ticket — that petition goes back to
+    AWAITING_REVIEW as its own standalone petition. Only allowed while the
+    ticket is still OPEN or TRIAGED (once forwarded, the department has already
+    received the roster and pulling one out afterward would desync)."""
+    from src.services.petition_merge_service import split_signatory
+    try:
+        appt_id = int(payload.get("appointment_id"))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "appointment_id is required."}, status_code=400)
+    try:
+        result = await split_signatory(db, ticket_id, appt_id, actor=user)
+        return JSONResponse(result)
+    except HTTPException as e:  # noqa: F821
+        await db.rollback()
+        return JSONResponse({"error": e.detail}, status_code=e.status_code)
+
+
+@router.get("/api/tickets/{ticket_id}/signatories")
+async def api_ticket_signatories(
+    ticket_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Return the ticket's roster: the primary + every co-signatory, with
+    name (decrypted), masked mobile, source, token, and per-row is_primary."""
+    from src.services.petition_merge_service import roster_for_ticket
+    return JSONResponse(await roster_for_ticket(db, ticket_id))
 
 
 @router.post("/api/appointments/{appointment_id}/dismiss")
