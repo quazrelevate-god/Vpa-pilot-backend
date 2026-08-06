@@ -11,6 +11,7 @@ import {
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import TamilNaduMap from "@/components/TamilNaduMap";
 import { cn } from "@/lib/utils";
 import { fetchMe } from "@/app/(dashboard)/settings/_lib/adminApi";
@@ -22,6 +23,11 @@ import {
   getAssociationAnalytics, listAssociations,
   type AssociationAnalytics, type AssociationRow,
 } from "./_lib/api";
+import {
+  getAssociation,
+  type AssociationDetail,
+} from "@/app/(dashboard)/association-review/_lib/associationApi";
+import { AssociationDrawer } from "@/app/(dashboard)/association-review/_lib/AssociationDrawer";
 
 const STATUS_PILL: Record<string, { label: string; cls: string }> = {
   AWAITING_REVIEW: { label: "Awaiting", cls: "bg-amber-100 text-amber-800" },
@@ -66,6 +72,14 @@ export default function AssociationDashboardPage() {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<AssociationRow[] | null>(null);
 
+  // Read-only drawer state — clicking a row loads the full detail and opens
+  // the same 2-pane drawer used on /association-review, minus the sticky
+  // decision bar. Kept HERE (no route hop) so the Minister stays in the
+  // dashboard context.
+  const [selectedId,    setSelectedId]    = useState<number | null>(null);
+  const [detail,        setDetail]        = useState<AssociationDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   useEffect(() => {
     const ac = new AbortController();
     (async () => {
@@ -106,6 +120,26 @@ export default function AssociationDashboardPage() {
     }, 250);
     return () => { ac.abort(); clearTimeout(id); };
   }, [gate, tab, q]);
+
+  // Drawer fetch — mirrors the review page's pattern. On selection change,
+  // fire the detail request; clear when closed. Cheap because getAssociation
+  // is a single row + the drawer is only mounted while open.
+  useEffect(() => {
+    if (selectedId == null) { setDetail(null); return; }
+    let alive = true;
+    setDetailLoading(true);
+    (async () => {
+      try {
+        const d = await getAssociation(selectedId);
+        if (alive) setDetail(d);
+      } catch {
+        if (alive) setDetail(null);
+      } finally {
+        if (alive) setDetailLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [selectedId]);
 
   const k = a?.kpis;
   const trendSeries = useMemo(() => (a?.trend ?? []).map((p) => p.received), [a]);
@@ -291,9 +325,9 @@ export default function AssociationDashboardPage() {
                   ) : rows.map((r) => {
                     const st = STATUS_PILL[r.status] || { label: r.status, cls: "bg-slate-100 text-slate-600" };
                     return (
-                      <tr key={r.id} onClick={() => router.push(`/association-review?id=${r.id}`)}
+                      <tr key={r.id} onClick={() => setSelectedId(r.id)}
                         className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#EFF3FB]"
-                        title="Open in Association Review">
+                        title="Open detail">
                         <td className="px-4 py-3"><div className="type-table-row truncate font-medium text-foreground">{r.association_name || "Unnamed body"}</div></td>
                         <td className="whitespace-nowrap px-4 py-3 font-mono text-[13px] tabular-nums text-foreground">{r.member_count || "—"}</td>
                         <td className="px-4 py-3 text-[13px] text-foreground/85">
@@ -316,6 +350,34 @@ export default function AssociationDashboardPage() {
           </Card>
         </div>
       </main>
+
+      {/* Read-only detail drawer — same 2-pane layout as Association Review,
+          minus the sticky decision bar (Mark reviewed / Forward). The
+          Minister looks; the PA reviews on the review page. */}
+      <Sheet open={selectedId != null} onOpenChange={(o) => { if (!o) setSelectedId(null); }}>
+        <SheetContent
+          side="right"
+          hideClose
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-[95vw] lg:max-w-[92vw]"
+        >
+          {selectedId == null ? null : detailLoading && !detail ? (
+            <div className="flex h-full items-center justify-center p-10 text-sm text-muted-foreground">
+              Loading…
+            </div>
+          ) : detail ? (
+            <AssociationDrawer
+              d={detail}
+              readOnly
+              onClose={() => setSelectedId(null)}
+            />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-10 text-center">
+              <p className="text-sm font-medium text-foreground">Couldn&apos;t load this submission.</p>
+              <p className="text-[13px] text-muted-foreground">Please try again from the review page.</p>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

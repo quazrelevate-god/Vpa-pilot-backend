@@ -6,53 +6,39 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Users2, Check, Send, Building2, UserRound, Users, MapPin, CalendarClock,
-  Loader2, Inbox, ShieldAlert, Search, Download, Sparkles, AlertTriangle,
-  Landmark, Target, Flag, ShieldAlert as RiskIcon, ScrollText, FolderOpen, X,
+  Users2, UserRound, Users, MapPin, CalendarClock,
+  Inbox, ShieldAlert, Search, Download, Sparkles,
+  Landmark, Building2, Flag, X,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
-import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
   listAssociations, getAssociation, decideAssociation,
   type AssociationListItem, type AssociationListResponse, type AssociationDetail,
-  type AssociationBrief, type AssociationDoc, type AssociationDecision,
+  type AssociationDecision,
 } from "./_lib/associationApi";
+import {
+  AssociationDrawer,
+  STATUS_META, REC_META, URGENCY_META,
+  fmtDate, titleCase,
+} from "./_lib/AssociationDrawer";
 
-// ── display maps ────────────────────────────────────────────────────────────
-const STATUS_META: Record<string, { label: string; cls: string }> = {
-  AWAITING_REVIEW: { label: "Awaiting review", cls: "bg-amber-100 text-amber-800" },
-  REVIEWED:        { label: "Reviewed",        cls: "bg-emerald-100 text-emerald-700" },
-  FORWARDED:       { label: "Forwarded",       cls: "bg-sky-100 text-sky-700" },
-};
-
-const REC_META: Record<string, { label: string; cls: string; dot: string }> = {
-  engage_now:      { label: "Engage now",      cls: "border-red-300 bg-red-50 text-red-700",           dot: "bg-red-500"     },
-  routine:         { label: "Routine",         cls: "border-emerald-300 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
-  refer:           { label: "Refer",           cls: "border-sky-300 bg-sky-50 text-sky-700",           dot: "bg-sky-500"     },
-  needs_more_info: { label: "Needs more info", cls: "border-amber-300 bg-amber-50 text-amber-700",     dot: "bg-amber-500"   },
-};
-
-const URGENCY_META: Record<string, { label: string; cls: string }> = {
-  critical: { label: "Critical", cls: "border-red-300 bg-red-50 text-red-700" },
-  high:     { label: "High",     cls: "border-orange-300 bg-orange-50 text-orange-700" },
-  medium:   { label: "Medium",   cls: "border-amber-300 bg-amber-50 text-amber-700" },
-  low:      { label: "Low",      cls: "border-slate-300 bg-slate-50 text-slate-600" },
-};
+// Display maps (STATUS_META, REC_META, URGENCY_META), formatters (fmtDate,
+// titleCase, specified, daysSince, toAttachments) and the drawer itself
+// (AssociationDrawer + SectionShell / Tile / Reading) all live in
+// ./_lib/AssociationDrawer so this page + the association-dashboard read-only
+// drawer share one source of truth.
 
 const TABS: { key: string; label: string }[] = [
   { key: "AWAITING_REVIEW", label: "Awaiting" },
@@ -100,11 +86,8 @@ const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
 const ANY = "__any__";  // placeholder value used to represent "no filter" in <Select>
 // (Select doesn't allow SelectItem value="", so we use a sentinel and treat it as null.)
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  try { return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); }
-  catch { return "—"; }
-}
+// fmtDate, daysSince, titleCase, specified, toAttachments — imported from
+// ./_lib/AssociationDrawer. Only page-local helpers remain here.
 
 /** Return the earliest timestamp (ms) that qualifies for a date-range PRESET
  *  bucket. "custom" is handled separately via dateFrom/dateTo state — returns
@@ -118,7 +101,6 @@ function dateRangeStart(bucket: string | null): number | null {
   }
   if (bucket === "week") {
     const d = new Date(now); d.setHours(0, 0, 0, 0);
-    // Monday-start week
     const day = d.getDay(); // 0=Sun
     const monOffset = day === 0 ? -6 : 1 - day;
     d.setDate(d.getDate() + monOffset);
@@ -130,44 +112,14 @@ function dateRangeStart(bucket: string | null): number | null {
   return null;
 }
 
-/** Parse a "YYYY-MM-DD" from a native <input type="date"> as a local-midnight
- *  timestamp in ms. Returns null on empty / malformed input. */
+/** Parse "YYYY-MM-DD" as a local-midnight ms timestamp. */
 function parseDateYMD(v: string): number | null {
   if (!v) return null;
-  // Explicit Y/M/D parse — new Date("2026-08-06") is UTC-midnight, which drifts
-  // by IST offset. We want local midnight so a citizen submission at 10 AM IST
-  // on the picked date is captured.
   const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
   const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
   const dt = new Date(y, mo, d, 0, 0, 0, 0);
   return Number.isNaN(dt.getTime()) ? null : dt.getTime();
-}
-function daysSince(iso: string | null): number | null {
-  if (!iso) return null;
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return null;
-  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
-}
-function titleCase(s?: string | null): string {
-  if (!s) return "";
-  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-/** A field the AI leaves as "Not specified" (or empty) is not a real value. */
-function specified(v?: string | null): boolean {
-  const s = (v || "").trim();
-  return !!s && s.toLowerCase() !== "not specified" && s.toLowerCase() !== "unknown";
-}
-
-function toAttachments(docs: AssociationDoc[] | undefined): GalleryAttachment[] {
-  return (docs || [])
-    .filter((d) => !!d.url)
-    .map((d) => ({
-      name: d.filename || "document",
-      url: d.url as string,
-      type: (d.mime || "").startsWith("image/") ? "IMAGE" : "DOCUMENT",
-      mime: d.mime || undefined,
-    }));
 }
 
 type Gate =
@@ -204,10 +156,7 @@ export default function AssociationReviewPage() {
   const [note, setNote] = useState("");
   const [deciding, setDeciding] = useState(false);
 
-  const L = useCallback((en?: string, ta?: string) => {
-    if (lang === "ta" && ta && ta.trim()) return ta;
-    return (en || ta || "").trim();
-  }, [lang]);
+  // L / lang helper is now internal to AssociationDrawer via its own useLang.
 
   // ── gate ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -538,8 +487,8 @@ export default function AssociationReviewPage() {
           {selectedId == null ? null : detailLoading && !detail ? (
             <DetailSkeleton />
           ) : detail ? (
-            <DetailPane
-              d={detail} L={L} ta={lang === "ta"}
+            <AssociationDrawer
+              d={detail}
               note={note} setNote={setNote}
               deciding={deciding}
               onDecide={decide}
@@ -620,360 +569,6 @@ function AssociationCard({ a, lang, selected, onOpen }: {
         <span className="num ml-auto">{fmtDate(a.created_at)}</span>
       </div>
     </button>
-  );
-}
-
-// ── shared tile: renders only if value is real (never a "Not provided" placeholder) ─
-function Tile({ icon, label, value, mono = false }: {
-  icon?: ReactNode; label: string; value?: string | null; mono?: boolean;
-}) {
-  if (!specified(value)) return null;
-  return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-background/60 px-4 py-3">
-      <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        {icon}{label}
-      </div>
-      <div className={cn("text-[14px] font-semibold leading-snug text-foreground", mono && "num")}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/** Serif reading block for narrative fields. Renders nothing if the value is
- *  empty/"Not specified". */
-function Reading({ label, text }: { label: string; text: string }) {
-  if (!specified(text)) return null;
-  return (
-    <div className="rounded-lg border border-border bg-background/60 p-4">
-      <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
-      <p className="font-serif text-[15px] leading-[1.75] text-foreground/90">{text}</p>
-    </div>
-  );
-}
-
-/** Numbered section shell. `hidden` suppresses the whole section when empty. */
-function SectionShell({
-  n, id, title, right, hidden, children,
-}: { n: number; id: string; title: string; right?: ReactNode; hidden?: boolean; children: ReactNode }) {
-  if (hidden) return null;
-  return (
-    <section id={id} className="scroll-mt-24 rounded-xl border border-border bg-background/40 p-4 sm:p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="num grid h-7 w-7 place-items-center rounded-full bg-brand/10 text-[13px] font-bold text-brand">{n}</span>
-          <h3 className="font-serif text-[17px] font-semibold text-foreground">{title}</h3>
-        </div>
-        {right}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-// ── detail pane ──────────────────────────────────────────────────────────────
-function DetailPane({
-  d, L, ta, note, setNote, deciding, onDecide, onClose,
-}: {
-  d: AssociationDetail;
-  L: (en?: string, ta?: string) => string;
-  ta: boolean;
-  note: string; setNote: (v: string) => void;
-  deciding: boolean;
-  onDecide: (dec: AssociationDecision) => void;
-  onClose: () => void;
-}) {
-  const ex: AssociationBrief = d.extraction || {};
-  const rec = ex.ai_recommendation ? REC_META[ex.ai_recommendation] : null;
-  const st = STATUS_META[d.status] || { label: d.status, cls: "bg-slate-100 text-slate-600" };
-  const urg = d.urgency ? URGENCY_META[d.urgency.toLowerCase()] : null;
-  const decided = ["REVIEWED", "FORWARDED"].includes(d.status);
-  const days = daysSince(d.created_at);
-
-  // Lang-aware narrative strings.
-  const ask       = L(ex.association_ask,   ex.association_ask_ta);
-  const summary   = L(ex.summary,           ex.summary_ta);
-  const demand    = L(ex.demand_context,    ex.demand_context_ta);
-  const outcome   = L(ex.expected_outcome,  ex.expected_outcome_ta);
-  const precedent = L(ex.precedent_context, ex.precedent_context_ta);
-  const rationale = L(ex.ai_rationale,      ex.ai_rationale_ta);
-
-  const keyDetails    = (ta && ex.key_details_ta?.length ? ex.key_details_ta : ex.key_details) || [];
-  const stakeholders  = (ta && ex.key_stakeholders_ta?.length ? ex.key_stakeholders_ta : ex.key_stakeholders) || [];
-  const risks         = (ta && ex.risks_if_ignored_ta?.length ? ex.risks_if_ignored_ta : ex.risks_if_ignored) || [];
-
-  const docAtts = useMemo(() => toAttachments(d.documents), [d.documents]);
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Header */}
-      <div className="shrink-0 border-b border-border bg-card px-5 py-4 sm:px-7 sm:py-5">
-        <div className="mb-2 flex items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {d.category && (
-              <Badge variant="outline" className="border-border bg-secondary text-[11px] text-secondary-foreground">
-                {titleCase(d.category)}
-              </Badge>
-            )}
-            {urg && (
-              <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", urg.cls)}>
-                <Flag className="h-3 w-3" />{urg.label}
-              </span>
-            )}
-            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", st.cls)}>{st.label}</span>
-            {rec && (
-              <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
-                <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
-              </span>
-            )}
-          </div>
-          <SheetClose
-            onClick={onClose}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </SheetClose>
-        </div>
-
-        <SheetTitle asChild>
-          <h2 className="font-serif text-[22px] font-semibold leading-tight text-foreground sm:text-[26px]">
-            {d.association_name || "Unnamed association"}
-          </h2>
-        </SheetTitle>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted-foreground">
-          {(d.representative_name || d.representative_designation) && (
-            <span className="inline-flex items-center gap-1.5">
-              <UserRound className="h-3.5 w-3.5" />
-              {[d.representative_name, d.representative_designation].filter(Boolean).join(" · ")}
-            </span>
-          )}
-          {d.member_count && (
-            <span className="inline-flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5" />{d.member_count}
-            </span>
-          )}
-          {d.district && (
-            <span className="inline-flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5" />{d.district}
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1.5">
-            <CalendarClock className="h-3.5 w-3.5" /><span className="num">{fmtDate(d.created_at)}</span>
-          </span>
-          {days != null && <span className="num">· {days}d in queue</span>}
-          <span className="num ml-auto shrink-0 text-[11.5px]">#{d.id}</span>
-        </div>
-      </div>
-
-      {/* Body — 2 panes on lg+: preview LEFT, reading RIGHT */}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,45%)_1fr]">
-          {/* LEFT: always-visible document preview */}
-          <div className="min-h-0 overflow-hidden border-b border-border bg-muted/25 p-3 sm:p-4 lg:border-b-0 lg:border-r">
-            {docAtts.length > 0 ? (
-              <InlineAttachmentPreview attachments={docAtts} defaultOpenFirst className="h-full" />
-            ) : (
-              <div className="flex h-full min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-background/60 text-center">
-                <div>
-                  <FolderOpen className="mx-auto h-8 w-8 text-muted-foreground/40" />
-                  <p className="mt-2 text-[13px] text-muted-foreground">No source document attached.</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT: numbered reading sections */}
-          <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-            {/* 1 — Association details (identity + meta the AI extracted). Always
-                 visible; individual tiles self-hide when the field is empty. */}
-            <SectionShell n={1} id="association" title="Association details">
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <Tile icon={<Building2 className="h-3 w-3" />} label="Association name" value={d.association_name} />
-                <Tile icon={<UserRound className="h-3 w-3" />} label="Representative" value={d.representative_name} />
-                <Tile icon={<UserRound className="h-3 w-3" />} label="Designation" value={d.representative_designation} />
-                <Tile icon={<Users className="h-3 w-3" />} label="Membership" value={d.member_count} />
-                <Tile icon={<Landmark className="h-3 w-3" />} label="Category" value={titleCase(d.category)} />
-                <Tile icon={<Building2 className="h-3 w-3" />} label="Ministry" value={titleCase(d.ministry)} />
-                <Tile icon={<Flag className="h-3 w-3" />} label="Urgency" value={urg?.label ?? titleCase(d.urgency)} />
-                <Tile icon={<MapPin className="h-3 w-3" />} label="District" value={d.district} />
-                <Tile icon={<CalendarClock className="h-3 w-3" />} label="Document date" value={d.document_date} mono />
-                <Tile icon={<Target className="h-3 w-3" />} label="Source" value={titleCase(d.source)} />
-              </div>
-            </SectionShell>
-
-            {/* 2 — The collective ask */}
-            <SectionShell
-              n={2} id="ask" title="The collective ask"
-              hidden={!specified(ask) && !specified(demand)}
-            >
-              <div className="space-y-3">
-                <Reading label="Ask" text={ask} />
-                <Reading label="Why now" text={demand} />
-              </div>
-            </SectionShell>
-
-            {/* 3 — Summary + key details */}
-            <SectionShell
-              n={3} id="summary" title="Summary"
-              hidden={!specified(summary) && keyDetails.length === 0}
-            >
-              <div className="space-y-3">
-                <Reading label="Overview" text={summary} />
-                {keyDetails.length > 0 && (
-                  <div>
-                    <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Key details</div>
-                    <ul className="space-y-1.5">
-                      {keyDetails.map((k, i) => (
-                        <li key={i} className="flex gap-2 text-[13.5px] leading-relaxed text-foreground/85">
-                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
-                          <span>{k}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </SectionShell>
-
-            {/* 4 — Stakeholders + risks (side by side) */}
-            <SectionShell
-              n={4} id="stake-risk" title="Stakeholders & risks"
-              hidden={stakeholders.length === 0 && risks.length === 0}
-            >
-              <div className="grid gap-4 lg:grid-cols-2">
-                {stakeholders.length > 0 && (
-                  <div>
-                    <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      <Users className="h-3 w-3" /> Key stakeholders
-                    </div>
-                    <ul className="space-y-1.5">
-                      {stakeholders.map((s, i) => (
-                        <li key={i} className="flex gap-2 rounded-md border border-border bg-background/60 px-3 py-2 text-[13.5px] leading-snug text-foreground/90">
-                          <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                          <span>{s}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {risks.length > 0 && (
-                  <div>
-                    <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      <RiskIcon className="h-3 w-3" /> Risks if ignored
-                    </div>
-                    <ul className="space-y-1.5">
-                      {risks.map((r, i) => (
-                        <li key={i} className="flex gap-2 rounded-md border border-amber-200/60 bg-amber-50/50 px-3 py-2 text-[13.5px] leading-snug text-foreground/90">
-                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                          <span>{r}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </SectionShell>
-
-            {/* 5 — Expected outcome + precedent */}
-            <SectionShell
-              n={5} id="outcome" title="Outcome & precedent"
-              hidden={!specified(outcome) && !specified(precedent)}
-            >
-              <div className="space-y-3">
-                <Reading label="Expected outcome (as stated)" text={outcome} />
-                <Reading label="Precedent / prior actions" text={precedent} />
-              </div>
-            </SectionShell>
-
-            {/* 6 — AI Assessment (moved down: reviewer forms their own view of the
-                 fields above, then reads the AI's take). Rationale block hides
-                 gracefully when the AI didn't record one. */}
-            <SectionShell
-              n={6} id="ai-brief" title="AI Assessment"
-              right={rec ? (
-                <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
-                  <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
-                </span>
-              ) : undefined}
-            >
-              <div className="rounded-lg border border-border bg-background/60 p-4">
-                <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  <Sparkles className="h-3.5 w-3.5" /> AI read
-                </div>
-                {specified(rationale) ? (
-                  <p className="rounded-md bg-muted/40 px-3 py-2 text-[13.5px] leading-relaxed text-foreground/85">
-                    {rationale}
-                  </p>
-                ) : (
-                  <p className="text-[13px] italic text-muted-foreground">No AI note recorded.</p>
-                )}
-              </div>
-            </SectionShell>
-
-            {/* 7 — Documents */}
-            <SectionShell n={7} id="documents" title="Attached documents">
-              {docAtts.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">No source document attached.</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {(d.documents || []).filter((doc) => !!doc.url).map((doc, i) => (
-                    <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-[13.5px]">
-                      <ScrollText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 truncate text-foreground">{doc.filename || "document"}</span>
-                      {doc.mime && (
-                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-secondary-foreground">
-                          {doc.mime.split("/")[1] || doc.mime}
-                        </span>
-                      )}
-                      {doc.url && (
-                        <a href={doc.url} target="_blank" rel="noreferrer"
-                           className="inline-flex items-center gap-1 text-brand hover:underline"
-                           title="Open in a new tab">
-                          <Download className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </SectionShell>
-
-            {decided && d.decision_note && (
-              <div className="rounded-lg border border-border bg-secondary/60 px-3.5 py-3 text-[13.5px]">
-                <span className="font-semibold">Decision note:</span> {d.decision_note}
-                {d.reviewed_by && <div className="mt-0.5 text-[11.5px] text-muted-foreground">— {d.reviewed_by}, {fmtDate(d.reviewed_at)}</div>}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Sticky decision bar — Reviewed / Forward-to-dept (matches backend enum) */}
-      <div className="shrink-0 space-y-2.5 border-t border-border bg-card px-5 py-4 sm:px-7">
-        {decided && (
-          <div className="flex items-center gap-1.5 text-[12.5px] font-medium text-muted-foreground">
-            <Check className="h-3.5 w-3.5 text-emerald-600" />
-            Already {st.label.toLowerCase()} — you can change the decision below.
-          </div>
-        )}
-        <Textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Decision note (required when forwarding to a department)…"
-          className="min-h-[60px] resize-none text-sm"
-        />
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Button disabled={deciding} onClick={() => onDecide("reviewed")}
-            className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
-            {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Mark reviewed
-          </Button>
-          <Button disabled={deciding} variant="outline" onClick={() => onDecide("forwarded")}
-            className="border-sky-300 text-sky-700 hover:bg-sky-50">
-            <Send className="h-4 w-4" /> Forward to department
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
 

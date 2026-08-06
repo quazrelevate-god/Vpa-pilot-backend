@@ -10,6 +10,7 @@ import {
 import TopBar from "@/components/TopBar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { fetchMe } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
@@ -17,6 +18,11 @@ import {
   NotAuthorized, C, fmtInt,
 } from "@/components/insights/DashboardKit";
 import { listProposals, analyze, fmtINR, type ProposalRow } from "./_lib/api";
+import {
+  getProposal,
+  type ProposalDetail,
+} from "@/app/(dashboard)/proposal-review/_lib/proposalApi";
+import { ProposalDrawer } from "@/app/(dashboard)/proposal-review/_lib/ProposalDrawer";
 
 const CAT_LABEL: Record<string, string> = {
   school: "School Education", tamil: "Tamil & Heritage",
@@ -64,6 +70,29 @@ export default function ProposalDashboardPage() {
   const [fRec, setFRec] = useState("");
   const [fCat, setFCat] = useState("");
   const [q, setQ] = useState("");
+
+  // Read-only drawer state — click a row → open detail inline (no redirect).
+  // Same 2-pane drawer /proposal-review uses, minus the sticky decision bar.
+  const [selectedId,    setSelectedId]    = useState<number | null>(null);
+  const [detail,        setDetail]        = useState<ProposalDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (selectedId == null) { setDetail(null); return; }
+    let alive = true;
+    setDetailLoading(true);
+    (async () => {
+      try {
+        const d = await getProposal(selectedId);
+        if (alive) setDetail(d);
+      } catch {
+        if (alive) setDetail(null);
+      } finally {
+        if (alive) setDetailLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [selectedId]);
 
   // ── gate ──
   useEffect(() => {
@@ -338,7 +367,7 @@ export default function ProposalDashboardPage() {
                     const st = STATUS_PILL[p.status] || { label: p.status, cls: "bg-slate-100 text-slate-600" };
                     const rec = p.ai_recommendation ? REC_PILL[p.ai_recommendation] : null;
                     return (
-                      <tr key={p.id} onClick={() => router.push(`/proposal-review?id=${p.id}`)}
+                      <tr key={p.id} onClick={() => setSelectedId(p.id)}
                         className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#EFF3FB]">
                         <td className="px-4 py-3">
                           <div className="type-table-row truncate font-medium text-foreground">{p.title || "Untitled proposal"}</div>
@@ -366,6 +395,34 @@ export default function ProposalDashboardPage() {
           </Card>
         </div>
       </main>
+
+      {/* Read-only detail drawer — same 2-pane layout as Proposal Review,
+          minus the sticky Approve / Reject / Needs-clarification bar. The
+          Minister looks; the super-admin decides on /proposal-review. */}
+      <Sheet open={selectedId != null} onOpenChange={(o) => { if (!o) setSelectedId(null); }}>
+        <SheetContent
+          side="right"
+          hideClose
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-[95vw] lg:max-w-[92vw]"
+        >
+          {selectedId == null ? null : detailLoading && !detail ? (
+            <div className="flex h-full items-center justify-center p-10 text-sm text-muted-foreground">
+              Loading…
+            </div>
+          ) : detail ? (
+            <ProposalDrawer
+              d={detail}
+              readOnly
+              onClose={() => setSelectedId(null)}
+            />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-10 text-center">
+              <p className="text-sm font-medium text-foreground">Couldn&apos;t load this proposal.</p>
+              <p className="text-[13px] text-muted-foreground">Please try again from the review page.</p>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }
