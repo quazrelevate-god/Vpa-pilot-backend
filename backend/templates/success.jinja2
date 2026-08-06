@@ -8,7 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mukta+Malar:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Self-hosted (was a cdnjs CDN link) so the receipt download works offline
+         and in low-network areas — this is a citizen-facing rural app; a CDN that
+         fails to load silently broke both auto- and manual-download. -->
+    <script defer src="/static/assets/vendor/html2canvas.min.js"></script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -402,7 +405,14 @@
         // ── Download the success card as a PNG image ──────────────
         var _capturing = false;
         async function downloadCard(isAuto) {
-            if (_capturing || typeof html2canvas === 'undefined') { return; }
+            if (_capturing) { return; }
+            if (typeof html2canvas === 'undefined') {
+                // Library not ready yet (or blocked). Stay silent for the auto
+                // attempt; on a manual click tell the citizen instead of the
+                // button doing nothing.
+                if (!isAuto) { alert('Still preparing the image — please tap download again in a moment, or take a screenshot.'); }
+                return;
+            }
             _capturing = true;
             var btn = document.getElementById('downloadBtn');
             var prevIcon = btn ? btn.innerHTML : '';
