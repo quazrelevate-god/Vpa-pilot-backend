@@ -17,8 +17,10 @@ export type Photo = { file: File; url: string };
 
 export default function RegisterWizard({
   onDone,
+  onDirtyChange,
 }: {
   onDone: (ticket: IntakeResult) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { t } = useT();
 
@@ -39,6 +41,12 @@ export default function RegisterWizard({
   const slotTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const photosRef = useRef(photos);
   photosRef.current = photos;
+
+  // Report whether the citizen has entered anything, so the shell (CrowdApp
+  // goList) can confirm before a section switch discards it.
+  const dirty = !!(name.trim() || mobile.trim() || category || desc.trim() || photos.length || slot);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -109,6 +117,10 @@ export default function RegisterWizard({
   function validateStep1(): boolean {
     if (!name.trim()) { toast.error(t("Name is required", "பெயர் தேவை")); return false; }
     if (!category) { toast.error(t("Select a category", "வகை தேர்வு")); return false; }
+    // Grievance description AND at least one photo are mandatory — for both a
+    // petition and a booked appointment.
+    if (!desc.trim()) { toast.error(t("Grievance description is required", "குறை விவரம் அவசியம்")); return false; }
+    if (!photos.length) { toast.error(t("Attach at least one photo", "குறைந்தது ஒரு படம் இணைக்கவும்")); return false; }
     if (mobileInvalid) {
       toast.error(t("Enter a valid 10-digit mobile number", "சரியான 10 இலக்க கைபேசி எண்ணை உள்ளிடவும்"));
       return false;
@@ -137,11 +149,10 @@ export default function RegisterWizard({
       setStep(1);
       return toast.error(t("Enter a valid 10-digit mobile number", "சரியான 10 இலக்க கைபேசி எண்ணை உள்ளிடவும்"));
     }
-    // A petition needs something to review. A meeting request doesn't —
-    // the citizen is asking to be seen, which is the content.
-    if (!asMeeting && !desc.trim() && !photos.length) {
-      return toast.error(t("Add a grievance or photo", "குறை அல்லது படம் தேவை"));
-    }
+    // Grievance description AND a photo are mandatory for BOTH a petition and a
+    // booked appointment (send the citizen back to step 1 if either is missing).
+    if (!desc.trim()) { setStep(1); return toast.error(t("Grievance description is required", "குறை விவரம் அவசியம்")); }
+    if (!photos.length) { setStep(1); return toast.error(t("Attach at least one photo", "குறைந்தது ஒரு படம் இணைக்கவும்")); }
     setBusy(true);
     if (slotTimer.current) clearInterval(slotTimer.current);
 

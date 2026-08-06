@@ -38,6 +38,12 @@ export default function CrowdApp() {
   const [installSheet, setInstallSheet] = useState(false);
   const deferred = useRef<BeforeInstallPromptEvent | null>(null);
 
+  // Whether the Walk-in wizard has unsaved entered details — so switching
+  // sections (bottom nav) can warn before discarding them. A ref, so the wizard
+  // reporting its dirty state doesn't re-render the whole app.
+  const wizardDirty = useRef(false);
+  const setWizardDirty = useCallback((d: boolean) => { wizardDirty.current = d; }, []);
+
   const gotoLogin = useCallback(() => { router.push("/crowd/login"); router.refresh(); }, [router]);
   const is401 = (e: unknown) => (e as { status?: number })?.status === 401;
 
@@ -92,7 +98,18 @@ export default function CrowdApp() {
   }, [load, loadAvail]);
 
   const go = useCallback((v: View) => { setView(v); window.scrollTo(0, 0); }, []);
-  const goList = useCallback((tb: Tab) => { setTab(tb); go("list"); }, [go]);
+  const goList = useCallback((tb: Tab) => {
+    // Leaving the Walk-in wizard with unsaved details? Confirm before discarding.
+    if (view === "wizard" && wizardDirty.current) {
+      const ok = window.confirm(t(
+        "Are you sure you want to switch sections? The details you entered will be lost.",
+        "பிரிவை மாற்ற விரும்புகிறீர்களா? நீங்கள் உள்ளிட்ட விவரங்கள் அழிக்கப்படும்.",
+      ));
+      if (!ok) return;
+      wizardDirty.current = false;
+    }
+    setTab(tb); go("list");
+  }, [go, view, t]);
 
   // Optimistic attendance toggle (toggle-to-revert), mirrors the tested flow.
   const onMark = useCallback((isAppt: boolean, id: number, wantCame: boolean) => {
@@ -174,6 +191,7 @@ export default function CrowdApp() {
           ) : view === "wizard" ? (
             <RegisterWizard
               onDone={(tk) => { setTicket(tk); go("ticket"); load(); loadAvail(); }}
+              onDirtyChange={setWizardDirty}
             />
           ) : view === "ticket" ? (
             <TicketScreen data={ticket} onDone={() => { setTicket(null); goList("appt"); }} />

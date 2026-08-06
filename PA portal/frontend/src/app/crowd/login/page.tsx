@@ -25,6 +25,7 @@ export default function CrowdLoginPage() {
   const { t, lang, setLang } = useT();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -131,8 +132,19 @@ export default function CrowdLoginPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("Password", "கடவுச்சொல்")}</Label>
-              <Input type="password" value={password} autoComplete="current-password" onChange={(e) => setPassword(e.target.value)}
-                className={inputCls} />
+              <div className="relative">
+                <Input type={showPw ? "text" : "password"} value={password} autoComplete="current-password"
+                  onChange={(e) => setPassword(e.target.value)} className={cn(inputCls, "pr-11")} />
+                <button type="button" onClick={() => setShowPw((v) => !v)}
+                  aria-label={showPw ? t("Hide password", "மறை") : t("Show password", "காட்டு")}
+                  className="absolute inset-y-0 right-0 grid w-11 place-items-center text-slate-400 transition-colors hover:text-slate-600">
+                  {showPw ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19M6.61 6.61A18.46 18.46 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61"/><path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"/><path d="m2 2 20 20"/></svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  )}
+                </button>
+              </div>
             </div>
             <Button type="submit" disabled={busy || !username || !password}
               className="h-12 w-full rounded-xl bg-[#1E40AF] text-base font-bold text-white transition-transform hover:bg-[#1A3796] active:scale-[0.99] disabled:opacity-60">
