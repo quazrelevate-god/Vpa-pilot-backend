@@ -506,7 +506,9 @@ function PriorityDonut({ priority, total, active, onSlice, loading }: {
                     <Cell key={s.key} fill={s.color} opacity={active && active !== s.key ? 0.35 : 1} className="cursor-pointer" onClick={() => onSlice(s.key)} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: "var(--font-mono)" }} />
+                {/* No <Tooltip> here: the legend below already shows each
+                    priority's value + %, and the floating tooltip rendered on
+                    top of the centered Total, making both unreadable. */}
               </PieChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">

@@ -164,15 +164,42 @@ async def api_analytics_export(
     db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
 ):
     import csv, io
+    from datetime import datetime, timezone, timedelta
     from src.services.analytics_service import analytics_service
     f = _analytics_filters(date_from, date_to, category, priority, ministry, channel, status, district)
+    # Same filters + service as the list view — the export mirrors exactly what
+    # the on-screen table would show for the active filter set (just un-paginated).
     data = await analytics_service.get_petitions(db, f, page=1, page_size=5000)
+
+    IST = timezone(timedelta(hours=5, minutes=30))
+
+    def _title(s: str | None) -> str:
+        return (s or "").replace("_", " ").title()
+
+    def _ist(iso: str | None) -> str:
+        # created_at arrives as a UTC ISO string; render it in IST for the office.
+        if not iso:
+            return ""
+        try:
+            return datetime.fromisoformat(iso).astimezone(IST).strftime("%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            return iso
+
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Token", "Name", "Mobile", "Category", "Priority", "Status", "Channel", "Meeting", "Created"])
+    # Columns mirror the list view (Citizen · Ask · Category) plus the identifying
+    # and triage fields. "Channel" is dropped — it's a removed v2 column that only
+    # ever exported "—". csv.writer quotes the free-text Citizen Ask automatically.
+    w.writerow(["Token", "Name", "Mobile", "Category", "Priority", "Status",
+                "Citizen Ask", "Meeting", "Created (IST)"])
     for r in data["items"]:
-        w.writerow([r["token"], r["name"], r["mobile"], r["category_label"], r["priority"] or "",
-                    r["status"], r["source_label"], "Yes" if r["schedule_meeting"] else "No", r["created_at"] or ""])
+        w.writerow([
+            r["token"], r["name"], r["mobile"], r["category_label"],
+            _title(r["priority"]), _title(r["status"]),
+            r.get("citizen_ask") or "",
+            "Yes" if r["schedule_meeting"] else "No",
+            _ist(r["created_at"]),
+        ])
     return Response(
         content=buf.getvalue(), media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=petitions.csv"},

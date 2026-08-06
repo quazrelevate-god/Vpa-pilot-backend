@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
 import { useLang } from "@/lib/lang-context";
+import { districtText } from "@/lib/enums";
 
 // Each polygon is coloured, labelled, and filtered by its OWN district key, so
 // the number on a district always equals what clicking it filters to. The
@@ -31,10 +32,10 @@ const W = 420, H = 480;
 export default function TamilNaduMap({ data, activeKey, onSelect }: {
   data: DistrictCount[] | null; activeKey?: string; onSelect?: (key: string) => void;
 }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [geo, setGeo] = useState<any>(null);
   const [failed, setFailed] = useState(false);
-  const [hover, setHover] = useState<{ name: string; count: number; x: number; y: number } | null>(null);
+  const [hover, setHover] = useState<{ key: string; name: string; count: number; x: number; y: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -104,6 +105,7 @@ export default function TamilNaduMap({ data, activeKey, onSelect }: {
               onMouseMove={(e) => {
                 const rect = wrapRef.current?.getBoundingClientRect();
                 setHover({
+                  key: p.key,
                   name: p.name,
                   count: c,
                   x: e.clientX - (rect?.left ?? 0),
@@ -145,7 +147,7 @@ export default function TamilNaduMap({ data, activeKey, onSelect }: {
           className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-card-md"
           style={{ left: hover.x, top: hover.y - 8 }}
         >
-          <div className="text-[12px] font-semibold text-foreground">{hover.name}</div>
+          <div className="text-[12px] font-semibold text-foreground">{districtText(hover.key, lang, hover.name)}</div>
           <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
             {hover.count.toLocaleString("en-IN")} petition{hover.count === 1 ? "" : "s"}
           </div>
