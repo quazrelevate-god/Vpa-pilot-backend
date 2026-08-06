@@ -77,6 +77,30 @@ export async function getProposal(id: number): Promise<ProposalDetail> {
   return r.json();
 }
 
+export interface ProposalDocumentPage {
+  page_no: number;
+  thumb_url: string;
+}
+export interface ProposalDocumentEntry {
+  id: string;
+  filename: string;
+  mime: string | null;
+  kind: "pdf" | "image";
+  size_bytes: number | null;
+  page_count: number;
+  pages: ProposalDocumentPage[];
+  original_url: string;
+}
+export interface ProposalDocumentsResponse {
+  documents: ProposalDocumentEntry[];
+}
+
+export async function fetchProposalDocuments(id: number): Promise<ProposalDocumentsResponse> {
+  const r = await fetch(`${BASE}/${id}/documents`, { credentials: "include", cache: "no-store" });
+  if (!r.ok) throw await apiError(r);
+  return r.json();
+}
+
 export async function decideProposal(id: number, decision: Decision, note?: string): Promise<ProposalDetail> {
   const r = await fetch(`${BASE}/${id}/decision`, {
     method: "POST",

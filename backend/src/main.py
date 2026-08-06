@@ -18,7 +18,7 @@ from src.core.request_context import request_id_var, new_request_id, incoming_re
 setup_logging()
 init_sentry()
 
-from src.api.v1 import qr, form, appointments, dashboard, scheduling, display, scan_petition, referral, ai_uploads, events, proposal, proposal_review, association_review
+from src.api.v1 import qr, form, appointments, dashboard, scheduling, display, scan_petition, referral, ai_uploads, events, proposal, proposal_review, proposal_documents, association_review
 
 # Import all ORM models so SQLAlchemy can resolve cross-model relationships
 # (e.g. Appointment → GrievanceSummaryRecord) before the mapper is configured.
@@ -148,6 +148,7 @@ app.include_router(ai_uploads.router)
 app.include_router(events.router)
 app.include_router(proposal.router)   # /api/v1/proposal/otp/* + /submit — public proposal form
 app.include_router(proposal_review.router)   # /api/v1/admin/proposals/* — super_admin review
+app.include_router(proposal_documents.router)   # /api/v1/admin/proposals/{id}/documents/* — manifest + thumbs
 app.include_router(association_review.router)   # /api/v1/admin/associations/* — super_admin review
 
 from src.api.v1 import ticketing  # noqa: E402
