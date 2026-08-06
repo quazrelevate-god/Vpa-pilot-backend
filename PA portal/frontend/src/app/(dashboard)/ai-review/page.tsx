@@ -478,6 +478,23 @@ function AiReviewPageInner() {
   // native window.confirm() (which some engines style like an "alert").
   const [dismissOpen, setDismissOpen] = useState(false);
 
+  // ── Signature-petition merging (v054) ─────────────────────────────────────
+  // `similar` is the last Find-similar payload for the currently open drawer.
+  // `keptSignatoryIds` is the set the reviewer curated — start = all
+  // candidates, ✕ removes one, click-to-restore adds it back. On Approve, if
+  // the set is non-empty, we hit /approve-with-signatories to merge into one
+  // ticket. If it's empty, plain approve — the current behavior is unchanged.
+  const [similar, setSimilar] = useState<null | {
+    source: { id: number; ask?: string; category?: string | null; district?: string | null } | null;
+    candidates: Array<{
+      id: number; score: number; ask?: string | null; name?: string | null;
+      source?: string | null; token?: number | null; created_at?: string | null;
+    }>;
+    reason?: string | null;
+  }>(null);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [keptSignatoryIds, setKeptSignatoryIds] = useState<Set<number>>(new Set());
+
   // Default to Awaiting Review — that's the actionable queue PAs care about on
   // open. They can widen to All via the tabs if they want history.
   // Arriving from a batch link starts on "All": a batch that is already fully
@@ -746,6 +763,10 @@ function AiReviewPageInner() {
   async function openRow(r: InboxRow) {
     if (r.statusKey === "QUEUED" || r.statusKey === "PROCESSING") return;
     setEditing(false);
+    // Reset merge state whenever a new row opens — the previous drawer's
+    // Find-similar payload is no longer relevant.
+    setSimilar(null);
+    setKeptSignatoryIds(new Set());
     if (r.kind === "petition" && r.petition) {
       const rv = mapPetitionToReview(r.petition);
       setReview(rv);
@@ -828,18 +849,54 @@ function AiReviewPageInner() {
     if (!review) return;
     setBusy(true);
     try {
-      const url = review._kind === "petition"
-        ? `/api/appointments/${review.id}/approve`
-        : api(`/${review.id}/approve`);
-      const r = await fetch(url, { method: "POST", credentials: "include" });
+      // Signature-petition path: petitions only, and only if the reviewer
+      // curated at least one signatory. Otherwise fall through to the plain
+      // single-petition approve so the existing behavior is unchanged.
+      const sigIds = review._kind === "petition" ? Array.from(keptSignatoryIds) : [];
+      const isMerge = sigIds.length > 0;
+      const url = isMerge
+        ? `/api/appointments/${review.id}/approve-with-signatories`
+        : (review._kind === "petition"
+            ? `/api/appointments/${review.id}/approve`
+            : api(`/${review.id}/approve`));
+      const init: RequestInit = { method: "POST", credentials: "include" };
+      if (isMerge) {
+        init.headers = { "Content-Type": "application/json" };
+        init.body = JSON.stringify({ signatory_ids: sigIds });
+      }
+      const r = await fetch(url, init);
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
-        toast.success(d.forwarded
-          ? `Forwarded to ministry${d.ticket_number ? ` — ticket ${d.ticket_number}` : ""}`
-          : (d.ticket_number ? `Ticket ${d.ticket_number} created` : "Approved"));
+        const nSig = d.signatory_count ?? (isMerge ? 1 + sigIds.length : 1);
+        toast.success(
+          nSig > 1
+            ? `Ticket ${d.ticket_number ?? ""} · ${nSig} signatures merged`
+            : (d.forwarded
+                ? `Forwarded to ministry${d.ticket_number ? ` — ticket ${d.ticket_number}` : ""}`
+                : (d.ticket_number ? `Ticket ${d.ticket_number} created` : "Approved"))
+        );
         setReview(null); load();
       } else toast.error(d.error || "Action failed");
     } catch { toast.error("Network error"); } finally { setBusy(false); }
+  }
+
+  // ── Find similar (petition-only, on-demand) ──────────────────────────────
+  async function loadSimilar() {
+    if (!review || review._kind !== "petition") return;
+    setSimilarLoading(true);
+    try {
+      const r = await fetch(`/api/appointments/${review.id}/similar`, { credentials: "include" });
+      if (!r.ok) throw new Error(`Find similar failed (${r.status})`);
+      const d = await r.json();
+      setSimilar(d);
+      // Default: keep all candidates the AI found. The reviewer ✕'s the false
+      // positives; on Approve, only what's still in `keptSignatoryIds` is merged.
+      setKeptSignatoryIds(new Set((d.candidates || []).map((c: { id: number }) => c.id)));
+    } catch (e) {
+      toast.error((e as Error).message || "Find similar failed");
+    } finally {
+      setSimilarLoading(false);
+    }
   }
 
   // Dismiss — mark reviewed WITHOUT creating a ticket / citizen / appointment.
@@ -1512,6 +1569,77 @@ function AiReviewPageInner() {
                   })()}
                 </section>
 
+                {/* Duplicate check — petition-only, awaiting-only. Reviewer
+                    clicks Find similar; results appear here and are curated
+                    with ✕. Approve merges what remains into one ticket. */}
+                {review._kind === "petition" && review.status === "AWAITING_REVIEW" && (
+                  <section className="rounded-2xl border border-border bg-card p-5 shadow-card">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                      <SectionHeader icon={User} title="Duplicate check" />
+                      <Button size="sm" variant="outline"
+                        onClick={loadSimilar}
+                        disabled={similarLoading || busy || editing}>
+                        {similarLoading
+                          ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          : <Search className="mr-1.5 h-3.5 w-3.5" />}
+                        {similar ? "Refresh similar" : "Find similar"}
+                      </Button>
+                    </div>
+                    {!similar && (
+                      <p className="text-[13px] leading-relaxed text-muted-foreground">
+                        Look for other awaiting petitions with the same demand in this district. If any are found, approving here will merge them into <strong>one ticket with a signatory list</strong> — every citizen is preserved on the roster.
+                      </p>
+                    )}
+                    {similar && similar.candidates.length === 0 && (
+                      <p className="text-[13px] text-muted-foreground">{similar.reason || "No similar petitions found."}</p>
+                    )}
+                    {similar && similar.candidates.length > 0 && (
+                      <div className="space-y-2.5">
+                        <div className="rounded-lg border border-brand/25 bg-brand/[0.04] px-3 py-2 text-[13px] text-foreground">
+                          <strong>{keptSignatoryIds.size}</strong> of {similar.candidates.length} kept — approving creates{" "}
+                          <strong>1 ticket with {keptSignatoryIds.size + 1} signatures</strong>. Use <X className="inline h-3 w-3 align-[-2px]" /> to drop any that aren't actually the same.
+                        </div>
+                        {similar.candidates.map((c) => {
+                          const kept = keptSignatoryIds.has(c.id);
+                          return (
+                            <div key={c.id} className={cn(
+                              "flex items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors",
+                              kept ? "border-border bg-background/60" : "border-dashed border-muted-foreground/30 bg-muted/20 opacity-60",
+                            )}>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="truncate text-[13.5px] font-semibold text-foreground">{c.name || "Unnamed"}</span>
+                                  <span className="num rounded bg-brand/10 px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums text-brand">
+                                    {Math.round((c.score || 0) * 100)}%
+                                  </span>
+                                  {c.source && <span className="text-[11.5px] uppercase tracking-wider text-muted-foreground">{c.source}</span>}
+                                </div>
+                                <p className="mt-1 line-clamp-2 text-[13px] text-foreground/85">{c.ask || "—"}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setKeptSignatoryIds((s) => {
+                                  const next = new Set(s);
+                                  if (kept) next.delete(c.id); else next.add(c.id);
+                                  return next;
+                                })}
+                                aria-label={kept ? "Not a duplicate — remove from merge" : "Add back to merge"}
+                                title={kept ? "Not a duplicate — remove from merge" : "Add back to merge"}
+                                className={cn(
+                                  "grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors",
+                                  kept ? "hover:bg-red-100 hover:text-red-700" : "hover:bg-brand/10 hover:text-brand",
+                                )}
+                              >
+                                {kept ? <X className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                )}
+
                 {review.status === "FAILED" && review.error && (
                   <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
                     <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" /><span>{review.error}</span>
@@ -1551,7 +1679,13 @@ function AiReviewPageInner() {
                       >
                         {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           : isSchool ? <Check className="mr-2 h-4 w-4" /> : <Forward className="mr-2 h-4 w-4" />}
-                        {isSchool ? t("petition.acceptCta") : `${t("petition.forwardCta")}${ministryLabel ? ` — ${ministryLabel}` : ""}`}
+                        {(() => {
+                          const nSig = review._kind === "petition" ? keptSignatoryIds.size : 0;
+                          const base = isSchool
+                            ? t("petition.acceptCta")
+                            : `${t("petition.forwardCta")}${ministryLabel ? ` — ${ministryLabel}` : ""}`;
+                          return nSig > 0 ? `${base} · ${nSig + 1} signatures` : base;
+                        })()}
                       </Button>
                       <Button
                         variant="ghost"
