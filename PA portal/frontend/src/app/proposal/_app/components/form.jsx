@@ -1,7 +1,7 @@
 "use client";
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { useT, useLang } from '../i18n.jsx'
-import { STEPS, MAX_DOCS, MAX_DOC_MB, OTP_KURAL, KURALS, DEFAULT_KURAL } from '../data.jsx'
+import { STEPS, MAX_DOCS, MAX_DOC_MB, MAX_TOTAL_MB, OTP_KURAL, KURALS, DEFAULT_KURAL } from '../data.jsx'
 import { Valluvar } from './logo.jsx'
 import { generateKeynote, localKeynote, geminiEnabled } from '../gemini.js'
 import { useBrandFile } from '../brand.jsx'
@@ -27,10 +27,11 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
   const [ack, setAck] = useState('')
   const [error, setError] = useState(false)
   const [anim, setAnim] = useState('enter-r')
-  const [phase, setPhase] = useState('form')   // form | otp | processing | done
+  const [phase, setPhase] = useState('form')   // form | otp | processing | done | error
   const [tracking, setTracking] = useState('')
   const [stamp, setStamp] = useState('')
   const [keynote, setKeynote] = useState(null)
+  const [submitError, setSubmitError] = useState(null) // { message, status? } — surfaced on error phase
   const inputRef = useRef(null)
   const stageRef = useRef(null)
 
@@ -126,8 +127,12 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
   // Real backend submission: persist the proposal + its PDFs and queue Gemini
   // extraction for the Minister's Proposal Review. The form fields are the
   // authoritative identity; the server mints the tracking reference (its value
-  // replaces the placeholder shown on the success screen). Best-effort so a
-  // hiccup here never strands the citizen mid-acknowledgement.
+  // replaces the placeholder shown on the success screen).
+  //
+  // CRITICAL: never swallow the failure. A silent "Success" screen after a
+  // 500 tells the citizen their proposal is filed when it isn't — a real
+  // data-loss bug. Returns {ok, error?} so the processing → done handoff
+  // can route to the error screen instead of green-lighting a phantom.
   const submitProposal = async () => {
     try {
       const fd = new FormData()
@@ -142,18 +147,37 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         if (data && data.tracking_ref) setTracking(data.tracking_ref)  // server ref wins
-      } else {
-        console.warn('[proposal] submit failed', res.status)
+        return { ok: true }
       }
+      // Try to surface the FastAPI `detail` field so the reason is human-readable.
+      let detail = null
+      try {
+        const body = await res.json()
+        detail = body?.detail || body?.error || null
+      } catch { /* body wasn't JSON */ }
+      return { ok: false, status: res.status, message: detail || `Server returned ${res.status}` }
     } catch (e) {
-      console.warn('[proposal] submit error', e)
+      return { ok: false, message: e?.message || 'Network error — please check your connection.' }
     }
   }
 
-  // The processing bar tracks the real submit first, then the warm keynote.
+  // Processing bar drives the real submit first; keynote is animated in
+  // parallel afterwards. Returns { ok, keynote?, error? }. Note keynote failure
+  // is NOT fatal (we fall back to a local one) — only a submit failure aborts.
   const runSubmitAndKeynote = async () => {
-    await submitProposal()
-    return runKeynote()
+    const submit = await submitProposal()
+    if (!submit.ok) return { ok: false, error: submit }
+    try {
+      const k = await runKeynote()
+      return { ok: true, keynote: k }
+    } catch {
+      // Local keynote fallback — submit succeeded, so the citizen still sees Success.
+      return { ok: true, keynote: localKeynote({
+        categoryKey: category?.key,
+        categoryTitle: category ? (ta ? category.title.ta : category.title.en) : '',
+        org: answers.org, personName: answers.personName, lang,
+      }) }
+    }
   }
 
   const missing = () => {
@@ -328,12 +352,30 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
 
         {phase === 'processing' && (
           <Processing run={runSubmitAndKeynote} category={category} ta={ta} t={t}
-            onDone={(k) => { setKeynote(k); setPhase('done') }} />
+            onDone={(result) => {
+              // A silent Success on a failed submit would be a data-loss lie
+              // to the citizen; route to the error screen instead.
+              if (!result || !result.ok) {
+                setSubmitError(result?.error || { message: 'Submit failed.' })
+                setPhase('error')
+                return
+              }
+              setKeynote(result.keynote)
+              setPhase('done')
+            }} />
         )}
 
         {phase === 'done' && (
           <Success ta={ta} t={t} category={category} answers={answers} keynote={keynote}
             tracking={tracking} stamp={stamp} onClose={onFiled || onClose} />
+        )}
+
+        {phase === 'error' && (
+          <SubmitError ta={ta} t={t} err={submitError}
+            onRetry={() => { setSubmitError(null); setPhase('processing') }}
+            onEdit={() => { setSubmitError(null); setPhase('form'); setStep(docsIdx) }}
+            onClose={onClose}
+          />
         )}
       </div>
 
@@ -364,13 +406,33 @@ const DocDrop = forwardRef(function DocDrop({ value, onChange, onReject, ta, err
     const seen = new Set(value.map((f) => `${f.name}:${f.size}`))
     const fresh = sized.filter((f) => !seen.has(`${f.name}:${f.size}`))
     const room = MAX_DOCS - value.length
-    const taken = fresh.slice(0, room)
+    let taken = fresh.slice(0, room)
+
+    // Total-bytes guard mirrors the backend cap so a big submission fails
+    // here (with the actual filenames the user picked) rather than late in
+    // the wizard with a generic 400 from the server. Accept files greedily
+    // from the front of the pick until the running total would exceed the
+    // cap; anything after that is rejected with a message that names both
+    // limits so the user knows what to do.
+    const capBytes = MAX_TOTAL_MB * 1024 * 1024
+    const runningBefore = value.reduce((s, f) => s + f.size, 0)
+    const accepted = []
+    let running = runningBefore
+    let overflow = false
+    for (const f of taken) {
+      if (running + f.size > capBytes) { overflow = true; break }
+      accepted.push(f); running += f.size
+    }
+    taken = accepted
 
     const notes = []
     if (pdfs.length < all.length) notes.push(ta ? 'PDF கோப்புகள் மட்டுமே ஏற்கப்படும்.' : 'PDF files only.')
     if (sized.length < pdfs.length) notes.push(ta ? `ஒரு கோப்பு ${MAX_DOC_MB} MB-க்குள் இருக்க வேண்டும்.` : `Each file must be under ${MAX_DOC_MB} MB.`)
     if (fresh.length < sized.length) notes.push(ta ? 'சில கோப்புகள் ஏற்கனவே இணைக்கப்பட்டுள்ளன.' : 'Some files were already attached.')
-    if (taken.length < fresh.length) notes.push(ta ? `அதிகபட்சம் ${MAX_DOCS} ஆவணங்கள்.` : `Maximum ${MAX_DOCS} documents.`)
+    if (overflow) notes.push(ta
+      ? `மொத்த அளவு ${MAX_TOTAL_MB} MB-ஐ மீறுகிறது. குறைவான அல்லது சிறிய கோப்புகளை அனுப்பவும்.`
+      : `Total upload would exceed ${MAX_TOTAL_MB} MB. Please send fewer or smaller files.`)
+    if (taken.length < fresh.length && !overflow) notes.push(ta ? `அதிகபட்சம் ${MAX_DOCS} ஆவணங்கள்.` : `Maximum ${MAX_DOCS} documents.`)
 
     if (taken.length) onChange([...value, ...taken])
     if (notes.length) onReject(notes.join(' '))
@@ -400,8 +462,14 @@ const DocDrop = forwardRef(function DocDrop({ value, onChange, onReject, ta, err
               : 'Drop PDFs here, or click to browse'}
         </span>
         <span className="block text-[12.5px] text-white/45 mt-1.5">
-          {ta ? `அதிகபட்சம் ${MAX_DOCS} கோப்புகள் · ஒன்று ${MAX_DOC_MB} MB வரை`
-            : `Up to ${MAX_DOCS} files · ${MAX_DOC_MB} MB each`}
+          {ta
+            ? `PDF மட்டுமே · அதிகபட்சம் ${MAX_DOCS} கோப்புகள் · ஒன்று ${MAX_DOC_MB} MB வரை · மொத்தம் ${MAX_TOTAL_MB} MB`
+            : `PDF only · up to ${MAX_DOCS} files · ${MAX_DOC_MB} MB each · ${MAX_TOTAL_MB} MB total`}
+        </span>
+        <span className="block text-[11px] text-white/35 mt-0.5">
+          {ta
+            ? 'PPT அல்லது Word ஆவணங்களை PDF ஆக மாற்றி பதிவேற்றவும்.'
+            : 'For PPT or Word documents, please save as PDF before uploading.'}
         </span>
       </button>
 
@@ -811,6 +879,57 @@ function Cascade({ text, className = '', base = 0, step = 26, dur = 520 }) {
 /* ================= SUCCESS =================
    The Gemini keynote is the hero: title, then the thank-you cascading in word
    by word, then the essence as chips. The official record sits beneath it. */
+/* Submission failure screen — replaces the phantom Success that used to appear
+   on any server / network error. Tells the citizen honestly that the proposal
+   was NOT filed, shows a short reason, and offers two escapes: retry the
+   submit (files are still in state) or go back to review the documents. */
+function SubmitError({ ta, err, onRetry, onEdit, onClose }) {
+  const reason = err?.message || (ta ? 'சமர்ப்பிக்க முடியவில்லை.' : 'Submission did not go through.')
+  return (
+    <div className="w-full max-w-xl my-auto text-center qcard enter-r">
+      <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-red-100 text-red-700">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+        </svg>
+      </div>
+      <h2 className="text-xl font-bold text-slate-900 mb-2">
+        {ta ? 'சமர்ப்பிக்க முடியவில்லை' : 'Your proposal was not filed'}
+      </h2>
+      <p className="text-slate-600 max-w-md mx-auto mb-1">
+        {ta
+          ? 'உங்கள் ஆவணங்கள் சர்வரில் சேமிக்கப்படவில்லை. மீண்டும் முயற்சிக்கவும்.'
+          : 'Your documents were not saved on the server. Please try again — nothing you entered was lost.'}
+      </p>
+      <p className="text-[13px] text-slate-500 max-w-md mx-auto mb-6">
+        <span className="font-semibold">{ta ? 'காரணம்:' : 'Reason:'}</span> {reason}
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2 justify-center">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-lg bg-slate-900 text-white px-5 py-2.5 text-sm font-semibold hover:bg-slate-800"
+        >
+          {ta ? 'மீண்டும் சமர்ப்பிக்க' : 'Try submitting again'}
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-lg border border-slate-300 bg-white text-slate-700 px-5 py-2.5 text-sm font-semibold hover:bg-slate-50"
+        >
+          {ta ? 'ஆவணங்களை மாற்று' : 'Change the documents'}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg text-slate-500 px-5 py-2.5 text-sm hover:text-slate-800"
+        >
+          {ta ? 'மூடு' : 'Close'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function Success({ ta, t, category, answers, keynote, tracking, stamp, onClose }) {
   const [copied, setCopied] = useState(false)
   const k = keynote || {}
