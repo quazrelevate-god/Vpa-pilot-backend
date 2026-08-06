@@ -20,6 +20,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
@@ -61,6 +64,29 @@ const TABS: { key: string; label: string }[] = [
   { key: "", label: "All" },
 ];
 
+// The 4 desks a proposal can target — matches CATEGORY_LABEL keys above.
+const CATEGORY_OPTIONS: { value: string; label: string }[] = [
+  { value: "school",      label: "School Education" },
+  { value: "tamil",       label: "Tamil & Heritage" },
+  { value: "information", label: "Information & Publicity" },
+  { value: "film",        label: "Film" },
+];
+
+const REC_OPTIONS: { value: string; label: string }[] = [
+  { value: "review_closely",  label: "Review closely" },
+  { value: "standard",        label: "Ready to review" },
+  { value: "needs_more_info", label: "Needs clarification" },
+];
+
+const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
+  { value: "today",  label: "Today" },
+  { value: "week",   label: "This week" },
+  { value: "month",  label: "This month" },
+  { value: "custom", label: "Custom range" },
+];
+
+const ANY = "__any__";  // sentinel — <SelectItem value=""> isn't allowed by Radix.
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   try { return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); }
@@ -71,6 +97,37 @@ function daysSince(iso: string | null): number | null {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return null;
   return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+}
+/** Earliest timestamp (ms) that qualifies for a date-range PRESET bucket.
+ *  "custom" returns null; the caller handles it via dateFrom/dateTo state. */
+function dateRangeStart(bucket: string | null): number | null {
+  if (!bucket) return null;
+  const now = new Date();
+  if (bucket === "today") {
+    const d = new Date(now); d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+  if (bucket === "week") {
+    const d = new Date(now); d.setHours(0, 0, 0, 0);
+    const day = d.getDay();
+    const monOffset = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + monOffset);
+    return d.getTime();
+  }
+  if (bucket === "month") {
+    return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  }
+  return null;
+}
+
+/** Parse "YYYY-MM-DD" as local-midnight ms. Returns null on empty / malformed. */
+function parseDateYMD(v: string): number | null {
+  if (!v) return null;
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
+  const dt = new Date(y, mo, d, 0, 0, 0, 0);
+  return Number.isNaN(dt.getTime()) ? null : dt.getTime();
 }
 /** A field the AI leaves as "Not specified" (or empty) is not a real value. */
 function specified(v?: string | null): boolean {
@@ -105,6 +162,14 @@ export default function ProposalReviewPage() {
   const [q, setQ] = useState("");
   const [data, setData] = useState<ProposalListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Filter state — null when the chip is at "Any". Filters AND with tabs +
+  // search + each other. Category, AI-recommendation, and submitted-date.
+  const [recFilter,      setRecFilter]      = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [dateFilter,     setDateFilter]     = useState<string | null>(null);
+  const [dateFrom,       setDateFrom]       = useState<string>("");
+  const [dateTo,         setDateTo]         = useState<string>("");
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<ProposalDetail | null>(null);
@@ -170,14 +235,46 @@ export default function ProposalReviewPage() {
   const filtered = useMemo(() => {
     const items = data?.items ?? [];
     const needle = q.trim().toLowerCase();
-    if (!needle) return items;
-    return items.filter((p) =>
-      (p.title || "").toLowerCase().includes(needle) ||
-      (p.org_name || "").toLowerCase().includes(needle) ||
-      (p.person_name || "").toLowerCase().includes(needle) ||
-      (p.tracking_ref || "").toLowerCase().includes(needle),
-    );
-  }, [data, q]);
+    const presetStart = dateRangeStart(dateFilter);
+    const customStart = dateFilter === "custom" ? parseDateYMD(dateFrom) : null;
+    const customEndRaw = dateFilter === "custom" ? parseDateYMD(dateTo) : null;
+    const customEnd = customEndRaw != null ? customEndRaw + 86_400_000 : null;
+    return items.filter((p) => {
+      if (recFilter      && p.ai_recommendation !== recFilter)      return false;
+      if (categoryFilter && p.category          !== categoryFilter) return false;
+      if (presetStart != null) {
+        const t = p.created_at ? new Date(p.created_at).getTime() : NaN;
+        if (!Number.isFinite(t) || t < presetStart) return false;
+      }
+      if (customStart != null || customEnd != null) {
+        const t = p.created_at ? new Date(p.created_at).getTime() : NaN;
+        if (!Number.isFinite(t)) return false;
+        if (customStart != null && t < customStart) return false;
+        if (customEnd   != null && t >= customEnd)  return false;
+      }
+      if (needle) {
+        const hit =
+          (p.title || "").toLowerCase().includes(needle) ||
+          (p.org_name || "").toLowerCase().includes(needle) ||
+          (p.person_name || "").toLowerCase().includes(needle) ||
+          (p.tracking_ref || "").toLowerCase().includes(needle);
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }, [data, q, recFilter, categoryFilter, dateFilter, dateFrom, dateTo]);
+
+  const activeFilterCount =
+    (recFilter ? 1 : 0) + (categoryFilter ? 1 : 0) + (dateFilter ? 1 : 0);
+  const clearAllFilters = () => {
+    setRecFilter(null); setCategoryFilter(null);
+    setDateFilter(null); setDateFrom(""); setDateTo("");
+  };
+
+  // Reset stashed dates when the chip leaves "custom", so the next pick starts blank.
+  useEffect(() => {
+    if (dateFilter !== "custom") { setDateFrom(""); setDateTo(""); }
+  }, [dateFilter]);
 
   useEffect(() => {
     if (selectedId == null) { setDetail(null); return; }
@@ -295,6 +392,47 @@ export default function ProposalReviewPage() {
                   <Download className="h-4 w-4" /> Export
                 </Button>
               </div>
+            </div>
+
+            {/* Filter chips — AND with tabs + search. Chip flips to a coloured
+                pill with an inline clear when a value is picked. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterChip
+                icon={<Sparkles className="h-3.5 w-3.5" />}
+                label="AI"
+                value={recFilter} onValue={setRecFilter}
+                options={REC_OPTIONS}
+              />
+              <FilterChip
+                icon={<Building2 className="h-3.5 w-3.5" />}
+                label="Portfolio"
+                value={categoryFilter} onValue={setCategoryFilter}
+                options={CATEGORY_OPTIONS}
+              />
+              <FilterChip
+                icon={<CalendarClock className="h-3.5 w-3.5" />}
+                label="Submitted"
+                value={dateFilter} onValue={setDateFilter}
+                options={DATE_RANGE_OPTIONS}
+              />
+              {dateFilter === "custom" && (
+                <CustomDateRange
+                  from={dateFrom} to={dateTo}
+                  onFrom={setDateFrom} onTo={setDateTo}
+                />
+              )}
+              {activeFilterCount > 0 && (
+                <button
+                  type="button" onClick={clearAllFilters}
+                  className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  title="Clear all filters"
+                >
+                  <X className="h-3 w-3" /> Clear ({activeFilterCount})
+                </button>
+              )}
+              <span className="num ml-auto text-[11.5px] text-muted-foreground">
+                {filtered.length} of {data?.items?.length ?? 0}
+              </span>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -758,6 +896,127 @@ function DetailPane({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── compact custom date-range control — h-8 pill matching FilterChip height.
+//    Same shape used on association-review. Native picker opens on click via
+//    showPicker(); empty end = open range.
+function CustomDateRange({
+  from, to, onFrom, onTo,
+}: {
+  from: string; to: string;
+  onFrom: (v: string) => void;
+  onTo:   (v: string) => void;
+}) {
+  const fromRef = useRef<HTMLInputElement>(null);
+  const toRef   = useRef<HTMLInputElement>(null);
+  const openPicker = (el: HTMLInputElement | null) => {
+    if (!el) return;
+    el.focus();
+    try { (el as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* ignore */ }
+  };
+  const fmt = (v: string) => {
+    if (!v) return "";
+    const [y, m, d] = v.split("-");
+    if (!y || !m || !d) return v;
+    return `${d}/${m}/${y.slice(2)}`;
+  };
+  return (
+    <div className="inline-flex h-8 items-stretch overflow-hidden rounded-full border border-border bg-background text-[12px] font-semibold text-muted-foreground">
+      <button
+        type="button"
+        onClick={() => openPicker(fromRef.current)}
+        className="flex items-center gap-1.5 px-3 hover:bg-accent hover:text-foreground focus:bg-accent focus:outline-none"
+        aria-label="From date"
+      >
+        <span className="num">{fmt(from) || "From"}</span>
+        <input
+          ref={fromRef} type="date" value={from} onChange={(e) => onFrom(e.target.value)}
+          max={to || undefined}
+          className="pointer-events-none absolute h-0 w-0 opacity-0"
+          tabIndex={-1} aria-hidden
+        />
+      </button>
+      <span className="flex items-center px-1 text-muted-foreground/60" aria-hidden>→</span>
+      <button
+        type="button"
+        onClick={() => openPicker(toRef.current)}
+        className="flex items-center gap-1.5 px-3 hover:bg-accent hover:text-foreground focus:bg-accent focus:outline-none"
+        aria-label="To date"
+      >
+        <span className="num">{fmt(to) || "To"}</span>
+        <input
+          ref={toRef} type="date" value={to} onChange={(e) => onTo(e.target.value)}
+          min={from || undefined}
+          className="pointer-events-none absolute h-0 w-0 opacity-0"
+          tabIndex={-1} aria-hidden
+        />
+      </button>
+      {(from || to) && (
+        <button
+          type="button"
+          onClick={() => { onFrom(""); onTo(""); }}
+          className="flex items-center px-2 text-muted-foreground hover:bg-accent hover:text-foreground focus:bg-accent focus:outline-none"
+          aria-label="Clear custom date range"
+          title="Clear dates"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── filter chip: same compact dropdown as association-review. Uses a sentinel
+//    for "Any" because Radix's SelectItem can't hold value="".
+function FilterChip({
+  icon, label, value, onValue, options,
+}: {
+  icon?: ReactNode;
+  label: string;
+  value: string | null;
+  onValue: (v: string | null) => void;
+  options: { value: string; label: string }[];
+}) {
+  const active = !!value;
+  const currentLabel = active ? (options.find((o) => o.value === value)?.label ?? value) : "";
+  return (
+    <div className="inline-flex items-stretch">
+      <Select
+        value={value ?? ANY}
+        onValueChange={(v) => onValue(v === ANY ? null : v)}
+      >
+        <SelectTrigger
+          className={cn(
+            "h-8 gap-1.5 rounded-full border px-3 text-[12px] font-semibold shadow-none",
+            active
+              ? "border-brand/40 bg-brand/10 text-brand hover:bg-brand/15"
+              : "border-border bg-background text-muted-foreground hover:bg-accent",
+          )}
+        >
+          {icon}
+          {active ? currentLabel : label}
+          {active && (
+            <span
+              role="button"
+              tabIndex={-1}
+              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onValue(null); }}
+              className="ml-1 -mr-1 grid h-4 w-4 place-items-center rounded-full text-brand/80 hover:bg-brand/15 hover:text-brand"
+              aria-label={`Clear ${label} filter`}
+            >
+              <X className="h-3 w-3" />
+            </span>
+          )}
+        </SelectTrigger>
+        <SelectContent align="start" className="max-h-72">
+          <SelectItem value={ANY}>Any {label.toLowerCase()}</SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

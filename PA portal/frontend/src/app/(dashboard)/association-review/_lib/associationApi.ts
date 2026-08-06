@@ -4,21 +4,48 @@ import { apiError } from "@/app/(dashboard)/settings/_lib/adminApi";
 
 export type AssociationStatus = "AWAITING_REVIEW" | "REVIEWED" | "FORWARDED";
 
-// The stored AssociationExtraction brief (JSONB). Loosely typed — only the
-// fields the review UI renders are declared; extras are ignored.
+// The stored AssociationExtraction brief (JSONB). Full shape — matches
+// backend/src/models/association_extraction.py::AssociationExtraction. Every
+// field is optional because Gemini honours the "empty if silent" rule, so any
+// tile / section can be missing on a given brief.
 export interface AssociationBrief {
+  // Identity
   association_name?: string;
   member_count?: string;
   representative_name?: string;
   representative_designation?: string;
-  association_ask?: string;
-  association_ask_ta?: string;
+
+  // Grievance base (inherited from GrievanceSummary)
+  category?: string;
+  ministry?: string;
+  urgency?: string;
+  district?: string;
+  document_date?: string;
   summary?: string;
   summary_ta?: string;
-  key_points?: string[];
-  key_points_ta?: string[];
+  key_details?: string[];
+  key_details_ta?: string[];
+
+  // Collective ask
+  association_ask?: string;
+  association_ask_ta?: string;
+
+  // Decision context — why-now, outcome, stakeholders, risks, precedent
+  demand_context?: string;
+  demand_context_ta?: string;
+  expected_outcome?: string;
+  expected_outcome_ta?: string;
+  key_stakeholders?: string[];
+  key_stakeholders_ta?: string[];
+  risks_if_ignored?: string[];
+  risks_if_ignored_ta?: string[];
+  precedent_context?: string;
+  precedent_context_ta?: string;
+
+  // Triage
   ai_recommendation?: string;
   ai_rationale?: string;
+  ai_rationale_ta?: string;
 }
 
 export interface AssociationListItem {
@@ -30,10 +57,12 @@ export interface AssociationListItem {
   category: string | null;
   ministry: string | null;
   urgency: string | null;
+  district: string | null;
   document_date: string | null;
   status: AssociationStatus;
   association_ask: string | null;
   association_ask_ta: string | null;
+  ai_recommendation: string | null;
   created_at: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -46,7 +75,6 @@ export interface AssociationDoc {
 }
 
 export interface AssociationDetail extends AssociationListItem {
-  district: string | null;
   documents: AssociationDoc[];
   extraction: AssociationBrief | null;
   decision_note: string | null;
@@ -61,57 +89,13 @@ export interface AssociationListResponse {
 
 export type AssociationDecision = "reviewed" | "forwarded";
 
-// One card per association BODY (the same union files many submissions over time).
-export interface AssociationGroup {
-  key: string;
-  association_name: string;
-  count: number;
-  awaiting: number;
-  reviewed: number;
-  forwarded: number;
-  members: number;               // peak stated membership (parsed)
-  member_count_raw: string | null;
-  categories: string[];
-  districts: string[];
-  latest_created_at: string | null;
-  latest_urgency: string | null;
-  representative_name: string | null;
-  ids: number[];
-}
-export interface AssociationGroupedResponse {
-  groups: AssociationGroup[];
-  total_groups: number;
-  page: number;
-  page_size: number;
-  has_more: boolean;
-  counts: Record<string, number>;
-}
-
 const BASE = "/api/v1/admin/associations";
 
-/** Level 1 — bodies grouped, paginated + searchable. */
-export async function listAssociationGroups(
-  { status, q, page = 1, pageSize = 24 }: { status?: string; q?: string; page?: number; pageSize?: number },
-  signal?: AbortSignal,
-): Promise<AssociationGroupedResponse> {
-  const qs = new URLSearchParams();
-  if (status) qs.set("status", status);
-  if (q) qs.set("q", q);
-  qs.set("page", String(page));
-  qs.set("page_size", String(pageSize));
-  const r = await fetch(`${BASE}/grouped?${qs.toString()}`, { credentials: "include", cache: "no-store", signal });
-  if (!r.ok) throw await apiError(r);
-  return r.json();
-}
+// Legacy /grouped and /?name= endpoints kept on the backend (cheap to serve,
+// might be useful for future body-level analytics) but the frontend wrappers
+// were removed with the review-page rebuild — no consumers.
 
-/** Level 2 — every submission of one body (drill-in). */
-export async function listAssociationsByName(name: string, signal?: AbortSignal): Promise<AssociationListResponse> {
-  const qs = new URLSearchParams({ name, limit: "200" });
-  const r = await fetch(`${BASE}?${qs.toString()}`, { credentials: "include", cache: "no-store", signal });
-  if (!r.ok) throw await apiError(r);
-  return r.json();
-}
-
+/** Flat listing — one row per submission. Backs the main review table. */
 export async function listAssociations(status?: string, limit = 100, offset = 0): Promise<AssociationListResponse> {
   const qs = new URLSearchParams();
   if (status) qs.set("status", status);

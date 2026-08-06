@@ -43,10 +43,14 @@ class AssociationListItem(BaseModel):
     category: Optional[str] = None
     ministry: Optional[str] = None
     urgency: Optional[str] = None
+    district: Optional[str] = None              # v2 — filterable by constituency on the list
     document_date: Optional[str] = None
     status: str
     association_ask: Optional[str] = None       # the collective ask (one-liner for the drill list)
     association_ask_ta: Optional[str] = None
+    # v2 — surfaced on the list so the row can show a triage badge without a
+    # separate detail fetch. Pulled from extraction_json; None on pre-v2 rows.
+    ai_recommendation: Optional[str] = None
     created_at: Optional[str] = None
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[str] = None
@@ -80,10 +84,12 @@ def _list_item(r: AssociationSubmission) -> AssociationListItem:
     return AssociationListItem(
         id=r.id, association_name=r.association_name, representative_name=r.representative_name,
         representative_designation=r.representative_designation, member_count=r.member_count,
-        category=r.category, ministry=r.ministry, urgency=r.urgency, document_date=r.document_date,
+        category=r.category, ministry=r.ministry, urgency=r.urgency, district=r.district,
+        document_date=r.document_date,
         status=r.status,
         association_ask=ej.get("association_ask") or None,
         association_ask_ta=ej.get("association_ask_ta") or None,
+        ai_recommendation=ej.get("ai_recommendation") or None,
         created_at=_iso(r.created_at), reviewed_by=r.reviewed_by, reviewed_at=_iso(r.reviewed_at),
     )
 
@@ -98,6 +104,9 @@ def _detail(r: AssociationSubmission) -> AssociationDetail:
             url = None
         docs.append({"filename": d.get("original_filename"), "url": url, "mime": d.get("mime_type")})
     base = _list_item(r).model_dump()
+    # AssociationDetail already declares `district`; base carries the value now,
+    # so drop it from base to avoid the duplicate-keyword TypeError.
+    base.pop("district", None)
     return AssociationDetail(**base, district=r.district, documents=docs,
                              extraction=r.extraction_json, decision_note=r.decision_note, source=r.source)
 
