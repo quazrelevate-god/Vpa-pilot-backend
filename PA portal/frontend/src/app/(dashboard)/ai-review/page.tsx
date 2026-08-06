@@ -477,6 +477,10 @@ function AiReviewPageInner() {
   // Dismiss confirmation — pretty Radix dialog instead of the browser's
   // native window.confirm() (which some engines style like an "alert").
   const [dismissOpen, setDismissOpen] = useState(false);
+  // Move-back confirmation — parallel dialog for a much more destructive
+  // action (hard-deletes the routed-to proposal/association). Was previously
+  // a one-click hazard.
+  const [moveBackOpen, setMoveBackOpen] = useState(false);
 
   // ── Signature-petition merging (v054) ─────────────────────────────────────
   // `similar` is the last Find-similar payload for the currently open drawer.
@@ -937,12 +941,18 @@ function AiReviewPageInner() {
     } catch { toast.error(t("petition.networkError")); } finally { setBusy(false); }
   }
 
-  // Recover a mis-classified scan — delete the proposal/association the
-  // classifier created and re-queue this upload for petition extraction (the
+  // Recover a mis-classified scan — DELETES the proposal/association the
+  // classifier created and re-queues this upload for petition extraction (the
   // backend locks it so it won't route out again). Uploads only; petitions are
-  // never routed.
-  async function moveBack() {
+  // never routed. Gated behind moveBackOpen confirmation because a mis-click
+  // on a legitimately routed proposal is unrecoverable.
+  function moveBack() {
     if (!review || review._kind === "petition") return;
+    setMoveBackOpen(true);
+  }
+  async function moveBackConfirmed() {
+    if (!review) return;
+    setMoveBackOpen(false);
     setBusy(true);
     try {
       const r = await fetch(api(`/${review.id}/move-back`), { method: "POST", credentials: "include" });
@@ -1721,7 +1731,12 @@ function AiReviewPageInner() {
                   // AI mis-typed a petition as a proposal/association.
                   const isAssoc = review.routed_to === "association";
                   const workflowLabel = isAssoc ? t("petition.routedAssociation") : t("petition.routedProposal");
-                  const workflowHref = isAssoc ? "/association-review" : "/proposal-review";
+                  // Preserve the routed row's downstream id in the query so
+                  // the target workflow can auto-open THAT specific proposal /
+                  // association, not just drop the PA on the list.
+                  const refId = review.routed_ref_id;
+                  const workflowHref = (isAssoc ? "/association-review" : "/proposal-review")
+                    + (refId ? `?id=${refId}` : "");
                   return (
                     <div className="flex flex-col gap-3">
                       <div className="flex gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-3 text-[13px] leading-relaxed text-violet-900">
@@ -1774,6 +1789,36 @@ function AiReviewPageInner() {
             >
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
               {t("petition.dismissConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move-back confirmation — this one is DESTRUCTIVE (the created
+          proposal/association is deleted), so the confirm text is explicit
+          about that and the button is red, not brand. */}
+      <Dialog open={moveBackOpen} onOpenChange={setMoveBackOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Undo2 className="h-4 w-4 text-red-600" />
+              Move back to petitions?
+            </DialogTitle>
+            <DialogDescription>
+              This will <strong>delete</strong> the {review?.routed_to === "association" ? "association" : "proposal"} the classifier created and re-queue this upload as a petition. This can't be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" onClick={() => setMoveBackOpen(false)} disabled={busy}>
+              {t("petition.cancel")}
+            </Button>
+            <Button
+              className="bg-red-600 text-white hover:bg-red-700 !bg-none"
+              onClick={moveBackConfirmed}
+              disabled={busy}
+            >
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Undo2 className="mr-2 h-4 w-4" />}
+              Yes, move back
             </Button>
           </DialogFooter>
         </DialogContent>
