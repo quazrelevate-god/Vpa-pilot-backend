@@ -16,6 +16,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export const normalisePhone = (v) => String(v || '').replace(/[\s-]/g, '').replace(/^\+?91/, '')
 const isValidPhone = (v) => /^[6-9]\d{9}$/.test(normalisePhone(v))
 const isValidEmail = (v) => EMAIL_RE.test(String(v || '').trim())
+// A name/org must contain at least one letter (Latin or Tamil) — a purely
+// numeric or symbol-only value like "123" is not a name. Kept lenient (allows
+// punctuation) since org names legitimately have "." "&" "'" "-".
+const isValidName = (v) => /[a-zA-Z஀-௿]/.test(String(v || '').trim())
 
 export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled }) {
   const t = useT()
@@ -200,6 +204,17 @@ export function ProposalForm({ open, category, onClose, onChangeDesk, onFiled })
         ? (ta ? 'குறைந்தது ஒரு PDF ஆவணம் இணைக்கவும்.' : 'Attach at least one PDF document to continue.')
         : (ta ? 'இதற்குப் பதில் தேவை.' : 'This one needs an answer before we continue.'))
       inputRef.current?.focus()
+      return
+    }
+    // Name / org must contain letters — reject a purely numeric or symbol value.
+    if (s.key === 'org' && !isValidName(get('org'))) {
+      setError(true)
+      setAck(ta ? 'சரியான பெயரை உள்ளிடவும் (எண்கள் மட்டும் அல்ல).' : 'Please enter a valid name (not only numbers).')
+      return
+    }
+    if (s.key === 'person' && !isValidName(get('personName'))) {
+      setError(true)
+      setAck(ta ? 'சரியான பெயரை உள்ளிடவும்.' : 'Please enter a valid name.')
       return
     }
     // Contact step: the phone becomes the OTP destination, so validate both

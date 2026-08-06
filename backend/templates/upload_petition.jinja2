@@ -350,9 +350,14 @@
         });
     }
 
+    // Name: letters (Latin + Tamil), digits and spaces, with at least one letter
+    // (a purely numeric name is rejected). Same rule as the citizen forms.
+    var NAME_RE = /^(?=.*[a-zA-Z஀-௿])[a-zA-Z0-9஀-௿ ]+$/;
+    function _nameOk(v) { return NAME_RE.test((v || '').trim()); }
+
     function validate() {
         document.getElementById('subBtn').disabled =
-            !(document.getElementById('fName').value.trim() && files.length > 0);
+            !(_nameOk(document.getElementById('fName').value) && files.length > 0);
     }
 
     function showErr(m) {
@@ -365,6 +370,7 @@
         const btn  = document.getElementById('subBtn');
         const name = document.getElementById('fName').value.trim();
         if (!name || !files.length) return;
+        if (!_nameOk(name)) { alert('Name must contain letters (numbers and spaces allowed, but not only numbers or symbols).'); return; }
         btn.disabled = true;
         const ta = document.body.classList.contains('ta-mode');
         btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${ta ? 'பதிவேற்றுகிறது…' : 'Uploading…'}`;

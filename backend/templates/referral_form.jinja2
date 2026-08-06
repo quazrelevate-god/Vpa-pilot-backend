@@ -521,6 +521,12 @@
     function _wordCount(s) {
         return (s || '').trim().split(/\s+/).filter(Boolean).length;
     }
+    // Name: letters (Latin + Tamil), digits and spaces, with at least one letter
+    // (a purely numeric "name" like "123" is rejected). Same rule as the petition
+    // form. ஀–௿ is the Tamil block (no \p{L}: old webviews reject it).
+    var NAME_RE = /^(?=.*[a-zA-Z஀-௿])[a-zA-Z0-9஀-௿ ]+$/;
+    function _nameOk(v) { return NAME_RE.test((v || '').trim()); }
+
     function validate() {
         var reason = document.getElementById('fReason').value;
         var reasonWords = _wordCount(reason);
@@ -534,8 +540,8 @@
                 hint.style.color = '#94a3b8';  // muted grey
             }
         }
-        var ok = document.getElementById('fName').value.trim()
-              && document.getElementById('fRefBy').value.trim()
+        var ok = _nameOk(document.getElementById('fName').value)
+              && _nameOk(document.getElementById('fRefBy').value)
               && reasonOk
               && document.getElementById('selSlotId').value;
         document.getElementById('subBtn').disabled = !ok;
@@ -549,6 +555,11 @@
         var reason = document.getElementById('fReason').value.trim();
         var slotId = document.getElementById('selSlotId').value;
         if (!name || !refBy || !reason || !slotId) return;
+        if (!_nameOk(name) || !_nameOk(refBy)) {
+            alert(ta ? 'பெயரில் எழுத்துகள் இருக்க வேண்டும் (எண்கள்/இடைவெளி அனுமதிக்கப்படும், சிறப்பு எழுத்துகள் அல்ல).'
+                     : 'Name must contain letters (numbers and spaces allowed, but not only numbers or symbols).');
+            return;
+        }
         if (_wordCount(reason) < REASON_MIN_WORDS) return;
 
         btn.disabled = true;
