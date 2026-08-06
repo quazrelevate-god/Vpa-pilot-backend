@@ -61,8 +61,6 @@ def _log_appt_event(db: AsyncSession, appointment_id: int, event_type: str, acto
 # DB status → display label
 _STATUS_DISPLAY = {
     "RESCHEDULED":     "Rescheduled",
-    "WAITING":         "Waiting",
-    "IN_PROGRESS":     "Waiting",
     "AWAITING_REVIEW": "Awaiting Review",
     "REVIEWED":        "Reviewed",
     "SCHEDULED":       "Scheduled",
@@ -131,9 +129,6 @@ async def get_stats(
     ])) or 0
     awaiting_review = await db.scalar(_count([
         Appointment.status == "AWAITING_REVIEW",
-    ])) or 0
-    waiting    = await db.scalar(_count([
-        Appointment.status.in_(["WAITING", "IN_PROGRESS"]),
     ])) or 0
     rescheduled = await db.scalar(_count([Appointment.status == "RESCHEDULED"])) or 0
 
@@ -333,7 +328,6 @@ async def get_stats(
         "scheduled":         scheduled,
         "reviewed":          reviewed,
         "awaiting_review":   awaiting_review,
-        "waiting":           waiting,
         "rescheduled":       rescheduled,
         "resolution_rate":   resolution_rate,
         "ai_coverage":       ai_coverage,
@@ -412,8 +406,7 @@ async def get_appointments(
     )
 
     # Kind: meeting requests vs direct petitions (ordering is applied later).
-    # v2: schedule_meeting is the persistent citizen-intent flag (survives
-    # slot release when the appointment lands in the waiting queue).
+    # v2: schedule_meeting is the persistent citizen-intent flag.
     if kind == "meeting":
         stmt = stmt.where(Appointment.schedule_meeting == True)   # noqa: E712
     elif kind == "petition":
@@ -453,8 +446,6 @@ async def get_appointments(
             stmt = stmt.where(Appointment.status == "AWAITING_REVIEW")
         elif status_filter == "Rescheduled":
             stmt = stmt.where(Appointment.status == "RESCHEDULED")
-        elif status_filter == "Waiting":
-            stmt = stmt.where(Appointment.status.in_(["WAITING", "IN_PROGRESS"]))
 
     # AI-derived filters: priority + department live only on GrievanceSummaryRecord.
     # Category also falls back to Appointment.grievance_category for petitions
@@ -518,7 +509,7 @@ async def get_appointments(
     else:
         # Default: put today's meetings first, then upcoming days ascending, then
         # yesterday-and-earlier at the bottom (most-recent past first). Rows with
-        # no booked slot (petitions / waiting) fall after all dated rows, newest-
+        # no booked slot (petitions) fall after all dated rows, newest-
         # first. This matches how a PA scans the day: "who's coming today, then
         # this week, then what's overdue — and let me see recent petitions after".
         # v2: the meeting date lives on the joined slot → availability.
@@ -606,8 +597,7 @@ async def get_appointment_counts(
     """
     from datetime import datetime as dt
 
-    # v2: schedule_meeting is the persistent citizen-intent flag (survives
-    # slot release when moved to waiting queue).
+    # v2: schedule_meeting is the persistent citizen-intent flag.
     # .label keeps the hybrid's name on the subquery column (sub.c.status).
     base = select(Appointment.id, Appointment.status.label("status"), Appointment.schedule_meeting)
 
@@ -690,7 +680,7 @@ async def get_appointment_counts(
                 stmt = stmt.where(Appointment.id.in_(gsr_sub))
 
         rows = (await db.execute(stmt)).scalars().all()
-        scheduled = waiting = rescheduled = all_count = 0
+        scheduled = rescheduled = all_count = 0
         for appt in rows:
             citizen = appt.citizen
             name = _decode(citizen.encrypted_name) if citizen else ""
@@ -705,13 +695,10 @@ async def get_appointment_counts(
             all_count += 1
             if appt.status == "SCHEDULED" and appt.schedule_meeting:
                 scheduled += 1
-            elif appt.status in ("WAITING", "IN_PROGRESS"):
-                waiting += 1
             elif appt.status == "RESCHEDULED":
                 rescheduled += 1
         return {
             "Scheduled": scheduled,
-            "Waiting": waiting,
             "Rescheduled": rescheduled,
             "All": all_count,
         }
@@ -723,13 +710,11 @@ async def get_appointment_counts(
         func.count().filter(
             and_(sub.c.status == "SCHEDULED", sub.c.schedule_meeting == True)  # noqa: E712
         ).label("scheduled"),
-        func.count().filter(sub.c.status.in_(["WAITING", "IN_PROGRESS"])).label("waiting"),
         func.count().filter(sub.c.status == "RESCHEDULED").label("rescheduled"),
     ).select_from(sub)
     row = (await db.execute(agg)).one()
     return {
         "Scheduled": row.scheduled or 0,
-        "Waiting": row.waiting or 0,
         "Rescheduled": row.rescheduled or 0,
         "All": row.all_count or 0,
     }
@@ -977,7 +962,6 @@ async def update_appointment_derived_fields(
 _DISPLAY_TO_DB_STATUS = {
     "Scheduled":       "SCHEDULED",
     "Reviewed":        "REVIEWED",
-    "Waiting":         "WAITING",
     "Rescheduled":     "RESCHEDULED",
     "Awaiting Review": "AWAITING_REVIEW",
     "Courtesy Done":   "COURTESY_DONE",
@@ -1011,19 +995,10 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
 
     old_status = appt.status
 
-    if new_status == "Waiting":
-        # Move to the waiting queue: release slot and set status=WAITING via
-        # the scheduling service so queue_position/waiting_since stay coherent.
-        # Preserve schedule_meeting intent — waiting meetings are still meetings.
-        await scheduling_service.release_slot(db, appt, commit=False)
-        await scheduling_service.move_to_waiting_queue(
-            db, appt, "MANUAL_WAITING", commit=False
-        )
-        appt.schedule_meeting = True
-    elif new_status == "Rescheduled":
+    if new_status == "Rescheduled":
         # Manual reschedule: PA is calling / messaging the citizen. The row
-        # belongs on the Rescheduled tab (not Waiting) so the PA can act on it
-        # from there — either pick a new slot (→ Scheduled) or convert to
+        # belongs on the Rescheduled tab so the PA can act on it from
+        # there — either pick a new slot (→ Scheduled) or convert to
         # petition (→ Awaiting Review).
         #
         # Release the slot booking (frees the seat + nulls the day/time), then

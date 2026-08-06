@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # Courtesy categories skip the AI petition pipeline entirely. An invitation card
 # or a Pongal greeting has no grievance to summarise, no department to route to,
 # and no ticket to open — the audio (or optional text) is the whole message.
-# These land straight in Appointments (SCHEDULED / WAITING), never in Petition
+# These land straight in Appointments (SCHEDULED), never in Petition
 # Review, and summary_status is written as DONE so no worker ever tries.
 COURTESY_CATEGORIES = frozenset({"invitation", "greetings"})
 
@@ -279,7 +279,7 @@ class AppointmentService:
             mobile_number: Citizen's mobile number
             token_number: Assigned token number
             citizen_name: Citizen's name
-            new_status: New status value (e.g., "Scheduled", "Waiting", "Rescheduled", "Awaiting Review", "Reviewed")
+            new_status: New status value (e.g., "Scheduled", "Rescheduled", "Awaiting Review", "Reviewed")
             
         Returns:
             bool: True if sent successfully, False otherwise
@@ -985,26 +985,27 @@ class AppointmentService:
                 await db.flush()  # Get appointment.id
 
                 # Step 10b: Meeting requests — book the citizen-selected slot.
-                # Falls back to waiting queue if no slot was selected or the slot
-                # filled up between the form load and submission.
+                # If the slot filled up between form-load and submit (race), or the
+                # client omitted slot_id despite take_slot_path, fall back to
+                # petition-only (AWAITING_REVIEW) rather than a waiting queue —
+                # the waitlist flow was retired.
                 if take_slot_path:
+                    booked_ok = False
                     if slot_id:
                         try:
                             await scheduling_service.book_slot(
                                 db, appointment, slot_id, commit=False
                             )
                             logger.info(f"[SLOT OK] appointment_id={appointment.id} | slot_id={slot_id} | status=SCHEDULED")
+                            booked_ok = True
                         except ValueError as slot_err:
-                            # Slot just filled or blocked — put in waiting queue
-                            logger.info(f"[SLOT WARN] appointment_id={appointment.id} | slot_id={slot_id} | err={slot_err} → WAITING")
-                            await scheduling_service.move_to_waiting_queue(
-                                db, appointment, 'SLOT_UNAVAILABLE', commit=False
-                            )
+                            logger.info(f"[SLOT WARN] appointment_id={appointment.id} | slot_id={slot_id} | err={slot_err} → AWAITING_REVIEW")
                     else:
-                        logger.info(f"[SLOT WARN] appointment_id={appointment.id} | no slot_id → WAITING")
-                        await scheduling_service.move_to_waiting_queue(
-                            db, appointment, 'NO_SLOT_SELECTED', commit=False
-                        )
+                        logger.info(f"[SLOT WARN] appointment_id={appointment.id} | no slot_id → AWAITING_REVIEW")
+                    if not booked_ok:
+                        appointment.status    = "AWAITING_REVIEW"
+                        appointment.status_id = v2.appointment_status_id("AWAITING_REVIEW")
+                        appointment.schedule_meeting = False
                 
                 # Step 11: Upload media + create attachment records.
                 # Audio AND every image/PDF upload CONCURRENTLY in one gather (each
@@ -1106,9 +1107,7 @@ class AppointmentService:
                 )
                 asyncio.create_task(self.try_summarise_now(appointment.id))
 
-            if final_status == 'WAITING':
-                message = f"No slots available right now. Your token number is {token_assigned} and you have been added to the waiting queue."
-            elif final_status == 'AWAITING_REVIEW':
+            if final_status == 'AWAITING_REVIEW':
                 message = f"Petition submitted successfully. Your token number is {token_assigned}."
             elif final_status == 'REVIEWED':
                 message = f"Petition reviewed successfully. Your token number is {token_assigned}."
@@ -1556,7 +1555,7 @@ class AppointmentService:
         Unified walk-in intake from the crowd PWA (no OTP; auth is the display
         session). One journey: write the grievance + optional photo + optionally
         book a live meeting slot. Mirrors the post-OTP half of
-        `process_atomic_submission` (SCHEDULED / WAITING / AWAITING_REVIEW) but is
+        `process_atomic_submission` (SCHEDULED / AWAITING_REVIEW) but is
         staff-operated. Summarisation only runs when there is a photo or a
         grievance description (a pure appointment has nothing to summarise).
         """
@@ -1681,19 +1680,23 @@ class AppointmentService:
             db.add(appointment)
             await db.flush()
 
-            # ── Book a slot (SCHEDULED) or fall back to WAITING ───────────────
+            # ── Book a slot (SCHEDULED) or fall back to AWAITING_REVIEW ───────
+            # (Waitlist retired — a race/missing-slot means the citizen leaves
+            # as petition-only, same as if they hadn't asked for a meeting.)
             scheduled: Dict[str, Any] = {}
             if take_slot_path:
+                booked_ok = False
                 if slot_id:
                     try:
                         scheduled = await scheduling_service.book_slot(
                             db, appointment, slot_id, commit=False)
+                        booked_ok = True
                     except ValueError:
-                        await scheduling_service.move_to_waiting_queue(
-                            db, appointment, "SLOT_UNAVAILABLE", commit=False)
-                else:
-                    await scheduling_service.move_to_waiting_queue(
-                        db, appointment, "NO_SLOT_SELECTED", commit=False)
+                        pass
+                if not booked_ok:
+                    appointment.status    = "AWAITING_REVIEW"
+                    appointment.status_id = v2.appointment_status_id("AWAITING_REVIEW")
+                    appointment.schedule_meeting = False
 
             # ── Save photos (optional) ────────────────────────────────────────
             # Route through storage_service (MinIO in prod, local disk in dev) —
@@ -1733,7 +1736,6 @@ class AppointmentService:
 
             status = appointment.status
             msg = (f"Appointment booked · Token TKN{token_assigned}"  if status == "SCHEDULED"
-                   else f"Added to waiting queue · Token TKN{token_assigned}" if status == "WAITING"
                    else f"Petition submitted · Token TKN{token_assigned}")
             logger.info(f"[FLOOR INTAKE] appointment_id={appointment.id} | token={token_assigned} "
                         f"| status={status} | files={len(file_contents)} | by={submitted_by}")

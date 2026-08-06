@@ -10,11 +10,9 @@ Admin endpoints (auth required):
   POST /api/v1/scheduling/admin/slots/{slot_id}/block
   POST /api/v1/scheduling/admin/slots/{slot_id}/unblock
   GET  /api/v1/scheduling/admin/dates
-  GET  /api/v1/scheduling/admin/waiting-queue
   GET  /api/v1/scheduling/admin/statistics
   GET  /api/v1/scheduling/admin/mlas
   POST /api/v1/scheduling/admin/cancel-all-scheduled
-  POST /api/v1/scheduling/admin/auto-allocate
   PATCH /api/v1/scheduling/admin/reschedule/{appointment_id}
 """
 import base64
@@ -185,7 +183,7 @@ async def block_slot(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    """Block a slot — if bookings exist, appointments are relocated to other available slots today or moved to waiting queue."""
+    """Block a slot — if bookings exist, appointments are relocated to other available slots today or flipped to RESCHEDULED for the PA to re-book."""
     try:
         result = await scheduling_service.block_slot(db, slot_id)
         return JSONResponse(result)
@@ -309,40 +307,6 @@ async def reschedule_appointment(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-# ── Admin: waiting queue ──────────────────────────────────────────────────────
-
-@router.get("/admin/waiting-queue")
-async def get_waiting_queue(
-    limit: int = 100,
-    db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
-):
-    """Return waiting queue in priority order."""
-    try:
-        result = await scheduling_service.get_waiting_queue(db, limit)
-        return JSONResponse(result)
-    except Exception as e:
-        await db.rollback()
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@router.post("/admin/auto-allocate")
-async def auto_allocate_waiting_queue(
-    db: AsyncSession = Depends(get_db),
-    user: str = Depends(require_auth),
-):
-    """Assign all waiting queue appointments to available slots today from current time."""
-    try:
-        result = await scheduling_service.auto_allocate_waiting_queue(db)
-        return JSONResponse(result)
-    except ValueError as e:
-        await db.rollback()
-        return JSONResponse({"error": str(e)}, status_code=409)
-    except Exception as e:
-        await db.rollback()
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
 # ── Admin: statistics ─────────────────────────────────────────────────────────
 
 @router.get("/admin/statistics")
@@ -350,7 +314,7 @@ async def get_statistics(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
-    """Return scheduling KPIs: waiting count, scheduled today, oldest waiting."""
+    """Return scheduling KPIs: scheduled today, rescheduled today."""
     try:
         result = await scheduling_service.get_statistics(db)
         return JSONResponse(result)
@@ -390,8 +354,9 @@ async def cancel_all_scheduled(
     user: str = Depends(require_auth),
 ):
     """
-    Emergency: move all SCHEDULED appointments on `target_date` (defaults to
-    today) back to the waiting queue and close that date's availability.
+    Emergency: cancel all SCHEDULED appointments on `target_date` (defaults to
+    today), route them to Petition Review (AWAITING_REVIEW) so the PA can act,
+    and close that date's availability.
 
     `target_date` may come from the query string (?target_date=YYYY-MM-DD)
     or the JSON body — the PA scheduler passes the currently selected date.

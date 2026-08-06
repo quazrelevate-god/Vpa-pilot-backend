@@ -151,13 +151,13 @@ class Appointment(Base):
 
     slot_id = Column(
         Integer, ForeignKey('slots.id', ondelete='SET NULL'), nullable=True,
-        comment="v2: booked slot (was appointment_slot_id in v1). NULL for waiting/petition-only.",
+        comment="v2: booked slot (was appointment_slot_id in v1). NULL for petition-only.",
     )
 
     # Persistent citizen intent — TRUE for meeting requests even after the
-    # slot is released (waiting queue). slot_id alone isn't enough because it
-    # goes NULL when we release, so `kind=meeting` filters would drop WAITING
-    # rows without this.
+    # slot is released (e.g., PA reschedules). slot_id alone isn't enough
+    # because it goes NULL when we release, so `kind=meeting` filters would
+    # drop released-meeting rows without this.
     schedule_meeting = Column(
         Boolean, nullable=False, default=False, server_default="false",
     )

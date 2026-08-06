@@ -3,7 +3,7 @@ Scheduling service — 1-hour fixed slots, up to MAX_CAPACITY citizens each.
 
 v2 schema notes:
 - appointment.slot_id is the sole booking link (SlotBooking junction removed).
-- Reschedule + waiting-queue events log to `activity` (Activity model), not
+- Reschedule / slot-block events log to `activity` (Activity model), not
   the removed AppointmentEvent / RescheduleLog tables.
 - Scheduled date/time are derived from slot + availability on read, not
   stored on appointment.
@@ -446,9 +446,6 @@ class SchedulingService:
                     if not relocated_ok:
                         # No same-day slot available — flip to RESCHEDULED so
                         # the PA can call this citizen and pick a new time.
-                        # (WAITING is reserved for citizens whose original
-                        # submission had no slot; a mid-day cancel is
-                        # different.)
                         await self.release_slot(db, appt, commit=False)
                         appt.status = "RESCHEDULED"
                         appt.status_id = v2.appointment_status_id("RESCHEDULED")
@@ -757,142 +754,6 @@ class SchedulingService:
             "scheduled_time":  result["scheduled_time"],
         }
 
-    # ── Waiting queue ────────────────────────────────────────────────────────
-
-    async def move_to_waiting_queue(
-        self,
-        db: AsyncSession,
-        appointment: Appointment,
-        reason: str,
-        commit: bool = True,
-    ) -> Dict:
-        appointment.status        = "WAITING"
-        appointment.status_id     = v2.appointment_status_id("WAITING")
-        appointment.waiting_since = now_utc()
-
-        # v2: schedule_meeting column removed — a "meeting" appointment is
-        # one that had a slot_id (now cleared as it enters the queue) OR was
-        # explicitly waiting. Use status alone to count queue length.
-        queue_count = await db.scalar(
-            select(func.count(Appointment.id))
-            .where(Appointment.status == "WAITING")
-        )
-        appointment.queue_position = (queue_count or 0) + 1
-
-        db.add(Activity(
-            appointment_id=appointment.id,
-            user="system",
-            action_type="moved_to_waiting",
-            message=reason,
-            payload={"queue_position": appointment.queue_position, "reason": reason},
-        ))
-
-        if commit:
-            await db.commit()
-        else:
-            await db.flush()
-
-        return {
-            "status":         "WAITING",
-            "queue_position": appointment.queue_position,
-            "reason":         reason,
-        }
-
-    async def get_waiting_queue(self, db: AsyncSession, limit: int = 100) -> List[Dict]:
-        result = await db.execute(
-            select(Appointment)
-            .options(selectinload(Appointment.citizen))
-            .where(Appointment.status == "WAITING")
-            .order_by(Appointment.created_at.asc())
-            .limit(limit)
-        )
-        rows = []
-        for appt in result.scalars().all():
-            citizen = appt.citizen
-            rows.append({
-                "id":             appt.id,
-                "token":          appt.token_assigned,
-                "name":           _decrypt(citizen.encrypted_name) if citizen else "Unknown",
-                "mobile":         _decrypt(citizen.encrypted_mobile) if citizen else "Unknown",
-                "category":       appt.grievance_category,
-                "queue_position": appt.queue_position,
-                "waiting_since":  utc_iso(appt.waiting_since),
-                "created_at":     utc_iso(appt.created_at),
-            })
-        return rows
-
-    # ── Auto-allocate waiting queue to today's available slots ──────────────
-
-    async def auto_allocate_waiting_queue(self, db: AsyncSession) -> Dict:
-        today = (now_utc() + timedelta(hours=5, minutes=30)).date()
-
-        avail = await db.scalar(
-            select(MLADailyAvailability)
-            .where(MLADailyAvailability.date    == today)
-            .where(MLADailyAvailability.is_open == True)  # noqa: E712
-        )
-        if not avail:
-            raise ValueError("No availability opened for today.")
-
-        now = now_utc() + timedelta(hours=5, minutes=30)
-        current_time = now.time()
-
-        slot_result = await db.execute(
-            select(AppointmentSlot)
-            .where(AppointmentSlot.availability_id == avail.id)
-            .where(AppointmentSlot.status != "BLOCKED")
-            .where(AppointmentSlot.start_time > current_time)
-            .where(AppointmentSlot.booked_count < AppointmentSlot.max_capacity)
-            .order_by(AppointmentSlot.start_time)
-        )
-        candidate_slots = list(slot_result.scalars().all())
-
-        if not candidate_slots:
-            raise ValueError("No available slots remaining today from current time.")
-
-        appt_result = await db.execute(
-            select(Appointment)
-            .where(Appointment.status == "WAITING")
-            .order_by(Appointment.created_at.asc())
-        )
-        waiting_appts = list(appt_result.scalars().all())
-
-        if not waiting_appts:
-            return {"allocated": 0, "remaining_in_queue": 0, "message": "No appointments in waiting queue."}
-
-        allocated = 0
-        remaining = 0
-
-        for appt in waiting_appts:
-            placed = False
-            for slot in candidate_slots:
-                if slot.booked_count >= slot.max_capacity:
-                    continue
-                try:
-                    await self.book_slot(db, appt, slot.id, commit=False)
-                    db.add(Activity(
-                        appointment_id=appt.id,
-                        user="system",
-                        action_type="auto_allocated",
-                        message=f"Slot {slot.id} @ {slot.start_time}",
-                        payload={"slot_id": slot.id, "slot_time": str(slot.start_time)},
-                    ))
-                    placed = True
-                    allocated += 1
-                    break
-                except ValueError:
-                    continue
-            if not placed:
-                remaining += 1
-
-        await db.commit()
-
-        return {
-            "allocated": allocated,
-            "remaining_in_queue": remaining,
-            "total_waiting": len(waiting_appts),
-        }
-
     # ── Emergency: cancel today's scheduled appointments ─────────────────────
 
     async def cancel_all_scheduled(
@@ -901,8 +762,9 @@ class SchedulingService:
         target_date: Optional[date] = None,
     ) -> Dict:
         """Cancel every SCHEDULED / RESCHEDULED appointment on `target_date`
-        (defaults to today), move them back to the waiting queue, and close
-        the day's availability so no new bookings can come in.
+        (defaults to today), move them back to petition-only (AWAITING_REVIEW)
+        so the PA can still act on the grievance, and close the day's
+        availability so no new bookings can come in.
 
         Called by the PA's "Cancel All" button, which now sends the date
         currently selected in the scheduling grid — not just today.
@@ -922,14 +784,17 @@ class SchedulingService:
         cancelled = 0
         for appt in appointments:
             await self.release_slot(db, appt, commit=False)
-            appt.status        = "WAITING"
-            appt.status_id     = v2.appointment_status_id("WAITING")
-            appt.waiting_since = now_utc()
-            queue_count = await db.scalar(
-                select(func.count(Appointment.id))
-                .where(Appointment.status == "WAITING")
-            )
-            appt.queue_position = (queue_count or 0) + 1
+            appt.status    = "AWAITING_REVIEW"
+            appt.status_id = v2.appointment_status_id("AWAITING_REVIEW")
+            appt.schedule_meeting = False
+            db.add(Activity(
+                appointment_id=appt.id,
+                user="pa_admin",
+                action_type="rescheduled",
+                message="DAY_CANCELLED",
+                payload={"from_status": "SCHEDULED", "to_status": "AWAITING_REVIEW",
+                         "reason": "day_cancelled", "target_date": target_date.isoformat()},
+            ))
             cancelled += 1
 
         avail_result = await db.execute(
@@ -950,19 +815,14 @@ class SchedulingService:
             "date":                   target_date.isoformat(),
             "date_label":             date_label,
             "message": (
-                f"Moved {cancelled} appointment(s) on {date_label} to the waiting "
-                f"queue. Cancelled {cancelled_dates} availability record(s)."
+                f"Moved {cancelled} appointment(s) on {date_label} to Petition "
+                f"Review. Cancelled {cancelled_dates} availability record(s)."
             ),
         }
 
     # ── Statistics ───────────────────────────────────────────────────────────
 
     async def get_statistics(self, db: AsyncSession) -> Dict:
-        waiting_count = await db.scalar(
-            select(func.count(Appointment.id))
-            .where(Appointment.status == "WAITING")
-        ) or 0
-
         today = (now_utc() + timedelta(hours=5, minutes=30)).date()
         # Scheduled today = appointment.slot_id → slot → availability with date=today
         scheduled_today = await db.scalar(
@@ -981,19 +841,9 @@ class SchedulingService:
             .where(MLADailyAvailability.date == today)
         ) or 0
 
-        oldest_waiting = await db.scalar(
-            select(Appointment.waiting_since)
-            .where(Appointment.status == "WAITING")
-            .order_by(Appointment.waiting_since.asc())
-            .limit(1)
-        )
-        oldest_days = (now_utc() - oldest_waiting).days if oldest_waiting else 0
-
         return {
-            "waiting_count":       waiting_count,
             "scheduled_today":     scheduled_today,
             "rescheduled_today":   rescheduled_today,
-            "oldest_waiting_days": oldest_days,
         }
 
 

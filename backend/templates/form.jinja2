@@ -499,12 +499,6 @@
         }
 
 
-        .choice-card--waitlist       { border-color: #b45309; background: #b45309; }
-        .choice-card--waitlist:hover { border-color: #92400e; background: #92400e; }
-        .choice-card--waitlist::after { color: rgba(255,255,255,0.7); }
-        .choice-card--waitlist .choice-card__icon  { background: rgba(255,255,255,0.2); color: #fff; }
-        .choice-card--waitlist .choice-card__title { color: #ffffff; }
-        .choice-card--waitlist .choice-card__sub   { color: rgba(255,255,255,0.8); }
         .choice-card--primary { border-width: 2.5px; }
         .choice-card--meeting.choice-card--primary  {
             box-shadow: 0 4px 16px rgba(5,150,105,0.35);
@@ -1038,7 +1032,6 @@
                 <!-- Hidden wiring buttons -->
                 <button type="button" id="btnPetition" style="display:none;" onclick="submitForm(false)"></button>
                 <button type="button" id="btnMeeting"  style="display:none;" onclick="openSlotPicker()"></button>
-                <button type="button" id="btnWaitlist" style="display:none;" onclick="startWaitlist()"></button>
 
             </form>
         </div>
@@ -1193,10 +1186,10 @@
                 slotTitle: "Select Meeting Slot",
                 slotLoading: "Loading available slots...",
                 slotNone: "No meeting slots available",
-                slotNoneHint: "You can still submit - your request will join the waiting queue.",
+                slotNoneHint: "You can still submit as a petition — the PA team will review it.",
                 slotAllFull: "All slots are full for this date.",
                 slotHint: "Select a time - green = available, amber = filling up, red = full",
-                slotFail: "Failed to load slots. You can still submit - your request will join the waiting queue.",
+                slotFail: "Failed to load slots. You can still submit as a petition — the PA team will review it.",
                 slotConfirm: "Confirm & Submit",
                 slotSelectFirst: "Please select a meeting time slot first.",
                 slotSelectedGone: "Your selected slot is no longer available. Please choose another.",
@@ -1251,10 +1244,10 @@
                 slotTitle: "சந்திப்பு நேரத்தைத் தேர்ந்தெடுக்கவும்",
                 slotLoading: "கிடைக்கும் நேரங்களை ஏற்றுகிறோம்...",
                 slotNone: "சந்திப்பு நேரங்கள் எதுவும் கிடைக்கவில்லை.",
-                slotNoneHint: "நீங்கள் இன்னும் சமர்ப்பிக்கலாம் - உங்கள் கோரிக்கை காத்திர வரிசையில் சேர்க்கப்படும்.",
+                slotNoneHint: "நீங்கள் இன்னும் மனுவாக சமர்ப்பிக்கலாம் — PA குழு மதிப்பாய்வு செய்யும்.",
                 slotAllFull: "இந்த தேதிக்கான அனைத்து நேரங்களும் நிரம்பிவிட்டன.",
                 slotHint: "நேரத்தைத் தேர்ந்தெடுக்கவும் - பச்சை = கிடைக்கிறது, மஞ்சள் = நிரம்பிக்கொண்டிருக்கிறது, சிவப்பு = நிரம்பியது",
-                slotFail: "நேரங்களை ஏற்ற முடியவில்லை. நீங்கள் இன்னும் சமர்ப்பிக்கலாம் - உங்கள் கோரிக்கை காத்திர வரிசையில் சேர்க்கப்படும்.",
+                slotFail: "நேரங்களை ஏற்ற முடியவில்லை. நீங்கள் இன்னும் மனுவாக சமர்ப்பிக்கலாம் — PA குழு மதிப்பாய்வு செய்யும்.",
                 slotConfirm: "உறுதிசெய் & சமர்ப்பி",
                 slotSelectFirst: "முதலில் சந்திப்பு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
                 slotSelectedGone: "நீங்கள் தேர்ந்தெடுத்த நேரம் இனி கிடைக்கவில்லை. வேறு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
@@ -2156,47 +2149,28 @@
                     "document.getElementById('btnPetition').click()");
             };
 
-            var waitlist = function(primary) {
-                return card('waitlist', primary, '⌛',
-                    ta ? 'காத்திருப்பு பட்டியலில் சேர' : 'Join the waiting list',
-                    ta ? 'இடம் கிடைத்ததும் தொடர்பு கொள்வோம்' : "We'll contact you when a slot opens",
-                    "document.getElementById('btnWaitlist').click()");
-            };
-
-            // Toggle to re-enable the waiting-list flow (currently disabled).
-            var WAITLIST_ENABLED = false;
-
             var fullNotice =
                 '<div class="slots-alert">' +
                     '<span class="slots-alert__icon"><i class="fa-solid fa-circle-info"></i></span>' +
                     '<div class="slots-alert__text">' +
                         (ta
-                            ? (WAITLIST_ENABLED
-                                ? '<strong>தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.</strong> நீங்கள் உங்கள் மனுவை சமர்ப்பிக்கலாம் அல்லது காத்திருப்பு பட்டியலில் சேரலாம் — இடம் கிடைத்ததும் உங்களைத் தொடர்பு கொள்வோம்.'
-                                : '<strong>தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.</strong> பிறகு மீண்டும் முயற்சிக்கவும் — இடம் கிடைத்தால் சந்திப்பு பதிவு செய்யலாம். இப்போது மனுவை மட்டும் சமர்ப்பிக்கவும்.')
-                            : (WAITLIST_ENABLED
-                                ? "<strong>All meeting slots are currently full.</strong> You can still submit your petition, or join the waiting list - we'll contact you as soon as a slot opens."
-                                : "<strong>All meeting slots are currently full.</strong> Please try again later — if a slot opens, you can book an appointment for the meeting. For now, submit a petition only.")) +
+                            ? '<strong>தற்போது அனைத்து சந்திப்பு நேரங்களும் நிரம்பிவிட்டன.</strong> பிறகு மீண்டும் முயற்சிக்கவும் — இடம் கிடைத்தால் சந்திப்பு பதிவு செய்யலாம். இப்போது மனுவை மட்டும் சமர்ப்பிக்கவும்.'
+                            : "<strong>All meeting slots are currently full.</strong> Please try again later — if a slot opens, you can book an appointment for the meeting. For now, submit a petition only.") +
                     '</div>' +
                 '</div>';
 
             // Courtesy categories (invitation, greetings) always go through the
             // meeting path so they land in Appointments — never Petition Review.
-            // If no slot is available, join the waiting list; there is no
-            // "petition only" option for these.
+            // When no slot is available, the citizen simply sees the "try later"
+            // notice; there's no "petition only" option for these.
             const courtesy = _isCourtesyCategory();
             if (courtesy) {
-                wrap.innerHTML = meetingAvailable ? meeting(true) : fullNotice + (WAITLIST_ENABLED ? waitlist(true) : '');
+                wrap.innerHTML = meetingAvailable ? meeting(true) : fullNotice;
             } else {
                 wrap.innerHTML = meetingAvailable
                     ? meeting(true) + petition(false)
-                    : fullNotice + petition(true) + (WAITLIST_ENABLED ? waitlist(false) : '');
+                    : fullNotice + petition(true);
             }
-        }
-
-        function startWaitlist() {
-            noSlotsAvailable = true;
-            openConsentDialog();
         }
 
         // ── Consent dialog ─────────────────────────────────────────────────

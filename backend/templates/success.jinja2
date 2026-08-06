@@ -109,7 +109,6 @@
         }
         .token-display.t-meeting  { background: linear-gradient(135deg, #6d28d9, #4f46e5); }
         .token-display.t-petition { background: linear-gradient(135deg, #1d4ed8, #2563eb); }
-        .token-display.t-waiting  { background: linear-gradient(135deg, #d97706, #b45309); }
         .token-label { font-size: 0.82rem; opacity: 0.9; margin-bottom: 0.35rem; font-weight: 600; }
         .token-number {
             font-size: clamp(1.1rem, 5vw, 1.8rem); font-weight: 900;
@@ -300,10 +299,7 @@
         // Token banner colour
         (function() {
             var td = document.getElementById('token-display');
-            var cls;
-            if (status === 'WAITING') { cls = 't-waiting'; }
-            else if (status === 'AWAITING_REVIEW') { cls = 't-petition'; }
-            else { cls = 't-meeting'; }
+            var cls = (status === 'AWAITING_REVIEW') ? 't-petition' : 't-meeting';
             td.classList.add(cls);
         })();
 
@@ -328,20 +324,6 @@
                     'மேலே உள்ள டோக்கன் எண்ணை எதிர்காலப் பயன்பாட்டிற்கு சேமிக்கவும்.',
                     'செல்லுபடியாகும் அடையாளச் சான்று மற்றும் உங்கள் கோரிக்கை மனுவின் எழுதப்பட்ட நகலை எடுத்து வரவும்.',
                     'சந்திப்பு தடையின்றி நடக்க, ஒதுக்கப்பட்ட நேரத்திற்கு 10 நிமிடங்களுக்கு முன்பாக வரவும்.'
-                ]
-            },
-            WAITING: {
-                headingEn: 'What happens next',
-                headingTa: 'அடுத்து என்ன நடக்கும்',
-                en: [
-                    'Save the above token number for future reference.',
-                    'You have been added to the waiting queue. No slots are available right now.',
-                    'You will be notified via SMS once a slot opens up.'
-                ],
-                ta: [
-                    'மேலே உள்ள டோக்கன் எண்ணை எதிர்காலப் பயன்பாட்டிற்கு சேமிக்கவும்.',
-                    'தற்போது இடங்கள் கிடைக்கவில்லை. நீங்கள் காத்திருப்பு வரிசையில் சேர்க்கப்பட்டுள்ளீர்கள்.',
-                    'இடம் கிடைத்தவுடன் SMS மூலம் அறிவிக்கப்படும்.'
                 ]
             },
             AWAITING_REVIEW: {
@@ -372,14 +354,7 @@
         sd.ta.forEach(function(t) { var li = document.createElement('li'); li.innerHTML = t; stepsTa.appendChild(li); });
 
         // Title/subtitle per status
-        if (status === 'WAITING') {
-            document.getElementById('title-en').textContent = 'Added to Waiting Queue';
-            document.getElementById('title-ta').textContent = 'காத்திருப்பு வரிசையில் சேர்க்கப்பட்டது';
-            document.getElementById('subtitle-en').textContent = 'Your grievance has been registered. You are in the waiting queue.';
-            document.getElementById('subtitle-ta').textContent = 'உங்கள் புகார் பதிவு செய்யப்பட்டது. நீங்கள் காத்திருப்பு வரிசையில் உள்ளீர்கள்.';
-            document.getElementById('status-en').textContent = 'WAITING';
-            document.getElementById('status-ta').textContent = 'காத்திருப்பு';
-        } else if (status === 'AWAITING_REVIEW') {
+        if (status === 'AWAITING_REVIEW') {
             document.getElementById('title-en').textContent = 'Petition Submitted';
             document.getElementById('title-ta').textContent = 'மனு சமர்ப்பிக்கப்பட்டது';
             document.getElementById('subtitle-en').textContent = 'Your petition has been submitted for review.';

@@ -229,8 +229,8 @@ async def display_add_intake(
     """Unified walk-in intake from the crowd PWA (for phone-less / illiterate
     citizens): write the grievance + optional photo + optionally book a live
     meeting slot. No OTP — scoped to the display session. Books the slot
-    (SCHEDULED), falls back to the WAITING queue, or lands in Petition Review
-    (AWAITING_REVIEW) when no meeting is requested."""
+    (SCHEDULED) or lands in Petition Review (AWAITING_REVIEW) when no meeting
+    is requested (or a race fills the last slot)."""
     from src.services.appointment_service import appointment_service
     result = await appointment_service.process_floor_intake(
         name=name.strip(),
