@@ -7,7 +7,11 @@ import {
   Clock, User, Phone, Hash, CalendarDays, X, Sparkles, MapPin, Undo2,
   GitBranch, Flag, UserCheck, Paperclip, FileSignature, FileCheck2, Inbox,
   ClipboardList, Landmark, Tag, BarChart3, Image as ImageIcon,
+  Users2, Loader2, AlertTriangle,
 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import {
   SectionCard, OverviewGrid, OverviewItem, StatusDot, statusTone, priorityTone,
 } from "@/components/ui/detail-primitives";
@@ -146,6 +150,26 @@ export default function TicketDetailDrawer({
   const [assigning, setAssigning]     = useState(false);
   const dueDateRef = useRef<HTMLInputElement | null>(null);
 
+  // Signature-petition roster (v054) — loaded per-ticket, refreshed after any
+  // ✕-split. Empty group means this ticket is a normal single-petition ticket.
+  type Signatory = {
+    appointment_id: number;
+    name: string | null;
+    mobile_masked: string | null;
+    source: string | null;
+    token: number | null;
+    created_at: string | null;
+    is_primary: boolean;
+  };
+  const [roster, setRoster] = useState<null | {
+    group_id: number | null;
+    canonical_ask?: string | null;
+    signatory_count: number;
+    signatories: Signatory[];
+  }>(null);
+  const [splitting, setSplitting] = useState<number | null>(null);
+  const [splitConfirm, setSplitConfirm] = useState<Signatory | null>(null);
+
   const open = ticketId != null;
 
   useEffect(() => {
@@ -155,13 +179,53 @@ export default function TicketDetailDrawer({
     setTab("details");
     setActiveAction(null);
     setPendingDept(null); setPendingDue(null); setAssigning(false);
+    setRoster(null); setSplitConfirm(null);
     let cancelled = false;   // guard against a slow earlier fetch overwriting a newer one
     fetchTicket(ticketId)
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => { if (!cancelled) alert(`Failed to load ticket: ${e.message}`); })
       .finally(() => { if (!cancelled) setLoading(false); });
+    // Roster fetch runs in parallel — most tickets will have signatory_count=0
+    // or 1; the endpoint returns quickly either way.
+    fetch(`/api/tickets/${ticketId}/signatories`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (!cancelled) setRoster(d); })
+      .catch(() => { /* non-fatal — the roster section just won't render */ });
     return () => { cancelled = true; };
   }, [ticketId]);
+
+  async function refreshRoster() {
+    if (ticketId == null) return;
+    try {
+      const r = await fetch(`/api/tickets/${ticketId}/signatories`, { credentials: "include" });
+      if (r.ok) setRoster(await r.json());
+    } catch { /* ignore */ }
+  }
+
+  async function doSplit(sig: Signatory) {
+    if (ticketId == null) return;
+    setSplitting(sig.appointment_id);
+    try {
+      const r = await fetch(`/api/tickets/${ticketId}/split-signatory`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointment_id: sig.appointment_id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        toast.success(`${sig.name || "Signatory"} moved back to review`);
+        setSplitConfirm(null);
+        await refreshRoster();
+        onMutated?.();
+      } else {
+        toast.error(d.error || "Split failed");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSplitting(null);
+    }
+  }
 
   async function patch(p: Parameters<typeof patchTicket>[1]) {
     if (ticketId == null) return;
@@ -626,6 +690,71 @@ export default function TicketDetailDrawer({
                   </SectionCard>
                 )}
 
+                {/* Signatory roster (signature-petition, v054) — only shows
+                    when this ticket represents a merged campaign. Each row
+                    can be ✕-split back to the review queue while the ticket
+                    is still OPEN/TRIAGED. */}
+                {roster && roster.group_id != null && roster.signatories.length > 1 && (
+                  <SectionCard
+                    icon={Users2}
+                    title={`Signatories · ${roster.signatory_count}`}
+                    right={roster.canonical_ask ? (
+                      <span className="max-w-[60%] truncate text-[11px] italic text-muted-foreground">
+                        “{roster.canonical_ask}”
+                      </span>
+                    ) : undefined}
+                  >
+                    <ul className="divide-y divide-border/60">
+                      {roster.signatories.map((s) => (
+                        <li key={s.appointment_id} className="flex items-center gap-3 py-2.5">
+                          <InitialsAvatar name={s.name || "—"} className="h-8 w-8 shrink-0 rounded-lg text-[11px]" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="truncate text-[13.5px] font-semibold text-foreground">
+                                {s.name || "Unnamed"}
+                              </span>
+                              {s.is_primary && (
+                                <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wider text-brand">
+                                  Primary
+                                </span>
+                              )}
+                              {s.source && (
+                                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{s.source}</span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-3 text-[12px] text-muted-foreground">
+                              {s.mobile_masked && <span className="num tabular-nums">{s.mobile_masked}</span>}
+                              {s.token && <span className="num tabular-nums">TKN{s.token}</span>}
+                            </div>
+                          </div>
+                          {!s.is_primary && (
+                            <button
+                              type="button"
+                              disabled={splitting === s.appointment_id || busy}
+                              onClick={() => setSplitConfirm(s)}
+                              title="Not a duplicate — move back to review"
+                              aria-label={`Remove ${s.name || "signatory"} from this campaign`}
+                              className={cn(
+                                "grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors",
+                                "hover:bg-red-50 hover:text-red-700 disabled:opacity-50",
+                              )}
+                            >
+                              {splitting === s.appointment_id
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <X className="h-4 w-4" />}
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
+                      This ticket represents a campaign — <strong>{roster.signatory_count}</strong> citizens are on the roster.
+                      Use <X className="inline h-3 w-3 align-[-2px]" /> if any signatory turns out to be a false positive; they'll
+                      go back to the review queue as their own petition.
+                    </p>
+                  </SectionCard>
+                )}
+
                 {/* Forwarding info */}
                 {t.forwarded_to_dept && (
                   <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
@@ -796,6 +925,43 @@ export default function TicketDetailDrawer({
           <div className="flex flex-1 items-center justify-center text-muted-foreground">Loading…</div>
         )}
       </SheetContent>
+
+      {/* Signatory-split confirmation — replaces window.confirm so the wording
+          matches the rest of the app. The moved-back petition returns to the
+          Awaiting Review queue as its own standalone case. */}
+      <Dialog open={splitConfirm !== null} onOpenChange={(o) => !o && setSplitConfirm(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              Not a duplicate?
+            </DialogTitle>
+            <DialogDescription>
+              {splitConfirm ? (
+                <>
+                  <strong>{splitConfirm.name || "This signatory"}</strong> will be removed
+                  from this ticket and moved back to Petition Review as their own standalone
+                  petition. Nothing is deleted — you can approve them separately or merge
+                  them into another campaign later.
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" onClick={() => setSplitConfirm(null)} disabled={splitting != null}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-600 text-white hover:bg-amber-700 !bg-none"
+              onClick={() => splitConfirm && doSplit(splitConfirm)}
+              disabled={splitting != null}
+            >
+              {splitting != null ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
+              Move back to review
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }
