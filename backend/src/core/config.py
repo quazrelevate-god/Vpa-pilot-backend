@@ -143,6 +143,14 @@ class Settings(BaseSettings):
     # Frontend Configuration
     FRONTEND_FORM_BASE_URL: str = "http://localhost:8000/form"
 
+    # Where the citizen proposal site is served. It's a separate (Next.js)
+    # frontend, so a relative "/proposal" only works when a reverse proxy puts
+    # both on one origin (the "same origin" prod setup). When the frontend is a
+    # separate origin (e.g. split Railway services), set this to the absolute
+    # URL, e.g. https://<frontend-host>/proposal — the /form/choose proposal
+    # card links here.
+    PROPOSAL_SITE_URL: str = "/proposal"
+
     # Audio Recording Configuration (seconds)
     AUDIO_MIN_DURATION_SECONDS: int = 10   # minimum recording length
     AUDIO_MAX_DURATION_SECONDS: int = 300  # maximum recording length (5 minutes)

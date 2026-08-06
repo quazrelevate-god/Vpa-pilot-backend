@@ -901,32 +901,12 @@
                         <div class="phase-title" id="lbl-sec-title">Grievance Details</div>
                     </div>
 
-                    <!-- Submission type — top-level chooser (Petition vs
-                         Greeting/Invitation). Drives whether category dropdown,
-                         upload block, and voice block render below. Default =
-                         petition to preserve the historical QR flow. -->
-                    <div class="field-group" id="submissionTypeGroup">
-                        <div class="label-container">
-                            <label><span id="lbl-submission-type">What are you submitting?</span> <span class="req-star">*</span></label>
-                        </div>
-                        <div class="submission-type-tabs" role="tablist">
-                            <button type="button" class="stype-tab stype-tab--petition is-active"
-                                    data-stype="petition" role="tab" aria-selected="true"
-                                    onclick="setSubmissionType('petition')">
-                                <i class="fa-solid fa-file-lines stype-icon"></i>
-                                <span class="stype-title" id="lbl-stype-petition">Petition</span>
-                                <span class="stype-sub" id="lbl-stype-petition-sub">Grievance or request · attach a document</span>
-                            </button>
-                            <button type="button" class="stype-tab stype-tab--courtesy"
-                                    data-stype="courtesy" role="tab" aria-selected="false"
-                                    onclick="setSubmissionType('courtesy')">
-                                <i class="fa-solid fa-envelope-open-text stype-icon"></i>
-                                <span class="stype-title" id="lbl-stype-courtesy">Greeting / Invitation</span>
-                                <span class="stype-sub" id="lbl-stype-courtesy-sub">Speak your message · no document needed</span>
-                            </button>
-                        </div>
-                        <input type="hidden" id="submissionType" value="petition">
-                    </div>
+                    <!-- Submission type is now chosen on /form/choose (petition
+                         vs greeting/invitation), not with an in-form toggle. The
+                         picked mode arrives as `submission_mode` and is applied on
+                         load (DOMContentLoaded → setSubmissionType), which reveals
+                         the greeting/invitation sub-pick below for courtesy. -->
+                    <input type="hidden" id="submissionType" value="{{ submission_mode }}">
 
                     <!-- Courtesy sub-type — greeting or invitation. Only shown
                          when submissionType=courtesy. Writes the derived
@@ -1001,7 +981,7 @@
                     <!-- Voice Recording -->
                     <div class="field-group" id="sectionVoice">
                         <div class="label-container">
-                            <label><span id="lbl-audio">Voice Recording</span> <span id="lbl-audio-hint" style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(Speak your grievance)</span></label>
+                            <label><span id="lbl-audio">Voice Recording</span><span class="req-star" id="lbl-audio-req" style="display:none;"> *</span> <span id="lbl-audio-hint" style="color: #6b7280; font-size: 0.85rem; font-weight: 400;">(Speak your grievance)</span></label>
                         </div>
                         <div style="padding: 1.25rem 1rem; background: rgba(255, 255, 255, 0.5); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; align-items: center; gap: 0.6rem;">
                             <div class="recording-row">
@@ -1550,6 +1530,11 @@
                     ? (copy.audioLabelCourtesy || copy.audio || '')
                     : (copy.audio || '');
             }
+            // The voice message is MANDATORY in courtesy mode (there's no
+            // document to attach), so show the required asterisk there; in the
+            // petition path audio is optional (upload OR record), so hide it.
+            const audioReqEl = document.getElementById('lbl-audio-req');
+            if (audioReqEl) audioReqEl.style.display = courtesy ? '' : 'none';
         }
 
         // Segmented-tab click handler. Idempotent; safe on repeat clicks.
@@ -1937,6 +1922,9 @@
             window.addEventListener('load', _syncLangBarHeight);
             initOtpBoxes();
             _populateCategoryDropdown();
+            // Apply the submission mode picked on /form/choose (petition | courtesy).
+            // For courtesy this reveals the greeting/invitation sub-picker below.
+            setSubmissionType(document.getElementById('submissionType').value);
             document.getElementById('btnGenOtp').disabled = true;
             document.getElementById('txtName').addEventListener('input', validateFormForOTP);
             document.getElementById('txtMobile').addEventListener('input', validateFormForOTP);
@@ -1983,6 +1971,12 @@
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
             const stype = _submissionType();
+            // Category comes from the hidden #ddlCategory select: for courtesy it
+            // holds the greeting/invitation sub-type (written by setCourtesyType);
+            // for petitions it's empty — the dropdown was retired and the backend
+            // AI classifies the petition. (The old dropped-dropdown code left a
+            // bare `category` reference here that threw before any API call.)
+            const category = (document.getElementById('ddlCategory') || {}).value || '';
 
             // Per-submission-type validation. Courtesy path requires audio +
             // a picked sub-type; petition path requires category + text/image.

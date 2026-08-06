@@ -122,13 +122,13 @@
     }
     .choice--petition:hover { border-color: rgba(233,184,76,0.9); transform: translateY(-2px); }
 
-    /* Proposal — the secondary path. Cool glass. */
-    .choice--proposal {
+    /* Greeting/Invitation + Proposal — the secondary paths. Cool glass. */
+    .choice--proposal, .choice--courtesy {
       background: rgba(255,255,255,0.05);
       border: 1.5px solid rgba(255,255,255,0.18);
       box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
     }
-    .choice--proposal:hover { border-color: rgba(255,255,255,0.42); background: rgba(255,255,255,0.08); transform: translateY(-2px); }
+    .choice--proposal:hover, .choice--courtesy:hover { border-color: rgba(255,255,255,0.42); background: rgba(255,255,255,0.08); transform: translateY(-2px); }
 
     .ic {
       flex: 0 0 auto;
@@ -137,7 +137,7 @@
       display: grid; place-items: center;
     }
     .choice--petition .ic { background: rgba(233,184,76,0.18); color: var(--gold); }
-    .choice--proposal .ic { background: rgba(201,214,240,0.12); color: var(--haze); }
+    .choice--proposal .ic, .choice--courtesy .ic { background: rgba(201,214,240,0.12); color: var(--haze); }
     .ic svg { width: 22px; height: 22px; }
 
     .body { flex: 1; min-width: 0; }
@@ -192,7 +192,8 @@
     .tagline           { animation-delay: .30s; }
     .choice:nth-child(1) { animation-delay: .46s; }
     .choice:nth-child(2) { animation-delay: .58s; }
-    .footnote          { animation-delay: .74s; }
+    .choice:nth-child(3) { animation-delay: .70s; }
+    .footnote          { animation-delay: .82s; }
 
     /* Very narrow phones (≈320px): the longer proposal title can't hold one line
        at a readable size, so it takes two. Reserve equal height so the two cards
@@ -246,8 +247,30 @@
         </span>
       </a>
 
-      <!-- Proposal → the branded /proposal site (same origin; its own OTP flow). -->
-      <a class="choice choice--proposal rise" href="/proposal" data-nav>
+      <!-- Greeting / Invitation → the same citizen form, opened directly in
+           courtesy mode (mode=courtesy). No document, voice-first — the greeting
+           vs invitation sub-pick happens inside the form. -->
+      <a class="choice choice--courtesy rise" href="/form?token={{ session_token }}&mode=courtesy" data-nav>
+        <span class="ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/>
+            <path d="m3 6 9 6 9-6"/>
+          </svg>
+        </span>
+        <span class="body">
+          <span class="ta">வாழ்த்து / அழைப்பு</span>
+          <span class="en">Greeting / Invitation</span>
+          <span class="hint">உங்கள் செய்தியைப் பேசுங்கள் · Speak your message — no document needed</span>
+        </span>
+        <span class="arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+      </a>
+
+      <!-- Proposal → the branded proposal site (configurable — its own OTP flow).
+           Relative "/proposal" resolves only behind a unifying proxy; set
+           PROPOSAL_SITE_URL to the frontend's absolute URL for split origins. -->
+      <a class="choice choice--proposal rise" href="{{ proposal_url | default('/proposal', true) }}" data-nav>
         <span class="ic" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 18h6M10 21h4"/>

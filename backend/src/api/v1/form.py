@@ -87,7 +87,13 @@ async def choose_intake(
 
         response = templates.TemplateResponse(
             "choose.jinja2",
-            {"request": request, "session_token": token},
+            {
+                "request": request,
+                "session_token": token,
+                # Proposal site is a separate frontend — link to its configured
+                # URL (relative "/proposal" only resolves behind a unifying proxy).
+                "proposal_url": settings.PROPOSAL_SITE_URL,
+            },
         )
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
@@ -111,6 +117,11 @@ async def display_form(
         ...,
         description="Session token from QR verification",
         example="550e8400-e29b-41d4-a716-446655440000"
+    ),
+    mode: str = Query(
+        "petition",
+        description="Which intake the citizen picked on /form/choose: "
+                    "'petition' (default) or 'courtesy' (greeting/invitation).",
     ),
     db: AsyncSession = Depends(get_db)
 ) -> HTMLResponse:
@@ -159,12 +170,18 @@ async def display_form(
             await admin.load(db)
         category_keys = admin.names_for("category")
 
+        # The submission type is now chosen on /form/choose (petition vs
+        # greeting/invitation), not with an in-form toggle. Normalise it here so
+        # the template renders directly in the right mode.
+        submission_mode = "courtesy" if (mode or "").strip().lower() == "courtesy" else "petition"
+
         # Render HTML form from template
         response = templates.TemplateResponse(
             "form.jinja2",
             {
                 "request": request,
                 "session_token": token,
+                "submission_mode": submission_mode,
                 "audio_min_seconds": settings.AUDIO_MIN_DURATION_SECONDS,
                 "audio_max_seconds": settings.AUDIO_MAX_DURATION_SECONDS,
                 "max_file_size_mb": settings.MAX_FILE_SIZE_MB,
