@@ -99,7 +99,12 @@ class ProposalExtractionService:
         ]
         config = types.GenerateContentConfig(
             system_instruction=PROPOSAL_EXTRACTION_PROMPT,
-            temperature=0.2,
+            # Factual, not creative. Matches petition/association/summariser
+            # (0.1) so the whole extraction pipeline stays consistent. Especially
+            # important for the v2 "return empty when the document is silent"
+            # fields — a higher temp would tempt the model to fill risks /
+            # readiness / partnership with plausible-sounding fabrication.
+            temperature=0.1,
             top_p=0.9,
             response_mime_type="application/json",
             response_schema=ProposalExtraction,

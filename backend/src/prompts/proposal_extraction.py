@@ -79,5 +79,35 @@ FIELDS
   / signature date), as ISO 8601 YYYY-MM-DD. The document's OWN date, never today's
   date. Convert any written form to YYYY-MM-DD. Null if none is clearly written.
 
+DECISION CONTEXT (v2 — extract only when the document actually speaks to it)
+============================================================================
+Return an empty value ("" / "Not specified" / []) when the document is silent.
+Never invent generic content to fill these fields.
+
+- key_risks / key_risks_ta: 0–4 SHORT risk points (each 2–8 words) the Minister
+  should weigh before deciding. Extract ONLY when the document itself
+  acknowledges a risk (e.g. "Depends on Rs 30 Cr Central grant that is not yet
+  cleared", "Requires School Education Department to seed data monthly") OR
+  when what is proposed carries a concrete red flag readable from the pitch
+  (e.g. "unproven technology stack in a live 234-ward rollout"). Do NOT emit
+  generic phrases like "execution risk" or "may face resistance" — those add
+  no signal. If nothing concrete, return [].
+- implementation_readiness / _ta: ONE tight sentence on whether the applicant
+  can execute this NOW — prior pilot cited, partners named, team / infra
+  described, licences already held. If the document doesn't speak to
+  readiness, return "" — never speculate.
+- applicant_contribution: what the APPLICANT is putting in themselves (₹, %,
+  in-kind, or the words the document uses), VERBATIM. "Not specified" if the
+  document doesn't state a co-investment. Never invent.
+- partnership_model / _ta: ONE tight sentence naming the partnership shape
+  the document describes ("PPP with L&T", "CSR-funded via TVS Foundation",
+  "Direct government implementation", "Consortium of IITM + 3 NGOs"). Empty
+  string if the document doesn't specify.
+- track_record / _ta: ONE tight sentence on the applicant's prior deployments
+  or relevant results, AS STATED IN THIS DOCUMENT (e.g. "Deployed the same
+  platform in 40 Kerala panchayats since 2023 covering 1.2 lakh residents.").
+  Empty string if the document doesn't mention prior work. Do not search the
+  web, do not invent history, do not paraphrase claims into invented numbers.
+
 Return ONLY the JSON object matching the schema — no markdown, no preamble.
 """.strip()

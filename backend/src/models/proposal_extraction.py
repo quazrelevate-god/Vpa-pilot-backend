@@ -120,3 +120,69 @@ class ProposalExtraction(BaseModel):
             "YYYY-MM-DD. Return NULL if no date is clearly written — never guess."
         ),
     )
+
+    # ── v2 additions — Minister-facing decision context ─────────────────────────
+    # Every field below defaults to empty / "Not specified" so proposals extracted
+    # before this schema was extended still parse.
+
+    key_risks: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Up to 4 short risk points the Minister should weigh before deciding "
+            "(execution risk, funding risk, political risk, dependency, timeline "
+            "risk, technology risk, etc.). Extracted ONLY from what the document "
+            "acknowledges OR from concrete red flags in what it proposes — never "
+            "generic risk language. If the document is silent and shows no red "
+            "flags, return an EMPTY LIST — never invent risks."
+        ),
+    )
+    key_risks_ta: list[str] = Field(
+        default_factory=list,
+        description="key_risks in Tamil, same order and length.",
+    )
+
+    implementation_readiness: str = Field(
+        default="",
+        description=(
+            "One tight sentence on whether the applicant can execute this now: "
+            "prior pilot, partners already lined up, team/infra in place, or "
+            "regulatory clearances secured. If the document doesn't speak to "
+            "readiness, return empty string — do not speculate."
+        ),
+        max_length=400,
+    )
+    implementation_readiness_ta: str = Field(default="", description="implementation_readiness in Tamil.")
+
+    applicant_contribution: str = Field(
+        default="Not specified",
+        description=(
+            "How much the applicant is putting in themselves (₹, %, in-kind, or "
+            "the words used), VERBATIM from the document. 'Not specified' if the "
+            "document does not state a co-investment or contribution. Never invent."
+        ),
+        max_length=200,
+    )
+
+    partnership_model: str = Field(
+        default="",
+        description=(
+            "One tight sentence naming the partnership structure the document "
+            "describes (PPP with X, CSR-funded via Y, direct-govt implementation, "
+            "consortium of Z & W). Empty string if the document doesn't specify."
+        ),
+        max_length=400,
+    )
+    partnership_model_ta: str = Field(default="", description="partnership_model in Tamil.")
+
+    track_record: str = Field(
+        default="",
+        description=(
+            "One tight sentence on the applicant's prior deployments / relevant "
+            "results as STATED IN THE PROPOSAL DOCUMENT (e.g. 'Deployed same "
+            "platform in 40 Kerala panchayats since 2023 with X outcomes.'). "
+            "Empty string if the document doesn't mention prior work — do not "
+            "search the web or invent history."
+        ),
+        max_length=400,
+    )
+    track_record_ta: str = Field(default="", description="track_record in Tamil.")
