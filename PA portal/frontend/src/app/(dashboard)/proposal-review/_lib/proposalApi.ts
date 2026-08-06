@@ -19,6 +19,12 @@ export interface ProposalBrief {
   key_highlights?: string[]; key_highlights_ta?: string[];
   ai_recommendation?: ProposalRecommendation;
   ai_rationale?: string;
+  // v2 additions — Minister decision context; empty when the document is silent.
+  key_risks?: string[]; key_risks_ta?: string[];
+  implementation_readiness?: string; implementation_readiness_ta?: string;
+  applicant_contribution?: string;
+  partnership_model?: string; partnership_model_ta?: string;
+  track_record?: string; track_record_ta?: string;
 }
 
 export interface ProposalListItem {

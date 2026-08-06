@@ -8,9 +8,8 @@ import { toast } from "sonner";
 import {
   Lightbulb, Check, X, HelpCircle, Building2, IndianRupee, CalendarClock, Users,
   Sparkles, AlertTriangle, Loader2, Inbox, ShieldAlert, User, Search,
-  Download, Forward, MapPin, Layers, Briefcase, Landmark,
-  TrendingUp, Wallet, Wrench, ShieldAlert as RiskIcon, Award, FileCheck,
-  ChevronRight, ChevronLeft, FileText, Image as ImageIcon, FolderOpen,
+  Download, MapPin, Briefcase, Landmark,
+  Wallet, Wrench, ShieldAlert as RiskIcon, Award, FolderOpen,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -21,15 +20,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
-  listProposals, getProposal, decideProposal, fetchProposalDocuments,
+  listProposals, getProposal, decideProposal,
   type ProposalListItem, type ProposalListResponse, type ProposalDetail,
-  type ProposalBrief, type Decision,
-  type ProposalDocumentEntry,
+  type ProposalBrief, type ProposalDoc, type Decision,
 } from "./_lib/proposalApi";
 
 // ── display maps ────────────────────────────────────────────────────────────
@@ -48,10 +47,10 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   NEEDS_CLARIFICATION: { label: "Needs info",      cls: "bg-orange-100 text-orange-800" },
 };
 
-const REC_META: Record<string, { label: string; cls: string; dot: string; confidence: string }> = {
-  review_closely:  { label: "Review closely",     cls: "border-violet-300 bg-violet-50 text-violet-700",   dot: "bg-violet-500",  confidence: "Medium" },
-  standard:        { label: "Ready to Review",    cls: "border-emerald-300 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500", confidence: "High" },
-  needs_more_info: { label: "Needs Clarification", cls: "border-amber-300 bg-amber-50 text-amber-700",     dot: "bg-amber-500",   confidence: "Low" },
+const REC_META: Record<string, { label: string; cls: string; dot: string }> = {
+  review_closely:  { label: "Review closely",      cls: "border-violet-300 bg-violet-50 text-violet-700",   dot: "bg-violet-500"  },
+  standard:        { label: "Ready to review",     cls: "border-emerald-300 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
+  needs_more_info: { label: "Needs clarification", cls: "border-amber-300 bg-amber-50 text-amber-700",     dot: "bg-amber-500"   },
 };
 
 const TABS: { key: string; label: string }[] = [
@@ -73,33 +72,29 @@ function daysSince(iso: string | null): number | null {
   if (Number.isNaN(t)) return null;
   return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
 }
+/** A field the AI leaves as "Not specified" (or empty) is not a real value. */
 function specified(v?: string | null): boolean {
   const s = (v || "").trim();
   return !!s && s.toLowerCase() !== "not specified";
 }
-function fmtBytes(n: number | null | undefined): string {
-  if (n == null) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+
+/** Map ProposalDoc → the shared preview component's shape. Images render with
+ *  the zoom/pan viewer; PDFs render inline (iframe with #toolbar=0). */
+function toAttachments(docs: ProposalDoc[] | undefined): GalleryAttachment[] {
+  return (docs || [])
+    .filter((d) => !!d.url)
+    .map((d) => ({
+      name: d.filename || "document",
+      url: d.url as string,
+      type: (d.mime || "").startsWith("image/") ? "IMAGE" : "DOCUMENT",
+      mime: d.mime || undefined,
+    }));
 }
 
 type Gate =
   | { kind: "loading" }
   | { kind: "denied"; me: SessionUser | null }
   | { kind: "ok"; me: SessionUser };
-
-// Eight numbered sections — no "Proposal Identity" (fields moved to header).
-const SECTIONS: { n: number; id: string; tKey: string; icon: typeof Building2 }[] = [
-  { n: 1, id: "ai-brief",    tKey: "prop.sec1", icon: Sparkles },
-  { n: 2, id: "feasibility", tKey: "prop.sec2", icon: Wrench },
-  { n: 3, id: "impact",      tKey: "prop.sec3", icon: TrendingUp },
-  { n: 4, id: "risk",        tKey: "prop.sec4", icon: RiskIcon },
-  { n: 5, id: "financial",   tKey: "prop.sec5", icon: Wallet },
-  { n: 6, id: "ask",         tKey: "prop.sec6", icon: Briefcase },
-  { n: 7, id: "track",       tKey: "prop.sec7", icon: Award },
-  { n: 8, id: "documents",   tKey: "prop.sec8", icon: FolderOpen },
-];
 
 export default function ProposalReviewPage() {
   const router = useRouter();
@@ -117,7 +112,12 @@ export default function ProposalReviewPage() {
   const [note, setNote] = useState("");
   const [deciding, setDeciding] = useState(false);
 
-  const L = useCallback((en?: string, ta?: string) => (lang === "ta" && ta ? ta : en) || "", [lang]);
+  // Pick English / Tamil per the active language, gracefully fall back to whichever
+  // has content — Tamil extraction may be empty for older proposals.
+  const L = useCallback((en?: string, ta?: string) => {
+    if (lang === "ta" && ta && ta.trim()) return ta;
+    return (en || ta || "").trim();
+  }, [lang]);
 
   // ── gate ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -152,6 +152,20 @@ export default function ProposalReviewPage() {
     const iv = setInterval(() => load(ac.signal), 10000);
     return () => { ac.abort(); clearInterval(iv); };
   }, [gate.kind, load]);
+
+  // Deep-link support: /proposal-review?id=42 auto-opens that proposal. Used
+  // by the dashboard row-click and the ai-review "Open in workflow" button so
+  // the reviewer lands on the specific proposal, not the list. Reads
+  // window.location once (avoids the Next 15 useSearchParams Suspense dance)
+  // and pushes to state so the drawer opens via the standard selectedId path.
+  useEffect(() => {
+    if (gate.kind !== "ok") return;
+    if (typeof window === "undefined") return;
+    const p = new URLSearchParams(window.location.search);
+    const raw = p.get("id");
+    const id = raw ? Number(raw) : NaN;
+    if (Number.isFinite(id)) setSelectedId(id);
+  }, [gate.kind]);
 
   const filtered = useMemo(() => {
     const items = data?.items ?? [];
@@ -209,28 +223,6 @@ export default function ProposalReviewPage() {
     }
   };
 
-  const forwardForReview = () => {
-    toast.info("Forward-for-review will be wired to the backend workflow.");
-  };
-
-  const approveReady = async () => {
-    const ready = (data?.items || []).filter(
-      (p) => p.status === "AWAITING_REVIEW" && p.ai_recommendation === "standard",
-    );
-    if (!ready.length) { toast.info("No 'Ready to Review' proposals in queue."); return; }
-    if (!window.confirm(`Approve ${ready.length} ready proposal(s)?`)) return;
-    setDeciding(true);
-    try {
-      for (const p of ready) await decideProposal(p.id, "approved");
-      toast.success(`${ready.length} approved.`);
-      load();
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setDeciding(false);
-    }
-  };
-
   const doExport = () => {
     const rows = filtered;
     const headers = ["Tracking Ref", "Title", "Submitter", "Category", "Status", "AI", "Submitted"];
@@ -252,7 +244,7 @@ export default function ProposalReviewPage() {
     <div className="flex h-full flex-1 flex-col overflow-hidden">
       <TopBar
         title={t("nav.proposalReview")}
-        subtitle={t("prop.subtitle")}
+        subtitle="Proposals to the Hon'ble Minister — read the pitch, look at the document, decide."
         icon={<Lightbulb className="h-4 w-4" />}
       />
 
@@ -265,7 +257,6 @@ export default function ProposalReviewPage() {
         )}
         {gate.kind === "ok" && (
           <div className="mx-auto flex h-full max-w-[1440px] flex-col gap-4">
-            {/* action bar: tabs + search + bulk + export */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-wrap gap-1.5 rounded-xl bg-card p-1 shadow-card">
                 {TABS.map((tb) => {
@@ -294,27 +285,23 @@ export default function ProposalReviewPage() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder={t("prop.searchPlaceholder")}
+                  placeholder="Search title, submitter, or tracking ref…"
                   className="h-9 pl-9"
                 />
               </div>
 
-              <div className="ml-auto flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={approveReady} disabled={deciding}>
-                  <Check className="h-4 w-4" /> {t("prop.approveSelected")}
-                </Button>
+              <div className="ml-auto">
                 <Button variant="outline" size="sm" onClick={doExport}>
-                  <Download className="h-4 w-4" /> {t("prop.export")}
+                  <Download className="h-4 w-4" /> Export
                 </Button>
               </div>
             </div>
 
-            {/* Full-width list */}
             <div className="min-h-0 flex-1 overflow-y-auto">
               {loading && !data ? (
                 <ListSkeleton />
               ) : filtered.length === 0 ? (
-                <EmptyState t={t} />
+                <EmptyState />
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {filtered.map((p) => (
@@ -331,26 +318,26 @@ export default function ProposalReviewPage() {
         )}
       </main>
 
-      {/* Detail drawer */}
+      {/* Wide right-slide drawer — 92vw on lg+, full-width on mobile.
+          Two panes: document preview LEFT (always visible), reading right. */}
       <Sheet open={selectedId != null} onOpenChange={(o) => { if (!o) setSelectedId(null); }}>
         <SheetContent
           side="right"
           hideClose
-          className="flex w-full flex-col gap-0 p-0 sm:max-w-[75vw] lg:max-w-[70vw] xl:max-w-[1200px]"
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-[95vw] lg:max-w-[92vw]"
         >
           {selectedId == null ? null : detailLoading && !detail ? (
             <DetailSkeleton />
           ) : detail ? (
             <DetailPane
-              d={detail} L={L} t={t}
+              d={detail} L={L} ta={lang === "ta"}
               note={note} setNote={setNote}
               deciding={deciding}
               onDecide={decide}
-              onForward={forwardForReview}
               onClose={() => setSelectedId(null)}
             />
           ) : (
-            <DetailEmpty t={t} />
+            <DetailEmpty />
           )}
         </SheetContent>
       </Sheet>
@@ -406,54 +393,46 @@ function ProposalCard({ p, selected, onOpen }: {
   );
 }
 
-// ── detail helpers ───────────────────────────────────────────────────────────
-function Tile({ icon, label, value, mono = false, muted = false }: {
-  icon?: ReactNode; label: string; value?: string | number | null; mono?: boolean; muted?: boolean;
+// ── shared tile: renders only if value is real (never a "Not provided" placeholder) ─
+function Tile({ icon, label, value, mono = false }: {
+  icon?: ReactNode; label: string; value?: string | null; mono?: boolean;
 }) {
-  const has = value != null && String(value).trim() !== "" && String(value).toLowerCase() !== "not specified";
+  if (!specified(value)) return null;
   return (
-    <div className={cn(
-      "flex min-w-0 flex-col gap-1 rounded-lg border border-border px-4 py-3",
-      muted ? "bg-muted/40" : "bg-background/60",
-    )}>
+    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-background/60 px-4 py-3">
       <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {icon}{label}
       </div>
-      <div className={cn(
-        "text-[14px] font-semibold leading-snug",
-        mono && has && "num",
-        has ? "text-foreground" : "text-muted-foreground/45 font-normal italic",
-      )}>
-        {has ? String(value) : "Not provided"}
+      <div className={cn("text-[14px] font-semibold leading-snug text-foreground", mono && "num")}>
+        {value}
       </div>
     </div>
   );
 }
 
-function BriefTile({ label, text }: { label: string; text: string }) {
-  const ok = specified(text);
+/** Serif reading block for narrative fields. Renders nothing if the value is
+ *  empty/"Not specified" — no placeholder theater. */
+function Reading({ label, text }: { label: string; text: string }) {
+  if (!specified(text)) return null;
   return (
     <div className="rounded-lg border border-border bg-background/60 p-4">
       <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
-      <p className={cn(
-        "font-serif text-[14px] leading-[1.65]",
-        ok ? "text-foreground/90" : "italic text-muted-foreground/45",
-      )}>
-        {ok ? text : "Not provided"}
-      </p>
+      <p className="font-serif text-[15px] leading-[1.75] text-foreground/90">{text}</p>
     </div>
   );
 }
 
+/** Numbered section shell. `hidden` suppresses the whole section when empty. */
 function SectionShell({
-  n, id, title, right, children,
-}: { n: number; id: string; title: string; right?: ReactNode; children: ReactNode }) {
+  n, id, title, right, hidden, children,
+}: { n: number; id: string; title: string; right?: ReactNode; hidden?: boolean; children: ReactNode }) {
+  if (hidden) return null;
   return (
     <section id={id} className="scroll-mt-24 rounded-xl border border-border bg-background/40 p-4 sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span className="num grid h-7 w-7 place-items-center rounded-full bg-brand/10 text-[13px] font-bold text-brand">{n}</span>
-          <h3 className="font-serif text-[16px] font-semibold text-foreground">{title}</h3>
+          <h3 className="font-serif text-[17px] font-semibold text-foreground">{title}</h3>
         </div>
         {right}
       </div>
@@ -462,98 +441,50 @@ function SectionShell({
   );
 }
 
-function ViewMore({ label }: { label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={() => toast.info("Deep-dive view is coming soon.")}
-      className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand hover:underline"
-    >
-      {label} <ChevronRight className="h-3.5 w-3.5" />
-    </button>
-  );
-}
-
-// ── detail pane (inside drawer) ──────────────────────────────────────────────
+// ── detail pane ──────────────────────────────────────────────────────────────
 function DetailPane({
-  d, L, t, note, setNote, deciding, onDecide, onForward, onClose,
+  d, L, ta, note, setNote, deciding, onDecide, onClose,
 }: {
   d: ProposalDetail;
   L: (en?: string, ta?: string) => string;
-  t: (k: string) => string;
+  ta: boolean;
   note: string; setNote: (v: string) => void;
   deciding: boolean;
   onDecide: (dec: Decision) => void;
-  onForward: () => void;
   onClose: () => void;
 }) {
   const ex: ProposalBrief = d.extraction || {};
   const rec = ex.ai_recommendation ? REC_META[ex.ai_recommendation] : null;
   const st = STATUS_META[d.status] || { label: d.status, cls: "bg-slate-100 text-slate-600" };
   const decided = ["APPROVED", "REJECTED", "NEEDS_CLARIFICATION"].includes(d.status);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState<string>(SECTIONS[0].id);
-
   const days = daysSince(d.created_at);
-  const NP = t("prop.notProvided");
 
-  // Scroll-spy — track section nearest the top so first/last stay reachable.
-  useEffect(() => {
-    const root = scrollRef.current;
-    if (!root) return;
-    const compute = () => {
-      const sections = SECTIONS
-        .map((s) => root.querySelector<HTMLElement>(`#${s.id}`))
-        .filter((el): el is HTMLElement => !!el);
-      if (!sections.length) return;
-      const rootTop = root.getBoundingClientRect().top;
-      // active = the last section whose top is above (or at) the viewport top
-      // + a small gutter. Falls back to first if none has scrolled past.
-      let currentId = sections[0].id;
-      const gutter = 80;
-      for (const el of sections) {
-        const top = el.getBoundingClientRect().top - rootTop;
-        if (top - gutter <= 0) currentId = el.id;
-        else break;
-      }
-      // If we're at the very bottom, highlight the last section.
-      if (root.scrollTop + root.clientHeight >= root.scrollHeight - 4) {
-        currentId = sections[sections.length - 1].id;
-      }
-      setActive(currentId);
-    };
-    compute();
-    root.addEventListener("scroll", compute, { passive: true });
-    window.addEventListener("resize", compute);
-    return () => {
-      root.removeEventListener("scroll", compute);
-      window.removeEventListener("resize", compute);
-    };
-  }, [d.id]);
+  // Executive-brief resolved strings (lang-aware).
+  const problem     = L(ex.problem_statement,   ex.problem_statement_ta);
+  const solution    = L(ex.proposed_solution,   ex.proposed_solution_ta);
+  const benefit     = L(ex.expected_benefit,    ex.expected_benefit_ta);
+  const beneficiary = L(ex.beneficiary_scope,   ex.beneficiary_scope_ta);
+  const readiness   = L(ex.implementation_readiness, ex.implementation_readiness_ta);
+  const partnership = L(ex.partnership_model,   ex.partnership_model_ta);
+  const track       = L(ex.track_record,        ex.track_record_ta);
+  const risks       = (ta && ex.key_risks_ta?.length ? ex.key_risks_ta : ex.key_risks) || [];
+  const highlights  = (ta && ex.key_highlights_ta?.length ? ex.key_highlights_ta : ex.key_highlights) || [];
 
-  const jump = (id: string) => {
-    const root = scrollRef.current;
-    const el = root?.querySelector<HTMLElement>(`#${id}`);
-    if (!root || !el) return;
-    // Compute offset relative to scroll container, subtract sticky header gutter.
-    const top = el.offsetTop - 16;
-    root.scrollTo({ top, behavior: "smooth" });
-    // Optimistically set the active pill so the click always highlights it,
-    // even if the section is only partially in view / at the ends.
-    setActive(id);
-  };
-
+  // Gap list — shown only when the AI actually flagged something incomplete.
   const gaps: string[] = [];
-  if (!specified(L(ex.problem_statement, ex.problem_statement_ta))) gaps.push("Problem statement not described");
-  if (!specified(L(ex.proposed_solution, ex.proposed_solution_ta))) gaps.push("Proposed solution not detailed");
-  if (!specified(ex.estimated_cost)) gaps.push("Funding ask (₹) not specified");
-  if (!specified(ex.timeline)) gaps.push("Implementation timeline missing");
-  if (!specified(L(ex.beneficiary_scope, ex.beneficiary_scope_ta))) gaps.push("Beneficiary scope not quantified");
+  if (!specified(problem))                gaps.push("Problem statement not described");
+  if (!specified(solution))               gaps.push("Proposed solution not detailed");
+  if (!specified(ex.estimated_cost))      gaps.push("Funding ask (₹) not specified");
+  if (!specified(ex.timeline))            gaps.push("Implementation timeline missing");
+  if (!specified(beneficiary))            gaps.push("Beneficiary scope not quantified");
+
+  // Documents → InlineAttachmentPreview shape.
+  const docAtts = useMemo(() => toAttachments(d.documents), [d.documents]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Header — proposal identity lives here (no separate section below). */}
-      <div className="shrink-0 border-b border-border bg-card px-6 py-5">
+      {/* Header */}
+      <div className="shrink-0 border-b border-border bg-card px-5 py-4 sm:px-7 sm:py-5">
         <div className="mb-2 flex items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {d.category && (
@@ -590,11 +521,6 @@ function DetailPane({
               <User className="h-3.5 w-3.5" />{[d.person_name, d.designation].filter(Boolean).join(" · ")}
             </span>
           )}
-          {d.category && (
-            <span className="inline-flex items-center gap-1.5">
-              <Landmark className="h-3.5 w-3.5" />{CATEGORY_LABEL[d.category] || d.category}
-            </span>
-          )}
           <span className="inline-flex items-center gap-1.5">
             <CalendarClock className="h-3.5 w-3.5" /><span className="num">{fmtDate(d.created_at)}</span>
           </span>
@@ -603,10 +529,25 @@ function DetailPane({
         </div>
       </div>
 
-      {/* body */}
+      {/* Body — 2 panes on lg+: preview LEFT, reading RIGHT */}
       <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-[1fr_180px]">
-          <div ref={scrollRef} className="min-h-0 space-y-5 overflow-y-auto px-6 py-5">
+        <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,45%)_1fr]">
+          {/* LEFT: always-visible document preview */}
+          <div className="min-h-0 overflow-hidden border-b border-border bg-muted/25 p-3 sm:p-4 lg:border-b-0 lg:border-r">
+            {docAtts.length > 0 ? (
+              <InlineAttachmentPreview attachments={docAtts} defaultOpenFirst className="h-full" />
+            ) : (
+              <div className="flex h-full min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-background/60 text-center">
+                <div>
+                  <FolderOpen className="mx-auto h-8 w-8 text-muted-foreground/40" />
+                  <p className="mt-2 text-[13px] text-muted-foreground">No source document attached.</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: numbered reading sections */}
+          <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
             {d.status === "FAILED" && (
               <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -614,169 +555,182 @@ function DetailPane({
               </div>
             )}
 
-            {/* 1 — AI Assessment + Executive Brief (merged) */}
+            {/* 1 — AI Assessment + Executive Brief (always visible) */}
             <SectionShell
-              n={1} id="ai-brief" title={t("prop.sec1")}
+              n={1} id="ai-brief" title="AI Assessment & Executive Brief"
               right={rec ? (
                 <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
                   <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
                 </span>
               ) : undefined}
             >
-              {/* AI Assessment block */}
+              {/* AI block */}
               <div className="rounded-lg border border-border bg-background/60 p-4">
                 <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  <Sparkles className="h-3.5 w-3.5" /> AI Assessment
+                  <Sparkles className="h-3.5 w-3.5" /> AI read
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-border bg-background px-2.5 py-0.5 text-[11.5px] font-semibold">
-                    Confidence: <span className={cn("num", rec?.confidence === "High" ? "text-emerald-700" : rec?.confidence === "Low" ? "text-amber-700" : "text-violet-700")}>{rec?.confidence ?? "—"}</span>
-                  </span>
-                  {gaps.length > 0 && <ViewMore label={t("prop.viewQuestions")} />}
-                </div>
-                {ex.ai_rationale && (
-                  <p className="mt-3 rounded-md bg-muted/40 px-3 py-2 text-[13px] leading-relaxed text-foreground/85">
+                {ex.ai_rationale ? (
+                  <p className="rounded-md bg-muted/40 px-3 py-2 text-[13.5px] leading-relaxed text-foreground/85">
                     {ex.ai_rationale}
                   </p>
+                ) : (
+                  <p className="text-[13px] italic text-muted-foreground">No AI note recorded.</p>
                 )}
-                <div className="mt-4">
-                  <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                    Why this needs more information
-                  </div>
-                  {gaps.length > 0 ? (
+                {gaps.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      What's missing in this brief
+                    </div>
                     <ul className="space-y-1.5">
                       {gaps.map((g, i) => (
-                        <li key={i} className="flex gap-2 text-[13px] text-foreground/85">
+                        <li key={i} className="flex gap-2 text-[13.5px] text-foreground/85">
                           <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
                           <span>{g}</span>
                         </li>
                       ))}
                     </ul>
-                  ) : (
-                    <p className="text-[13px] italic text-muted-foreground">No gaps flagged — the brief looks complete.</p>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
-              {/* Executive Brief block */}
-              <div className="mt-4">
-                <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  <Briefcase className="h-3.5 w-3.5" /> Executive Brief
+              {/* Executive Brief block — renders only the narratives the AI actually filled */}
+              {(specified(problem) || specified(solution) || specified(benefit)) && (
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    <Briefcase className="h-3.5 w-3.5" /> Executive brief
+                  </div>
+                  <div className="space-y-3">
+                    <Reading label="Problem" text={problem} />
+                    <Reading label="Proposed solution" text={solution} />
+                    <Reading label="Expected outcome" text={benefit} />
+                  </div>
                 </div>
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <BriefTile label="Problem" text={L(ex.problem_statement, ex.problem_statement_ta)} />
-                  <BriefTile label="Proposed solution" text={L(ex.proposed_solution, ex.proposed_solution_ta)} />
-                  <BriefTile label="Expected outcome" text={L(ex.expected_benefit, ex.expected_benefit_ta)} />
-                  <BriefTile label="Why government?" text="" />
+              )}
+
+              {highlights.length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Key highlights</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {highlights.map((h, i) => (
+                      <span key={i} className="rounded-full border border-border bg-secondary/70 px-2.5 py-1 text-[12.5px] text-secondary-foreground">{h}</span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </SectionShell>
 
-            {/* 2 — Feasibility */}
-            <SectionShell n={2} id="feasibility" title={t("prop.sec2")} right={<ViewMore label={t("prop.viewFeasibility")} />}>
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <Tile icon={<Layers className="h-3 w-3" />} label="Implementation readiness" value={NP} />
-                <Tile icon={<CalendarClock className="h-3 w-3" />} label="Implementation timeline" value={ex.timeline} mono />
-                <Tile icon={<Wrench className="h-3 w-3" />} label="Technical feasibility" value={NP} />
+            {/* 2 — Feasibility (readiness) */}
+            <SectionShell
+              n={2} id="feasibility" title="Feasibility"
+              hidden={!specified(readiness) && !specified(ex.timeline)}
+            >
+              <div className="space-y-3">
+                <Reading label="Implementation readiness" text={readiness} />
+                {specified(ex.timeline) && (
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    <Tile icon={<CalendarClock className="h-3 w-3" />} label="Implementation timeline" value={ex.timeline} mono />
+                  </div>
+                )}
               </div>
             </SectionShell>
 
             {/* 3 — Impact */}
-            <SectionShell n={3} id="impact" title={t("prop.sec3")}>
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <Tile icon={<Users className="h-3 w-3" />} label="Direct beneficiaries" value={L(ex.beneficiary_scope, ex.beneficiary_scope_ta)} />
-                <Tile icon={<MapPin className="h-3 w-3" />} label="Geographical reach" value={null} />
-                <Tile icon={<Briefcase className="h-3 w-3" />} label="Jobs created" value={null} mono />
-              </div>
-              <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
-                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Economic impact (est.)" value={null} mono muted />
-                <Tile icon={<Landmark className="h-3 w-3" />} label="Govt. offices impacted" value={null} mono muted />
-              </div>
+            <SectionShell
+              n={3} id="impact" title="Impact"
+              hidden={!specified(beneficiary)}
+            >
+              <Reading label="Direct beneficiaries" text={beneficiary} />
             </SectionShell>
 
-            {/* 4 — Risk */}
-            <SectionShell n={4} id="risk" title={t("prop.sec4")} right={<ViewMore label={t("prop.viewRisks")} />}>
-              <p className="text-[13px] italic text-muted-foreground">Risks not yet extracted for this proposal.</p>
+            {/* 4 — Risk (real key_risks from the extraction) */}
+            <SectionShell
+              n={4} id="risk" title="Risks"
+              hidden={risks.length === 0}
+            >
+              <ul className="space-y-2">
+                {risks.map((r, i) => (
+                  <li key={i} className="flex gap-2.5 rounded-md border border-amber-200/60 bg-amber-50/50 px-3 py-2 text-[13.5px] leading-relaxed text-foreground/90">
+                    <RiskIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
             </SectionShell>
 
             {/* 5 — Financial */}
-            <SectionShell n={5} id="financial" title={t("prop.sec5")} right={<ViewMore label={t("prop.viewFinancial")} />}>
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Total project cost" value={ex.estimated_cost} mono />
-                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Govt. funding ask" value={ex.estimated_cost} mono />
-                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Applicant contribution" value={null} mono />
-              </div>
-              <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
-                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Recurring cost" value={null} mono muted />
-                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Cost per beneficiary" value={null} mono muted />
+            <SectionShell
+              n={5} id="financial" title="Financial"
+              hidden={!specified(ex.estimated_cost) && !specified(ex.applicant_contribution)}
+            >
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Funding ask" value={ex.estimated_cost} mono />
+                <Tile icon={<Wallet className="h-3 w-3" />} label="Applicant contribution" value={ex.applicant_contribution} mono />
               </div>
             </SectionShell>
 
-            {/* 6 — The Ask */}
-            <SectionShell n={6} id="ask" title={t("prop.sec6")}>
-              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Funding ask (₹)" value={ex.estimated_cost} mono />
-                <Tile icon={<CalendarClock className="h-3 w-3" />} label="Implementation period" value={ex.timeline} mono />
-                <Tile icon={<Landmark className="h-3 w-3" />} label="Departments involved" value={CATEGORY_LABEL[d.category ?? ""] ?? d.category ?? null} />
-                <Tile icon={<Users className="h-3 w-3" />} label="Partnership model" value={null} />
-                <Tile icon={<ShieldAlert className="h-3 w-3" />} label="Regulatory support" value={null} />
-                <Tile icon={<Wrench className="h-3 w-3" />} label="Other resources" value={null} />
+            {/* 6 — The Ask (departments + partnership) */}
+            <SectionShell
+              n={6} id="ask" title="The ask"
+              hidden={!specified(partnership) && !d.category}
+            >
+              <div className="space-y-3">
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <Tile icon={<Landmark className="h-3 w-3" />} label="Portfolio" value={CATEGORY_LABEL[d.category ?? ""] ?? d.category ?? null} />
+                </div>
+                <Reading label="Partnership model" text={partnership} />
               </div>
             </SectionShell>
 
             {/* 7 — Applicant Track Record */}
-            <SectionShell n={7} id="track" title={t("prop.sec7")}>
-              <p className="text-[13px] italic text-muted-foreground">{t("prop.trackNoData")}</p>
+            <SectionShell
+              n={7} id="track" title="Applicant track record"
+              hidden={!specified(track)}
+            >
+              <Reading label="Prior deployments (as stated in the proposal)" text={track} />
             </SectionShell>
 
-            {/* 8 — Supporting Documents */}
-            <SectionShell n={8} id="documents" title={t("prop.sec8")}>
-              <DocumentsGallery proposalId={d.id} t={t} />
+            {/* 8 — Documents (always visible — inline preview is on the left; this
+                     lists the file(s) so a reviewer can see what's attached and
+                     download the original if needed) */}
+            <SectionShell n={8} id="documents" title="Attached documents">
+              {docAtts.length === 0 ? (
+                <p className="text-[13px] text-muted-foreground">No source document attached.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {(d.documents || []).filter((doc) => !!doc.url).map((doc, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-[13.5px]">
+                      <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate text-foreground">{doc.filename || "document"}</span>
+                      {doc.mime && (
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-secondary-foreground">
+                          {doc.mime.split("/")[1] || doc.mime}
+                        </span>
+                      )}
+                      {doc.url && (
+                        <a href={doc.url} target="_blank" rel="noreferrer"
+                           className="inline-flex items-center gap-1 text-brand hover:underline"
+                           title="Open in a new tab">
+                          <Download className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </SectionShell>
 
             {decided && d.decision_note && (
-              <div className="rounded-lg border border-border bg-secondary/60 px-3.5 py-3 text-[13px]">
+              <div className="rounded-lg border border-border bg-secondary/60 px-3.5 py-3 text-[13.5px]">
                 <span className="font-semibold">Decision note:</span> {d.decision_note}
                 {d.reviewed_by && <div className="mt-0.5 text-[11.5px] text-muted-foreground">— {d.reviewed_by}, {fmtDate(d.reviewed_at)}</div>}
               </div>
             )}
           </div>
-
-          {/* Right-hand jump nav — numbered pills, no header label. */}
-          <aside className="hidden border-l border-border xl:block">
-            <div className="sticky top-0 px-3 py-5">
-              <nav className="space-y-1">
-                {SECTIONS.map((s) => {
-                  const isActive = active === s.id;
-                  const Icon = s.icon;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => jump(s.id)}
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors",
-                        isActive
-                          ? "bg-brand/10 font-semibold text-brand"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      <span className={cn(
-                        "num inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10.5px] font-bold",
-                        isActive ? "bg-brand text-white" : "bg-muted text-muted-foreground",
-                      )}>{s.n}</span>
-                      <Icon className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{t(s.tKey)}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
-          </aside>
         </div>
       </div>
 
-      {/* Sticky footer — decision bar */}
-      <div className="shrink-0 space-y-2.5 border-t border-border bg-card px-6 py-4">
+      {/* Sticky decision bar — only three actions that actually work */}
+      <div className="shrink-0 space-y-2.5 border-t border-border bg-card px-5 py-4 sm:px-7">
         {decided && (
           <div className="flex items-center gap-1.5 text-[12.5px] font-medium text-muted-foreground">
             <Check className="h-3.5 w-3.5 text-emerald-600" />
@@ -786,262 +740,25 @@ function DetailPane({
         <Textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder={t("prop.decisionNote")}
+          placeholder="Decision note (required to reject or request clarification)…"
           className="min-h-[60px] resize-none text-sm"
         />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <Button disabled={deciding} onClick={() => onDecide("approved")}
             className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
-            {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {t("prop.approve")}
+            {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Approve proposal
           </Button>
           <Button disabled={deciding} variant="outline" onClick={() => onDecide("needs_clarification")}
             className="border-orange-300 text-orange-700 hover:bg-orange-50">
-            <HelpCircle className="h-4 w-4" /> {t("prop.clarify")}
+            <HelpCircle className="h-4 w-4" /> Request clarification
           </Button>
           <Button disabled={deciding} variant="outline" onClick={() => onDecide("rejected")}
             className="border-red-300 text-red-700 hover:bg-red-50">
-            <X className="h-4 w-4" /> {t("prop.reject")}
-          </Button>
-          <Button disabled={deciding} variant="outline" onClick={onForward}
-            className="border-border text-foreground/80 hover:bg-muted">
-            <Forward className="h-4 w-4" /> {t("prop.forward")}
+            <X className="h-4 w-4" /> Reject
           </Button>
         </div>
       </div>
     </div>
-  );
-}
-
-// ── documents gallery ────────────────────────────────────────────────────────
-type LightboxTarget = {
-  docIndex: number;
-  pageIndex: number; // 0-based
-};
-
-function DocumentsGallery({ proposalId, t }: { proposalId: number; t: (k: string) => string }) {
-  const [docs, setDocs] = useState<ProposalDocumentEntry[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lightbox, setLightbox] = useState<LightboxTarget | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setDocs(null);
-    fetchProposalDocuments(proposalId)
-      .then((res) => { if (alive) { setDocs(res.documents); setLoading(false); } })
-      .catch(() => { if (alive) { setDocs([]); setLoading(false); } });
-    return () => { alive = false; };
-  }, [proposalId]);
-
-  if (loading) {
-    return (
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
-        {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-md" />)}
-      </div>
-    );
-  }
-  if (!docs || docs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-        <FolderOpen className="h-8 w-8 text-muted-foreground/40" />
-        <p className="text-[13px] text-muted-foreground">{t("prop.docsEmpty")}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {docs.map((doc, di) => (
-        <div key={doc.id}>
-          <div className="mb-2 flex items-center justify-between gap-2 border-b border-border pb-1.5">
-            <div className="flex min-w-0 items-center gap-2">
-              {doc.kind === "image"
-                ? <ImageIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-              <span className="truncate text-[13px] font-semibold text-foreground">{doc.filename}</span>
-            </div>
-            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-              <span className="num">{doc.page_count} {doc.page_count === 1 ? "page" : "pages"}</span>
-              {doc.size_bytes != null && <span className="num">{fmtBytes(doc.size_bytes)}</span>}
-              <a
-                href={doc.original_url} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1 text-brand hover:underline"
-              >
-                <Download className="h-3 w-3" />
-              </a>
-            </div>
-          </div>
-
-          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
-            {doc.pages.map((pg, pi) => (
-              <PageTile
-                key={pg.page_no}
-                thumbUrl={pg.thumb_url}
-                pageNo={pg.page_no}
-                totalPages={doc.page_count}
-                kind={doc.kind}
-                filename={doc.filename}
-                onOpen={() => setLightbox({ docIndex: di, pageIndex: pi })}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {lightbox && (
-        <Lightbox
-          docs={docs}
-          target={lightbox}
-          onChange={setLightbox}
-          onClose={() => setLightbox(null)}
-          t={t}
-        />
-      )}
-    </div>
-  );
-}
-
-function PageTile({
-  thumbUrl, pageNo, totalPages, kind, filename, onOpen,
-}: {
-  thumbUrl: string; pageNo: number; totalPages: number;
-  kind: "pdf" | "image"; filename: string; onOpen: () => void;
-}) {
-  const ref = useRef<HTMLButtonElement>(null);
-  const [visible, setVisible] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || visible) return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) { setVisible(true); obs.disconnect(); break; }
-        }
-      },
-      { rootMargin: "100% 0px 100% 0px" }, // one viewport of pre-fetch
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [visible]);
-
-  const caption = kind === "pdf"
-    ? `PDF · Page ${pageNo} of ${totalPages}`
-    : `Image · ${filename}`;
-
-  return (
-    <button
-      ref={ref}
-      onClick={onOpen}
-      className="group flex flex-col overflow-hidden rounded-md border border-border bg-card text-left shadow-card transition-all hover:-translate-y-0.5 hover:shadow-card-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-    >
-      <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted/50">
-        {visible && (
-          <img
-            src={thumbUrl}
-            alt={`${filename} — page ${pageNo}`}
-            className={cn("h-full w-full object-cover object-top transition-opacity", loaded ? "opacity-100" : "opacity-0")}
-            onLoad={() => setLoaded(true)}
-            onError={() => setLoaded(true)}
-            loading="lazy"
-          />
-        )}
-        {(!visible || !loaded) && (
-          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-muted/60 to-muted/30" />
-        )}
-      </div>
-      <div className="flex flex-col gap-0.5 border-t border-border px-2.5 py-1.5">
-        <span className="truncate text-[12px] font-medium text-foreground">{filename}</span>
-        <span className="num truncate text-[10.5px] text-muted-foreground">{caption}</span>
-      </div>
-    </button>
-  );
-}
-
-function Lightbox({
-  docs, target, onChange, onClose, t,
-}: {
-  docs: ProposalDocumentEntry[];
-  target: LightboxTarget;
-  onChange: (t: LightboxTarget) => void;
-  onClose: () => void;
-  t: (k: string) => string;
-}) {
-  const doc = docs[target.docIndex];
-  const page = doc?.pages[target.pageIndex];
-
-  const go = useCallback((delta: number) => {
-    let di = target.docIndex;
-    let pi = target.pageIndex + delta;
-    if (pi < 0) {
-      di = di - 1;
-      if (di < 0) return;
-      pi = docs[di].pages.length - 1;
-    } else if (pi >= docs[di].pages.length) {
-      di = di + 1;
-      if (di >= docs.length) return;
-      pi = 0;
-    }
-    onChange({ docIndex: di, pageIndex: pi });
-  }, [docs, target, onChange]);
-
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") go(-1);
-      else if (e.key === "ArrowRight") go(1);
-    };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [go]);
-
-  if (!doc || !page) return null;
-
-  // Higher-res version for the lightbox: request width=1600.
-  const fullUrl = page.thumb_url.replace(/w=\d+/, "w=1600");
-
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-[95vw] gap-0 p-0 sm:max-w-[92vw]">
-        <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5">
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold text-foreground">{doc.filename}</div>
-            <div className="num text-[11px] text-muted-foreground">
-              {t("prop.docPage")} {page.page_no} {t("prop.docOf")} {doc.page_count}
-            </div>
-          </div>
-          <a
-            href={doc.original_url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[12px] font-semibold text-foreground/80 hover:bg-muted"
-          >
-            <Download className="h-3.5 w-3.5" /> {t("prop.docDownload")}
-          </a>
-        </div>
-        <div className="relative flex max-h-[80vh] min-h-[400px] items-center justify-center bg-neutral-900">
-          <img
-            src={fullUrl}
-            alt={`${doc.filename} page ${page.page_no}`}
-            className="max-h-[80vh] max-w-full object-contain"
-          />
-          <button
-            onClick={() => go(-1)}
-            className="absolute left-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white hover:bg-black/70"
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => go(1)}
-            className="absolute right-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white hover:bg-black/70"
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -1055,32 +772,34 @@ function ListSkeleton() {
 }
 function DetailSkeleton() {
   return (
-    <div className="space-y-4 p-6">
-      <Skeleton className="h-7 w-3/4" />
-      <Skeleton className="h-4 w-1/2" />
-      <div className="grid grid-cols-3 gap-2.5 pt-2">
-        <Skeleton className="h-16" /><Skeleton className="h-16" /><Skeleton className="h-16" />
+    <div className="grid h-full grid-cols-1 lg:grid-cols-[minmax(0,45%)_1fr]">
+      <div className="border-r border-border bg-muted/25 p-4">
+        <Skeleton className="h-full min-h-[400px] w-full rounded-lg" />
       </div>
-      <Skeleton className="h-24 w-full" />
-      <Skeleton className="h-20 w-full" />
+      <div className="space-y-4 p-6">
+        <Skeleton className="h-7 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-20 w-full" />
+      </div>
     </div>
   );
 }
-function DetailEmpty({ t }: { t: (k: string) => string }) {
+function DetailEmpty() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-16 text-center">
       <Lightbulb className="h-8 w-8 text-muted-foreground/40" />
-      <p className="text-sm font-medium text-foreground">{t("prop.selectProposal")}</p>
-      <p className="max-w-xs text-[13px] text-muted-foreground">{t("prop.selectHelp")}</p>
+      <p className="text-sm font-medium text-foreground">Select a proposal to open</p>
+      <p className="max-w-xs text-[13px] text-muted-foreground">Pick a proposal from the list — the document opens on the left, the summary sections on the right.</p>
     </div>
   );
 }
-function EmptyState({ t }: { t: (k: string) => string }) {
+function EmptyState() {
   return (
     <Card className="flex flex-col items-center justify-center gap-2 py-16 text-center shadow-card">
       <Inbox className="h-8 w-8 text-muted-foreground" />
-      <p className="text-sm font-medium text-foreground">{t("prop.emptyTitle")}</p>
-      <p className="text-[13px] text-muted-foreground">{t("prop.emptyHelp")}</p>
+      <p className="text-sm font-medium text-foreground">No proposals here yet</p>
+      <p className="text-[13px] text-muted-foreground">Submissions from the public /proposal site will appear once their brief is ready.</p>
     </Card>
   );
 }

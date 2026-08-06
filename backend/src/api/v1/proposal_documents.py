@@ -57,12 +57,17 @@ def _find_doc(row: ProposalSubmission, doc_id: str) -> Optional[dict]:
 
 
 def _kind_for(mime: Optional[str], filename: Optional[str]) -> str:
+    """Classify a stored document. We optimistically treat unknown MIMEs as
+    PDFs because PyMuPDF handles many formats, but if a proposal ever stores a
+    truly opaque blob (e.g. a .docx), page rendering will 500 — that's caught
+    and turned into a 500 response by the handler, not silently broken."""
     m = (mime or "").lower()
     if m.startswith("image/"):
         return "image"
     if m == "application/pdf" or (filename or "").lower().endswith(".pdf"):
         return "pdf"
-    return "pdf"  # unknown — treat as document; PyMuPDF handles many formats
+    # Explicitly unknown — try PDF renderer (many formats work); it 500s if not.
+    return "pdf"
 
 
 def _page_count(raw: bytes, kind: str) -> int:
@@ -185,7 +190,10 @@ async def get_page_thumb(
         raise HTTPException(status_code=404, detail="Proposal not found.")
     d = _find_doc(row, doc_id)
     if d is None:
-        raise HTTPException(status_code=403, detail="Document does not belong to this proposal.")
+        # 404 is the right code — the doc isn't there for this proposal. Auth
+        # already succeeded (super_admin dep at router), so 403 (forbidden)
+        # would confuse client-side error handling.
+        raise HTTPException(status_code=404, detail="Document not found for this proposal.")
 
     cache_key = f"{_THUMB_CACHE_PREFIX}/{doc_id}/{n}-{w}.jpg"
     # Try cache first.
@@ -244,7 +252,10 @@ async def get_original(
         raise HTTPException(status_code=404, detail="Proposal not found.")
     d = _find_doc(row, doc_id)
     if d is None:
-        raise HTTPException(status_code=403, detail="Document does not belong to this proposal.")
+        # 404 is the right code — the doc isn't there for this proposal. Auth
+        # already succeeded (super_admin dep at router), so 403 (forbidden)
+        # would confuse client-side error handling.
+        raise HTTPException(status_code=404, detail="Document not found for this proposal.")
 
     storage_url = d.get("storage_url", "")
     raw = await _load_bytes(storage_url)

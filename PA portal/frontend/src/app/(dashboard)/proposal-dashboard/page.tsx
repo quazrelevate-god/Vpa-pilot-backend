@@ -206,9 +206,17 @@ export default function ProposalDashboardPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <StatTile icon={Inbox} tone="amber" label="Awaiting your decision" value={fmtInt(k.awaiting)}
                   caption={`of ${fmtInt(k.total)} · on your desk`} highlight />
+                {/* Approval rate uses approved / (approved + rejected). A pool
+                    of only NEEDS_CLARIFICATION decisions is `k.decided > 0`
+                    but the denominator is still 0 — showing "0%" there would
+                    mislead the Minister into thinking nothing was approved,
+                    when the truth is nothing has been decided approve-or-reject
+                    yet. Guard against that specific 0/0 case. */}
                 <StatTile icon={CheckCircle2} tone="mint" label="Approval rate"
-                  value={k.decided > 0 ? `${k.approval_rate}%` : "—"}
-                  caption={k.decided > 0 ? `${fmtInt(k.approved)} approved of ${fmtInt(k.decided)} decided` : "no decisions yet"} />
+                  value={(k.approved + k.rejected) > 0 ? `${k.approval_rate}%` : "—"}
+                  caption={(k.approved + k.rejected) > 0
+                    ? `${fmtInt(k.approved)} approved of ${fmtInt(k.approved + k.rejected)} decided`
+                    : "no approve/reject decisions yet"} />
                 <StatTile icon={Clock} tone="violet" label="Avg decision time"
                   value={k.avg_decision_days != null ? `${k.avg_decision_days}d` : "—"}
                   caption={k.avg_decision_days != null ? "received → decided" : "no decisions yet"} />
@@ -330,7 +338,7 @@ export default function ProposalDashboardPage() {
                     const st = STATUS_PILL[p.status] || { label: p.status, cls: "bg-slate-100 text-slate-600" };
                     const rec = p.ai_recommendation ? REC_PILL[p.ai_recommendation] : null;
                     return (
-                      <tr key={p.id} onClick={() => router.push("/proposal-review")}
+                      <tr key={p.id} onClick={() => router.push(`/proposal-review?id=${p.id}`)}
                         className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#EFF3FB]">
                         <td className="px-4 py-3">
                           <div className="type-table-row truncate font-medium text-foreground">{p.title || "Untitled proposal"}</div>
