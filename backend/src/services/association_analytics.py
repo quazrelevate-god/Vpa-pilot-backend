@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from datetime import timedelta
+from statistics import median
 from typing import Any, Dict, List
 
 from sqlalchemy import select
@@ -27,6 +28,7 @@ from src.core.timeutil import now_utc
 from src.models.association_models import (
     AssociationSubmission, STATUS_AWAITING_REVIEW, STATUS_REVIEWED, STATUS_FORWARDED,
 )
+from src.models.association_extraction import RECOMMENDATION_DISPLAY_EN
 from src.models.grievance_summary import (
     CATEGORY_DISPLAY_EN, MINISTRY_DISPLAY, DISTRICT_DISPLAY,
 )
@@ -43,6 +45,12 @@ URGENCY_LABEL: Dict[str, str] = {
     "critical": "Critical", "high": "High", "medium": "Medium", "low": "Low",
 }
 _URGENCY_ORDER = ["critical", "high", "medium", "low"]
+
+# AI-recommendation triage buckets — ordered highest-attention-first so the
+# donut / bar picker naturally reads left-to-right by "how soon should this be
+# looked at". Any recommendation the extractor doesn't return still parses (the
+# label helper falls back to titlecase).
+_RECOMMENDATION_ORDER = ["engage_now", "routine", "refer", "needs_more_info"]
 
 
 def _pct(n: int, d: int) -> float:
@@ -102,6 +110,29 @@ async def get_association_analytics(db: AsyncSession, trend_days: int = 90) -> D
         {"key": u, "label": URGENCY_LABEL.get(u, u.title()), "count": urg_counts.get(u, 0)}
         for u in _URGENCY_ORDER if urg_counts.get(u, 0) > 0
     ]
+    # Critical + high combined — the single number the Minister actually cares
+    # about ("how many bodies need urgent attention?"). Overlaps with by_urgency
+    # by design: this is the KPI headline, that is the mix breakdown.
+    critical_high = urg_counts.get("critical", 0) + urg_counts.get("high", 0)
+
+    # ── AI recommendation mix ────────────────────────────────────────────────
+    # Reads extraction_json.ai_recommendation (v2). Rows extracted before v2
+    # have no key → they don't count in any bucket (they'll just be silently
+    # missing from the donut, which is the honest answer).
+    rec_counts: Counter = Counter()
+    for r in rows:
+        rec = ((r.extraction_json or {}).get("ai_recommendation") or "").strip().lower()
+        if rec:
+            rec_counts[rec] += 1
+    ordered_keys = _RECOMMENDATION_ORDER + [
+        k for k in rec_counts.keys() if k not in _RECOMMENDATION_ORDER
+    ]
+    by_recommendation = [
+        {"key": k, "label": RECOMMENDATION_DISPLAY_EN.get(k, k.replace("_", " ").title()),
+         "count": rec_counts.get(k, 0)}
+        for k in ordered_keys if rec_counts.get(k, 0) > 0
+    ]
+    engage_now = rec_counts.get("engage_now", 0)
 
     # ── District spread — feeds the Tamil Nadu choropleth ────────────────────
     dist_counts = Counter(
@@ -154,23 +185,69 @@ async def get_association_analytics(db: AsyncSession, trend_days: int = 90) -> D
     prior30 = sum(1 for r in rows if r.created_at and prior_lo < r.created_at.date() <= prior_hi)
     growth_pct = _pct(recent30 - prior30, prior30) if prior30 else None
 
+    # ── Distinct-body count. A single union filing 5 submissions ≠ 5 bodies.
+    # Case-insensitive + whitespace-collapsed so "Kalpakkam PTA" and
+    # "kalpakkam pta " collapse. Unnamed rows count as separate bodies (no
+    # merging on the empty key) — matches how the grouped list already treats
+    # them.
+    unique_bodies_set: set = set()
+    for r in rows:
+        name = (r.association_name or "").strip().lower()
+        unique_bodies_set.add(name if name else f"__unnamed__{r.id}")
+    unique_bodies = len(unique_bodies_set)
+
+    # ── Repeat bodies (bodies with ≥2 submissions — signals well-organised /
+    # active petitioning). Ignores unnamed rows (nothing to group them by).
+    named_counter: Counter = Counter()
+    for r in rows:
+        name = (r.association_name or "").strip().lower()
+        if name:
+            named_counter[name] += 1
+    repeat_bodies = sum(1 for _, n in named_counter.items() if n >= 2)
+
+    # ── Median days to decision — over rows that reached REVIEWED / FORWARDED
+    # (i.e. actually got a decision) AND have both timestamps. None when no
+    # decisions have landed yet so the tile can render "—".
+    decision_days: list[float] = []
+    for r in rows:
+        if r.status not in (STATUS_REVIEWED, STATUS_FORWARDED):
+            continue
+        if r.created_at is None or r.reviewed_at is None:
+            continue
+        diff = (r.reviewed_at - r.created_at).total_seconds() / 86_400.0
+        if diff >= 0:
+            decision_days.append(diff)
+    median_days_to_decision = round(median(decision_days), 1) if decision_days else None
+
+    decided = reviewed + forwarded
+    decided_pct = _pct(decided, total)
+
     return {
         "kpis": {
             "total": total,
+            "unique_bodies": unique_bodies,
+            "repeat_bodies": repeat_bodies,
             "awaiting": awaiting,
             "reviewed": reviewed,
             "forwarded": forwarded,
+            "decided": decided,
+            "decided_pct": decided_pct,
+            "median_days_to_decision": median_days_to_decision,
             "members_represented": members_represented,
             "bodies_with_size": bodies_with_size,
             "districts_covered": districts_covered,
             "received_30d": recent30,
             "growth_pct": growth_pct,
+            # v2: attention-required KPIs surfaced on the dashboard row.
+            "critical_high": critical_high,
+            "engage_now": engage_now,
         },
         "by_status": by_status,
         "by_category": by_category,
         "by_urgency": by_urgency,
         "by_district": by_district,
         "by_ministry": by_ministry,
+        "by_recommendation": by_recommendation,
         "top_associations": top_associations,
         "trend": trend,
     }

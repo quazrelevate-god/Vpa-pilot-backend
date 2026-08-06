@@ -2,14 +2,22 @@
 
 export interface AssociationKpis {
   total: number;
+  unique_bodies: number;
+  repeat_bodies: number;
   awaiting: number;
   reviewed: number;
   forwarded: number;
+  decided: number;
+  decided_pct: number;
+  /** null when no decisions have landed yet — render "—" in the UI. */
+  median_days_to_decision: number | null;
   members_represented: number;
   bodies_with_size: number;
   districts_covered: number;
   received_30d: number;
   growth_pct: number | null;
+  critical_high: number;
+  engage_now: number;
 }
 export interface Bar { key: string; label: string; count: number }
 export interface TrendPoint { date: string; received: number }
@@ -21,6 +29,7 @@ export interface AssociationAnalytics {
   by_urgency: Bar[];
   by_district: Bar[];
   by_ministry: Bar[];
+  by_recommendation: Bar[];
   top_associations: { name: string; members: number; category: string }[];
   trend: TrendPoint[];
 }

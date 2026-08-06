@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Users, UsersRound, Inbox, CheckCircle2, Send, MapPin, Flame,
   Landmark, TrendingUp, Search, RefreshCw, Layers, Building2,
+  Sparkles, Repeat2, Clock, Percent,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -14,7 +15,7 @@ import TamilNaduMap from "@/components/TamilNaduMap";
 import { cn } from "@/lib/utils";
 import { fetchMe } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
-  StatTile, ChartCard, BarBreakdown, DonutBreakdown, TrendArea, RankedList,
+  StatTile, ChartCard, BarBreakdown, DonutBreakdown, TrendArea,
   NotAuthorized, C, fmtInt,
 } from "@/components/insights/DashboardKit";
 import {
@@ -136,23 +137,48 @@ export default function AssociationDashboardPage() {
 
           {err && <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{err}</div>}
 
-          {/* KPI row — reach is the headline */}
+          {/* KPI row — reach + attention-required + throughput. Two rows of 6
+              tiles: first row = who + reach, second row = decisions + AI. */}
           {!a ? (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              {Array.from({ length: 6 }).map((_, i) => <Card key={i} className="h-[120px] animate-pulse" />)}
+              {Array.from({ length: 12 }).map((_, i) => <Card key={i} className="h-[120px] animate-pulse" />)}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <StatTile icon={Users} tone="brand" label="Associations & unions" value={fmtInt(k?.total)}
-                caption="all time" delta={k?.growth_pct} series={trendSeries} />
-              <StatTile icon={UsersRound} tone="violet" label="Members represented" value={human(k?.members_represented ?? 0)}
-                caption={`across ${fmtInt(k?.bodies_with_size)} bodies`} highlight />
-              <StatTile icon={MapPin} tone="mint" label="Districts covered" value={fmtInt(k?.districts_covered)}
-                caption="of 38" />
-              <StatTile icon={Inbox} tone="amber" label="Awaiting review" value={fmtInt(k?.awaiting)} caption="on your desk" />
-              <StatTile icon={CheckCircle2} tone="mint" label="Reviewed" value={fmtInt(k?.reviewed)} caption="acknowledged" />
-              <StatTile icon={Send} tone="brand" label="Forwarded" value={fmtInt(k?.forwarded)} caption="to departments" />
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <StatTile icon={Users} tone="brand" label="Submissions" value={fmtInt(k?.total)}
+                  caption="all time" delta={k?.growth_pct} series={trendSeries} />
+                <StatTile icon={Building2} tone="brand" label="Unique bodies" value={fmtInt(k?.unique_bodies)}
+                  caption={(k?.repeat_bodies ?? 0) > 0 ? `${k?.repeat_bodies} filed twice+` : "distinct organisations"} />
+                <StatTile icon={UsersRound} tone="violet" label="Members represented" value={human(k?.members_represented ?? 0)}
+                  caption={`across ${fmtInt(k?.bodies_with_size)} bodies`} highlight />
+                <StatTile icon={MapPin} tone="mint" label="Districts covered" value={fmtInt(k?.districts_covered)}
+                  caption="of 38" />
+                <StatTile icon={Flame} tone="amber" label="Critical + High" value={fmtInt(k?.critical_high)}
+                  caption="urgent asks" />
+                <StatTile
+                  icon={Sparkles} tone="violet" label="AI: Engage now"
+                  value={fmtInt(k?.engage_now)}
+                  caption="AI-flagged priority" highlight={(k?.engage_now ?? 0) > 0}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <StatTile icon={Inbox} tone="amber" label="Awaiting review" value={fmtInt(k?.awaiting)}
+                  caption="on your desk" />
+                <StatTile icon={CheckCircle2} tone="mint" label="Reviewed" value={fmtInt(k?.reviewed)}
+                  caption="acknowledged" />
+                <StatTile icon={Send} tone="brand" label="Forwarded" value={fmtInt(k?.forwarded)}
+                  caption="to departments" />
+                <StatTile icon={Percent} tone="mint" label="Decided" value={`${k?.decided_pct ?? 0}%`}
+                  caption={`${fmtInt(k?.decided)} of ${fmtInt(k?.total)}`} />
+                <StatTile icon={Clock} tone="brand" label="Median time to decide"
+                  value={k?.median_days_to_decision != null ? `${k.median_days_to_decision}d` : "—"}
+                  caption={k?.median_days_to_decision != null ? "over decided rows" : "no decisions yet"} />
+                <StatTile icon={Repeat2} tone="violet" label="Received (30d)"
+                  value={fmtInt(k?.received_30d)}
+                  caption={k?.growth_pct != null ? `${k.growth_pct >= 0 ? "+" : ""}${k.growth_pct}% vs prior 30d` : "no prior baseline"} />
+              </div>
+            </>
           )}
 
           {/* what they ask for + status */}
@@ -198,25 +224,25 @@ export default function AssociationDashboardPage() {
             </div>
           </ChartCard>
 
-          {/* urgency + ministry + trend */}
+          {/* urgency + AI triage + ministry */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <ChartCard icon={Flame} title="Urgency mix" sub="How pressing the asks are">
               <DonutBreakdown data={a ? a.by_urgency : null} centerLabel="bodies"
                 colors={["#C0362C", "#EE7327", "#D39412", "#64748B"]} empty="No urgency data yet" />
             </ChartCard>
+            <ChartCard icon={Sparkles} title="AI triage" sub="Recommended action buckets">
+              <DonutBreakdown data={a ? a.by_recommendation : null} centerLabel="bodies"
+                colors={["#C0362C", "#0F8B4C", "#2F6FED", "#D39412"]} empty="No AI recommendations yet" />
+            </ChartCard>
             <ChartCard icon={Landmark} title="Routing ministry" sub="Where matters are directed">
               <BarBreakdown data={a ? a.by_ministry : null} color={C.violet} empty="No routing yet" max={6} />
             </ChartCard>
-            <ChartCard icon={TrendingUp} title="Received" sub="Last 90 days">
-              <TrendArea data={a ? a.trend : null} color={C.brand} label="Submissions" />
-            </ChartCard>
           </div>
 
-          {/* biggest unions */}
-          <ChartCard icon={Building2} title="Biggest bodies" sub="Ranked by stated membership">
-            <RankedList items={a ? a.top_associations : null}
-              valueOf={(x) => `${human(x.members)}`} subOf={(x) => x.category || undefined}
-              empty="No membership figures stated yet" />
+          {/* 90-day trend gets its own full-width row now — the fourth chart
+              pushed it out of the trio above. */}
+          <ChartCard icon={TrendingUp} title="Received" sub="Daily submissions, last 90 days">
+            <TrendArea data={a ? a.trend : null} color={C.brand} label="Submissions" />
           </ChartCard>
 
           {/* detail table */}
@@ -265,7 +291,9 @@ export default function AssociationDashboardPage() {
                   ) : rows.map((r) => {
                     const st = STATUS_PILL[r.status] || { label: r.status, cls: "bg-slate-100 text-slate-600" };
                     return (
-                      <tr key={r.id} className="border-t border-border/70 transition-colors hover:bg-[#EFF3FB]">
+                      <tr key={r.id} onClick={() => router.push(`/association-review?id=${r.id}`)}
+                        className="cursor-pointer border-t border-border/70 transition-colors hover:bg-[#EFF3FB]"
+                        title="Open in Association Review">
                         <td className="px-4 py-3"><div className="type-table-row truncate font-medium text-foreground">{r.association_name || "Unnamed body"}</div></td>
                         <td className="whitespace-nowrap px-4 py-3 font-mono text-[13px] tabular-nums text-foreground">{r.member_count || "—"}</td>
                         <td className="px-4 py-3 text-[13px] text-foreground/85">
