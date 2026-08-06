@@ -937,6 +937,7 @@
                             <label for="txtName"><span id="lbl-name">Full Name</span> <span class="req-star">*</span></label>
                         </div>
                         <input type="text" id="txtName" required placeholder="Enter full legal name" class="glass-field">
+                        <span class="validation-msg" id="errName" style="display:none;">Name may contain letters, numbers and spaces only</span>
                     </div>
 
                     <!-- Category — kept as a hidden <select> so the courtesy
@@ -959,7 +960,7 @@
                     <!-- Upload Attachments -->
                     <div class="field-group" id="sectionUpload">
                         <div class="label-container">
-                            <label><span id="lbl-upload">Upload Attachments</span></label>
+                            <label><span id="lbl-upload">Upload Attachments</span> <span class="req-star">*</span></label>
                         </div>
                         <div class="upload-container">
                             <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
@@ -1242,32 +1243,45 @@
             return (el && el.value) || '';
         }
 
+        // Name: letters (Latin + Tamil), digits and spaces, and it MUST contain
+        // at least one letter — a purely numeric "name" like "123" is rejected.
+        // Avoid \p{L} — older Android webviews reject Unicode property escapes —
+        // so allow the Tamil unicode block (0B80–0BFF) explicitly instead.
+        const NAME_RE = /^(?=.*[a-zA-Z஀-௿])[a-zA-Z0-9஀-௿ ]+$/;
+        function isNameValid(showError) {
+            const v  = document.getElementById('txtName').value.trim();
+            const ok = NAME_RE.test(v);
+            const err = document.getElementById('errName');
+            if (err && showError) err.style.display = ok ? 'none' : 'block';
+            return ok;
+        }
+
         function isPhase1Complete() {
             const name = document.getElementById('txtName').value.trim();
-            const description = document.getElementById('txtDesc').value.trim();
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
             if (_submissionType() === 'courtesy') {
                 // Greeting / invitation: sub-type picked + audio present.
-                return !!(name && _courtesyType() && hasAudio);
+                return !!(name && NAME_RE.test(name) && _courtesyType() && hasAudio);
             }
-            // Petition: name + content (description OR files). Category is
-            // classified by AI on the backend, so we don't gate on it here.
-            return !!(name && (description || hasFiles));
+            // Petition: valid name + a MANDATORY uploaded document (the backend AI
+            // classifies the petition from it).
+            return !!(name && NAME_RE.test(name) && hasFiles);
         }
 
         function validateFormForOTP() {
             const name = document.getElementById('txtName').value.trim();
             const mobile = document.getElementById('txtMobile').value.trim();
-            const description = document.getElementById('txtDesc').value.trim();
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
+            const nameOk = !!name && NAME_RE.test(name);
 
             let isValid;
             if (_submissionType() === 'courtesy') {
-                isValid = !!(name && mobile && _courtesyType() && hasAudio);
+                isValid = !!(nameOk && mobile && _courtesyType() && hasAudio);
             } else {
-                isValid = !!(name && mobile && (description || hasFiles));
+                // Petition: valid name + mobile + a MANDATORY uploaded document.
+                isValid = !!(nameOk && mobile && hasFiles);
             }
             document.getElementById('btnGenOtp').disabled = !isValid;
 
@@ -1672,6 +1686,11 @@
         async function generateVerificationOtp() {
             const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
 
+            // Name must be alphanumeric — show the field error if not.
+            if (!isNameValid(true)) {
+                document.getElementById('txtName').focus();
+                return;
+            }
             if (!validateFormForOTP()) {
                 alert(copy.alertFillFields);
                 return;
@@ -1926,7 +1945,13 @@
             // For courtesy this reveals the greeting/invitation sub-picker below.
             setSubmissionType(document.getElementById('submissionType').value);
             document.getElementById('btnGenOtp').disabled = true;
-            document.getElementById('txtName').addEventListener('input', validateFormForOTP);
+            document.getElementById('txtName').addEventListener('input', function() {
+                // Clear the name error the moment it becomes valid; don't nag mid-typing.
+                const err = document.getElementById('errName');
+                if (err && NAME_RE.test(this.value.trim())) err.style.display = 'none';
+                validateFormForOTP();
+            });
+            document.getElementById('txtName').addEventListener('blur', function() { isNameValid(true); });
             document.getElementById('txtMobile').addEventListener('input', validateFormForOTP);
             document.getElementById('txtDesc').addEventListener('input', validateFormForOTP);
             document.getElementById('ddlCategory').addEventListener('change', function() {
@@ -1978,8 +2003,14 @@
             // bare `category` reference here that threw before any API call.)
             const category = (document.getElementById('ddlCategory') || {}).value || '';
 
+            // Name must be alphanumeric (letters/numbers/spaces; Tamil allowed).
+            if (!isNameValid(true)) {
+                document.getElementById('txtName').focus();
+                return;
+            }
+
             // Per-submission-type validation. Courtesy path requires audio +
-            // a picked sub-type; petition path requires category + text/image.
+            // a picked sub-type; petition path requires a mandatory upload.
             if (stype === 'courtesy') {
                 if (!name || !mobile) {
                     showOtpFieldError(copy.alertFillFields);
@@ -1994,7 +2025,7 @@
                     return;
                 }
             } else {
-                if (!name || !mobile || (!description && !hasFiles)) {
+                if (!name || !mobile || !hasFiles) {
                     showOtpFieldError(copy.alertFillFields);
                     return;
                 }
