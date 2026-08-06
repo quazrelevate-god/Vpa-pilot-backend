@@ -1045,7 +1045,6 @@ class AiUploadService:
             grievance_category=category_value,
             status="AWAITING_REVIEW",
             status_id=ai_ids["status_id"],
-            priority_id=ai_ids["priority_id"],
             category_id=ai_ids.get("category_id"),
             schedule_meeting=False,
             summary_status="DONE",  # extraction already done; keep the worker off it

@@ -974,7 +974,6 @@ class AppointmentService:
                     grievance_category=grievance_category,
                     status=initial_status,
                     status_id=appt_ids["status_id"],
-                    priority_id=appt_ids["priority_id"],
                     category_id=appt_ids.get("category_id"),
                     summary_status=initial_summary_status,
                     transcript_status=initial_transcript_status,
@@ -1467,7 +1466,6 @@ class AppointmentService:
                 grievance_category=None,
                 status="AWAITING_REVIEW",
                 status_id=manual_ids["status_id"],
-                priority_id=manual_ids["priority_id"],
                 created_at=current_time,
             )
             db.add(appointment)
@@ -1663,7 +1661,6 @@ class AppointmentService:
                 grievance_category=grievance_category or None,
                 status=walkin_status,
                 status_id=walkin_ids["status_id"],
-                priority_id=walkin_ids["priority_id"],
                 category_id=walkin_ids.get("category_id"),
                 schedule_meeting=take_slot_path,
                 num_persons=max(1, min(4, num_persons)),
