@@ -222,6 +222,16 @@ class Appointment(Base):
         comment="FK → admin.id (entity=category) — the canonical grievance category",
     )
 
+    # Signature-petition membership (v054). Nullable — a petition with
+    # group_id IS NULL behaves exactly as before (single-petition flow). When
+    # set, this appointment is a signatory in a merged campaign; on approve of
+    # the group's primary, only the primary spawns a ticket, all other members
+    # flip to REVIEWED and appear as signatories on that one ticket.
+    group_id = Column(
+        BigInteger, ForeignKey("petition_groups.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+
     # ── status (hybrid over status_id ↔ admin) ─────────────────────────────────
     @hybrid_property
     def status(self):

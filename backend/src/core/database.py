@@ -2,6 +2,7 @@
 Database configuration and session management for PostgreSQL.
 Uses SQLAlchemy async engine with psycopg driver for non-blocking I/O.
 """
+from sqlalchemy import BigInteger, Column, String, Table
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from typing import AsyncGenerator
@@ -11,6 +12,20 @@ from src.core.config import settings
 
 # SQLAlchemy declarative base for ORM models
 Base = declarative_base()
+
+# Shadow the `admin` lookup table (owned by src.models_v2.schema.Admin's own
+# declarative Base) on this Base's metadata so cross-Base FK resolution works
+# at flush-sort time. Every legacy model that stores status/category/etc. as
+# `admin.id` (Appointment, Ticket, GSR, PetitionGroup, ...) references this
+# stub. Declared here — before any model imports — so FK resolution never
+# depends on model-load order.
+Table(
+    "admin", Base.metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("entity", String(40)),
+    Column("name", String(120)),
+    extend_existing=True,
+)
 
 
 # Ensure the async engine uses the async psycopg driver.

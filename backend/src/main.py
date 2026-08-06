@@ -33,6 +33,7 @@ import src.models.department_account  # noqa: F401  — ticket routing/accept
 import src.models.event_models  # noqa: F401  — /events invitation calendar
 import src.models.proposal_models  # noqa: F401  — /proposal intake submissions
 import src.models.association_models  # noqa: F401  — association/union submissions
+import src.models.petition_group  # noqa: F401  — signature-petition merging (v054)
 
 # Fix for Windows: psycopg requires SelectorEventLoop
 if sys.platform == 'win32':
