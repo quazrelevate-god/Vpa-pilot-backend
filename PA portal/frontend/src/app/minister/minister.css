@@ -32,6 +32,14 @@ html:has(.mn-app) { scroll-behavior: smooth; }
 .mn-pane-right { animation: mnSlideFromRight 0.34s var(--mn-ease) both; }
 .mn-pane-left  { animation: mnSlideFromLeft 0.34s var(--mn-ease) both; }
 
+/* ── Modal: backdrop fades, card lifts into place ─────────────────────────── */
+@keyframes mnModalIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.mn-modal-backdrop { animation: mnFade 0.2s var(--mn-ease) both; }
+.mn-modal-card     { animation: mnModalIn 0.3s var(--mn-ease) both; }
+
 /* Stagger direct children of a pane so cards/tiles rise in sequence. */
 .mn-stagger > * { animation: mnRise 0.42s var(--mn-ease) both; }
 .mn-stagger > *:nth-child(1)  { animation-delay: 0.02s; }
@@ -62,10 +70,95 @@ html:has(.mn-app) { scroll-behavior: smooth; }
 /* Count-up numbers get a tabular, non-reflowing tick. */
 .mn-app .mn-count { font-variant-numeric: tabular-nums; }
 
+/* ══ Login — a deep navy field with slow aurora light, a gold-edged glass card,
+      and a staggered entrance. Scoped to .mn-login. ═══════════════════════ */
+.mn-login {
+  --gold: #E9B84C;
+  --gold-lo: #C9902B;
+  --gold-hi: #F6E3B4;
+  background:
+    radial-gradient(120% 90% at 50% -10%, #1B2946 0%, #0F1B32 55%, #050B18 100%);
+}
+
+/* Slow-drifting light behind the card. */
+@keyframes mnOrbA {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(40px, -30px) scale(1.12); }
+}
+@keyframes mnOrbB {
+  0%, 100% { transform: translate(0, 0) scale(1.05); }
+  50%      { transform: translate(-50px, 30px) scale(0.92); }
+}
+.mn-orb { position: absolute; border-radius: 9999px; filter: blur(80px); pointer-events: none; }
+.mn-orb-a { animation: mnOrbA 18s ease-in-out infinite; }
+.mn-orb-b { animation: mnOrbB 22s ease-in-out infinite; }
+
+/* Entrance — card lifts in, its rows follow. */
+@keyframes mnLoginCard {
+  from { opacity: 0; transform: translateY(22px) scale(0.975); }
+  to   { opacity: 1; transform: none; }
+}
+.mn-login-card { animation: mnLoginCard 0.6s var(--mn-ease) both; }
+.mn-login-stagger > * { animation: mnRise 0.5s var(--mn-ease) both; }
+.mn-login-stagger > *:nth-child(1) { animation-delay: 0.14s; }
+.mn-login-stagger > *:nth-child(2) { animation-delay: 0.22s; }
+.mn-login-stagger > *:nth-child(3) { animation-delay: 0.30s; }
+.mn-login-stagger > *:nth-child(4) { animation-delay: 0.38s; }
+.mn-login-stagger > *:nth-child(5) { animation-delay: 0.46s; }
+
+/* Gold CTA with a sheen that sweeps on hover. */
+.mn-gold-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(140deg, var(--gold-hi) 0%, var(--gold) 42%, var(--gold-lo) 100%);
+  transition: transform 0.18s var(--mn-ease), box-shadow 0.18s var(--mn-ease);
+}
+.mn-gold-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -60%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.55s var(--mn-ease);
+}
+.mn-gold-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px -10px rgb(233 184 76 / 0.6);
+}
+.mn-gold-btn:hover:not(:disabled)::after { left: 120%; }
+.mn-gold-btn:active:not(:disabled) { transform: translateY(0) scale(0.995); }
+
+/* Inputs — dark glass that warms to gold on focus. */
+.mn-field {
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  color: #F4F7FC;
+  transition: border-color 0.18s var(--mn-ease), box-shadow 0.18s var(--mn-ease), background-color 0.18s var(--mn-ease);
+}
+.mn-field::placeholder { color: rgb(244 247 252 / 0.38); }
+.mn-field:focus {
+  outline: none;
+  background: rgb(255 255 255 / 0.09);
+  border-color: rgb(233 184 76 / 0.7);
+  box-shadow: 0 0 0 3px rgb(233 184 76 / 0.16);
+}
+/* Chrome autofill would otherwise paint the field white. */
+.mn-field:-webkit-autofill,
+.mn-field:-webkit-autofill:focus {
+  -webkit-text-fill-color: #F4F7FC;
+  -webkit-box-shadow: 0 0 0 1000px #16223C inset;
+  caret-color: #F4F7FC;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .mn-orb-a, .mn-orb-b { animation: none !important; }
+  .mn-login-card, .mn-login-stagger > * { animation: none !important; }
+  .mn-gold-btn::after { display: none; }
   .mn-app .mn-stagger > *,
   .mn-app .mn-pane-right,
   .mn-app .mn-pane-left { animation: none !important; }
   .mn-app .mn-lift:hover { transform: none; }
   html:has(.mn-app), .mn-app * { scroll-behavior: auto; }
+  .mn-modal-backdrop, .mn-modal-card { animation: none !important; }
 }

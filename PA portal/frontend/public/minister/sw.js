@@ -1,19 +1,29 @@
 /* Minister's Desk PWA service worker (Next.js hosted).
    The app is READ-ONLY, so this SW is intentionally lean — no push handlers.
+
    Strategy:
      - /minister/api/* and /api/* : ALWAYS network, never cached. These carry
        live aggregates + invitation photos (PII-adjacent) — never persisted.
-     - /_next/static/* : cache-first (hashed, immutable build assets).
-     - /minister navigations : network-first, fall back to the cached shell so
-       a deploy never leaves the app on chunk hashes it can't load.
+     - navigations : ALWAYS network, never served from cache. A cached HTML
+       shell pins the chunk hashes of the build that cached it; after a deploy
+       those chunks are gone and the app dies with "undefined is not a
+       function". Every screen here needs the network for its data anyway, so
+       an offline shell buys nothing and costs correctness.
+     - /_next/static/* : cache-first. Safe because Next content-hashes these —
+       a changed file gets a new URL, so a hit is always the right bytes.
      - /minister/* static files (manifest, icons) : cache-first.
+
+   Bump CACHE whenever this file changes: `activate` deletes every cache whose
+   name doesn't match, which is what evicts a previous build's chunks.
 */
-const CACHE = "minister-pwa-v1";
-const SHELL = ["/minister", "/minister/icon-192.png", "/minister/icon-512.png", "/minister/manifest.json"];
+const CACHE = "minister-pwa-v2";
+const SHELL = ["/minister/icon-192.png", "/minister/icon-512.png", "/minister/manifest.json"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL).catch(() => {})).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then((c) => c.addAll(SHELL).catch(() => {}))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -23,6 +33,11 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// Lets the page ask a waiting SW to take over immediately after a deploy.
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -35,26 +50,20 @@ self.addEventListener("fetch", (event) => {
   // Never cache API traffic (live aggregates + photos).
   if (url.pathname.startsWith("/minister/api/") || url.pathname.startsWith("/api/")) return;
 
-  // Immutable build assets: cache-first.
+  // Navigations: straight to the network, never cached. See the note above —
+  // serving a stale shell is what breaks the app across a deploy.
+  if (req.mode === "navigate") return;
+
+  // Immutable, content-hashed build assets: cache-first.
   if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
         return res;
       }))
-    );
-    return;
-  }
-
-  // App navigations: network-first, fall back to the cached shell when offline.
-  if (req.mode === "navigate" && url.pathname.startsWith("/minister")) {
-    event.respondWith(
-      fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put("/minister", copy));
-        return res;
-      }).catch(() => caches.match(req).then((hit) => hit || caches.match("/minister")))
     );
     return;
   }
@@ -63,8 +72,10 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/minister/")) {
     event.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
         return res;
       }))
     );
