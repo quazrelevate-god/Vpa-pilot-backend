@@ -51,19 +51,93 @@ export function useCountUp(value: string, ms = 650): string {
   return `${parsed.prefix}${shown}${parsed.suffix}`;
 }
 
-/** Minister KPI tile — the shared StatTile with its number animated. `highlight`
- *  is dropped because the shared implementation adds `bg-brand/[0.03]` which
- *  tailwind-merge collapses on top of `bg-card`, leaving the tile visibly
- *  transparent (reads as a "ghost overlay" against neighbours). We render the
- *  emphasis ourselves — a solid card + a brand ring — so bg-card is preserved. */
-export function MKpi({ highlight, ...rest }: ComponentProps<typeof StatTile>) {
-  const value = useCountUp(rest.value);
-  const tile = <StatTile {...rest} value={value} />;
-  if (!highlight) return tile;
+// Icon chip tones — muted, so the figure stays the loudest thing on the tile.
+const KPI_TONE: Record<string, { bg: string; fg: string }> = {
+  brand:  { bg: "rgba(30,48,85,0.08)",   fg: "#1E3055" },
+  violet: { bg: "rgba(109,40,217,0.09)", fg: "#6D28D9" },
+  mint:   { bg: "rgba(15,139,76,0.10)",  fg: "#0F8B4C" },
+  amber:  { bg: "rgba(180,83,9,0.10)",   fg: "#B45309" },
+  rose:   { bg: "rgba(192,54,44,0.10)",  fg: "#C0362C" },
+  slate:  { bg: "rgba(71,84,103,0.09)",  fg: "#475467" },
+};
+
+/**
+ * Premium KPI tile. Purpose-built for this app rather than reusing the staff
+ * StatTile, so the ledger-style figure, micro-label and gold emphasis are all
+ * under our control (and it sidesteps the shared tile's `highlight` background
+ * collision, which stripped bg-card and made tiles look transparent).
+ */
+export function MKpi({
+  icon: Icon, tone = "brand", label, value, caption, delta, series, highlight,
+}: ComponentProps<typeof StatTile>) {
+  const shown = useCountUp(value);
+  const c = KPI_TONE[tone as string] ?? KPI_TONE.brand;
+  const spark = series && series.length > 1 ? series : null;
+
   return (
-    <div className="relative rounded-xl ring-1 ring-brand/30">
-      {tile}
+    <div
+      className="mn-surface mn-surface-hover relative flex flex-col gap-3 overflow-hidden p-4"
+      style={highlight ? { boxShadow: "inset 0 0 0 1px rgba(233,184,76,0.45), var(--mn-sh-1)" } : undefined}
+    >
+      {/* Gold wash marks the tiles that want the Minister's eye. */}
+      {highlight && (
+        <span
+          className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+          style={{ background: "linear-gradient(90deg,var(--mn-gold-300),var(--mn-gold-500))" }}
+        />
+      )}
+
+      <div className="flex items-start justify-between gap-2">
+        <span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: c.bg, color: c.fg }}>
+          <Icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+        </span>
+        {delta != null && Number.isFinite(delta) && (
+          <span
+            className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums"
+            style={delta >= 0
+              ? { background: "rgba(15,139,76,0.10)", color: "#0F8B4C" }
+              : { background: "rgba(192,54,44,0.10)", color: "#C0362C" }}
+          >
+            {delta >= 0 ? "▲" : "▼"}{Math.abs(delta).toFixed(0)}%
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0">
+        <div className="mn-label">{label}</div>
+        <div className="mn-figure mt-1 text-[27px] leading-none">{shown}</div>
+        {caption && (
+          <div className="mt-1.5 truncate text-[11.5px]" style={{ color: "var(--mn-ink-3)" }}>{caption}</div>
+        )}
+      </div>
+
+      {/* A whisper of trend — enough to read direction, never a second chart. */}
+      {spark && <Spark values={spark} />}
     </div>
+  );
+}
+
+/** Minimal inline sparkline (SVG, no chart lib) — pure shape, no axes. */
+function Spark({ values }: { values: number[] }) {
+  const w = 100, h = 22;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const span = max - min || 1;
+  const step = values.length > 1 ? w / (values.length - 1) : w;
+  const pts = values.map((v, i) => `${(i * step).toFixed(2)},${(h - ((v - min) / span) * h).toFixed(2)}`);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="-mb-0.5 h-6 w-full" aria-hidden="true">
+      <polyline
+        points={pts.join(" ")}
+        fill="none"
+        stroke="var(--mn-navy-500)"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        opacity="0.55"
+      />
+    </svg>
   );
 }
 
@@ -144,15 +218,15 @@ export function DataTable<T>({
 }) {
   const { t } = useT();
   return (
-    <Card className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-baseline gap-2 border-b border-border px-5 py-3.5">
-        <h2 className="type-card-heading">{title}</h2>
-        {subtitle && <p className="text-[12.5px] text-muted-foreground">{subtitle}</p>}
-        {meta && <span className="ml-auto text-[12px] text-muted-foreground num">{meta}</span>}
+    <div className="mn-surface overflow-hidden">
+      <div className="flex flex-wrap items-baseline gap-2 border-b border-[color:var(--mn-line)] px-5 py-4">
+        <h2 className="font-serif text-[17px] font-semibold" style={{ color: "var(--mn-ink)" }}>{title}</h2>
+        {subtitle && <p className="text-[12.5px]" style={{ color: "var(--mn-ink-3)" }}>{subtitle}</p>}
+        {meta && <span className="mn-figure ml-auto text-[12px] font-semibold" style={{ color: "var(--mn-ink-3)" }}>{meta}</span>}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-[13.5px]">
-          <thead className="bg-[#EDF1F8] text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
+          <thead className="mn-thead">
             <tr>
               {cols.map((c) => (
                 <th key={c.key}
@@ -177,14 +251,11 @@ export function DataTable<T>({
               rows.map((r, i) => (
                 <tr key={i}
                   onClick={onRowClick ? () => onRowClick(r) : undefined}
-                  className={cn(
-                    "border-t border-border/70 transition-colors hover:bg-[#EFF3FB]",
-                    onRowClick && "cursor-pointer",
-                  )}
+                  className={cn("mn-row", onRowClick && "cursor-pointer")}
                   title={onRowClick ? t("Open detail", "விவரம் திற") : undefined}>
                   {cols.map((c) => (
                     <td key={c.key}
-                      className={cn("px-4 py-3", c.align === "right" && "text-right tabular-nums", c.className)}>
+                      className={cn("px-4 py-3.5", c.align === "right" && "text-right tabular-nums", c.className)}>
                       {c.render(r)}
                     </td>
                   ))}
@@ -194,7 +265,7 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
-    </Card>
+    </div>
   );
 }
 

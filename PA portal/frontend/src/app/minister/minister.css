@@ -2,8 +2,96 @@
    under .mn-app, so the shared staff portal is untouched). Respects the OS
    "reduce motion" setting. */
 
+/* ══════════════════════════════════════════════════════════════════════════
+   MINISTER DESIGN SYSTEM — "State Navy & Gold"
+
+   The login already speaks navy + gold; these tokens carry that identity all
+   the way through the app so the whole product reads as one ministerial
+   instrument rather than a generic blue dashboard.
+
+   Navy  = authority / chrome (nav, headers, emphasis)
+   Gold  = the mark of office (active state, key figures, accents)
+   Paper = a warm off-white working surface, so white cards lift off it
+   ══════════════════════════════════════════════════════════════════════════ */
 .mn-app {
   --mn-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Navy scale */
+  --mn-navy-900: #070E1C;
+  --mn-navy-800: #0C1526;
+  --mn-navy-700: #101D34;
+  --mn-navy-600: #16243F;
+  --mn-navy-500: #1E3055;
+
+  /* Gold scale */
+  --mn-gold-300: #F6E3B4;
+  --mn-gold-400: #E9B84C;
+  --mn-gold-500: #D4A03A;
+  --mn-gold-600: #C9902B;
+
+  /* Working surfaces */
+  --mn-paper: #F4F6FA;
+  --mn-card: #FFFFFF;
+  --mn-line: #E4E9F2;
+  --mn-ink: #101828;
+  --mn-ink-2: #475467;
+  --mn-ink-3: #7A8699;
+
+  /* Elevation — soft, wide, low-opacity: expensive-feeling depth */
+  --mn-sh-1: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --mn-sh-2: 0 4px 8px -2px rgb(16 24 40 / 0.06), 0 12px 24px -6px rgb(16 24 40 / 0.08);
+  --mn-sh-3: 0 12px 24px -8px rgb(16 24 40 / 0.10), 0 28px 56px -16px rgb(16 24 40 / 0.14);
+}
+
+/* The working surface — neutral paper, deliberately.
+   A gold-washed field was tried and rejected: white cards cover most of the
+   canvas so the tint barely showed, while it (a) diluted gold, which earns its
+   premium feel here by being scarce — the nav spine, attention rules, the
+   sign-in CTA — and (b) warmed the surface under the charts, shifting how the
+   blue/violet/green series read. Charts want a neutral ground.
+   To try it again, swap in:
+     linear-gradient(168deg, #FEFCF7 0%, #FBF6E9 45%, #F7EFDC 100%); */
+.mn-app { background: var(--mn-paper); }
+
+/* ── Premium card ─────────────────────────────────────────────────────────── */
+.mn-surface {
+  background: var(--mn-card);
+  border: 1px solid var(--mn-line);
+  border-radius: 16px;
+  box-shadow: var(--mn-sh-1);
+  transition: box-shadow 0.22s var(--mn-ease), transform 0.22s var(--mn-ease),
+              border-color 0.22s var(--mn-ease);
+}
+.mn-surface-hover:hover {
+  box-shadow: var(--mn-sh-2);
+  border-color: #D6DEEC;
+  transform: translateY(-2px);
+}
+
+/* ── Numerals: tabular + tightened, so figures read like a ledger ─────────── */
+.mn-figure {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--mn-ink);
+}
+
+/* ── Micro label: the small uppercase caption above a value.
+      Wraps to two lines rather than truncating — a KPI whose label reads
+      "RESOLUTI…" is worse than useless to the person reading it. ─────────── */
+.mn-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  color: var(--mn-ink-3);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.7em; /* reserve both lines so figures align across the row */
 }
 
 /* Smooth scrolling throughout the Minister app (section switches, in-page
@@ -54,6 +142,135 @@ html:has(.mn-app) { scroll-behavior: smooth; }
 .mn-stagger > *:nth-child(10) { animation-delay: 0.38s; }
 .mn-stagger > *:nth-child(11) { animation-delay: 0.42s; }
 .mn-stagger > *:nth-child(12) { animation-delay: 0.46s; }
+
+/* ══ NAVIGATION — the deep-navy rail that makes this feel ministerial ═════ */
+.mn-nav {
+  background: linear-gradient(180deg, var(--mn-navy-700) 0%, var(--mn-navy-800) 55%, var(--mn-navy-900) 100%);
+  border-right: 1px solid rgb(255 255 255 / 0.06);
+  position: relative;
+}
+/* Gold hairline down the trailing edge — the mark of office. */
+.mn-nav::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgb(233 184 76 / 0.35) 18%, rgb(233 184 76 / 0.35) 82%, transparent);
+}
+
+.mn-nav-brand { border-bottom: 1px solid rgb(255 255 255 / 0.07); }
+.mn-nav-title { color: #FFFFFF; letter-spacing: -0.01em; }
+.mn-nav-sub   { color: rgb(233 184 76 / 0.75); letter-spacing: 0.06em; }
+
+.mn-nav-item {
+  position: relative;
+  color: rgb(226 232 244 / 0.62);
+  border-radius: 12px;
+  transition: color 0.2s var(--mn-ease), background-color 0.2s var(--mn-ease);
+}
+.mn-nav-item:hover {
+  color: #FFFFFF;
+  background: rgb(255 255 255 / 0.055);
+}
+/* Active: a warm navy plate + a gold spine on the leading edge. */
+.mn-nav-item[aria-current="page"] {
+  color: #FFFFFF;
+  background: linear-gradient(90deg, rgb(233 184 76 / 0.16), rgb(233 184 76 / 0.05));
+  box-shadow: inset 0 0 0 1px rgb(233 184 76 / 0.22);
+}
+.mn-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 50%;
+  height: 60%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  transform: translateY(-50%);
+  background: linear-gradient(180deg, var(--mn-gold-300), var(--mn-gold-500));
+  box-shadow: 0 0 12px rgb(233 184 76 / 0.65);
+}
+.mn-nav-item[aria-current="page"] .mn-nav-icon { color: var(--mn-gold-400); }
+
+.mn-nav-foot { border-top: 1px solid rgb(255 255 255 / 0.07); }
+
+/* ══ TOP BAR — paper-toned, with a hairline that anchors the content ══════ */
+.mn-topbar {
+  background: rgb(255 255 255 / 0.86);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--mn-line);
+}
+.mn-topbar-title { color: var(--mn-ink); letter-spacing: -0.015em; }
+
+/* Menu toggle — needs to read as a *control*, not a stray glyph, so it carries
+   a real surface (border + fill) the way every other tappable thing here does. */
+.mn-menu-btn {
+  color: var(--mn-ink-2);
+  background: var(--mn-card);
+  border: 1px solid var(--mn-line);
+  box-shadow: var(--mn-sh-1);
+  transition: color 0.18s var(--mn-ease), background-color 0.18s var(--mn-ease),
+              border-color 0.18s var(--mn-ease), transform 0.18s var(--mn-ease);
+}
+.mn-menu-btn:hover {
+  color: var(--mn-navy-500);
+  border-color: #CBD5E6;
+  background: #FAFBFD;
+}
+.mn-menu-btn:active { transform: scale(0.94); }
+.mn-menu-btn:focus-visible {
+  outline: none;
+  border-color: var(--mn-gold-400);
+  box-shadow: 0 0 0 3px rgb(233 184 76 / 0.22);
+}
+
+/* ══ SECTION SWITCHER — navy pill on paper ═══════════════════════════════ */
+.mn-seg {
+  background: var(--mn-card);
+  border: 1px solid var(--mn-line);
+  border-radius: 16px;
+  box-shadow: var(--mn-sh-1);
+}
+.mn-seg-indicator {
+  background: linear-gradient(135deg, var(--mn-navy-500), var(--mn-navy-700));
+  box-shadow: 0 6px 16px -4px rgb(16 36 63 / 0.45);
+  border-radius: 12px;
+}
+.mn-seg-btn { color: var(--mn-ink-2); transition: color 0.2s var(--mn-ease); border-radius: 12px; }
+.mn-seg-btn:hover { color: var(--mn-ink); }
+.mn-seg-btn[aria-current="true"] { color: #FFFFFF; }
+
+/* ── Language toggle ─────────────────────────────────────────────────────── */
+.mn-lang { border: 1px solid var(--mn-line); border-radius: 10px; overflow: hidden; }
+.mn-lang-btn { color: var(--mn-ink-3); transition: all 0.18s var(--mn-ease); }
+.mn-lang-btn:hover { color: var(--mn-ink); background: rgb(16 24 40 / 0.03); }
+.mn-lang-btn[data-on="true"] {
+  background: linear-gradient(135deg, var(--mn-navy-500), var(--mn-navy-700));
+  color: #FFFFFF;
+}
+
+/* ══ TABLES — ledger-like: quiet header, generous rows, navy hover ════════ */
+.mn-thead {
+  background: linear-gradient(180deg, #FAFBFD, #F3F6FA);
+  border-bottom: 1px solid var(--mn-line);
+}
+.mn-thead th {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--mn-ink-3);
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.mn-row { border-top: 1px solid rgb(228 233 242 / 0.75); transition: background-color 0.15s var(--mn-ease); }
+.mn-row:hover { background: rgb(30 48 85 / 0.035); }
+
+/* Cards from the shared kit adopt the premium surface inside this app. */
+.mn-app [data-slot="card"] {
+  border-radius: 16px;
+  border-color: var(--mn-line);
+  box-shadow: var(--mn-sh-1);
+}
 
 /* ── Elements: lift cards + KPI tiles on hover for a tactile feel ─────────── */
 .mn-app [data-slot="card"],

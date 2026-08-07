@@ -54,9 +54,9 @@ export function SectionPager({
     <div ref={rootRef} className="space-y-4">
       {/* Section switcher — normal flow, full-width segmented control with a
           sliding brand indicator. Never overlaps content. */}
-      <div className="relative flex w-full rounded-2xl border border-border bg-card p-1.5 shadow-card">
+      <div className="mn-seg relative flex w-full p-1.5">
         <div
-          className="absolute bottom-1.5 top-1.5 rounded-xl bg-brand shadow-card transition-transform duration-300 ease-out"
+          className="mn-seg-indicator absolute bottom-1.5 top-1.5 transition-transform duration-300 ease-out"
           style={{ left: 6, width: `calc((100% - 12px) / ${n})`, transform: `translateX(${active * 100}%)` }}
         />
         {sections.map((s, i) => {
@@ -67,18 +67,17 @@ export function SectionPager({
               key={s.key}
               onClick={() => goto(i)}
               aria-current={on ? "true" : undefined}
-              className={cn(
-                "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14.5px] font-semibold transition-colors duration-200",
-                on ? "text-white" : "text-muted-foreground hover:text-foreground",
-              )}
+              className="mn-seg-btn relative z-10 flex flex-1 items-center justify-center gap-2 px-4 py-3 text-[14.5px] font-semibold"
             >
-              <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={on ? 2.25 : 1.75} />
+              <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={on ? 2.2 : 1.75} />
               <span className="truncate">{s.label}</span>
               {s.count != null && (
-                <span className={cn(
-                  "num rounded-full px-2 py-0.5 text-[11.5px] font-bold",
-                  on ? "bg-white/20 text-white" : "bg-muted text-muted-foreground",
-                )}>
+                <span
+                  className="rounded-full px-2 py-0.5 text-[11.5px] font-bold tabular-nums"
+                  style={on
+                    ? { background: "rgba(255,255,255,0.18)", color: "#FFFFFF" }
+                    : { background: "rgba(16,24,40,0.06)", color: "var(--mn-ink-3)" }}
+                >
                   {s.count}
                 </span>
               )}

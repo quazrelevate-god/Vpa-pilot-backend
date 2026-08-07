@@ -1,44 +1,49 @@
 "use client";
 
-import { PanelLeft } from "lucide-react";
+import { Menu, PanelLeftClose } from "lucide-react";
 import { useT } from "../_lib/i18n";
 
-/** Page-level header for the tablet layout — a menu toggle + title on the left,
- *  EN/தமிழ் toggle on the right. The menu button shows/hides the side menu so a
- *  dashboard can fill the whole screen; logout lives in the side menu. */
+/** Page header — menu toggle + title on the left, EN/தமிழ் on the right.
+ *  Paper-toned with a hairline, so it anchors the content without competing
+ *  with the navy rail. */
 export default function TopBar({
   title, subtitle, onMenu, navOpen,
 }: { title: string; subtitle?: string; onMenu?: () => void; navOpen?: boolean }) {
   const { t, lang, setLang } = useT();
 
   return (
-    <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-card/95 px-4 py-3.5 backdrop-blur sm:px-6">
+    <header className="mn-topbar sticky top-0 z-30 flex items-center gap-3 px-4 py-3.5 sm:px-6">
       {onMenu && (
         <button
           onClick={onMenu}
           aria-label={navOpen ? t("Hide menu", "மெனுவை மறை") : t("Show menu", "மெனுவைக் காட்டு")}
           aria-expanded={navOpen}
           title={navOpen ? t("Hide menu", "மெனுவை மறை") : t("Show menu", "மெனுவைக் காட்டு")}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="mn-menu-btn grid h-10 w-10 shrink-0 place-items-center rounded-xl"
         >
-          <PanelLeft className="h-5 w-5" strokeWidth={1.9} />
+          {/* A hamburger is the one glyph everyone reads as "menu"; once the
+              rail is open we switch to a panel-close mark so the control also
+              says what it will do next. */}
+          {navOpen
+            ? <PanelLeftClose className="h-[19px] w-[19px]" strokeWidth={2} />
+            : <Menu className="h-[19px] w-[19px]" strokeWidth={2.25} />}
         </button>
       )}
 
       <div className="min-w-0 flex-1">
-        <h1 className="truncate font-serif text-[22px] font-semibold leading-tight text-foreground">{title}</h1>
-        {subtitle && <p className="truncate text-[12.5px] text-muted-foreground">{subtitle}</p>}
+        <h1 className="mn-topbar-title truncate font-serif text-[23px] font-semibold leading-tight">{title}</h1>
+        {subtitle && (
+          <p className="truncate text-[12.5px]" style={{ color: "var(--mn-ink-3)" }}>{subtitle}</p>
+        )}
       </div>
 
-      <div className="flex overflow-hidden rounded-lg border border-border">
+      <div className="mn-lang flex shrink-0">
         {(["en", "ta"] as const).map((l) => (
           <button
             key={l}
             onClick={() => setLang(l)}
-            className={
-              "px-3 py-1.5 text-[12px] font-semibold transition-colors " +
-              (lang === l ? "bg-brand text-white" : "bg-card text-muted-foreground hover:bg-accent")
-            }
+            data-on={lang === l}
+            className="mn-lang-btn px-3.5 py-2 text-[12px] font-bold"
           >
             {l === "en" ? "EN" : "தமிழ்"}
           </button>
