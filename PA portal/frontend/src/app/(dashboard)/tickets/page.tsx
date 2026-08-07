@@ -370,13 +370,24 @@ export default function TicketsPage() {
   // not how the citizen submitted.
   const showSourceFilter = status !== "forwarded_to_dept";
 
-  // Filters sent to the backend (table + counts). Category is chart-driven.
+  // Filters sent to the backend for the TABLE (full refinement set).
   const secondary = useMemo<Omit<TicketListFilters, "status" | "page">>(() => ({
     priority, ...deptParams,
     department: showAssignedDeptFilter ? (assignedDept || undefined) : undefined,
     source: showSourceFilter ? (sourceValue || undefined) : undefined,
     category, search, dateFrom, dateTo,
   }), [priority, deptParams, showAssignedDeptFilter, assignedDept, showSourceFilter, sourceValue, category, search, dateFrom, dateTo]);
+
+  // Scope for the STATUS TAB PILLS and the SLA-BREACHED CHIP. Only the
+  // structural filters (search + date) narrow the universe here — refinement
+  // filters (priority / ministry / department / source / category) narrow the
+  // LIST but MUST NOT collapse the pill counts. Otherwise picking "high"
+  // priority makes Open jump from 5 → 1, Closed from 4 → 0, etc., which reads
+  // like the tickets vanished. Tabs are meant to be a stable universe view;
+  // the active refinement filter is already legible via its own badge/pill.
+  const pillScope = useMemo<Omit<TicketListFilters, "status" | "page">>(() => ({
+    search, dateFrom, dateTo,
+  }), [search, dateFrom, dateTo]);
 
   // The distribution chart shows category bars on most tabs, but ministry bars
   // on the Forwarded tab (where it also drives the ministry filter).
@@ -421,16 +432,17 @@ export default function TicketsPage() {
 
   // Counts: the /counts endpoint only aggregates the five main statuses, so the
   // "assigned" tab count comes from a parallel filtered list call (total only).
+  // Both use pillScope, NOT secondary — see the pillScope comment for why.
   const loadCounts = useCallback(async (signal: AbortSignal) => {
     try {
       const [data, assignedRes] = await Promise.all([
-        fetchTicketsCounts(secondary, signal),
-        fetchTickets({ status: "assigned", page: 1, ...secondary }, signal),
+        fetchTicketsCounts(pillScope, signal),
+        fetchTickets({ status: "assigned", page: 1, ...pillScope }, signal),
       ]);
       if (!signal.aborted) setCounts({ ...data, assigned: assignedRes.total });
     } catch { /* aborts + transient errors are non-fatal */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [secondary, refreshTick]);
+  }, [pillScope, refreshTick]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -443,16 +455,18 @@ export default function TicketsPage() {
     return () => ctrl.abort();
   }, [loadCounts]);
 
-  // Breached count — across all statuses (not the active tab), honouring the
-  // global filters only, so the SLA-breached badge is meaningful everywhere.
-  // (SLA-breach is computed client-side; the backend has no SLA filter.)
+  // Breached count — across all statuses (not the active tab), honouring
+  // ONLY the structural filters (search + date) so the badge is a stable
+  // "how many need SLA attention" number and doesn't collapse to 0 when the
+  // user narrows by priority/ministry/etc. (SLA-breach is computed
+  // client-side; the backend has no SLA filter.)
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchTickets({ status: "", page: 1, priority, search, dateFrom, dateTo }, ctrl.signal)
+    fetchTickets({ status: "", page: 1, search, dateFrom, dateTo }, ctrl.signal)
       .then((d) => { if (!ctrl.signal.aborted) setBreachedCount(d.items.filter(isBreached).length); })
       .catch(() => {});
     return () => ctrl.abort();
-  }, [priority, search, dateFrom, dateTo]);
+  }, [search, dateFrom, dateTo]);
 
   // Aurora Recall — ⌘K focuses the header search from anywhere.
   useEffect(() => {
