@@ -75,6 +75,31 @@ FIELDS
 - ai_rationale: ONE short sentence justifying the recommendation, in English,
   pointing at the concrete signal you used (e.g. "States a specific cost and
   a 40-school beneficiary count with a defined 18-month timeline.").
+
+- suggested_category: WHICH OF THE FOUR DESKS this proposal belongs with. One
+  of the strings below, or null if the document really doesn't fit any of them.
+  Read the substance of the pitch — not letterhead or generic words.
+
+    "school"       — SCHOOL EDUCATION. Pedagogy, curriculum, teacher training,
+                     school infrastructure, EdTech in government schools,
+                     assessments, mid-day meal, school-level administration.
+    "tamil"        — TAMIL & HERITAGE. Tamil language, literature, translation,
+                     classical works, cultural revival, monuments, museums,
+                     archaeology, heritage tourism, folk arts.
+    "information"  — INFORMATION & PUBLICITY. Government communications, press,
+                     public awareness campaigns, print / broadcast publicity,
+                     official publications, media relations.
+    "film"         — FILM. Cinema industry, film policy, subsidies, festivals,
+                     screening infrastructure, film archives, cine workers.
+
+  Pick the ONE that the document's primary intervention is aimed at. If it
+  spans two (e.g. a heritage-education programme), pick where it is actually
+  DELIVERED. If none fits cleanly, return null — do not force a guess.
+- suggested_category_rationale: ONE short English sentence naming the concrete
+  signal in the document that drove the pick (e.g. "Rolls out a Class 8 STEM
+  lab kit across 40 government schools in Salem — a school-education
+  intervention delivered inside classrooms."). Empty string if you returned
+  null above.
 - document_date: the date WRITTEN ON the proposal document (its cover / letterhead
   / signature date), as ISO 8601 YYYY-MM-DD. The document's OWN date, never today's
   date. Convert any written form to YYYY-MM-DD. Null if none is clearly written.

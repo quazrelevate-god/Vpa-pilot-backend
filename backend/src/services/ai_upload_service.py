@@ -367,10 +367,16 @@ class AiUploadService:
         ex = routed.extraction
         docs = [{"original_filename": fname, "storage_url": storage_url, "mime_type": mime}]
         g = lambda attr: (getattr(ident, attr, "") or "").strip() if ident else ""
+        # Scanned uploads carry no form-supplied desk, so use the AI's guess
+        # (suggested_category) if the extraction filled one. Falls back to None
+        # for tracking_ref → NK/GEN/… — which the PA can correct via the
+        # drawer's desk-reassignment picker.
+        ai_cat = getattr(ex, "suggested_category", None) if ex else None
+        ai_cat_value = ai_cat.value if ai_cat is not None else None
         async with AsyncSessionLocal() as db:
             prop = ProposalSubmission(
-                tracking_ref=_mint_tracking_ref(None),
-                category=None,
+                tracking_ref=_mint_tracking_ref(ai_cat_value),
+                category=ai_cat_value,
                 org_name=g("org_name")[:300] or None,
                 person_name=g("person_name")[:200] or None,
                 designation=g("designation")[:200] or None,

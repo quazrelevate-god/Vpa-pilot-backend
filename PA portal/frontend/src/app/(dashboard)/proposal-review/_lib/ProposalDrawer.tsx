@@ -78,16 +78,23 @@ export function toAttachments(docs: ProposalDoc[] | undefined): GalleryAttachmen
 }
 
 // ── section building blocks ───────────────────────────────────────────────
-export function Tile({ icon, label, value, mono = false }: {
+export function Tile({ icon, label, value, mono = false, muted = false }: {
   icon?: ReactNode; label: string; value?: string | null; mono?: boolean;
+  /** When true, renders the value in muted italic (fallback copy like
+   *  "No cost mentioned") instead of collapsing the tile entirely. */
+  muted?: boolean;
 }) {
-  if (!specified(value)) return null;
+  if (!specified(value) && !muted) return null;
   return (
     <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-background/60 px-4 py-3">
       <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {icon}{label}
       </div>
-      <div className={cn("text-[14px] font-semibold leading-snug text-foreground", mono && "num")}>
+      <div className={cn(
+        "text-[14px] font-semibold leading-snug",
+        mono && "num",
+        muted ? "italic text-muted-foreground" : "text-foreground",
+      )}>
         {value}
       </div>
     </div>
@@ -365,9 +372,18 @@ export function ProposalDrawer({
             </SectionShell>
 
             {/* 5 — Financial */}
-            <SectionShell n={5} id="financial" title="Financial" hidden={!specified(ex.estimated_cost) && !specified(ex.applicant_contribution)}>
+            {/* 5 — Financial. Funding ask ALWAYS renders — an unstated cost is
+                   itself a signal the Minister should see ("No cost mentioned"
+                   rather than a hidden section). Contribution stays optional. */}
+            <SectionShell n={5} id="financial" title="Financial">
               <div className="grid gap-2.5 sm:grid-cols-2">
-                <Tile icon={<IndianRupee className="h-3 w-3" />} label="Funding ask" value={ex.estimated_cost} mono />
+                <Tile
+                  icon={<IndianRupee className="h-3 w-3" />}
+                  label="Funding ask"
+                  value={specified(ex.estimated_cost) ? ex.estimated_cost : "No cost mentioned"}
+                  muted={!specified(ex.estimated_cost)}
+                  mono={specified(ex.estimated_cost)}
+                />
                 <Tile icon={<Wallet className="h-3 w-3" />} label="Applicant contribution" value={ex.applicant_contribution} mono />
               </div>
             </SectionShell>

@@ -18,6 +18,18 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class ProposalCategory(str, Enum):
+    """The four desks a proposal can sit with — mirrors _VALID_CATEGORIES on the
+    public /proposal intake so the AI's guess and the form's picker share one
+    vocabulary. Used ONLY when the AI must guess (scanned uploads with no form
+    input); on the form path the applicant's choice always wins.
+    """
+    SCHOOL = "school"          # School Education
+    TAMIL = "tamil"            # Tamil & Heritage
+    INFORMATION = "information"  # Information & Publicity
+    FILM = "film"              # Film
+
+
 class ProposalRecommendation(str, Enum):
     """A triage HINT for the human reviewer — never a decision.
 
@@ -109,6 +121,22 @@ class ProposalExtraction(BaseModel):
         default="",
         description="One short English sentence justifying the recommendation, pointing at a concrete signal.",
         max_length=300,
+    )
+
+    # Desk (category) guess — only used when the AI must decide, i.e. scanned
+    # uploads with no form to source it from. On the /proposal form path the
+    # applicant's picked category is authoritative and this field is ignored.
+    suggested_category: Optional[ProposalCategory] = Field(
+        default=None,
+        description=(
+            "Which of the four desks the proposal belongs with: school | tamil | "
+            "information | film. Null if the document doesn't clearly fit any."
+        ),
+    )
+    suggested_category_rationale: str = Field(
+        default="",
+        description="One short English sentence naming the concrete signal used to pick the desk.",
+        max_length=240,
     )
 
     document_date: Optional[str] = Field(
