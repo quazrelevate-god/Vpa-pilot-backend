@@ -54,11 +54,17 @@ def upgrade() -> None:
         op.add_column("grievance_summary_records", sa.Column(col, sa.BigInteger(), nullable=True))
 
     # ── 3) Backfill from the strings via admin ──────────────────────────────────
+    # Match case-insensitively and trimmed: legacy rows can hold the display
+    # label ("General") rather than the enum slug ("general"), and the admin
+    # names ARE the slugs. lower(btrim()) folds that casing/whitespace drift so
+    # those rows resolve; a genuinely unknown value still fails the step-4 gate.
     for col, entity in [("category", "category"), ("priority", "priority"),
                         ("ministry", "ministry"), ("district", "district")]:
         op.execute(sa.text(f"""
             UPDATE grievance_summary_records g SET {col}_id = adm.id
-            FROM admin adm WHERE adm.entity='{entity}' AND adm.name=g.{col}
+            FROM admin adm
+            WHERE adm.entity='{entity}'
+              AND lower(btrim(adm.name)) = lower(btrim(g.{col}))
         """))
 
     # ── 4) Assert every non-null string resolved ────────────────────────────────

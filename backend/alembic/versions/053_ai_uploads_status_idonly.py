@@ -43,10 +43,14 @@ def upgrade() -> None:
         """).bindparams(n=name, o=i))
 
     # ── 2) Add status_id, backfill from the string ──────────────────────────────
+    # Case-insensitive + trimmed match: legacy rows can carry casing/whitespace
+    # drift from the canonical UPPER slug; an unknown value still trips step 3.
     op.add_column("ai_uploads", sa.Column("status_id", sa.BigInteger(), nullable=True))
     op.execute("""
         UPDATE ai_uploads a SET status_id = adm.id
-        FROM admin adm WHERE adm.entity='ai_upload' AND adm.name=a.status
+        FROM admin adm
+        WHERE adm.entity='ai_upload'
+          AND lower(btrim(adm.name)) = lower(btrim(a.status))
     """)
 
     # ── 3) Assert every row mapped (status is NOT NULL) ─────────────────────────
