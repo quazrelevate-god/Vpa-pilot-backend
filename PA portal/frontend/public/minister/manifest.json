@@ -1,0 +1,17 @@
+{
+  "name": "Minister's Desk — நம் குரல்",
+  "short_name": "அமைச்சர் மேசை",
+  "description": "The Minister's office at a glance — petitions, proposals, tickets, associations, and the events diary. Read-only.",
+  "start_url": "/minister/",
+  "scope": "/minister/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0E1420",
+  "theme_color": "#1E40AF",
+  "lang": "ta",
+  "icons": [
+    { "src": "/minister/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/minister/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/minister/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

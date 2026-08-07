@@ -1,0 +1,71 @@
+/* Motion + element polish scoped to the Minister PWA only (everything lives
+   under .mn-app, so the shared staff portal is untouched). Respects the OS
+   "reduce motion" setting. */
+
+.mn-app {
+  --mn-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Smooth scrolling throughout the Minister app (section switches, in-page
+   jumps). Disabled automatically under prefers-reduced-motion below. */
+html:has(.mn-app) { scroll-behavior: smooth; }
+.mn-app * { scroll-behavior: smooth; }
+
+/* ── Entrance: a soft rise-in used on panes and cards ─────────────────────── */
+@keyframes mnRise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes mnFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes mnSlideFromRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes mnSlideFromLeft {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.mn-pane-right { animation: mnSlideFromRight 0.34s var(--mn-ease) both; }
+.mn-pane-left  { animation: mnSlideFromLeft 0.34s var(--mn-ease) both; }
+
+/* Stagger direct children of a pane so cards/tiles rise in sequence. */
+.mn-stagger > * { animation: mnRise 0.42s var(--mn-ease) both; }
+.mn-stagger > *:nth-child(1)  { animation-delay: 0.02s; }
+.mn-stagger > *:nth-child(2)  { animation-delay: 0.06s; }
+.mn-stagger > *:nth-child(3)  { animation-delay: 0.10s; }
+.mn-stagger > *:nth-child(4)  { animation-delay: 0.14s; }
+.mn-stagger > *:nth-child(5)  { animation-delay: 0.18s; }
+.mn-stagger > *:nth-child(6)  { animation-delay: 0.22s; }
+.mn-stagger > *:nth-child(7)  { animation-delay: 0.26s; }
+.mn-stagger > *:nth-child(8)  { animation-delay: 0.30s; }
+.mn-stagger > *:nth-child(9)  { animation-delay: 0.34s; }
+.mn-stagger > *:nth-child(10) { animation-delay: 0.38s; }
+.mn-stagger > *:nth-child(11) { animation-delay: 0.42s; }
+.mn-stagger > *:nth-child(12) { animation-delay: 0.46s; }
+
+/* ── Elements: lift cards + KPI tiles on hover for a tactile feel ─────────── */
+.mn-app [data-slot="card"],
+.mn-app .mn-card {
+  transition: transform 0.18s var(--mn-ease), box-shadow 0.18s var(--mn-ease);
+}
+.mn-app .mn-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px -12px rgb(30 64 175 / 0.28);
+}
+/* Clickable table rows get a gentle nudge on hover. */
+.mn-app tbody tr[title] { transition: background-color 0.15s var(--mn-ease); }
+
+/* Count-up numbers get a tabular, non-reflowing tick. */
+.mn-app .mn-count { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mn-app .mn-stagger > *,
+  .mn-app .mn-pane-right,
+  .mn-app .mn-pane-left { animation: none !important; }
+  .mn-app .mn-lift:hover { transform: none; }
+  html:has(.mn-app), .mn-app * { scroll-behavior: auto; }
+}

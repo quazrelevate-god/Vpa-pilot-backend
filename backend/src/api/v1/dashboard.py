@@ -314,7 +314,7 @@ async def unified_login(
 
     # 1) PA staff — env super-admin fallback, then the `login` table.
     from src.models.login_models import (
-        Login, verify_password as verify_staff, needs_rehash, hash_password,
+        Login, ROLE_MINISTER, verify_password as verify_staff, needs_rehash, hash_password,
     )
     staff_ok = False
     staff_role = "pa"
@@ -328,6 +328,15 @@ async def unified_login(
             select(Login).where(Login.login_name == uname, Login.is_active == True)  # noqa: E712
         )).scalar_one_or_none()
         if row and verify_staff(password, row.password):
+            # Isolation: a Minister account (role=minister) must NEVER receive a
+            # dash_session. It's a read-only credential for the /minister PWA and
+            # has no business on the staff portal. Refuse it here even with the
+            # right password, and point the caller at the right app.
+            if row.role == ROLE_MINISTER:
+                return JSONResponse(
+                    {"error": "This is a Minister account — please sign in from the Minister app."},
+                    status_code=403,
+                )
             if needs_rehash(row.password):        # migrate legacy hash → PBKDF2
                 row.password = hash_password(password)
                 await db.commit()

@@ -34,6 +34,14 @@ const nextConfig = {
           { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
         ],
       },
+      {
+        source: "/minister/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Service-Worker-Allowed", value: "/minister/" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
     ];
   },
   // Same-origin proxy: frontend calls /api/* and /auth/* — Next.js forwards
@@ -63,6 +71,8 @@ const nextConfig = {
       { source: "/crowd/api/:path*", destination: `${API_BASE}/crowd/api/:path*` },
       // Events (invitation calendar) PWA API (its own auth cookie: events_session).
       { source: "/events/api/:path*", destination: `${API_BASE}/events/api/:path*` },
+      // Minister PWA API (its own auth cookie: minister_session — read-only).
+      { source: "/minister/api/:path*", destination: `${API_BASE}/minister/api/:path*` },
       { source: "/auth/login", destination: `${API_BASE}/dashboard/login` },
       { source: "/auth/logout", destination: `${API_BASE}/dashboard/logout` },
       { source: "/static/:path*", destination: `${API_BASE}/static/:path*` },

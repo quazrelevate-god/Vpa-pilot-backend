@@ -34,6 +34,16 @@ ROLE_AUDITOR           = "auditor"
 ALL_ROLES = (ROLE_SUPER_ADMIN, ROLE_PA, ROLE_DEPT_OFFICER, ROLE_PETITION_REVIEWER, ROLE_AUDITOR)
 
 
+# Dedicated, ISOLATED persona for the read-only Minister PWA (/minister). This is
+# deliberately NOT one of ALL_ROLES: the admin form never offers it, and the
+# unified staff login refuses it — a minister account can only ever hold a
+# `minister_session` cookie and reach /minister/api/* (read-only aggregates).
+# It can never obtain a dash_session, so it cannot drive any portal endpoint.
+# The account is env-seeded (MINISTER_USERNAME / MINISTER_PASSWORD), mirroring
+# how the env super-admin is seeded on first login.
+ROLE_MINISTER = "minister"
+
+
 # Capability roles — additive, many-per-user. Populate the `user_roles` table.
 # The events PWA is the first surface to consume them; the frontend admin form
 # renders them as independent checkboxes.

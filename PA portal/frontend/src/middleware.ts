@@ -72,6 +72,25 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone(); url.pathname = "/events/login"; return NextResponse.redirect(url);
   }
 
+  // ── Minister PWA (read-only overviews): its own cookie (minister_session) ─────
+  if (pathname.startsWith("/minister")) {
+    // API calls proxy straight to the backend, which enforces its own auth (401).
+    // Never page-redirect them, or fetch() gets login HTML instead of JSON.
+    if (pathname.startsWith("/minister/api")) return NextResponse.next();
+    // PWA static assets (manifest.json, sw.js, icon-*.png) — anything with a
+    // file extension under /minister — must load without a session.
+    if (/\.[a-z0-9]+$/i.test(pathname)) return NextResponse.next();
+    const ministerSession = req.cookies.get("minister_session");
+    if (pathname === "/minister/login") {
+      if (ministerSession) {
+        const url = req.nextUrl.clone(); url.pathname = "/minister"; return NextResponse.redirect(url);
+      }
+      return NextResponse.next();
+    }
+    if (ministerSession) return NextResponse.next();
+    const url = req.nextUrl.clone(); url.pathname = "/minister/login"; return NextResponse.redirect(url);
+  }
+
   // Already logged in → skip the login page, land on the right workspace.
   if (pathname === "/login") {
     if (session) {
@@ -110,6 +129,7 @@ export const config = {
     "/department", "/department/:path*",
     "/crowd", "/crowd/:path*",
     "/events", "/events/:path*",
+    "/minister", "/minister/:path*",
     "/login", "/dashboard", "/dashboard/:path*",
   ],
 };

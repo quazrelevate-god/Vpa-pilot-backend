@@ -21,6 +21,7 @@ _DEFAULT_STAFF_CREDENTIALS = {
     "DASHBOARD_USERNAME": "admin",     "DASHBOARD_PASSWORD": "admin123",
     "DISPLAY_USERNAME":   "display",   "DISPLAY_PASSWORD":   "display123",
     "EVENTS_USERNAME":    "events",    "EVENTS_PASSWORD":    "events123",
+    "MINISTER_USERNAME":  "minister",  "MINISTER_PASSWORD":  "minister123",
 }
 
 
@@ -119,6 +120,12 @@ class Settings(BaseSettings):
     # Events (invitation calendar) PWA Credentials (separate login)
     EVENTS_USERNAME: str = "events"
     EVENTS_PASSWORD: str = "events123"
+
+    # Minister PWA Credentials (separate, read-only login). Seeds a Login row
+    # with role=minister on first sign-in; that account can ONLY reach the
+    # read-only /minister/api/* overviews — never the staff portal.
+    MINISTER_USERNAME: str = "minister"
+    MINISTER_PASSWORD: str = "minister123"
 
     # ── Web push reminders for the events PWA ────────────────────────────────
     # VAPID key pair identifies THIS server to browser push services (FCM,
