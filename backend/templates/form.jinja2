@@ -1261,8 +1261,10 @@
             const hasFiles = registeredFileList.filter(f => f !== null).length > 0;
             const hasAudio = document.getElementById('audioRecordingData').value !== '';
             if (_submissionType() === 'courtesy') {
-                // Greeting / invitation: sub-type picked + audio present.
-                return !!(name && NAME_RE.test(name) && _courtesyType() && hasAudio);
+                // Greeting → voice message; Invitation → invitation image upload.
+                const ct = _courtesyType();
+                const courtesyOk = ct === 'invitation' ? hasFiles : ct === 'greetings' ? hasAudio : false;
+                return !!(name && NAME_RE.test(name) && courtesyOk);
             }
             // Petition: valid name + a MANDATORY uploaded document (the backend AI
             // classifies the petition from it).
@@ -1278,7 +1280,9 @@
 
             let isValid;
             if (_submissionType() === 'courtesy') {
-                isValid = !!(nameOk && mobile && _courtesyType() && hasAudio);
+                const ct = _courtesyType();
+                const courtesyOk = ct === 'invitation' ? hasFiles : ct === 'greetings' ? hasAudio : false;
+                isValid = !!(nameOk && mobile && courtesyOk);
             } else {
                 // Petition: valid name + mobile + a MANDATORY uploaded document.
                 isValid = !!(nameOk && mobile && hasFiles);
@@ -1338,9 +1342,14 @@
                 catOther: "Other", catGeneral: "General", catGreetings: "Greetings",
                 catSchoolUpgradation: "School Upgradation", catInvitation: "Invitation",
                 alertSelectCategory: "Please select a category.",
-                audioOnlyHint: "Kindly leave a short voice message with your invitation or greeting. No file upload is needed.",
+                audioOnlyHint: "Kindly leave a short voice message with your greeting. No file upload is needed.",
                 audioHintCourtesy: "(Speak your reason)",
                 audioLabelCourtesy: "Voice Message",
+                // Courtesy form titles + invitation-specific copy.
+                portalTitleCourtesy: "Greeting / Invitation", secTitleCourtesy: "Your Message",
+                invitationHint: "Kindly upload a clear photo or scan of your invitation card. No voice message is needed.",
+                uploadLabelInvitation: "Upload Invitation",
+                alertUploadInvitation: "Please upload a photo of your invitation.",
                 // Submission-type chooser (top of Phase 1)
                 submissionType: "What are you submitting?",
                 stypePetition: "Petition", stypePetitionSub: "Grievance or request · attach a document",
@@ -1404,9 +1413,13 @@
                 catOther: "பிற", catGeneral: "பொது மனுக்கள்", catGreetings: "வாழ்த்து செய்திகள்",
                 catSchoolUpgradation: "பள்ளி தரம் உயர்த்தல்", catInvitation: "அழைப்பிதழ்",
                 alertSelectCategory: "தயவுசெய்து ஒரு பிரிவைத் தேர்ந்தெடுக்கவும்.",
-                audioOnlyHint: "உங்கள் வாழ்த்து அல்லது அழைப்பிதழுக்கான காரணத்தை ஒரு குறுகிய குரல் செய்தியாக பதிவு செய்யவும். ஆவணம் பதிவேற்ற வேண்டியதில்லை.",
+                audioOnlyHint: "உங்கள் வாழ்த்தை ஒரு குறுகிய குரல் செய்தியாக பதிவு செய்யவும். ஆவணம் பதிவேற்ற வேண்டியதில்லை.",
                 audioHintCourtesy: "(உங்கள் காரணத்தை பேசுங்கள்)",
                 audioLabelCourtesy: "குரல் செய்தி",
+                portalTitleCourtesy: "வாழ்த்து / அழைப்பு", secTitleCourtesy: "உங்கள் செய்தி",
+                invitationHint: "உங்கள் அழைப்பிதழின் தெளிவான புகைப்படம் அல்லது ஸ்கேன் ஒன்றைப் பதிவேற்றவும். குரல் செய்தி தேவையில்லை.",
+                uploadLabelInvitation: "அழைப்பிதழைப் பதிவேற்றவும்",
+                alertUploadInvitation: "உங்கள் அழைப்பிதழின் புகைப்படத்தைப் பதிவேற்றவும்.",
                 submissionType: "நீங்கள் என்ன சமர்ப்பிக்கிறீர்கள்?",
                 stypePetition: "மனு", stypePetitionSub: "புகார் / கோரிக்கை · ஆவணத்தை இணைக்கவும்",
                 stypeCourtesy: "வாழ்த்து / அழைப்பு", stypeCourtesySub: "செய்தியை பேசுங்கள் · ஆவணம் தேவையில்லை",
@@ -1500,35 +1513,64 @@
             const noteEl          = document.getElementById('lbl-courtesy-audio-only');
             const copy            = dynamicLocalizationDictionary[runtimeActiveLanguage];
             const courtesy        = _isCourtesyCategory();
+            const ctype           = _courtesyType();   // '' | 'greetings' | 'invitation'
 
-            // Category is now permanently hidden (see #categoryFieldGroup HTML).
-            // AI classifies the petition on the backend; asking the citizen was
-            // duplicative and often wrong.
-            if (uploadSection) uploadSection.style.display = courtesy ? 'none' : '';
-            if (voiceSection)  voiceSection.style.display  = courtesy ? '' : 'none';
+            // Field routing:
+            //   petition                → upload only (no voice)
+            //   courtesy · greetings    → voice message only (speak the greeting)
+            //   courtesy · invitation   → upload the invitation image only (no voice)
+            //   courtesy · not yet picked → hide both until a sub-type is chosen
+            // (Category dropdown stays permanently hidden — AI classifies petitions.)
+            const showUpload = courtesy ? (ctype === 'invitation') : true;
+            const showVoice  = courtesy ? (ctype === 'greetings')  : false;
+            if (uploadSection) uploadSection.style.display = showUpload ? '' : 'none';
+            if (voiceSection)  voiceSection.style.display  = showVoice  ? '' : 'none';
 
-            if (courtesy) {
-                // Drop any queued files so the submission carries no attachments.
-                if (typeof registeredFileList !== 'undefined' && Array.isArray(registeredFileList)) {
-                    registeredFileList.length = 0;
-                    const preview = document.getElementById('filePreviews');
-                    if (preview) preview.innerHTML = '';
-                    const fi = document.getElementById('fileAttachments');
-                    if (fi) fi.value = '';
-                }
-            } else {
-                // Leaving courtesy mode — clear any audio + the derived category so
-                // the petition submission doesn't accidentally carry them.
+            // Clear whichever input is now hidden so a stale value isn't submitted.
+            if (!showUpload && typeof registeredFileList !== 'undefined' && Array.isArray(registeredFileList)) {
+                registeredFileList.length = 0;
+                const preview = document.getElementById('filePreviews');
+                if (preview) preview.innerHTML = '';
+                const fi = document.getElementById('fileAttachments');
+                if (fi) fi.value = '';
+            }
+            if (!showVoice) {
                 const audioData = document.getElementById('audioRecordingData');
                 if (audioData) audioData.value = '';
                 const audioPreview = document.getElementById('audioPreview');
                 if (audioPreview) audioPreview.style.display = 'none';
+            }
+            // Leaving courtesy entirely — drop the derived category too.
+            if (!courtesy) {
                 const ddl = document.getElementById('ddlCategory');
                 if (ddl && COURTESY_CATEGORIES.has(ddl.value)) ddl.value = '';
             }
+
+            // Header + section titles reflect the flow — a greeting/invitation
+            // form should NOT read "Grievance Registration".
+            const titleEl = document.getElementById('lbl-portal-title');
+            if (titleEl) {
+                titleEl.textContent = !courtesy ? copy.portalTitle
+                    : ctype === 'greetings'  ? copy.ctypeGreetings
+                    : ctype === 'invitation' ? copy.ctypeInvitation
+                    : (copy.portalTitleCourtesy || copy.stypeCourtesy);
+            }
+            const secEl = document.getElementById('lbl-sec-title');
+            if (secEl) secEl.textContent = courtesy ? (copy.secTitleCourtesy || copy.secTitle) : copy.secTitle;
+
+            // Contextual hint: invitation asks for the card image; greeting for a voice message.
             if (noteEl) {
-                noteEl.style.display   = courtesy ? '' : 'none';
-                noteEl.textContent     = copy.audioOnlyHint || '';
+                noteEl.style.display = (courtesy && ctype) ? '' : 'none';
+                noteEl.textContent   = ctype === 'invitation'
+                    ? (copy.invitationHint || '')
+                    : ctype === 'greetings' ? (copy.audioOnlyHint || '') : '';
+            }
+            // Upload label — invitation asks specifically for the invitation image.
+            const uploadLabelEl = document.getElementById('lbl-upload');
+            if (uploadLabelEl) {
+                uploadLabelEl.textContent = (courtesy && ctype === 'invitation')
+                    ? (copy.uploadLabelInvitation || copy.upload)
+                    : copy.upload;
             }
             const audioHintEl = document.getElementById('lbl-audio-hint');
             if (audioHintEl) {
@@ -1544,11 +1586,10 @@
                     ? (copy.audioLabelCourtesy || copy.audio || '')
                     : (copy.audio || '');
             }
-            // The voice message is MANDATORY in courtesy mode (there's no
-            // document to attach), so show the required asterisk there; in the
-            // petition path audio is optional (upload OR record), so hide it.
+            // Voice is mandatory only for a greeting (no document); invitation
+            // uses the image upload instead, so its asterisk lives on the upload.
             const audioReqEl = document.getElementById('lbl-audio-req');
-            if (audioReqEl) audioReqEl.style.display = courtesy ? '' : 'none';
+            if (audioReqEl) audioReqEl.style.display = (courtesy && ctype === 'greetings') ? '' : 'none';
         }
 
         // Segmented-tab click handler. Idempotent; safe on repeat clicks.
@@ -1603,6 +1644,8 @@
                 btn.classList.toggle('is-active', active);
                 btn.setAttribute('aria-selected', active ? 'true' : 'false');
             });
+            // Re-route the fields: greeting → voice, invitation → image upload.
+            applyCourtesyModeToUploadSection();
             validateFormForOTP();
         }
 
@@ -2016,12 +2059,18 @@
                     showOtpFieldError(copy.alertFillFields);
                     return;
                 }
-                if (!_courtesyType()) {
+                const ct = _courtesyType();
+                if (!ct) {
                     alert(copy.alertPickCourtesyType || 'Please pick Greeting or Invitation.');
                     return;
                 }
-                if (!hasAudio) {
+                // Greeting needs a voice message; Invitation needs the invitation image.
+                if (ct === 'greetings' && !hasAudio) {
                     alert(copy.alertRecordVoiceFirst || 'Please record a short voice message.');
+                    return;
+                }
+                if (ct === 'invitation' && !hasFiles) {
+                    alert(copy.alertUploadInvitation || 'Please upload a photo of your invitation.');
                     return;
                 }
             } else {

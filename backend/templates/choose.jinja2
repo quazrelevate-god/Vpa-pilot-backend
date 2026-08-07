@@ -228,7 +228,27 @@
     </div>
 
     <nav class="choices" aria-label="Intake options">
-      <!-- Petition → the existing citizen form (token carries the verified session). -->
+      <!-- Greeting / Invitation → the same citizen form, opened directly in
+           courtesy mode (mode=courtesy). No document, voice-first — the greeting
+           vs invitation sub-pick happens inside the form. Shown FIRST. -->
+      <a class="choice choice--courtesy rise" href="/form?token={{ session_token }}&mode=courtesy" data-nav>
+        <span class="ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/>
+            <path d="m3 6 9 6 9-6"/>
+          </svg>
+        </span>
+        <span class="body">
+          <span class="ta">வாழ்த்து / அழைப்பு</span>
+          <span class="en">Greeting / Invitation</span>
+          <span class="hint">உங்கள் செய்தியைப் பேசுங்கள் · Speak your message — no document needed</span>
+        </span>
+        <span class="arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </span>
+      </a>
+
+      <!-- Petition → the existing citizen form (token carries the verified session). Shown SECOND. -->
       <a class="choice choice--petition rise" href="/form?token={{ session_token }}" data-nav>
         <span class="ic" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -241,26 +261,6 @@
           <span class="ta">மனு அளிக்க</span>
           <span class="en">File a petition</span>
           <span class="hint">தீர்க்க வேண்டிய பிரச்சினை அல்லது கோரிக்கை · A grievance or request to resolve</span>
-        </span>
-        <span class="arrow" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </span>
-      </a>
-
-      <!-- Greeting / Invitation → the same citizen form, opened directly in
-           courtesy mode (mode=courtesy). No document, voice-first — the greeting
-           vs invitation sub-pick happens inside the form. -->
-      <a class="choice choice--courtesy rise" href="/form?token={{ session_token }}&mode=courtesy" data-nav>
-        <span class="ic" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/>
-            <path d="m3 6 9 6 9-6"/>
-          </svg>
-        </span>
-        <span class="body">
-          <span class="ta">வாழ்த்து / அழைப்பு</span>
-          <span class="en">Greeting / Invitation</span>
-          <span class="hint">உங்கள் செய்தியைப் பேசுங்கள் · Speak your message — no document needed</span>
         </span>
         <span class="arrow" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>

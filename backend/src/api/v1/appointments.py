@@ -2,6 +2,7 @@
 FastAPI routes for OTP verification and appointment submission.
 Implements stateless identity gatekeeper with atomic submission pattern.
 """
+import logging
 from typing import List, Optional
 from uuid import UUID
 
@@ -14,11 +15,63 @@ from src.services.appointment_service import appointment_service
 # Shared rate limiter (registered on the app in main.py so the limits fire)
 from src.core.rate_limit import limiter
 
+logger = logging.getLogger(__name__)
+
 
 router = APIRouter(
     prefix="/api/v1",
     tags=["Appointments & OTP"]
 )
+
+
+async def _record_invitation_event(
+    files: Optional[List[UploadFile]], citizen_name: str, db: AsyncSession
+) -> None:
+    """Mirror a citizen INVITATION into the events module so the events-PWA
+    reviewer sees it in "needs review".
+
+    An invitation submission carries a photo/scan of the invitation card. We
+    hand that image to event_service.create_event, which stores it, inserts an
+    InvitationEvent as QUEUED with is_approved=False (→ lands in the reviewer's
+    needs-review queue), and spawns Gemini extraction to pull title/venue/date.
+
+    Best-effort by design: the appointment is already committed by the time we
+    get here, so any failure here is logged and swallowed — it must never turn a
+    successful citizen submission into an error.
+    """
+    try:
+        image = None
+        for f in (files or []):
+            mime = (getattr(f, "content_type", "") or "").lower().split(";")[0].strip()
+            if f.filename and mime.startswith("image/"):
+                image = f
+                break
+        if image is None:
+            # PDF-only or no attachment — the events extractor is image-based,
+            # so there's nothing to create an event from. The appointment still
+            # holds the original upload.
+            logger.info("invitation: no image attachment to mirror into events")
+            return
+
+        try:
+            await image.seek(0)  # process_atomic_submission already read the stream
+        except Exception:
+            pass
+        data = await image.read()
+        if not data:
+            return
+
+        from src.services import event_service
+        event = await event_service.create_event(
+            db=db,
+            file_bytes=data,
+            mime_type=image.content_type or "image/jpeg",
+            note=(f"Citizen invitation — {citizen_name}".strip() or "Citizen invitation"),
+            created_by="citizen-submit",
+        )
+        logger.info("invitation mirrored into events: event_id=%s", getattr(event, "id", None))
+    except Exception as exc:  # noqa: BLE001 — never fail the citizen submission
+        logger.warning("invitation → events mirror failed (submission unaffected): %r", exc)
 
 
 # Request/Response Models
@@ -376,7 +429,13 @@ async def submit_appointment(
             db=db,
             grievance_category=grievance_category,
         )
-        
+
+        # An INVITATION also gets mirrored into the events module so the
+        # events-PWA reviewer picks it up in "needs review". Best-effort — the
+        # helper swallows its own errors so it can't fail the submission.
+        if (grievance_category or "").strip().lower() == "invitation":
+            await _record_invitation_event(files, name, db)
+
         return AppointmentResponseModel(**result)
     
     except HTTPException:
