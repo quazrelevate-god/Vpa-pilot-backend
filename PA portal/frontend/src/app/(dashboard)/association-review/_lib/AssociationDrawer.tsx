@@ -86,29 +86,42 @@ export function toAttachments(docs: AssociationDoc[] | undefined): GalleryAttach
 }
 
 // ── section building blocks ───────────────────────────────────────────────
-export function Tile({ icon, label, value, mono = false }: {
-  icon?: ReactNode; label: string; value?: string | number | null; mono?: boolean;
+export function Tile({ icon, label, value, mono = false, muted = false }: {
+  icon?: ReactNode; label: string; value?: string | number | null; mono?: boolean; muted?: boolean;
 }) {
-  if (!specified(value)) return null;
+  if (!specified(value) && !muted) return null;
   return (
     <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-background/60 px-4 py-3">
       <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {icon}{label}
       </div>
-      <div className={cn("text-[14px] font-semibold leading-snug text-foreground", mono && "num")}>
+      <div className={cn(
+        "text-[14px] font-semibold leading-snug",
+        mono && "num",
+        muted ? "italic text-muted-foreground" : "text-foreground",
+      )}>
         {value}
       </div>
     </div>
   );
 }
 
-/** Serif reading block for narrative fields — hides on empty. */
-export function Reading({ label, text }: { label: string; text: string }) {
-  if (!specified(text)) return null;
+/** Serif reading block for narrative fields — hides on empty unless `muted`
+ *  is set, in which case it renders the fallback text in muted italic (used
+ *  for load-bearing fields like the collective ask, which should always show
+ *  the fact of "not stated" rather than disappearing from the drawer).
+ */
+export function Reading({ label, text, muted = false }: { label: string; text: string; muted?: boolean }) {
+  if (!specified(text) && !muted) return null;
   return (
     <div className="rounded-lg border border-border bg-background/60 p-4">
       <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
-      <p className="font-serif text-[15px] leading-[1.75] text-foreground/90">{text}</p>
+      <p className={cn(
+        "font-serif text-[15px] leading-[1.75]",
+        muted ? "italic text-muted-foreground" : "text-foreground/90",
+      )}>
+        {text}
+      </p>
     </div>
   );
 }
@@ -272,10 +285,16 @@ export function AssociationDrawer({
               </div>
             </SectionShell>
 
-            {/* 2 — The collective ask */}
-            <SectionShell n={2} id="ask" title="The collective ask" hidden={!specified(ask) && !specified(demand)}>
+            {/* 2 — The collective ask (always shown; the ask IS the deliverable
+                 of an association submission, so absence is itself a signal
+                 the PA must see — never hide the section on empty). */}
+            <SectionShell n={2} id="ask" title="The collective ask">
               <div className="space-y-3">
-                <Reading label="Ask" text={ask} />
+                <Reading
+                  label="Ask"
+                  text={specified(ask) ? ask : "No clear collective ask stated in the document"}
+                  muted={!specified(ask)}
+                />
                 <Reading label="Why now" text={demand} />
               </div>
             </SectionShell>
