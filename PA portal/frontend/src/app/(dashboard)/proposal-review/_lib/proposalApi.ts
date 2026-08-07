@@ -107,6 +107,28 @@ export async function fetchProposalDocuments(id: number): Promise<ProposalDocume
   return r.json();
 }
 
+/** The four desks a proposal can sit with — mirrors the backend's
+ *  _VALID_CATEGORIES, so the picker can never offer an invalid value. */
+export const PROPOSAL_CATEGORIES: { value: string; label: string }[] = [
+  { value: "school",      label: "School Education" },
+  { value: "tamil",       label: "Tamil & Heritage" },
+  { value: "information", label: "Information & Publicity" },
+  { value: "film",        label: "Film" },
+];
+
+/** Reassign the desk. The tracking ref is intentionally left untouched — the
+ *  citizen already has it. */
+export async function updateProposalCategory(id: number, category: string): Promise<ProposalDetail> {
+  const r = await fetch(`${BASE}/${id}/category`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category }),
+  });
+  if (!r.ok) throw await apiError(r);
+  return r.json();
+}
+
 export async function decideProposal(id: number, decision: Decision, note?: string): Promise<ProposalDetail> {
   const r = await fetch(`${BASE}/${id}/decision`, {
     method: "POST",

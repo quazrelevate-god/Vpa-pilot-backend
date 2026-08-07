@@ -80,6 +80,15 @@ class DecisionBody(BaseModel):
     note: Optional[str] = Field(None, max_length=4000, description="Reviewer's reason / note")
 
 
+class CategoryBody(BaseModel):
+    category: str = Field(..., description="school | tamil | information | film")
+
+
+# The four desks a proposal can sit with — mirrors _VALID_CATEGORIES on the
+# public /proposal intake so the form and the review surface never disagree.
+_VALID_CATEGORIES = {"school", "tamil", "information", "film"}
+
+
 # ── Serialisers ─────────────────────────────────────────────────────────────────
 def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
@@ -211,4 +220,39 @@ async def decide_proposal(
     row.reviewed_at = now_utc()
     await db.commit()
     await db.refresh(row)
+    return _detail(row)
+
+
+@router.patch("/{proposal_id}/category", response_model=ProposalDetail, summary="Reassign the desk (category)")
+async def update_proposal_category(
+    proposal_id: int,
+    body: CategoryBody,
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(require_super_admin),
+) -> ProposalDetail:
+    """Move a proposal to a different desk.
+
+    The AI picks the desk at intake from the form; this is the human override
+    for when it lands on the wrong one.
+
+    `tracking_ref` is deliberately NOT re-minted. Its prefix encodes the desk at
+    submission time (NK/SCH/…), but the citizen was given that reference — it is
+    their handle on the proposal, so it stays stable for the life of the record
+    even when the desk changes.
+    """
+    category = (body.category or "").strip().lower()
+    if category not in _VALID_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"category must be one of: {', '.join(sorted(_VALID_CATEGORIES))}.",
+        )
+
+    row = await db.get(ProposalSubmission, proposal_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Proposal not found.")
+
+    if row.category != category:
+        row.category = category
+        await db.commit()
+        await db.refresh(row)
     return _detail(row)

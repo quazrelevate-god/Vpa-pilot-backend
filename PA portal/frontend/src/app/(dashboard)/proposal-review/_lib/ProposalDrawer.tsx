@@ -5,22 +5,27 @@
  * WITHOUT a route redirect — just imports <ProposalDrawer readOnly /> and
  * skips the sticky Approve / Reject / Needs-clarification decision bar.
  */
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check, X, HelpCircle, Building2, IndianRupee, CalendarClock,
   Sparkles, AlertTriangle, Loader2, User, Download,
-  Briefcase, Landmark, Wallet, ShieldAlert as RiskIcon, FolderOpen,
+  Briefcase, Landmark, Wallet, ShieldAlert as RiskIcon, FolderOpen, Pencil,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SheetClose, SheetTitle } from "@/components/ui/sheet";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
-import type {
-  ProposalDetail, ProposalBrief, ProposalDoc, Decision,
+import {
+  PROPOSAL_CATEGORIES, updateProposalCategory,
+  type ProposalDetail, type ProposalBrief, type ProposalDoc, type Decision,
 } from "./proposalApi";
 
 // ── display maps ────────────────────────────────────────────────────────────
@@ -121,20 +126,50 @@ export function SectionShell({
 export interface ProposalDrawerProps {
   d: ProposalDetail;
   onClose: () => void;
-  /** Read-only mode = hide the sticky decision bar. Used on the dashboard. */
+  /** Read-only mode = hide the sticky decision bar AND the desk-reassignment
+   *  section. Used on the dashboards and by the Minister app. */
   readOnly?: boolean;
   note?: string;
   setNote?: (v: string) => void;
   deciding?: boolean;
   onDecide?: (dec: Decision) => void;
+  /** Called with the refreshed row after the desk is reassigned, so the list
+   *  behind the drawer can pick up the new category. */
+  onCategorySaved?: (updated: ProposalDetail) => void;
 }
 
 export function ProposalDrawer({
   d, onClose, readOnly = false,
   note = "", setNote,
   deciding = false, onDecide,
+  onCategorySaved,
 }: ProposalDrawerProps) {
   const { lang } = useLang();
+
+  // Desk reassignment (section 9). Draft lives here until Save, so an
+  // accidental change to the picker never writes anything.
+  const [catDraft, setCatDraft] = useState<string>(d.category ?? "");
+  const [savingCat, setSavingCat] = useState(false);
+  // Re-seed when the drawer is pointed at a different proposal.
+  useEffect(() => { setCatDraft(d.category ?? ""); }, [d.id, d.category]);
+  const catDirty = !!catDraft && catDraft !== (d.category ?? "");
+
+  async function saveCategory() {
+    if (!catDirty || savingCat) return;
+    setSavingCat(true);
+    try {
+      const updated = await updateProposalCategory(d.id, catDraft);
+      toast.success("Desk updated", {
+        description: `Moved to ${CATEGORY_LABEL[catDraft] ?? catDraft}.`,
+      });
+      onCategorySaved?.(updated);
+    } catch (e) {
+      toast.error("Couldn't update the desk", { description: (e as Error).message });
+      setCatDraft(d.category ?? "");   // roll the picker back to the stored value
+    } finally {
+      setSavingCat(false);
+    }
+  }
   const ta = lang === "ta";
   const L = useCallback((en?: string, taStr?: string) => {
     if (ta && taStr && taStr.trim()) return taStr;
@@ -379,6 +414,66 @@ export function ProposalDrawer({
                 </ul>
               )}
             </SectionShell>
+
+            {/* 9 — Desk assignment. The only editable thing in this drawer, so
+                   it is hidden entirely in read-only mode. */}
+            {!readOnly && (
+              <SectionShell
+                n={9}
+                id="desk"
+                title="Desk assignment"
+                right={
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    <Pencil className="h-3 w-3" /> Editable
+                  </span>
+                }
+              >
+                <div className="rounded-lg border border-border bg-background/60 p-4">
+                  <p className="mb-3 text-[13px] text-muted-foreground">
+                    The desk is set from the submission form. Change it here if the
+                    proposal belongs with a different portfolio.
+                  </p>
+
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+                    <Select value={catDraft} onValueChange={setCatDraft} disabled={savingCat}>
+                      <SelectTrigger className="h-10 w-full sm:max-w-[280px]">
+                        <SelectValue placeholder="Choose a desk" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROPOSAL_CATEGORIES.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Button
+                      onClick={saveCategory}
+                      disabled={!catDirty || savingCat}
+                      className="h-10 sm:w-auto"
+                    >
+                      {savingCat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      {savingCat ? "Saving…" : "Save"}
+                    </Button>
+
+                    {catDirty && !savingCat && (
+                      <button
+                        type="button"
+                        onClick={() => setCatDraft(d.category ?? "")}
+                        className="text-[12.5px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="mt-3 text-[12px] text-muted-foreground">
+                    The tracking reference{" "}
+                    <span className="num font-semibold text-foreground">{d.tracking_ref}</span>{" "}
+                    stays the same — the applicant already has it.
+                  </p>
+                </div>
+              </SectionShell>
+            )}
 
             {decided && d.decision_note && (
               <div className="rounded-lg border border-border bg-secondary/60 px-3.5 py-3 text-[13.5px]">

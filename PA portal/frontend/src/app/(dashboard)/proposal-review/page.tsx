@@ -419,6 +419,7 @@ export default function ProposalReviewPage() {
               deciding={deciding}
               onDecide={decide}
               onClose={() => setSelectedId(null)}
+              onCategorySaved={(updated) => { setDetail(updated); load(); }}
             />
           ) : (
             <DetailEmpty />
