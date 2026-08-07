@@ -736,6 +736,12 @@ class AiUploadService:
         failed_count = int((await db.execute(
             select(func.count(AiUpload.id)).where(AiUpload.status == STATUS_FAILED)
         )).scalar() or 0)
+        # Global ids of every failed upload — lets the review page's "Retry all
+        # failed" act on the whole failed set, not just the rows on the current
+        # page (which, under the default Awaiting filter, holds none).
+        failed_ids = [int(i) for i in (await db.execute(
+            select(AiUpload.id).where(AiUpload.status == STATUS_FAILED).order_by(AiUpload.created_at)
+        )).scalars().all()]
         active_jobs = int((await db.execute(
             select(func.count(AiUpload.id)).where(
                 AiUpload.status.in_([STATUS_QUEUED, STATUS_PROCESSING])
@@ -758,6 +764,7 @@ class AiUploadService:
             "distribution":  distribution,
             "total_awaiting": total_awaiting,
             "failed_count":   failed_count,
+            "failed_ids":     failed_ids,
             "active_jobs":    active_jobs,
             "routed_count":   routed_count,
         }

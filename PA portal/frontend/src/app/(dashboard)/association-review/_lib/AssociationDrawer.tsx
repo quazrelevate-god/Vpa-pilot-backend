@@ -63,13 +63,15 @@ export function daysSince(iso: string | null): number | null {
   if (Number.isNaN(t)) return null;
   return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
 }
-export function titleCase(s?: string | null): string {
-  if (!s) return "";
-  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+export function titleCase(s?: string | number | null): string {
+  if (s == null || s === "") return "";
+  // Coerce first: some fields (e.g. member_count) arrive as numbers at runtime
+  // despite the string type, and .replace() on a number would crash the drawer.
+  return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 /** A field the AI leaves as "Not specified" / "Unknown" is not a real value. */
-export function specified(v?: string | null): boolean {
-  const s = (v || "").trim();
+export function specified(v?: string | number | null): boolean {
+  const s = (v == null ? "" : String(v)).trim();
   return !!s && s.toLowerCase() !== "not specified" && s.toLowerCase() !== "unknown";
 }
 export function toAttachments(docs: AssociationDoc[] | undefined): GalleryAttachment[] {
@@ -85,7 +87,7 @@ export function toAttachments(docs: AssociationDoc[] | undefined): GalleryAttach
 
 // ── section building blocks ───────────────────────────────────────────────
 export function Tile({ icon, label, value, mono = false }: {
-  icon?: ReactNode; label: string; value?: string | null; mono?: boolean;
+  icon?: ReactNode; label: string; value?: string | number | null; mono?: boolean;
 }) {
   if (!specified(value)) return null;
   return (
@@ -159,7 +161,7 @@ export function AssociationDrawer({
   const ex: AssociationBrief = d.extraction || {};
   const rec = ex.ai_recommendation ? REC_META[ex.ai_recommendation] : null;
   const st = STATUS_META[d.status] || { label: d.status, cls: "bg-slate-100 text-slate-600" };
-  const urg = d.urgency ? URGENCY_META[d.urgency.toLowerCase()] : null;
+  const urg = typeof d.urgency === "string" && d.urgency ? URGENCY_META[d.urgency.toLowerCase()] : null;
   const decided = ["REVIEWED", "FORWARDED"].includes(d.status);
   const days = daysSince(d.created_at);
 

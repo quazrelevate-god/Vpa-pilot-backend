@@ -179,9 +179,8 @@ export function DonutBreakdown({
                   fillOpacity={dim(r.key)} cursor={onSlice ? "pointer" : "default"} />
               ))}
             </Pie>
-            <Tooltip
-              formatter={(v: number, n) => [`${v} (${Math.round((v / total) * 100)}%)`, n as string]}
-              contentStyle={{ borderRadius: 10, border: "1px solid #E1E5EB", fontSize: 12 }} />
+            {/* No <Tooltip>: it floated over the centered Total, hiding it. The
+                legend on the right already lists every slice's value + %. */}
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 grid place-items-center">

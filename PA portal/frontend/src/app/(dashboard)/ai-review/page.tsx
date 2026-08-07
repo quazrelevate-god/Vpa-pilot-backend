@@ -46,6 +46,7 @@ interface AggregatesPayload {
   distribution: { key: string; count: number }[];
   total_awaiting: number;
   failed_count:   number;
+  failed_ids?:    number[]; // global ids of every FAILED upload — drives "Retry all failed"
   active_jobs:    number;
   routed_count?:  number;   // uploads the classifier sent to proposal/association
 }
@@ -1130,7 +1131,9 @@ function AiReviewPageInner() {
                     <span className="relative z-[1]">{t(s.tKey)}</span>
                     <span className={cn(
                       "relative z-[1] min-w-[22px] rounded-md px-1.5 py-0.5 text-center text-[12px] font-bold tabular-nums",
-                      active ? "bg-white text-brand shadow-card" : "bg-muted text-muted-foreground",
+                      active ? "bg-white text-brand shadow-card"
+                        : s.key === "FAILED" && (count ?? 0) > 0 ? "bg-red-100 text-red-700"
+                        : "bg-muted text-muted-foreground",
                     )}>
                       {count ?? "·"}
                     </span>
@@ -1141,10 +1144,20 @@ function AiReviewPageInner() {
 
             <div className="flex flex-wrap items-center gap-2">
               {failedCount > 0 && (
-                <Button size="sm" variant="outline" className="h-[38px] rounded-xl border-red-300 text-red-700"
-                  onClick={() => retry(uploads.filter(u => u.status === "FAILED").map(u => u.id))}>
-                  <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retryAllFailed")} ({failedCount})
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  {/* A failed scan needs attention, but sits behind its own tab
+                      out of the default Awaiting queue. This always-on red flag
+                      surfaces the count and jumps straight to the failed rows. */}
+                  <button
+                    onClick={() => { setFStatus("FAILED"); setPage(1); }}
+                    className="inline-flex h-[38px] items-center gap-1.5 rounded-xl border border-red-300 bg-red-50 px-3 text-[13px] font-semibold text-red-700 transition-colors hover:bg-red-100">
+                    <AlertTriangle className="h-3.5 w-3.5" /> {failedCount} {t("petition.segFailed")}
+                  </button>
+                  <Button size="sm" variant="outline" className="h-[38px] rounded-xl border-red-300 text-red-700"
+                    onClick={() => retry(aggregates?.failed_ids ?? [])}>
+                    <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retryAllFailed")}
+                  </Button>
+                </div>
               )}
               {([
                 ["today", t("petition.dateToday"), CalendarCheck],

@@ -29,6 +29,66 @@ const NO_DATA = "#EEF2FA";
 
 const W = 420, H = 480;
 
+// ── Label placement: pole of inaccessibility ────────────────────────────────
+// An area-weighted centroid can drift toward a thin arm and land near (or on)
+// a border on concave/irregular districts — which is why some counts looked
+// mis-placed. polylabel() returns the interior point farthest from every edge,
+// i.e. the visual centre, so the number always sits inside the fat of the shape.
+type Pt = [number, number];
+function segDistSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  let dx = bx - ax, dy = by - ay;
+  if (dx !== 0 || dy !== 0) {
+    const t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
+    if (t > 1) { ax = bx; ay = by; } else if (t > 0) { ax += dx * t; ay += dy * t; }
+  }
+  dx = px - ax; dy = py - ay;
+  return dx * dx + dy * dy;
+}
+// Signed distance from (x,y) to the polygon: positive inside, negative outside.
+function signedDist(x: number, y: number, rings: Pt[][]): number {
+  let inside = false, minSq = Infinity;
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [ax, ay] = ring[i], [bx, by] = ring[j];
+      if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
+      minSq = Math.min(minSq, segDistSq(x, y, ax, ay, bx, by));
+    }
+  }
+  return (inside ? 1 : -1) * Math.sqrt(minSq);
+}
+function polylabel(rings: Pt[][], precision = 0.6): Pt {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of rings[0]) {
+    if (x < minX) minX = x; if (y < minY) minY = y;
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+  }
+  const w = maxX - minX, h = maxY - minY;
+  const cell = Math.min(w, h);
+  if (cell === 0) return [minX, minY];
+  const half = cell / 2;
+  type Cell = { x: number; y: number; h: number; d: number; max: number };
+  const mk = (x: number, y: number, hh: number): Cell => {
+    const d = signedDist(x, y, rings);
+    return { x, y, h: hh, d, max: d + hh * Math.SQRT2 };
+  };
+  const queue: Cell[] = [];
+  for (let x = minX; x < maxX; x += cell)
+    for (let y = minY; y < maxY; y += cell)
+      queue.push(mk(x + half, y + half, half));
+  let best = mk(minX + w / 2, minY + h / 2, 0);
+  while (queue.length) {
+    let bi = 0;
+    for (let i = 1; i < queue.length; i++) if (queue[i].max > queue[bi].max) bi = i;
+    const c = queue.splice(bi, 1)[0];
+    if (c.d > best.d) best = c;
+    if (c.max - best.d <= precision) continue;
+    const hh = c.h / 2;
+    queue.push(mk(c.x - hh, c.y - hh, hh), mk(c.x + hh, c.y - hh, hh),
+               mk(c.x - hh, c.y + hh, hh), mk(c.x + hh, c.y + hh, hh));
+  }
+  return [best.x, best.y];
+}
+
 export default function TamilNaduMap({ data, activeKey, onSelect }: {
   data: DistrictCount[] | null; activeKey?: string; onSelect?: (key: string) => void;
 }) {
@@ -69,7 +129,17 @@ export default function TamilNaduMap({ data, activeKey, onSelect }: {
     const proj = geoMercator().fitSize([W, H], geo);
     const path = geoPath(proj);
     return geo.features.map((f: any): MapPath => {
-      const [cx, cy] = path.centroid(f);
+      // Project the polygon into pixel space, then place the label at its visual
+      // centre. For a MultiPolygon use the largest polygon (by outer-ring length).
+      const g = f.geometry;
+      let poly: any[] = g.type === "MultiPolygon"
+        ? g.coordinates.reduce((a: any, b: any) => (b[0].length > a[0].length ? b : a))
+        : g.coordinates;
+      const rings: Pt[][] = poly.map((ring: number[][]) =>
+        ring.map((c) => proj(c as [number, number]) as Pt));
+      let cx: number, cy: number;
+      try { [cx, cy] = polylabel(rings); }
+      catch { [cx, cy] = path.centroid(f); }
       return { key: f.properties.key, name: f.properties.name, d: path(f) ?? "", cx, cy };
     });
   }, [geo]);
@@ -97,7 +167,11 @@ export default function TamilNaduMap({ data, activeKey, onSelect }: {
               stroke={isActive ? "#1E40AF" : "#FFFFFF"}
               className="transition-[fill,stroke,opacity] duration-150 hover:stroke-[#1E40AF]"
               style={{
-                strokeWidth: isActive ? 1.8 : hover?.name === p.name ? 1.4 : 0.6,
+                // non-scaling-stroke keeps every border the same crisp CSS-pixel
+                // width regardless of the viewBox→viewport scale, so outlines no
+                // longer render partially bold / partially thin.
+                strokeWidth: isActive ? 2 : hover?.key === p.key ? 1.6 : 0.9,
+                vectorEffect: "non-scaling-stroke",
                 opacity: dimmed ? 0.4 : 1,
                 cursor: clickable ? "pointer" : "default",
               }}
