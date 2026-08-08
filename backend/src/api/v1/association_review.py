@@ -358,6 +358,20 @@ async def get_association(assoc_id: int, db: AsyncSession = Depends(get_db)) -> 
     return _detail(row, dup_name=dup_name)
 
 
+@router.get("/{assoc_id}/similar", summary="Reviewer-triggered fuzzy dedup — Layer 2")
+async def get_similar_associations(
+    assoc_id: int,
+    limit: int = Query(10, ge=1, le=25),
+    min_score: float = Query(0.50, ge=0.10, le=1.0),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Returns candidate similar associations for the reviewer to visually
+    confirm. Blocks by category + district; scores by trigram Jaccard on
+    the collective ask. Read-only — the PA decides."""
+    from src.services.association_service import find_similar_associations
+    return await find_similar_associations(db, assoc_id, limit=limit, min_score=min_score)
+
+
 @router.post("/{assoc_id}/decision", response_model=AssociationDetail, summary="Record a review decision")
 async def decide_association(
     assoc_id: int,

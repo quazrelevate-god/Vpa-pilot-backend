@@ -64,6 +64,98 @@ def _proposal_fingerprint(org_name: Optional[str], title: Optional[str], ask: Op
 
 _DEDUP_WINDOW_DAYS = 90
 
+
+# ── Layer-2 helpers — trigram similarity for reviewer-triggered Find Similar ─
+def _trigram_set(s: str) -> set[str]:
+    if len(s) < 3:
+        return {s} if s else set()
+    return {s[i:i + 3] for i in range(len(s) - 2)}
+
+
+def _similarity(a: str, b: str) -> float:
+    """Trigram Jaccard, mirrors petition_merge_service._similarity."""
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    A, B = _trigram_set(a), _trigram_set(b)
+    if not A or not B:
+        return 0.0
+    inter = len(A & B)
+    union = len(A | B)
+    return inter / union if union else 0.0
+
+
+async def find_similar_proposals(
+    db: AsyncSession,
+    proposal_id: int,
+    *,
+    limit: int = 10,
+    min_score: float = 0.50,
+) -> Dict[str, Any]:
+    """Reviewer-triggered fuzzy dedup — Layer 2.
+
+    Read-only: returns candidate similar proposals for `proposal_id`.
+    Blocks by same category (desk), then trigram-Jaccard scores the
+    normalised problem_statement + title against each candidate, keeping
+    only those at or above `min_score`.
+
+    Mirrors petition_merge_service.find_similar in shape so the drawer UI
+    can render the same panel for either surface. Never mutates — the PA
+    decides.
+    """
+    src = await db.get(ProposalSubmission, proposal_id)
+    if src is None:
+        return {"source": None, "candidates": [], "reason": "Proposal not found."}
+
+    ej = src.extraction_json or {}
+    src_title = ej.get("title") or ""
+    src_problem = ej.get("problem_statement") or ""
+    src_norm = _normalise_for_fingerprint(src_title + " " + src_problem)
+    if not src_norm:
+        return {
+            "source": {"id": src.id, "tracking_ref": src.tracking_ref},
+            "candidates": [],
+            "reason": "No extracted title/problem yet to compare against.",
+        }
+
+    # Block by category (desk). Same-desk proposals compete for the same
+    # decision surface, so that's the sensible bucket.
+    stmt = (
+        select(ProposalSubmission)
+        .where(ProposalSubmission.id != src.id)
+        .where(ProposalSubmission.extraction_json.isnot(None))
+    )
+    if src.category:
+        stmt = stmt.where(ProposalSubmission.category == src.category)
+    candidates = list((await db.execute(stmt)).scalars().all())
+
+    scored: List[Dict[str, Any]] = []
+    for c in candidates:
+        cej = c.extraction_json or {}
+        cnorm = _normalise_for_fingerprint((cej.get("title") or "") + " " + (cej.get("problem_statement") or ""))
+        score = _similarity(src_norm, cnorm)
+        if score >= min_score:
+            scored.append({
+                "id": c.id,
+                "tracking_ref": c.tracking_ref,
+                "title": cej.get("title") or None,
+                "org_name": c.org_name,
+                "status": c.status,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "score": round(score, 3),
+            })
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    scored = scored[:limit]
+    return {
+        "source": {
+            "id": src.id, "tracking_ref": src.tracking_ref,
+            "title": src_title, "org_name": src.org_name, "category": src.category,
+        },
+        "candidates": scored,
+        "reason": None if scored else "No similar proposals found in this desk.",
+    }
+
 # Intake limits — aligned to what Gemini can actually extract inline.
 #
 # The extraction service sends each proposal document as a single

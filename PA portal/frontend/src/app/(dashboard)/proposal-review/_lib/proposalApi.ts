@@ -161,6 +161,30 @@ export async function updateProposalCategory(id: number, category: string): Prom
   return r.json();
 }
 
+/** Layer-2 fuzzy dedup — one card per candidate scored by trigram Jaccard.
+ *  Same shape the petition merge panel uses, so the reviewer UI stays
+ *  consistent across surfaces. */
+export interface SimilarProposalCandidate {
+  id: number;
+  tracking_ref: string;
+  title: string | null;
+  org_name: string | null;
+  status: ProposalStatus;
+  created_at: string | null;
+  score: number;
+}
+export interface SimilarProposalsResponse {
+  source: { id: number; tracking_ref: string; title?: string | null; org_name?: string | null; category?: string | null } | null;
+  candidates: SimilarProposalCandidate[];
+  reason?: string | null;
+}
+
+export async function findSimilarProposals(id: number): Promise<SimilarProposalsResponse> {
+  const r = await fetch(`${BASE}/${id}/similar`, { credentials: "include", cache: "no-store" });
+  if (!r.ok) throw await apiError(r);
+  return r.json();
+}
+
 export async function decideProposal(id: number, decision: Decision, note?: string): Promise<ProposalDetail> {
   const r = await fetch(`${BASE}/${id}/decision`, {
     method: "POST",

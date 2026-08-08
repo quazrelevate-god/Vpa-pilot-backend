@@ -10,6 +10,7 @@ import {
   Check, X, HelpCircle, Building2, IndianRupee, CalendarClock,
   Sparkles, AlertTriangle, Loader2, User, Download,
   Briefcase, Landmark, Wallet, ShieldAlert as RiskIcon, FolderOpen, Pencil,
+  Search as SearchIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +25,9 @@ import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import {
-  PROPOSAL_CATEGORIES, updateProposalCategory,
+  PROPOSAL_CATEGORIES, updateProposalCategory, findSimilarProposals,
   type ProposalDetail, type ProposalBrief, type ProposalDoc, type Decision,
+  type SimilarProposalCandidate,
 } from "./proposalApi";
 
 // ── display maps ────────────────────────────────────────────────────────────
@@ -443,8 +445,11 @@ export function ProposalDrawer({
               <Reading label="Prior deployments (as stated in the proposal)" text={track} />
             </SectionShell>
 
-            {/* 8 — Documents */}
-            <SectionShell n={8} id="documents" title="Attached documents">
+            {/* 8 — Duplicate Check (Layer 2, reviewer-triggered fuzzy dedup) */}
+            <SimilarProposalsPanel proposalId={d.id} />
+
+            {/* 9 — Documents */}
+            <SectionShell n={9} id="documents" title="Attached documents">
               {docAtts.length === 0 ? (
                 <p className="text-[13px] text-muted-foreground">No source document attached.</p>
               ) : (
@@ -471,11 +476,11 @@ export function ProposalDrawer({
               )}
             </SectionShell>
 
-            {/* 9 — Desk assignment. The only editable thing in this drawer, so
-                   it is hidden entirely in read-only mode. */}
+            {/* 10 — Desk assignment. The only editable thing in this drawer,
+                    so it is hidden entirely in read-only mode. */}
             {!readOnly && (
               <SectionShell
-                n={9}
+                n={10}
                 id="desk"
                 title="Desk assignment"
                 right={
@@ -573,5 +578,84 @@ export function ProposalDrawer({
         </div>
       )}
     </div>
+  );
+}
+
+
+// ── Layer-2 reviewer-triggered fuzzy dedup panel ────────────────────────────
+// Collapsed by default: an "Are there similar proposals?" button opens a
+// panel that fetches /similar on demand. Read-only — the reviewer eyeballs
+// each candidate + score and decides. Mirrors the petition merge panel's
+// shape so the review UX stays consistent across surfaces.
+function SimilarProposalsPanel({ proposalId }: { proposalId: number }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [cands, setCands] = useState<SimilarProposalCandidate[] | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const scan = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const res = await findSimilarProposals(proposalId);
+      setCands(res.candidates || []);
+      setReason(res.reason || null);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [proposalId]);
+
+  return (
+    <SectionShell n={8} id="similar" title="Duplicate check"
+      right={
+        <button
+          onClick={() => { setOpen((v) => !v); if (!open && cands === null) scan(); }}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <SearchIcon className="h-3 w-3" />
+          {open ? "Hide" : "Find similar"}
+        </button>
+      }
+    >
+      {!open ? (
+        <p className="text-[12.5px] text-muted-foreground">
+          Trigram-similarity scan across the same desk. Read-only — nothing gets merged automatically.
+        </p>
+      ) : loading ? (
+        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Scanning proposals in this desk…
+        </div>
+      ) : err ? (
+        <p className="text-[13px] text-red-700">Scan failed: {err}</p>
+      ) : (cands?.length ?? 0) === 0 ? (
+        <p className="text-[13px] italic text-muted-foreground">{reason || "No similar proposals found."}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {(cands || []).map((c) => (
+            <li key={c.id} className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-[13px]">
+              <span className="num rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-800" title={`Similarity ${(c.score * 100).toFixed(0)}%`}>
+                {(c.score * 100).toFixed(0)}%
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-semibold text-foreground">{c.title || c.tracking_ref}</div>
+                <div className="truncate text-[11.5px] text-muted-foreground">
+                  {c.org_name || "—"} · {c.tracking_ref} · {c.status}
+                </div>
+              </div>
+              <a
+                href={`/proposal-review?id=${c.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 text-[11.5px] font-semibold text-brand hover:underline"
+              >
+                Open →
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionShell>
   );
 }

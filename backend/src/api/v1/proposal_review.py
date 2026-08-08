@@ -292,6 +292,20 @@ async def get_proposal(proposal_id: int, db: AsyncSession = Depends(get_db)) -> 
     return _detail(row, dup_ref=dup_ref)
 
 
+@router.get("/{proposal_id}/similar", summary="Reviewer-triggered fuzzy dedup — Layer 2")
+async def get_similar_proposals(
+    proposal_id: int,
+    limit: int = Query(10, ge=1, le=25),
+    min_score: float = Query(0.50, ge=0.10, le=1.0),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Returns candidate similar proposals for the reviewer to visually
+    confirm. Blocks by desk (category), scores by trigram Jaccard on
+    normalised title + problem_statement. Read-only — the PA decides."""
+    from src.services.proposal_service import find_similar_proposals
+    return await find_similar_proposals(db, proposal_id, limit=limit, min_score=min_score)
+
+
 @router.post("/{proposal_id}/decision", response_model=ProposalDetail, summary="Record a decision")
 async def decide_proposal(
     proposal_id: int,

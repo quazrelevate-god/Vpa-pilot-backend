@@ -11,11 +11,12 @@
  * the review page (list card colours) and the dashboard (table pills) can
  * stay visually consistent without redefining the same tables of hex.
  */
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   Check, Send, Building2, UserRound, Users, MapPin, CalendarClock,
   Loader2, Sparkles, AlertTriangle, Landmark, Target, Flag,
   ShieldAlert as RiskIcon, ScrollText, FolderOpen, X, Download,
+  Search as SearchIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,8 +26,10 @@ import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-previ
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
-import type {
-  AssociationDetail, AssociationBrief, AssociationDoc, AssociationDecision,
+import {
+  findSimilarAssociations,
+  type AssociationDetail, type AssociationBrief, type AssociationDoc,
+  type AssociationDecision, type SimilarAssociationCandidate,
 } from "./associationApi";
 
 // ── display maps (kept here so review-page list cards + dashboard-page
@@ -414,8 +417,11 @@ export function AssociationDrawer({
               </div>
             </SectionShell>
 
-            {/* 7 — Documents */}
-            <SectionShell n={7} id="documents" title="Attached documents">
+            {/* 7 — Duplicate check (Layer 2, reviewer-triggered fuzzy dedup) */}
+            <SimilarAssociationsPanel n={7} assocId={d.id} />
+
+            {/* 8 — Documents */}
+            <SectionShell n={8} id="documents" title="Attached documents">
               {docAtts.length === 0 ? (
                 <p className="text-[13px] text-muted-foreground">No source document attached.</p>
               ) : (
@@ -480,5 +486,82 @@ export function AssociationDrawer({
         </div>
       )}
     </div>
+  );
+}
+
+
+// ── Layer-2 reviewer-triggered fuzzy dedup panel ────────────────────────────
+// Collapsed by default: an inline "Find similar" button loads /similar on
+// demand. Read-only — reviewer eyeballs each candidate + score and decides.
+function SimilarAssociationsPanel({ n, assocId }: { n: number; assocId: number }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [cands, setCands] = useState<SimilarAssociationCandidate[] | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const scan = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const res = await findSimilarAssociations(assocId);
+      setCands(res.candidates || []);
+      setReason(res.reason || null);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [assocId]);
+
+  return (
+    <SectionShell n={n} id="similar" title="Duplicate check"
+      right={
+        <button
+          onClick={() => { setOpen((v) => !v); if (!open && cands === null) scan(); }}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <SearchIcon className="h-3 w-3" />
+          {open ? "Hide" : "Find similar"}
+        </button>
+      }
+    >
+      {!open ? (
+        <p className="text-[12.5px] text-muted-foreground">
+          Trigram-similarity scan across the same category + district. Read-only — nothing gets merged automatically.
+        </p>
+      ) : loading ? (
+        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Scanning associations in this bucket…
+        </div>
+      ) : err ? (
+        <p className="text-[13px] text-red-700">Scan failed: {err}</p>
+      ) : (cands?.length ?? 0) === 0 ? (
+        <p className="text-[13px] italic text-muted-foreground">{reason || "No similar associations found."}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {(cands || []).map((c) => (
+            <li key={c.id} className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-[13px]">
+              <span className="num rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-800" title={`Similarity ${(c.score * 100).toFixed(0)}%`}>
+                {(c.score * 100).toFixed(0)}%
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-semibold text-foreground">{c.association_name || "Unnamed body"}</div>
+                <div className="truncate text-[11.5px] text-muted-foreground">
+                  {c.representative_name || "—"} · {c.district || "—"} · {c.status}
+                </div>
+              </div>
+              <a
+                href={`/association-review?id=${c.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 text-[11.5px] font-semibold text-brand hover:underline"
+              >
+                Open →
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionShell>
   );
 }

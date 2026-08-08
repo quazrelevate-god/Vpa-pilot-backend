@@ -65,6 +65,101 @@ def _association_fingerprint(name: Optional[str], ask: Optional[str]) -> str:
 _DEDUP_WINDOW_DAYS = 90
 
 
+# ── Layer-2 helpers — reviewer-triggered Find Similar (trigram Jaccard) ─────
+def _trigram_set(s: str) -> set[str]:
+    if len(s) < 3:
+        return {s} if s else set()
+    return {s[i:i + 3] for i in range(len(s) - 2)}
+
+
+def _similarity(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    A, B = _trigram_set(a), _trigram_set(b)
+    if not A or not B:
+        return 0.0
+    inter = len(A & B)
+    union = len(A | B)
+    return inter / union if union else 0.0
+
+
+async def find_similar_associations(
+    db: AsyncSession,
+    assoc_id: int,
+    *,
+    limit: int = 10,
+    min_score: float = 0.50,
+) -> Dict[str, Any]:
+    """Reviewer-triggered fuzzy dedup for associations.
+
+    Blocks by category + district (union submissions competing for the
+    same portfolio + geography), then trigram-Jaccard on the collective
+    ask. Read-only — the PA decides.
+    """
+    src = await db.get(AssociationSubmission, assoc_id)
+    if src is None:
+        return {"source": None, "candidates": [], "reason": "Association not found."}
+
+    ej = src.extraction_json or {}
+    src_ask = ej.get("association_ask") or ""
+    src_norm = _normalise_for_fingerprint(src_ask)
+    if not src_norm:
+        return {
+            "source": {"id": src.id, "association_name": src.association_name},
+            "candidates": [],
+            "reason": "No extracted ask yet to compare against.",
+        }
+
+    # Block by category (+ district when the source has one). NULL-tolerant:
+    # unknown-district source only matches unknown-district candidates.
+    stmt = (
+        select(AssociationSubmission)
+        .where(AssociationSubmission.id != src.id)
+        .where(AssociationSubmission.extraction_json.isnot(None))
+    )
+    if src.category:
+        stmt = stmt.where(AssociationSubmission.category == src.category)
+    if src.district and src.district.lower() != "unknown":
+        stmt = stmt.where(AssociationSubmission.district == src.district)
+    else:
+        stmt = stmt.where(
+            (AssociationSubmission.district.is_(None))
+            | (AssociationSubmission.district == "unknown")
+        )
+    candidates = list((await db.execute(stmt)).scalars().all())
+
+    scored: List[Dict[str, Any]] = []
+    for c in candidates:
+        cej = c.extraction_json or {}
+        cnorm = _normalise_for_fingerprint(cej.get("association_ask") or "")
+        score = _similarity(src_norm, cnorm)
+        if score >= min_score:
+            scored.append({
+                "id": c.id,
+                "association_name": c.association_name,
+                "representative_name": c.representative_name,
+                "category": c.category,
+                "district": c.district,
+                "status": c.status,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "score": round(score, 3),
+            })
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    scored = scored[:limit]
+    return {
+        "source": {
+            "id": src.id,
+            "association_name": src.association_name,
+            "representative_name": src.representative_name,
+            "category": src.category, "district": src.district,
+        },
+        "candidates": scored,
+        "reason": None if scored else "No similar associations found in this category / district.",
+    }
+
+
 class AssociationService:
     async def create_from_extraction(
         self,

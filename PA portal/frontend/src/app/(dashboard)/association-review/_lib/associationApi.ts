@@ -149,6 +149,35 @@ export async function getAssociation(id: number): Promise<AssociationDetail> {
   return r.json();
 }
 
+/** Layer-2 fuzzy dedup for associations — trigram Jaccard on the ask. */
+export interface SimilarAssociationCandidate {
+  id: number;
+  association_name: string | null;
+  representative_name: string | null;
+  category: string | null;
+  district: string | null;
+  status: AssociationStatus;
+  created_at: string | null;
+  score: number;
+}
+export interface SimilarAssociationsResponse {
+  source: {
+    id: number;
+    association_name?: string | null;
+    representative_name?: string | null;
+    category?: string | null;
+    district?: string | null;
+  } | null;
+  candidates: SimilarAssociationCandidate[];
+  reason?: string | null;
+}
+
+export async function findSimilarAssociations(id: number): Promise<SimilarAssociationsResponse> {
+  const r = await fetch(`${BASE}/${id}/similar`, { credentials: "include", cache: "no-store" });
+  if (!r.ok) throw await apiError(r);
+  return r.json();
+}
+
 export async function decideAssociation(
   id: number, decision: AssociationDecision, note?: string,
 ): Promise<AssociationDetail> {
