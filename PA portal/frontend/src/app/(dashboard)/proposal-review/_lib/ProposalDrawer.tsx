@@ -220,6 +220,44 @@ export function ProposalDrawer({
 
   const docAtts = useMemo(() => toAttachments(d.documents), [d.documents]);
 
+  // ── Layer-2 "Find similar" state, lifted so the header pill + count and
+  // the Duplicate Check section body always agree. Auto-fires when Layer 1B
+  // pre-flagged the row so the reviewer sees the count without hunting.
+  const [simPanelOpen, setSimPanelOpen] = useState(false);
+  const [simLoading,   setSimLoading]   = useState(false);
+  const [simCands,     setSimCands]     = useState<SimilarProposalCandidate[] | null>(null);
+  const [simReason,    setSimReason]    = useState<string | null>(null);
+  const [simErr,       setSimErr]       = useState<string | null>(null);
+
+  const runSimilarScan = useCallback(async () => {
+    setSimLoading(true); setSimErr(null);
+    try {
+      const res = await findSimilarProposals(d.id);
+      setSimCands(res.candidates || []);
+      setSimReason(res.reason || null);
+    } catch (e) {
+      setSimErr((e as Error).message);
+    } finally {
+      setSimLoading(false);
+    }
+  }, [d.id]);
+
+  useEffect(() => {
+    if (d.is_duplicate && simCands === null && !simLoading) {
+      runSimilarScan();
+    }
+  }, [d.is_duplicate, simCands, simLoading, runSimilarScan]);
+
+  const simCount = simCands?.length ?? 0;
+  const openSimilarPanel = () => {
+    setSimPanelOpen(true);
+    if (simCands === null && !simLoading) runSimilarScan();
+    requestAnimationFrame(() => {
+      const el = document.getElementById("similar");
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
@@ -238,17 +276,42 @@ export function ProposalDrawer({
               </span>
             )}
             {d.is_duplicate && (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+              <button
+                type="button"
+                onClick={openSimilarPanel}
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-100"
                 title={
                   d.duplicate_of_tracking_ref
-                    ? `Fingerprint matches an earlier proposal within the last 90 days (${d.duplicate_of_tracking_ref}). Review carefully.`
-                    : "Fingerprint matches an earlier proposal within the last 90 days. Review carefully."
+                    ? `Fingerprint matches ${d.duplicate_of_tracking_ref} within the last 90 days. Click to see all matches.`
+                    : "Fingerprint matches an earlier proposal within the last 90 days. Click to see all matches."
                 }
               >
                 <AlertTriangle className="h-3 w-3" />
                 Suspected duplicate{d.duplicate_of_tracking_ref ? ` of ${d.duplicate_of_tracking_ref}` : ""}
-              </span>
+                {simLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                {!simLoading && simCands !== null && simCount > 0 && (
+                  <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                    {simCount}
+                  </span>
+                )}
+              </button>
+            )}
+            {!d.is_duplicate && (
+              <button
+                type="button"
+                onClick={openSimilarPanel}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                title="Fuzzy-scan same desk for similar proposals."
+              >
+                <SearchIcon className="h-3 w-3" />
+                Find similar
+                {simLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                {!simLoading && simCands !== null && simCount > 0 && (
+                  <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                    {simCount}
+                  </span>
+                )}
+              </button>
             )}
           </div>
           <SheetClose
@@ -445,8 +508,13 @@ export function ProposalDrawer({
               <Reading label="Prior deployments (as stated in the proposal)" text={track} />
             </SectionShell>
 
-            {/* 8 — Duplicate Check (Layer 2, reviewer-triggered fuzzy dedup) */}
-            <SimilarProposalsPanel proposalId={d.id} />
+            {/* 8 — Duplicate Check (state lifted to parent so header pill +
+                 count badge stay in sync with the section body). */}
+            <SimilarProposalsPanel
+              open={simPanelOpen} onToggle={() => setSimPanelOpen((v) => !v)}
+              loading={simLoading} cands={simCands} reason={simReason} err={simErr}
+              onScan={runSimilarScan}
+            />
 
             {/* 9 — Documents */}
             <SectionShell n={9} id="documents" title="Attached documents">
@@ -582,40 +650,34 @@ export function ProposalDrawer({
 }
 
 
-// ── Layer-2 reviewer-triggered fuzzy dedup panel ────────────────────────────
-// Collapsed by default: an "Are there similar proposals?" button opens a
-// panel that fetches /similar on demand. Read-only — the reviewer eyeballs
-// each candidate + score and decides. Mirrors the petition merge panel's
-// shape so the review UX stays consistent across surfaces.
-function SimilarProposalsPanel({ proposalId }: { proposalId: number }) {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [cands, setCands] = useState<SimilarProposalCandidate[] | null>(null);
-  const [reason, setReason] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const scan = useCallback(async () => {
-    setLoading(true); setErr(null);
-    try {
-      const res = await findSimilarProposals(proposalId);
-      setCands(res.candidates || []);
-      setReason(res.reason || null);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [proposalId]);
-
+// ── Layer-2 fuzzy dedup panel ───────────────────────────────────────────────
+// Body of the "Duplicate check" section. State is owned by the parent drawer
+// so the header pill / count badge and this section body always agree.
+function SimilarProposalsPanel({
+  open, onToggle, loading, cands, reason, err, onScan,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  loading: boolean;
+  cands: SimilarProposalCandidate[] | null;
+  reason: string | null;
+  err: string | null;
+  onScan: () => void;
+}) {
   return (
     <SectionShell n={8} id="similar" title="Duplicate check"
       right={
         <button
-          onClick={() => { setOpen((v) => !v); if (!open && cands === null) scan(); }}
+          onClick={() => { onToggle(); if (cands === null && !loading) onScan(); }}
           className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <SearchIcon className="h-3 w-3" />
           {open ? "Hide" : "Find similar"}
+          {!loading && cands !== null && cands.length > 0 && (
+            <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+              {cands.length}
+            </span>
+          )}
         </button>
       }
     >

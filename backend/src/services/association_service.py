@@ -114,8 +114,21 @@ async def find_similar_associations(
 
     # Block by category (+ district when the source has one). NULL-tolerant:
     # unknown-district source only matches unknown-district candidates.
+    # PERFORMANCE: pull ONLY the columns we score + display, and extract the
+    # ask directly from JSONB in-SQL — loading full extraction_json blobs on
+    # 500-row buckets was pushing per-request payloads past 2 MB and made
+    # scoring take longer than the 30s HTTP timeout.
     stmt = (
-        select(AssociationSubmission)
+        select(
+            AssociationSubmission.id.label("id"),
+            AssociationSubmission.association_name.label("association_name"),
+            AssociationSubmission.representative_name.label("representative_name"),
+            AssociationSubmission.category.label("category"),
+            AssociationSubmission.district.label("district"),
+            AssociationSubmission.status.label("status"),
+            AssociationSubmission.created_at.label("created_at"),
+            AssociationSubmission.extraction_json["association_ask"].astext.label("ask"),
+        )
         .where(AssociationSubmission.id != src.id)
         .where(AssociationSubmission.extraction_json.isnot(None))
     )
@@ -128,12 +141,17 @@ async def find_similar_associations(
             (AssociationSubmission.district.is_(None))
             | (AssociationSubmission.district == "unknown")
         )
-    candidates = list((await db.execute(stmt)).scalars().all())
+    # Safety cap — Jaccard scoring is O(n × trigram_size) in Python. At 500
+    # rows the endpoint takes ~2s; degrades linearly past that. If a bucket
+    # ever holds more, the reviewer probably wants pg_trgm + a GIN index
+    # (out of scope here). Sort by newest first so the cap keeps the most
+    # actionable candidates when the bucket is huge.
+    stmt = stmt.order_by(AssociationSubmission.created_at.desc()).limit(500)
+    candidates = list((await db.execute(stmt)).all())
 
     scored: List[Dict[str, Any]] = []
     for c in candidates:
-        cej = c.extraction_json or {}
-        cnorm = _normalise_for_fingerprint(cej.get("association_ask") or "")
+        cnorm = _normalise_for_fingerprint(c.ask or "")
         score = _similarity(src_norm, cnorm)
         if score >= min_score:
             scored.append({

@@ -11,7 +11,7 @@
  * the review page (list card colours) and the dashboard (table pills) can
  * stay visually consistent without redefining the same tables of hex.
  */
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check, Send, Building2, UserRound, Users, MapPin, CalendarClock,
   Loader2, Sparkles, AlertTriangle, Landmark, Target, Flag,
@@ -194,6 +194,52 @@ export function AssociationDrawer({
 
   const docAtts = useMemo(() => toAttachments(d.documents), [d.documents]);
 
+  // ── Layer-2 "Find similar" state, lifted up so the header pill and the
+  // Duplicate Check section stay in sync (count badge on top, expanded panel
+  // below). Auto-fires the scan when the drawer opens on a row that Layer 1B
+  // already flagged as a suspected duplicate — the reviewer sees the count
+  // immediately without scrolling or hunting for the button.
+  const [simPanelOpen, setSimPanelOpen]   = useState(false);
+  const [simLoading,   setSimLoading]     = useState(false);
+  const [simCands,     setSimCands]       = useState<SimilarAssociationCandidate[] | null>(null);
+  const [simReason,    setSimReason]      = useState<string | null>(null);
+  const [simErr,       setSimErr]         = useState<string | null>(null);
+
+  const runSimilarScan = useCallback(async () => {
+    setSimLoading(true); setSimErr(null);
+    try {
+      const res = await findSimilarAssociations(d.id);
+      setSimCands(res.candidates || []);
+      setSimReason(res.reason || null);
+    } catch (e) {
+      setSimErr((e as Error).message);
+    } finally {
+      setSimLoading(false);
+    }
+  }, [d.id]);
+
+  // Auto-scan on drawer open ONLY when Layer 1B pre-flagged this row.
+  // Deterministic dedup already thinks it's a match — surfacing the actual
+  // candidates without a click removes friction for the reviewer. Rows the
+  // fingerprint didn't flag stay on-demand (avoids running the scan on every
+  // drawer open for every proposal).
+  useEffect(() => {
+    if (d.is_duplicate && simCands === null && !simLoading) {
+      runSimilarScan();
+    }
+  }, [d.is_duplicate, simCands, simLoading, runSimilarScan]);
+
+  const simCount = simCands?.length ?? 0;
+  const openSimilarPanel = () => {
+    setSimPanelOpen(true);
+    if (simCands === null && !simLoading) runSimilarScan();
+    // Scroll the section into view so the reviewer sees the expanded panel.
+    requestAnimationFrame(() => {
+      const el = document.getElementById("similar");
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
@@ -217,17 +263,45 @@ export function AssociationDrawer({
               </span>
             )}
             {d.is_duplicate && (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+              <button
+                type="button"
+                onClick={openSimilarPanel}
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-100"
                 title={
                   d.duplicate_of_name
-                    ? `Fingerprint matches an earlier submission from ${d.duplicate_of_name} within the last 90 days. Review carefully.`
-                    : "Fingerprint matches an earlier association submission within the last 90 days. Review carefully."
+                    ? `Fingerprint matches an earlier submission from ${d.duplicate_of_name} within the last 90 days. Click to see all matches.`
+                    : "Fingerprint matches an earlier association submission within the last 90 days. Click to see all matches."
                 }
               >
                 <AlertTriangle className="h-3 w-3" />
                 Suspected duplicate{d.duplicate_of_name ? ` of ${d.duplicate_of_name.slice(0, 30)}${d.duplicate_of_name.length > 30 ? "…" : ""}` : ""}
-              </span>
+                {simLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                {!simLoading && simCands !== null && simCount > 0 && (
+                  <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                    {simCount}
+                  </span>
+                )}
+              </button>
+            )}
+            {/* Layer-2 button — always visible so a reviewer can scan even
+                when Layer 1B didn't flag the row. Compact & neutral so it
+                doesn't compete with the amber duplicate pill when both show. */}
+            {!d.is_duplicate && (
+              <button
+                type="button"
+                onClick={openSimilarPanel}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                title="Fuzzy-scan same category + district for similar submissions."
+              >
+                <SearchIcon className="h-3 w-3" />
+                Find similar
+                {simLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                {!simLoading && simCands !== null && simCount > 0 && (
+                  <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                    {simCount}
+                  </span>
+                )}
+              </button>
             )}
           </div>
           <SheetClose
@@ -417,8 +491,15 @@ export function AssociationDrawer({
               </div>
             </SectionShell>
 
-            {/* 7 — Duplicate check (Layer 2, reviewer-triggered fuzzy dedup) */}
-            <SimilarAssociationsPanel n={7} assocId={d.id} />
+            {/* 7 — Duplicate check (Layer 2, reviewer-triggered fuzzy dedup).
+                 State is lifted to AssociationDrawer so the header pill /
+                 count badge and this section body always agree. */}
+            <SimilarAssociationsPanel
+              n={7}
+              open={simPanelOpen} onToggle={() => setSimPanelOpen((v) => !v)}
+              loading={simLoading} cands={simCands} reason={simReason} err={simErr}
+              onScan={runSimilarScan}
+            />
 
             {/* 8 — Documents */}
             <SectionShell n={8} id="documents" title="Attached documents">
@@ -490,38 +571,37 @@ export function AssociationDrawer({
 }
 
 
-// ── Layer-2 reviewer-triggered fuzzy dedup panel ────────────────────────────
-// Collapsed by default: an inline "Find similar" button loads /similar on
-// demand. Read-only — reviewer eyeballs each candidate + score and decides.
-function SimilarAssociationsPanel({ n, assocId }: { n: number; assocId: number }) {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [cands, setCands] = useState<SimilarAssociationCandidate[] | null>(null);
-  const [reason, setReason] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const scan = useCallback(async () => {
-    setLoading(true); setErr(null);
-    try {
-      const res = await findSimilarAssociations(assocId);
-      setCands(res.candidates || []);
-      setReason(res.reason || null);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [assocId]);
-
+// ── Layer-2 fuzzy dedup panel ───────────────────────────────────────────────
+// Body of the "Duplicate check" section. State (loading/candidates/reason/err)
+// is owned by the parent drawer so the header pill + count badge stay in
+// sync with what this panel shows. Auto-scan (on drawer open when Layer 1B
+// pre-flagged the row) is also parent-controlled — see AssociationDrawer.
+function SimilarAssociationsPanel({
+  n, open, onToggle, loading, cands, reason, err, onScan,
+}: {
+  n: number;
+  open: boolean;
+  onToggle: () => void;
+  loading: boolean;
+  cands: SimilarAssociationCandidate[] | null;
+  reason: string | null;
+  err: string | null;
+  onScan: () => void;
+}) {
   return (
     <SectionShell n={n} id="similar" title="Duplicate check"
       right={
         <button
-          onClick={() => { setOpen((v) => !v); if (!open && cands === null) scan(); }}
+          onClick={() => { onToggle(); if (cands === null && !loading) onScan(); }}
           className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <SearchIcon className="h-3 w-3" />
           {open ? "Hide" : "Find similar"}
+          {!loading && cands !== null && cands.length > 0 && (
+            <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+              {cands.length}
+            </span>
+          )}
         </button>
       }
     >

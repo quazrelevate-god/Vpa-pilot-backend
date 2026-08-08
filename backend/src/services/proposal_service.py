@@ -121,25 +121,39 @@ async def find_similar_proposals(
 
     # Block by category (desk). Same-desk proposals compete for the same
     # decision surface, so that's the sensible bucket.
+    # PERFORMANCE: pull ONLY scoring + display columns and extract title +
+    # problem_statement from JSONB in SQL — loading full extraction_json on
+    # every candidate blew request payloads past 2 MB on ~500-row buckets.
     stmt = (
-        select(ProposalSubmission)
+        select(
+            ProposalSubmission.id.label("id"),
+            ProposalSubmission.tracking_ref.label("tracking_ref"),
+            ProposalSubmission.org_name.label("org_name"),
+            ProposalSubmission.status.label("status"),
+            ProposalSubmission.created_at.label("created_at"),
+            ProposalSubmission.extraction_json["title"].astext.label("title"),
+            ProposalSubmission.extraction_json["problem_statement"].astext.label("problem"),
+        )
         .where(ProposalSubmission.id != src.id)
         .where(ProposalSubmission.extraction_json.isnot(None))
     )
     if src.category:
         stmt = stmt.where(ProposalSubmission.category == src.category)
-    candidates = list((await db.execute(stmt)).scalars().all())
+    # Safety cap — same rationale as the association side: O(n) Python
+    # scoring; ~2s at 500 rows. Newest-first so the cap keeps the most
+    # actionable candidates if the desk ever holds thousands.
+    stmt = stmt.order_by(ProposalSubmission.created_at.desc()).limit(500)
+    candidates = list((await db.execute(stmt)).all())
 
     scored: List[Dict[str, Any]] = []
     for c in candidates:
-        cej = c.extraction_json or {}
-        cnorm = _normalise_for_fingerprint((cej.get("title") or "") + " " + (cej.get("problem_statement") or ""))
+        cnorm = _normalise_for_fingerprint((c.title or "") + " " + (c.problem or ""))
         score = _similarity(src_norm, cnorm)
         if score >= min_score:
             scored.append({
                 "id": c.id,
                 "tracking_ref": c.tracking_ref,
-                "title": cej.get("title") or None,
+                "title": c.title or None,
                 "org_name": c.org_name,
                 "status": c.status,
                 "created_at": c.created_at.isoformat() if c.created_at else None,
