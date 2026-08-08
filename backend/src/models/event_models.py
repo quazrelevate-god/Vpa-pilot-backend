@@ -34,10 +34,19 @@ STATUS_PROCESSING = "PROCESSING"
 STATUS_READY      = "READY"
 STATUS_FAILED     = "FAILED"
 
-# Canonical event types the extractor is constrained to.
+# Canonical event types the extractor is constrained to. New values added
+# here automatically pick up in `EventType` (built dynamically in
+# event_extraction.py) and in every `if etype in EVENT_TYPES else "other"`
+# fallback in event_service. Frontend EVENT_TYPE_META in
+# `events/_lib/types.ts` MUST be kept in sync — it drives labels + chip
+# colours; an unlisted value renders as the last entry ("Other").
 EVENT_TYPES = (
     "wedding", "opening_ceremony", "temple_festival", "political_meeting",
-    "housewarming", "memorial", "school_function", "other",
+    "housewarming", "memorial", "school_function",
+    # v2 additions (2026-08): the Minister's calendar sees these regularly.
+    "press_meet",       # press conference / journalist meet
+    "public_speaking",  # public address, lecture, keynote, felicitation speech
+    "other",
 )
 
 

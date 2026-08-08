@@ -128,14 +128,18 @@ export type OverviewData = {
 export const EVENT_TYPE_META: {
   value: string; en: string; ta: string; color: string;
 }[] = [
-  { value: "wedding",           en: "Wedding",           ta: "திருமணம்",          color: "#B2372D" },
-  { value: "opening_ceremony",  en: "Opening ceremony",  ta: "திறப்பு விழா",      color: "#2F6FED" },
-  { value: "temple_festival",   en: "Temple festival",   ta: "கோவில் திருவிழா",   color: "#CC6A1F" },
-  { value: "political_meeting", en: "Political meeting", ta: "அரசியல் கூட்டம்",   color: "#21395B" },
-  { value: "housewarming",      en: "Housewarming",      ta: "புதுமனை புகுவிழா", color: "#4F8A5B" },
-  { value: "memorial",          en: "Memorial",          ta: "நினைவு நிகழ்வு",    color: "#5A6472" },
-  { value: "school_function",   en: "School function",   ta: "பள்ளி விழா",        color: "#0E7490" },
-  { value: "other",             en: "Other",             ta: "மற்றவை",            color: "#7C3AED" },
+  { value: "wedding",           en: "Wedding",           ta: "திருமணம்",              color: "#B2372D" },
+  { value: "opening_ceremony",  en: "Opening ceremony",  ta: "திறப்பு விழா",          color: "#2F6FED" },
+  { value: "temple_festival",   en: "Temple festival",   ta: "கோவில் திருவிழா",       color: "#CC6A1F" },
+  { value: "political_meeting", en: "Political meeting", ta: "அரசியல் கூட்டம்",       color: "#21395B" },
+  { value: "housewarming",      en: "Housewarming",      ta: "புதுமனை புகுவிழா",     color: "#4F8A5B" },
+  { value: "memorial",          en: "Memorial",          ta: "நினைவு நிகழ்வு",        color: "#5A6472" },
+  { value: "school_function",   en: "School function",   ta: "பள்ளி விழா",            color: "#0E7490" },
+  // v2 additions (2026-08). Kept adjacent to "other" so any list ordering
+  // by array index still keeps school_function grouped with school-adjacent.
+  { value: "press_meet",        en: "Press meet",        ta: "செய்தியாளர் சந்திப்பு", color: "#B45309" },
+  { value: "public_speaking",   en: "Public speaking",   ta: "பொதுச் சொற்பொழிவு",    color: "#4338CA" },
+  { value: "other",             en: "Other",             ta: "மற்றவை",                color: "#7C3AED" },
 ];
 
 export function typeMeta(value: string | null) {
