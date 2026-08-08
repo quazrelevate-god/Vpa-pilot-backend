@@ -305,6 +305,19 @@ class Appointment(Base):
         comment="citizen | association — see migration 055 for the shadow-row rationale.",
     )
 
+    # Document date (migration 056). ISO YYYY-MM-DD. Auto-seeded to today's
+    # date by every form-submit path (citizen QR form, kiosk intake, staff
+    # manual entry, AI-upload approve) so a document-date filter always
+    # finds the row; later Gemini extraction on an attached PDF may
+    # overwrite with the printed date if it finds one — a proposal PDF
+    # dated last month should sort by its real date, not the submit date.
+    # NULL only on legacy rows created before this migration.
+    document_date = Column(
+        String(10), nullable=True, index=True,
+        comment="ISO YYYY-MM-DD — auto-seeded on submit, overwritten by "
+                "extraction if the doc has a printed date.",
+    )
+
     # v1 attr → v2 DB column "venue"
     venue_id = Column("venue", String(100), nullable=True)
 

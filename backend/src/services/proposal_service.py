@@ -118,6 +118,7 @@ class ProposalService:
             storage_url = await asyncio.to_thread(save_file, raw, rel, mime)
             documents.append({"original_filename": f.filename, "storage_url": storage_url, "mime_type": mime})
 
+        submit_time = now_utc()
         row = ProposalSubmission(
             tracking_ref=tracking_ref,
             category=(category or "").strip().lower() or None,
@@ -129,7 +130,13 @@ class ProposalService:
             phone_index=crypto.blind_index(phone),
             documents=documents,
             status=STATUS_QUEUED,
-            created_at=now_utc(),
+            created_at=submit_time,
+            # Seed document_date to the submit date so a doc-date filter
+            # always finds the row even before extraction runs. The async
+            # worker at line 244 overwrites this with the printed date if
+            # extraction finds one on the uploaded PDF (more accurate for
+            # proposals dated earlier than the submit day).
+            document_date=submit_time.date().isoformat(),
         )
         db.add(row)
         await db.commit()
@@ -241,7 +248,13 @@ class ProposalService:
                 if row is None:
                     return
                 row.extraction_json = result.model_dump(mode="json")
-                row.document_date = result.document_date
+                # Only overwrite the seeded submit-date if extraction actually
+                # read a printed date off the PDF (more accurate). An empty
+                # result.document_date must NOT null out the seed we set at
+                # form-submit time — the row would drop off any doc-date
+                # filter otherwise.
+                if result.document_date:
+                    row.document_date = result.document_date
                 row.status = STATUS_AWAITING_REVIEW
                 row.error_message = None
                 row.processed_at = now_utc()

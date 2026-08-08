@@ -1065,6 +1065,11 @@ class AiUploadService:
             # citizen QR walk-in.
             source=(row.source or "ai_scan"),
             created_at=now,
+            # document_date: prefer the printed date the extractor read off
+            # the scan (accurate), fall back to today's approve-date so the
+            # row is still findable by a doc-date filter even when the scan
+            # had no readable date.
+            document_date=(gsr.document_date or now.date().isoformat()),
         )
         db.add(appt)
         await db.flush()

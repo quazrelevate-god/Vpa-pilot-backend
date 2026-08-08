@@ -199,6 +199,10 @@ class AssociationService:
             source="ai_scan",
             source_kind="association",
             created_at=now,
+            # Mirror the association's document_date onto the shadow appt so
+            # a doc-date filter on the tickets surface finds it; fall back to
+            # today's approve-date when the assoc had no readable date.
+            document_date=(assoc.document_date or now.date().isoformat()),
         )
         db.add(appt)
         await db.flush()

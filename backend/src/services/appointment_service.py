@@ -978,7 +978,12 @@ class AppointmentService:
                     summary_status=initial_summary_status,
                     transcript_status=initial_transcript_status,
                     num_persons=max(1, min(4, num_persons)),
-                    created_at=current_time
+                    created_at=current_time,
+                    # Seed document_date to the submit date so a doc-date filter
+                    # always finds this row. Later Gemini extraction may overwrite
+                    # with the printed date if the attached document has one
+                    # (see summarisation → _apply_extraction_to_appointment).
+                    document_date=current_time.date().isoformat(),
                 )
                 db.add(appointment)
                 await db.flush()  # Get appointment.id
@@ -1321,6 +1326,13 @@ class AppointmentService:
                     # Use AI category only if citizen didn't pick one (or picked "others/general").
                     if not appt.grievance_category or appt.grievance_category in ("others", "general", "other"):
                         appt.grievance_category = summary.category.value
+                    # If Gemini read a printed date off the attached document,
+                    # it's more accurate than the submit-date we seeded at
+                    # create time — overwrite. Empty extraction date preserves
+                    # the seeded value so the row stays doc-date filterable.
+                    extracted_date = getattr(summary, "document_date", None)
+                    if extracted_date:
+                        appt.document_date = extracted_date
 
                 # Auto-suggest ticket priority from AI urgency (PA can override).
                 # Only set if not already set manually by a PA.
@@ -1467,6 +1479,8 @@ class AppointmentService:
                 status="AWAITING_REVIEW",
                 status_id=manual_ids["status_id"],
                 created_at=current_time,
+                # Seed doc-date to submit date (extraction may overwrite).
+                document_date=current_time.date().isoformat(),
             )
             db.add(appointment)
             await db.flush()
@@ -1673,6 +1687,8 @@ class AppointmentService:
                 # petitions still summarise when an image is attached.
                 summary_status=("DONE" if is_courtesy else ("PENDING" if has_image else "DONE")),
                 created_at=current_time,
+                # Seed doc-date to submit date (extraction may overwrite).
+                document_date=current_time.date().isoformat(),
             )
             db.add(appointment)
             await db.flush()
@@ -1815,6 +1831,13 @@ class AppointmentService:
                 )
                 if appt:
                     appt.grievance_category = summary.category.value
+                    # If Gemini read a printed date off the attached document,
+                    # it's more accurate than the submit-date we seeded on the
+                    # Appointment row — overwrite. Empty extraction preserves
+                    # the seeded value so the row stays filterable.
+                    extracted_date = getattr(summary, "document_date", None)
+                    if extracted_date:
+                        appt.document_date = extracted_date
 
                 # Auto-suggest ticket priority (no ticket yet for manual petitions)
                 await db.commit()
