@@ -122,6 +122,25 @@ function parseDateYMD(v: string): number | null {
   return Number.isNaN(dt.getTime()) ? null : dt.getTime();
 }
 
+/** ISO YYYY-MM-DD for a preset bucket's start date, for date_from query. */
+function dateRangeStartYMD(bucket: string | null): string | null {
+  const ms = dateRangeStart(bucket);
+  if (ms == null) return null;
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Standard debounce — 300ms feels responsive without hammering the API. */
+function useDebounced<T>(value: T, ms = 300): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 type Gate =
   | { kind: "loading" }
   | { kind: "denied"; me: SessionUser | null }
@@ -174,14 +193,40 @@ export default function AssociationReviewPage() {
     return () => ac.abort();
   }, [router]);
 
+  // Server-side pagination — was `list(tab, 100, 0)` + client-filter, which
+  // silently truncated at 100. Now every filter/search/page turn fires a
+  // query with the right offset, and `total` from the server drives the
+  // pagination footer. See Proposal Review for the same pattern.
+  const PAGE_SIZE = 30;
+  const [page, setPage] = useState(1);
+  const debouncedQ = useDebounced(q, 300);
+  const activeDateFrom = dateFilter === "custom" ? dateFrom : (dateRangeStartYMD(dateFilter) ?? "");
+  const activeDateTo   = dateFilter === "custom" ? dateTo   : "";
+
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await listAssociations(tab || undefined, 100, 0);
+      const res = await listAssociations({
+        status: tab || undefined,
+        q: debouncedQ || undefined,
+        category: categoryFilter || undefined,
+        urgency: urgencyFilter || undefined,
+        district: districtFilter || undefined,
+        ministry: ministryFilter || undefined,
+        recommendation: recFilter || undefined,
+        dateFrom: activeDateFrom || undefined,
+        dateTo: activeDateTo || undefined,
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+      });
       if (!signal?.aborted) { setData(res); setLoading(false); }
     } catch (e) {
       if (!signal?.aborted) { setLoading(false); toast.error((e as Error).message); }
     }
-  }, [tab]);
+  }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo, page]);
+
+  // Any filter / search / tab change → reset to page 1 so narrowing from
+  // page 5 doesn't leave you on an empty out-of-range page.
+  useEffect(() => { setPage(1); }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo]);
 
   useEffect(() => {
     if (gate.kind !== "ok") return;
@@ -221,42 +266,14 @@ export default function AssociationReviewPage() {
     return [...set].sort().map((v) => ({ value: v, label: titleCase(v) }));
   }, [data]);
 
-  const filtered = useMemo(() => {
-    const items = data?.items ?? [];
-    const needle = q.trim().toLowerCase();
-    const presetStart = dateRangeStart(dateFilter);
-    // Custom range: inclusive of the "to" day (add 24h) so an item created
-    // late in the day still qualifies when to === same day.
-    const customStart = dateFilter === "custom" ? parseDateYMD(dateFrom) : null;
-    const customEndRaw = dateFilter === "custom" ? parseDateYMD(dateTo) : null;
-    const customEnd = customEndRaw != null ? customEndRaw + 86_400_000 : null;
-    return items.filter((a) => {
-      if (recFilter      && a.ai_recommendation !== recFilter)      return false;
-      if (categoryFilter && a.category          !== categoryFilter) return false;
-      if (urgencyFilter  && (a.urgency || "").toLowerCase() !== urgencyFilter) return false;
-      if (ministryFilter && a.ministry          !== ministryFilter) return false;
-      if (districtFilter && (a.district ?? "")  !== districtFilter) return false;
-      if (presetStart != null) {
-        const t = a.created_at ? new Date(a.created_at).getTime() : NaN;
-        if (!Number.isFinite(t) || t < presetStart) return false;
-      }
-      if (customStart != null || customEnd != null) {
-        const t = a.created_at ? new Date(a.created_at).getTime() : NaN;
-        if (!Number.isFinite(t)) return false;
-        if (customStart != null && t < customStart) return false;
-        if (customEnd   != null && t >= customEnd)  return false;
-      }
-      if (needle) {
-        const hit =
-          (a.association_name || "").toLowerCase().includes(needle) ||
-          (a.representative_name || "").toLowerCase().includes(needle) ||
-          (a.association_ask || "").toLowerCase().includes(needle) ||
-          (a.category || "").toLowerCase().includes(needle);
-        if (!hit) return false;
-      }
-      return true;
-    });
-  }, [data, q, recFilter, categoryFilter, urgencyFilter, districtFilter, ministryFilter, dateFilter, dateFrom, dateTo]);
+  // Server drives every filter + pagination now. `data.items` IS the correct
+  // slice — no client .filter() so the visible set can't disagree with the
+  // pagination footer.
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const lo = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const hi = Math.min(page * PAGE_SIZE, total);
 
   const activeFilterCount =
     (recFilter ? 1 : 0) + (categoryFilter ? 1 : 0) + (urgencyFilter ? 1 : 0) +
@@ -316,22 +333,51 @@ export default function AssociationReviewPage() {
     }
   };
 
-  const doExport = () => {
-    const rows = filtered;
-    const headers = ["ID", "Association", "Representative", "Category", "Urgency", "Members", "Status", "AI", "Submitted"];
-    const lines = rows.map((a) => [
-      a.id, a.association_name ?? "", a.representative_name ?? "",
-      titleCase(a.category) ?? "", titleCase(a.urgency) ?? "",
-      a.member_count ?? "",
-      STATUS_META[a.status]?.label ?? a.status,
-      a.ai_recommendation ?? "", a.created_at ?? "",
-    ]);
-    const csv = [headers, ...lines].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = `associations_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    toast.success(`${rows.length} association(s) exported.`);
+  const [exporting, setExporting] = useState(false);
+  const doExport = async () => {
+    // Export the ENTIRE filtered set, not just the current page — old
+    // implementation exported the first-100 slice.
+    setExporting(true);
+    try {
+      const EXPORT_PAGE = 200;
+      const all: AssociationListItem[] = [];
+      const MAX_PAGES = 50;    // safety cap ~ 10k rows
+      for (let p = 0; p < MAX_PAGES; p++) {
+        const res = await listAssociations({
+          status: tab || undefined,
+          q: debouncedQ || undefined,
+          category: categoryFilter || undefined,
+          urgency: urgencyFilter || undefined,
+          district: districtFilter || undefined,
+          ministry: ministryFilter || undefined,
+          recommendation: recFilter || undefined,
+          dateFrom: activeDateFrom || undefined,
+          dateTo: activeDateTo || undefined,
+          limit: EXPORT_PAGE,
+          offset: p * EXPORT_PAGE,
+        });
+        all.push(...res.items);
+        if (res.items.length < EXPORT_PAGE) break;
+      }
+      const headers = ["ID", "Association", "Representative", "Category", "Urgency", "Members", "Status", "AI", "Submitted"];
+      const lines = all.map((a) => [
+        a.id, a.association_name ?? "", a.representative_name ?? "",
+        titleCase(a.category) ?? "", titleCase(a.urgency) ?? "",
+        a.member_count ?? "",
+        STATUS_META[a.status]?.label ?? a.status,
+        a.ai_recommendation ?? "", a.created_at ?? "",
+      ]);
+      const csv = [headers, ...lines].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+      a.download = `associations_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      toast.success(`${all.length} association(s) exported.`);
+    } catch (e) {
+      toast.error(`Export failed: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -386,8 +432,8 @@ export default function AssociationReviewPage() {
               </div>
 
               <div className="ml-auto">
-                <Button variant="outline" size="sm" onClick={doExport}>
-                  <Download className="h-4 w-4" /> Export
+                <Button variant="outline" size="sm" onClick={doExport} disabled={exporting}>
+                  <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export"}
                 </Button>
               </div>
             </div>
@@ -451,18 +497,18 @@ export default function AssociationReviewPage() {
                 </button>
               )}
               <span className="num ml-auto text-[11.5px] text-muted-foreground">
-                {filtered.length} of {data?.items?.length ?? 0}
+                {total === 0 ? "0 results" : `${lo}–${hi} of ${total}`}
               </span>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               {loading && !data ? (
                 <ListSkeleton />
-              ) : filtered.length === 0 ? (
+              ) : items.length === 0 ? (
                 <EmptyState />
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {filtered.map((a) => (
+                  {items.map((a) => (
                     <AssociationCard
                       key={a.id} a={a} lang={lang}
                       selected={selectedId === a.id}
@@ -472,6 +518,31 @@ export default function AssociationReviewPage() {
                 </div>
               )}
             </div>
+
+            {/* Pagination footer — hidden when it all fits on one page. */}
+            {lastPage > 1 && (
+              <div className="flex shrink-0 items-center justify-between rounded-xl border border-border bg-card px-3 py-2 text-sm">
+                <span className="text-muted-foreground">
+                  Showing <span className="num font-semibold text-foreground">{lo}–{hi}</span> of{" "}
+                  <span className="num font-semibold text-foreground">{total}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                    Prev
+                  </Button>
+                  <span className="num text-[13px] text-muted-foreground">
+                    Page {page} / {lastPage}
+                  </span>
+                  <Button variant="outline" size="sm"
+                    disabled={page >= lastPage}
+                    onClick={() => setPage((p) => Math.min(lastPage, p + 1))}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

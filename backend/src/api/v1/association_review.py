@@ -208,21 +208,28 @@ async def list_associations_grouped(
     }
 
 
-@router.get("", response_model=AssociationListResponse, summary="List association submissions")
-async def list_associations(
-    status: Optional[str] = Query(None),
-    q: Optional[str] = Query(None, description="Search association / representative name"),
-    name: Optional[str] = Query(None, description="Exact association_name — the drill-in for one body"),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
-) -> AssociationListResponse:
-    stmt = select(AssociationSubmission)
+def _apply_assoc_filters(
+    stmt,
+    *,
+    status: Optional[str],
+    q: Optional[str],
+    name: Optional[str],
+    category: Optional[str],
+    urgency: Optional[str],
+    district: Optional[str],
+    ministry: Optional[str],
+    recommendation: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+):
+    """Shared WHERE builder — the list, total and counts queries all pass
+    through here so `total` matches `items` and pill counts stay in sync
+    with the currently-visible slice.
+    """
+    from datetime import datetime as _dt, timedelta as _td
     if status:
         stmt = stmt.where(AssociationSubmission.status == status)
     if name is not None:
-        # Drill-in from a grouped card: all submissions of one body. Case- and
-        # whitespace-insensitive so it matches the group key. "" = unnamed bodies.
         nm = name.strip()
         if nm:
             stmt = stmt.where(func.lower(func.trim(AssociationSubmission.association_name)) == nm.lower())
@@ -231,26 +238,82 @@ async def list_associations(
                 (AssociationSubmission.association_name.is_(None))
                 | (func.trim(AssociationSubmission.association_name) == "")
             )
+    if category:
+        stmt = stmt.where(AssociationSubmission.category == category)
+    if urgency:
+        stmt = stmt.where(AssociationSubmission.urgency == urgency)
+    if district:
+        stmt = stmt.where(AssociationSubmission.district == district)
+    if ministry:
+        stmt = stmt.where(AssociationSubmission.ministry == ministry)
+    if recommendation:
+        # ai_recommendation lives inside the JSONB extraction brief.
+        stmt = stmt.where(
+            AssociationSubmission.extraction_json["ai_recommendation"].astext == recommendation
+        )
     if q and q.strip():
         like = f"%{q.strip()}%"
         stmt = stmt.where(
             AssociationSubmission.association_name.ilike(like)
             | AssociationSubmission.representative_name.ilike(like)
         )
+    if date_from:
+        try:
+            d = _dt.strptime(date_from, "%Y-%m-%d")
+            stmt = stmt.where(AssociationSubmission.created_at >= d)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            d = _dt.strptime(date_to, "%Y-%m-%d") + _td(days=1)
+            stmt = stmt.where(AssociationSubmission.created_at < d)
+        except ValueError:
+            pass
+    return stmt
 
-    # Total over the SAME filters (status + name + q), BEFORE pagination, so it
-    # matches what a drill-in / search actually returns — not the whole table.
+
+@router.get("", response_model=AssociationListResponse, summary="List association submissions")
+async def list_associations(
+    status: Optional[str] = Query(None),
+    q: Optional[str] = Query(None, description="Search association / representative name"),
+    name: Optional[str] = Query(None, description="Exact association_name — the drill-in for one body"),
+    category: Optional[str] = Query(None, description="Grievance category filter"),
+    urgency: Optional[str] = Query(None, description="Urgency filter"),
+    district: Optional[str] = Query(None, description="District filter"),
+    ministry: Optional[str] = Query(None, description="Ministry filter"),
+    recommendation: Optional[str] = Query(None, description="AI triage filter"),
+    date_from: Optional[str] = Query(None, description="Submitted on-or-after (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Submitted on-or-before (YYYY-MM-DD, inclusive)"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> AssociationListResponse:
+    """Paginated list. Same-pattern as proposal-review:
+    - `items` respects every filter + status + limit/offset
+    - `total` matches those filters (drives pagination)
+    - `counts` is the status marginal excluding `status` itself but INCLUDING
+      every refinement (category / urgency / district / ministry / rec /
+      search / date) so pills reflect the current slice.
+    """
+    filter_kwargs = dict(
+        q=q, name=name, category=category, urgency=urgency, district=district,
+        ministry=ministry, recommendation=recommendation,
+        date_from=date_from, date_to=date_to,
+    )
+    stmt = _apply_assoc_filters(select(AssociationSubmission), status=status, **filter_kwargs)
+
     total = (await db.scalar(
         select(func.count()).select_from(stmt.subquery())
     )) or 0
 
-    # Then page the rows.
     stmt = stmt.order_by(AssociationSubmission.created_at.desc()).limit(limit).offset(offset)
     rows = (await db.execute(stmt)).scalars().all()
 
-    counts_rows = (await db.execute(
-        select(AssociationSubmission.status, func.count()).group_by(AssociationSubmission.status)
-    )).all()
+    counts_stmt = _apply_assoc_filters(
+        select(AssociationSubmission.status, func.count()).select_from(AssociationSubmission),
+        status=None, **filter_kwargs,
+    ).group_by(AssociationSubmission.status)
+    counts_rows = (await db.execute(counts_stmt)).all()
     counts = {s: n for s, n in counts_rows}
     return AssociationListResponse(items=[_list_item(r) for r in rows], total=total, counts=counts)
 

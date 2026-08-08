@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  useCallback, useEffect, useMemo, useRef, useState, type ReactNode,
+  useCallback, useEffect, useRef, useState, type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -99,6 +99,27 @@ function parseDateYMD(v: string): number | null {
   const dt = new Date(y, mo, d, 0, 0, 0, 0);
   return Number.isNaN(dt.getTime()) ? null : dt.getTime();
 }
+
+/** ISO YYYY-MM-DD for a preset bucket's start date, for the server-side
+ *  date_from query param. `custom` returns null (caller supplies dateFrom). */
+function dateRangeStartYMD(bucket: string | null): string | null {
+  const ms = dateRangeStart(bucket);
+  if (ms == null) return null;
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Standard debounce hook. 300ms feels responsive without hammering the API
+ *  as the user types in the search box. */
+function useDebounced<T>(value: T, ms = 300): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
 type Gate =
   | { kind: "loading" }
   | { kind: "denied"; me: SessionUser | null }
@@ -146,14 +167,38 @@ export default function ProposalReviewPage() {
     return () => ac.abort();
   }, [router]);
 
+  // Server-side pagination. Was `list(tab, 100, 0)` then client-filter — that
+  // silently truncated at 100. Now every filter + search + page turn maps to
+  // a fresh query with the right offset, and `total` from the server drives
+  // the pagination footer so the visible slice always matches reality.
+  const PAGE_SIZE = 30;
+  const [page, setPage] = useState(1);
+  const debouncedQ = useDebounced(q, 300);
+  const activeDateFrom = dateFilter === "custom" ? dateFrom : (dateRangeStartYMD(dateFilter) ?? "");
+  const activeDateTo   = dateFilter === "custom" ? dateTo   : "";
+
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await listProposals(tab || undefined, 100, 0);
+      const res = await listProposals({
+        status: tab || undefined,
+        q: debouncedQ || undefined,
+        category: categoryFilter || undefined,
+        recommendation: recFilter || undefined,
+        dateFrom: activeDateFrom || undefined,
+        dateTo: activeDateTo || undefined,
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+      });
       if (!signal?.aborted) { setData(res); setLoading(false); }
     } catch (e) {
       if (!signal?.aborted) { setLoading(false); toast.error((e as Error).message); }
     }
-  }, [tab]);
+  }, [tab, debouncedQ, categoryFilter, recFilter, activeDateFrom, activeDateTo, page]);
+
+  // Reset to page 1 whenever any filter / search / tab changes — otherwise
+  // narrowing the results from page 5 could leave you looking at an empty
+  // out-of-range page.
+  useEffect(() => { setPage(1); }, [tab, debouncedQ, categoryFilter, recFilter, activeDateFrom, activeDateTo]);
 
   useEffect(() => {
     if (gate.kind !== "ok") return;
@@ -178,37 +223,14 @@ export default function ProposalReviewPage() {
     if (Number.isFinite(id)) setSelectedId(id);
   }, [gate.kind]);
 
-  const filtered = useMemo(() => {
-    const items = data?.items ?? [];
-    const needle = q.trim().toLowerCase();
-    const presetStart = dateRangeStart(dateFilter);
-    const customStart = dateFilter === "custom" ? parseDateYMD(dateFrom) : null;
-    const customEndRaw = dateFilter === "custom" ? parseDateYMD(dateTo) : null;
-    const customEnd = customEndRaw != null ? customEndRaw + 86_400_000 : null;
-    return items.filter((p) => {
-      if (recFilter      && p.ai_recommendation !== recFilter)      return false;
-      if (categoryFilter && p.category          !== categoryFilter) return false;
-      if (presetStart != null) {
-        const t = p.created_at ? new Date(p.created_at).getTime() : NaN;
-        if (!Number.isFinite(t) || t < presetStart) return false;
-      }
-      if (customStart != null || customEnd != null) {
-        const t = p.created_at ? new Date(p.created_at).getTime() : NaN;
-        if (!Number.isFinite(t)) return false;
-        if (customStart != null && t < customStart) return false;
-        if (customEnd   != null && t >= customEnd)  return false;
-      }
-      if (needle) {
-        const hit =
-          (p.title || "").toLowerCase().includes(needle) ||
-          (p.org_name || "").toLowerCase().includes(needle) ||
-          (p.person_name || "").toLowerCase().includes(needle) ||
-          (p.tracking_ref || "").toLowerCase().includes(needle);
-        if (!hit) return false;
-      }
-      return true;
-    });
-  }, [data, q, recFilter, categoryFilter, dateFilter, dateFrom, dateTo]);
+  // Server drives filtering + pagination now — `data.items` is already the
+  // correct slice. No client-side .filter() so the visible set can't disagree
+  // with the pagination footer.
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const lo = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const hi = Math.min(page * PAGE_SIZE, total);
 
   const activeFilterCount =
     (recFilter ? 1 : 0) + (categoryFilter ? 1 : 0) + (dateFilter ? 1 : 0);
@@ -266,21 +288,49 @@ export default function ProposalReviewPage() {
     }
   };
 
-  const doExport = () => {
-    const rows = filtered;
-    const headers = ["Tracking Ref", "Title", "Submitter", "Category", "Status", "AI", "Submitted"];
-    const lines = rows.map((p) => [
-      p.tracking_ref, p.title ?? "", p.org_name ?? p.person_name ?? "",
-      CATEGORY_LABEL[p.category ?? ""] ?? p.category ?? "",
-      STATUS_META[p.status]?.label ?? p.status,
-      p.ai_recommendation ?? "", p.created_at ?? "",
-    ]);
-    const csv = [headers, ...lines].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = `proposals_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    toast.success(`${rows.length} proposal(s) exported.`);
+  const [exporting, setExporting] = useState(false);
+  const doExport = async () => {
+    // Export the ENTIRE filtered set, not just the current page — the old
+    // implementation exported `filtered` (a client-slice of the first 100)
+    // so an office with 240 proposals silently exported 100. Loop the
+    // paginated API with the same filters and stitch the pages.
+    setExporting(true);
+    try {
+      const EXPORT_PAGE = 200;    // backend limit cap
+      const all: ProposalListItem[] = [];
+      const MAX_PAGES = 50;       // safety cap ~ 10k rows
+      for (let p = 0; p < MAX_PAGES; p++) {
+        const res = await listProposals({
+          status: tab || undefined,
+          q: debouncedQ || undefined,
+          category: categoryFilter || undefined,
+          recommendation: recFilter || undefined,
+          dateFrom: activeDateFrom || undefined,
+          dateTo: activeDateTo || undefined,
+          limit: EXPORT_PAGE,
+          offset: p * EXPORT_PAGE,
+        });
+        all.push(...res.items);
+        if (res.items.length < EXPORT_PAGE) break;
+      }
+      const headers = ["Tracking Ref", "Title", "Submitter", "Category", "Status", "AI", "Submitted"];
+      const lines = all.map((p) => [
+        p.tracking_ref, p.title ?? "", p.org_name ?? p.person_name ?? "",
+        CATEGORY_LABEL[p.category ?? ""] ?? p.category ?? "",
+        STATUS_META[p.status]?.label ?? p.status,
+        p.ai_recommendation ?? "", p.created_at ?? "",
+      ]);
+      const csv = [headers, ...lines].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+      a.download = `proposals_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      toast.success(`${all.length} proposal(s) exported.`);
+    } catch (e) {
+      toast.error(`Export failed: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -334,8 +384,8 @@ export default function ProposalReviewPage() {
               </div>
 
               <div className="ml-auto">
-                <Button variant="outline" size="sm" onClick={doExport}>
-                  <Download className="h-4 w-4" /> Export
+                <Button variant="outline" size="sm" onClick={doExport} disabled={exporting}>
+                  <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export"}
                 </Button>
               </div>
             </div>
@@ -377,18 +427,18 @@ export default function ProposalReviewPage() {
                 </button>
               )}
               <span className="num ml-auto text-[11.5px] text-muted-foreground">
-                {filtered.length} of {data?.items?.length ?? 0}
+                {total === 0 ? "0 results" : `${lo}–${hi} of ${total}`}
               </span>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               {loading && !data ? (
                 <ListSkeleton />
-              ) : filtered.length === 0 ? (
+              ) : items.length === 0 ? (
                 <EmptyState />
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {filtered.map((p) => (
+                  {items.map((p) => (
                     <ProposalCard
                       key={p.id} p={p}
                       selected={selectedId === p.id}
@@ -398,6 +448,33 @@ export default function ProposalReviewPage() {
                 </div>
               )}
             </div>
+
+            {/* Pagination footer — hidden when everything fits on one page.
+                Server drives both the visible slice AND `total`, so the
+                controls always match reality. */}
+            {lastPage > 1 && (
+              <div className="flex shrink-0 items-center justify-between rounded-xl border border-border bg-card px-3 py-2 text-sm">
+                <span className="text-muted-foreground">
+                  Showing <span className="num font-semibold text-foreground">{lo}–{hi}</span> of{" "}
+                  <span className="num font-semibold text-foreground">{total}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                    Prev
+                  </Button>
+                  <span className="num text-[13px] text-muted-foreground">
+                    Page {page} / {lastPage}
+                  </span>
+                  <Button variant="outline" size="sm"
+                    disabled={page >= lastPage}
+                    onClick={() => setPage((p) => Math.min(lastPage, p + 1))}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

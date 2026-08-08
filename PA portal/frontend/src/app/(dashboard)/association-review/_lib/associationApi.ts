@@ -95,12 +95,45 @@ const BASE = "/api/v1/admin/associations";
 // might be useful for future body-level analytics) but the frontend wrappers
 // were removed with the review-page rebuild — no consumers.
 
-/** Flat listing — one row per submission. Backs the main review table. */
-export async function listAssociations(status?: string, limit = 100, offset = 0): Promise<AssociationListResponse> {
+export interface ListAssociationsArgs {
+  status?: string;
+  q?: string;
+  category?: string;
+  urgency?: string;
+  district?: string;
+  ministry?: string;
+  recommendation?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** Flat listing — one row per submission. Backs the main review table.
+ *  Backwards-compat: accepts the old `(status, limit, offset)` positional
+ *  signature so existing callers keep working, and a richer args-object
+ *  form so server-side filters and pagination land in one query.
+ */
+export async function listAssociations(
+  arg?: string | ListAssociationsArgs,
+  limit = 50,
+  offset = 0,
+): Promise<AssociationListResponse> {
+  const args: ListAssociationsArgs = typeof arg === "string" || arg === undefined
+    ? { status: arg, limit, offset }
+    : { limit: 50, offset: 0, ...arg };
   const qs = new URLSearchParams();
-  if (status) qs.set("status", status);
-  qs.set("limit", String(limit));
-  qs.set("offset", String(offset));
+  if (args.status)         qs.set("status", args.status);
+  if (args.q?.trim())      qs.set("q", args.q.trim());
+  if (args.category)       qs.set("category", args.category);
+  if (args.urgency)        qs.set("urgency", args.urgency);
+  if (args.district)       qs.set("district", args.district);
+  if (args.ministry)       qs.set("ministry", args.ministry);
+  if (args.recommendation) qs.set("recommendation", args.recommendation);
+  if (args.dateFrom)       qs.set("date_from", args.dateFrom);
+  if (args.dateTo)         qs.set("date_to", args.dateTo);
+  qs.set("limit", String(args.limit ?? 50));
+  qs.set("offset", String(args.offset ?? 0));
   const r = await fetch(`${BASE}?${qs.toString()}`, { credentials: "include", cache: "no-store" });
   if (!r.ok) throw await apiError(r);
   return r.json();

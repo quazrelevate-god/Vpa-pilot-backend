@@ -67,11 +67,37 @@ export type Decision = "approved" | "rejected" | "needs_clarification";
 
 const BASE = "/api/v1/admin/proposals";
 
-export async function listProposals(status?: string, limit = 100, offset = 0): Promise<ProposalListResponse> {
+export interface ListProposalsArgs {
+  status?: string;
+  q?: string;
+  category?: string;
+  recommendation?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** Backwards-compat: keeps the old (status, limit, offset) positional signature
+ *  working for existing callers, and adds a richer args-object form so
+ *  server-side filters and pagination land in one query. */
+export async function listProposals(
+  arg?: string | ListProposalsArgs,
+  limit = 50,
+  offset = 0,
+): Promise<ProposalListResponse> {
+  const args: ListProposalsArgs = typeof arg === "string" || arg === undefined
+    ? { status: arg, limit, offset }
+    : { limit: 50, offset: 0, ...arg };
   const qs = new URLSearchParams();
-  if (status) qs.set("status", status);
-  qs.set("limit", String(limit));
-  qs.set("offset", String(offset));
+  if (args.status)         qs.set("status", args.status);
+  if (args.q?.trim())      qs.set("q", args.q.trim());
+  if (args.category)       qs.set("category", args.category);
+  if (args.recommendation) qs.set("recommendation", args.recommendation);
+  if (args.dateFrom)       qs.set("date_from", args.dateFrom);
+  if (args.dateTo)         qs.set("date_to", args.dateTo);
+  qs.set("limit", String(args.limit ?? 50));
+  qs.set("offset", String(args.offset ?? 0));
   const r = await fetch(`${BASE}?${qs.toString()}`, { credentials: "include", cache: "no-store" });
   if (!r.ok) throw await apiError(r);
   return r.json();
