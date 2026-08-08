@@ -77,12 +77,11 @@ class AiUploadService:
 
     # ── Batch upload ────────────────────────────────────────────────────────────
     async def create_batch(self, files: List[UploadFile], db: AsyncSession,
-                           category: Optional[str] = None,
+                           category: Optional[str] = None,   # DEPRECATED — accepted for shim only, always ignored
                            batch_id: Optional[str] = None,
                            source: Optional[str] = None) -> Dict[str, Any]:
         from src.services.appointment_service import appointment_service
         from src.services.storage_service import save_file
-        from src.models.grievance_summary import GrievanceCategory
 
         valid = [f for f in files if f.filename]
         if not valid:
@@ -90,12 +89,12 @@ class AiUploadService:
         if len(valid) > _MAX_FILES:
             raise HTTPException(status_code=400, detail=f"Max {_MAX_FILES} files per request — upload in smaller chunks.")
 
-        # PA category override for the whole batch ('auto'/'general'/blank => use AI).
-        # Validate against the enum so a bad value can't break approve later.
-        forced = (category or "").strip().lower()
-        forced_category = forced if forced and forced not in ("auto", "general") else None
-        if forced_category and forced_category not in {c.value for c in GrievanceCategory}:
-            raise HTTPException(status_code=400, detail=f"Unknown category '{category}'.")
+        # `category` was the PA-forced batch category. It's deprecated: the
+        # extraction pipeline uses Gemini's own category and never reads this
+        # column, so honouring the field would only mislead. We still accept
+        # the arg (older clients / smoke tests may send it) but ignore it —
+        # no validation raised, no storage write, no downstream effect. The
+        # DB column stays for now; drop is a separate hygiene migration.
 
         # Reuse the client-supplied batch id so one folder (sent as several chunks)
         # stays one batch; otherwise mint a new one.
@@ -128,12 +127,9 @@ class AiUploadService:
                 storage_url=storage_url,
                 mime_type=mime,
                 status=STATUS_QUEUED,
-                forced_category=forced_category,
-                # NOTE: grievance_category is left blank until Gemini writes
-                # it during processing. The PA-forced batch category used to
-                # be shown as a QUEUED-state preview, but the override is now
-                # ignored (see process_upload) so this preview would be
-                # misleading — the row would flip categories after extraction.
+                # forced_category intentionally NOT set — deprecated (see
+                # create_batch docstring). Column stays for now; drop is a
+                # separate hygiene migration.
                 source=(source or "ai_scan").strip() or "ai_scan",
                 created_at=now_utc(),
             )
@@ -481,7 +477,9 @@ class AiUploadService:
             "name_ta": gsr.name_ta if gsr else None,
             "mobile": gsr.contact_mobile if gsr else None,
             "category": gsr.category if gsr else None,
-            "forced_category": row.forced_category,
+            # forced_category removed from the payload — deprecated (see
+            # create_batch); the DB column still exists on legacy rows but
+            # no consumer reads this key anymore.
             "priority": gsr.priority if gsr else None,
             # citizen_ask + _ta stay in the light payload: they're the
             # "what the citizen wants" line shown on every list row.

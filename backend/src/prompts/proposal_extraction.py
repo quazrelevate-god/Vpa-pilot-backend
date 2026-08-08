@@ -107,7 +107,11 @@ FIELDS
 DECISION CONTEXT (v2 — extract only when the document actually speaks to it)
 ============================================================================
 Return an empty value ("" / "Not specified" / []) when the document is silent.
-Never invent generic content to fill these fields.
+Never invent generic content to fill these fields. This rule is repeated
+per-field below on purpose: the model treats each field description as its
+own instruction and a single global clause loses signal against long field
+descriptions. If you find yourself paraphrasing "the applicant probably X"
+you are inventing — stop and return empty.
 
 - key_risks / key_risks_ta: 0–4 SHORT risk points (each 2–8 words) the Minister
   should weigh before deciding. Extract ONLY when the document itself
@@ -116,18 +120,23 @@ Never invent generic content to fill these fields.
   when what is proposed carries a concrete red flag readable from the pitch
   (e.g. "unproven technology stack in a live 234-ward rollout"). Do NOT emit
   generic phrases like "execution risk" or "may face resistance" — those add
-  no signal. If nothing concrete, return [].
+  no signal. If the document is silent AND no concrete red flag is readable
+  from the pitch itself, return [] — never invent a risk.
 - implementation_readiness / _ta: ONE tight sentence on whether the applicant
   can execute this NOW — prior pilot cited, partners named, team / infra
   described, licences already held. If the document doesn't speak to
-  readiness, return "" — never speculate.
+  readiness, return "" — never speculate, never assume "team appears
+  capable" from a polished pitch deck.
 - applicant_contribution: what the APPLICANT is putting in themselves (₹, %,
   in-kind, or the words the document uses), VERBATIM. "Not specified" if the
-  document doesn't state a co-investment. Never invent.
+  document doesn't state a co-investment. Never invent a figure, never round
+  a stated one, never paraphrase "co-invested" into an amount.
 - partnership_model / _ta: ONE tight sentence naming the partnership shape
   the document describes ("PPP with L&T", "CSR-funded via TVS Foundation",
   "Direct government implementation", "Consortium of IITM + 3 NGOs"). Empty
-  string if the document doesn't specify.
+  string if the document doesn't specify — never guess "public-private
+  partnership" from generic collaborative language, never invent a partner
+  organisation, never turn a mentioned advisor into a named partner.
 - track_record / _ta: ONE tight sentence on the applicant's prior deployments
   or relevant results, AS STATED IN THIS DOCUMENT (e.g. "Deployed the same
   platform in 40 Kerala panchayats since 2023 covering 1.2 lakh residents.").

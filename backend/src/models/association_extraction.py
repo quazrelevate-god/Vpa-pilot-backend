@@ -15,11 +15,29 @@ was extended still parse without a migration.
 """
 from __future__ import annotations
 
+import logging
 from enum import Enum
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
-from src.models.grievance_summary import GrievanceSummary
+from src.models.grievance_summary import GrievanceCategory, GrievanceSummary
+
+
+logger = logging.getLogger(__name__)
+
+
+# Grievance categories that must NEVER appear on an association — the intake
+# router already sent proposals / greetings / invitations away to their own
+# tables, and 'associations_unions' is the redundant self-label the prompt
+# bans (it would say "this association is about associations"). If Gemini
+# defies the prompt and picks one anyway, coerce to 'other' so the record
+# still lands and analytics stay sane. See `_coerce_banned_category` below.
+_NON_ASSOCIATION_CATEGORIES: frozenset[GrievanceCategory] = frozenset({
+    GrievanceCategory.PROPOSALS,
+    GrievanceCategory.GREETINGS,
+    GrievanceCategory.INVITATION,
+    GrievanceCategory.ASSOCIATIONS_UNIONS,
+})
 
 
 class AssociationRecommendation(str, Enum):
@@ -56,6 +74,28 @@ RECOMMENDATION_DISPLAY_TA: dict[str, str] = {
 
 class AssociationExtraction(GrievanceSummary):
     """GrievanceSummary + association identity + collective demand + decision context."""
+
+    # Post-parse guard: if Gemini disobeys the prompt and returns one of the
+    # non-association categories (proposals/greetings/invitation/
+    # associations_unions), silently coerce to 'other' so the record still
+    # lands and analytics don't get polluted. Log at WARNING so we notice if
+    # the model starts drifting. Runs BEFORE the pydantic enum coercion so
+    # both strings and GrievanceCategory instances hit the same branch.
+    @field_validator("category", mode="before")
+    @classmethod
+    def _coerce_banned_category(cls, v):
+        try:
+            enum_val = GrievanceCategory(v) if not isinstance(v, GrievanceCategory) else v
+        except ValueError:
+            return v  # let the base validator complain about truly-unknown values
+        if enum_val in _NON_ASSOCIATION_CATEGORIES:
+            logger.warning(
+                "association extraction returned banned category %r — coercing to 'other'. "
+                "Prompt bans it; update the prompt if the model keeps drifting.",
+                enum_val.value,
+            )
+            return GrievanceCategory.OTHER
+        return enum_val
 
     # ── Identity ────────────────────────────────────────────────────────────────
     association_name: str = Field(

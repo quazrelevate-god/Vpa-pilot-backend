@@ -16,12 +16,14 @@ from __future__ import annotations
 import logging
 import time
 from datetime import date
+from enum import Enum
 from typing import Optional
 
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
+from src.models.event_models import EVENT_TYPES as _EVENT_TYPE_VALUES
 from src.services.summarisation import (
     PRIMARY_MODEL, FALLBACK_MODEL, FALLBACK_MODEL2,
     SERVICE_TIER, _TRANSIENT_MARKERS,
@@ -29,6 +31,20 @@ from src.services.summarisation import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Structured-output enum for `event_type`. Values MUST match EVENT_TYPES in
+# `src/models/event_models` — imported above so the enum can never drift from
+# the DB-side allowlist. Constraining the schema (vs the earlier free `str`)
+# forces Gemini to pick from this set instead of inventing labels like
+# 'reception' or 'kalyanam' — which the downstream `etype if etype in
+# EVENT_TYPES else "other"` filter used to silently collapse to 'other',
+# losing the fact that the model DID recognise the event.
+EventType = Enum(
+    "EventType",
+    {v.upper(): v for v in _EVENT_TYPE_VALUES},
+    type=str,
+)
 
 
 # ── Output schema ───────────────────────────────────────────────────────────────
@@ -69,14 +85,14 @@ class InvitationExtraction(BaseModel):
         ),
         max_length=300,
     )
-    event_type: str = Field(
-        default="other",
+    event_type: EventType = Field(
+        default=EventType("other"),
         description=(
             "Exactly one of: wedding | opening_ceremony | temple_festival | "
             "political_meeting | housewarming | memorial | school_function | "
-            "other. Use 'other' whenever unsure."
+            "other. Use 'other' whenever unsure. Constrained to this enum in "
+            "the response_schema — Gemini cannot return anything else."
         ),
-        max_length=50,
     )
     venue_en: str = Field(
         default="",
