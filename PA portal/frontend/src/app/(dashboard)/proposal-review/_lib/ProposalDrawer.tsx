@@ -101,12 +101,22 @@ export function Tile({ icon, label, value, mono = false, muted = false }: {
   );
 }
 
-export function Reading({ label, text }: { label: string; text: string }) {
-  if (!specified(text)) return null;
+/** Serif reading block for narrative fields — hides on empty unless `muted`
+ *  is set, in which case it renders the fallback text in muted italic (used
+ *  for load-bearing fields like beneficiary or implementation readiness that
+ *  should always show the fact of "not stated" rather than disappearing).
+ */
+export function Reading({ label, text, muted = false }: { label: string; text: string; muted?: boolean }) {
+  if (!specified(text) && !muted) return null;
   return (
     <div className="rounded-lg border border-border bg-background/60 p-4">
       <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
-      <p className="font-serif text-[15px] leading-[1.75] text-foreground/90">{text}</p>
+      <p className={cn(
+        "font-serif text-[15px] leading-[1.75]",
+        muted ? "italic text-muted-foreground" : "text-foreground/90",
+      )}>
+        {text}
+      </p>
     </div>
   );
 }
@@ -342,21 +352,38 @@ export function ProposalDrawer({
               )}
             </SectionShell>
 
-            {/* 2 — Feasibility */}
-            <SectionShell n={2} id="feasibility" title="Feasibility" hidden={!specified(readiness) && !specified(ex.timeline)}>
+            {/* 2 — Feasibility (always shown; readiness + timeline are core
+                 decision context, an absence is itself signal the reviewer
+                 needs to see, not a silently-hidden section). */}
+            <SectionShell n={2} id="feasibility" title="Feasibility">
               <div className="space-y-3">
-                <Reading label="Implementation readiness" text={readiness} />
-                {specified(ex.timeline) && (
-                  <div className="grid gap-2.5 sm:grid-cols-2">
-                    <Tile icon={<CalendarClock className="h-3 w-3" />} label="Implementation timeline" value={ex.timeline} mono />
-                  </div>
-                )}
+                <Reading
+                  label="Implementation readiness"
+                  text={specified(readiness) ? readiness : "No implementation readiness described in the document"}
+                  muted={!specified(readiness)}
+                />
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <Tile
+                    icon={<CalendarClock className="h-3 w-3" />}
+                    label="Implementation timeline"
+                    value={specified(ex.timeline) ? ex.timeline : "No timeline stated"}
+                    muted={!specified(ex.timeline)}
+                    mono={specified(ex.timeline)}
+                  />
+                </div>
               </div>
             </SectionShell>
 
-            {/* 3 — Impact */}
-            <SectionShell n={3} id="impact" title="Impact" hidden={!specified(beneficiary)}>
-              <Reading label="Direct beneficiaries" text={beneficiary} />
+            {/* 3 — Impact (always shown; beneficiary_scope is a core
+                 Minister-decision field — "who and how many does this
+                 touch?". Silent removal used to leave the reviewer
+                 wondering whether the AI missed it or the doc was silent). */}
+            <SectionShell n={3} id="impact" title="Impact">
+              <Reading
+                label="Direct beneficiaries"
+                text={specified(beneficiary) ? beneficiary : "No beneficiary scope stated in the document"}
+                muted={!specified(beneficiary)}
+              />
             </SectionShell>
 
             {/* 4 — Risks */}

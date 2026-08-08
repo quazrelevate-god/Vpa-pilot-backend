@@ -299,10 +299,17 @@ export function AssociationDrawer({
               </div>
             </SectionShell>
 
-            {/* 3 — Summary + key details */}
-            <SectionShell n={3} id="summary" title="Summary" hidden={!specified(summary) && keyDetails.length === 0}>
+            {/* 3 — Summary + key details (always shown; a blank summary is a
+                 signal the extraction was thin — reviewer should see the
+                 fallback, not a vanished section, so they don't approve
+                 blindly assuming AI just skipped the block). */}
+            <SectionShell n={3} id="summary" title="Summary">
               <div className="space-y-3">
-                <Reading label="Overview" text={summary} />
+                <Reading
+                  label="Overview"
+                  text={specified(summary) ? summary : "No summary extracted — the source document may be thin or unreadable"}
+                  muted={!specified(summary)}
+                />
                 {keyDetails.length > 0 && (
                   <div>
                     <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Key details</div>
@@ -355,10 +362,18 @@ export function AssociationDrawer({
               </div>
             </SectionShell>
 
-            {/* 5 — Expected outcome + precedent */}
-            <SectionShell n={5} id="outcome" title="Outcome & precedent" hidden={!specified(outcome) && !specified(precedent)}>
+            {/* 5 — Expected outcome + precedent (always shown; expected
+                 outcome is the concrete "what does the association want the
+                 government to do?" — its absence should trigger a
+                 needs_more_info decision, not vanish. Precedent stays
+                 optional — many first-time submissions have no history). */}
+            <SectionShell n={5} id="outcome" title="Outcome & precedent">
               <div className="space-y-3">
-                <Reading label="Expected outcome (as stated)" text={outcome} />
+                <Reading
+                  label="Expected outcome (as stated)"
+                  text={specified(outcome) ? outcome : "No concrete expected outcome stated in the document"}
+                  muted={!specified(outcome)}
+                />
                 <Reading label="Precedent / prior actions" text={precedent} />
               </div>
             </SectionShell>
