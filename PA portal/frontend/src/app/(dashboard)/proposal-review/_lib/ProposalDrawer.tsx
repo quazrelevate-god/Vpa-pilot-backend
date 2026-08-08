@@ -235,6 +235,19 @@ export function ProposalDrawer({
                 <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
               </span>
             )}
+            {d.is_duplicate && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                title={
+                  d.duplicate_of_tracking_ref
+                    ? `Fingerprint matches an earlier proposal within the last 90 days (${d.duplicate_of_tracking_ref}). Review carefully.`
+                    : "Fingerprint matches an earlier proposal within the last 90 days. Review carefully."
+                }
+              >
+                <AlertTriangle className="h-3 w-3" />
+                Suspected duplicate{d.duplicate_of_tracking_ref ? ` of ${d.duplicate_of_tracking_ref}` : ""}
+              </span>
+            )}
           </div>
           <SheetClose
             onClick={onClose}

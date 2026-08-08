@@ -100,7 +100,19 @@ class AiUploadService:
         # stays one batch; otherwise mint a new one.
         batch_id = (batch_id or "").strip() or uuid.uuid4().hex
         created: List[Dict[str, Any]] = []
+        # Layer-1A dedup surfacing: files skipped because their SHA-256 hex
+        # matches an earlier AiUpload get returned to the client so the batch
+        # UI can toast "Skipped foo.pdf — same file already in batch X".
+        skipped: List[Dict[str, Any]] = []
+        # Per-batch hash memory closes the loophole where two identical files
+        # inside the SAME batch would both flush before we could see each other
+        # via a DB SELECT (both are new inserts on the same commit).
+        seen_hashes_in_batch: Dict[str, str] = {}
         total_bytes = 0
+
+        # Local import — hashlib is stdlib and cheap, but keep the imports
+        # clustered where the guard uses them.
+        import hashlib as _hashlib
 
         for f in valid:
             mime = f.content_type or "application/octet-stream"
@@ -112,6 +124,41 @@ class AiUploadService:
             total_bytes += len(raw)
             if total_bytes > _MAX_REQUEST_BYTES:
                 raise HTTPException(status_code=400, detail="Upload chunk too large — send fewer files per request.")
+
+            # ── Layer-1A: file-hash guard ───────────────────────────────────
+            # Compute SHA-256 of the file bytes and refuse if we've seen the
+            # exact bytes before. Catches the ~90% of accidental re-uploads
+            # (drag same folder twice, re-uploaded batch, forwarded PDFs).
+            # Skipped files never touch storage — no wasted MinIO puts.
+            file_hash = _hashlib.sha256(raw).hexdigest()
+            existing = await db.scalar(
+                select(AiUpload).where(AiUpload.file_hash == file_hash).limit(1)
+            )
+            if existing is not None:
+                logger.info(
+                    "ai_upload dedup: skipping %r — file_hash matches ai_upload id=%s (batch=%s, ticket=%s)",
+                    f.filename, existing.id, existing.batch_id, existing.ticket_number,
+                )
+                skipped.append({
+                    "filename": f.filename,
+                    "reason": "duplicate_file",
+                    "original_upload_id": existing.id,
+                    "original_batch_id": existing.batch_id,
+                    "original_ticket_number": existing.ticket_number,
+                })
+                continue
+            if file_hash in seen_hashes_in_batch:
+                logger.info(
+                    "ai_upload dedup: skipping %r — same bytes as %r earlier in this batch",
+                    f.filename, seen_hashes_in_batch[file_hash],
+                )
+                skipped.append({
+                    "filename": f.filename,
+                    "reason": "duplicate_in_batch",
+                    "duplicate_of_filename": seen_hashes_in_batch[file_hash],
+                })
+                continue
+            seen_hashes_in_batch[file_hash] = f.filename
 
             # Unique token in the key: a folder scan with two "scan.pdf" (or two
             # extensionless files that both sanitize to "file") would otherwise map
@@ -131,6 +178,7 @@ class AiUploadService:
                 # create_batch docstring). Column stays for now; drop is a
                 # separate hygiene migration.
                 source=(source or "ai_scan").strip() or "ai_scan",
+                file_hash=file_hash,
                 created_at=now_utc(),
             )
             db.add(row)
@@ -141,7 +189,8 @@ class AiUploadService:
 
         # Kick the sequential worker (no-op if already running).
         await self._ensure_worker()
-        return {"batch_id": batch_id, "count": len(created), "items": created}
+        return {"batch_id": batch_id, "count": len(created), "items": created,
+                "skipped": skipped, "skipped_count": len(skipped)}
 
     # ── Background worker (sequential, one at a time) ───────────────────────────
     async def _ensure_worker(self) -> None:

@@ -213,6 +213,19 @@ export function AssociationDrawer({
                 <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
               </span>
             )}
+            {d.is_duplicate && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                title={
+                  d.duplicate_of_name
+                    ? `Fingerprint matches an earlier submission from ${d.duplicate_of_name} within the last 90 days. Review carefully.`
+                    : "Fingerprint matches an earlier association submission within the last 90 days. Review carefully."
+                }
+              >
+                <AlertTriangle className="h-3 w-3" />
+                Suspected duplicate{d.duplicate_of_name ? ` of ${d.duplicate_of_name.slice(0, 30)}${d.duplicate_of_name.length > 30 ? "…" : ""}` : ""}
+              </span>
+            )}
           </div>
           <SheetClose
             onClick={onClose}

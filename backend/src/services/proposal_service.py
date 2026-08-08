@@ -31,6 +31,39 @@ from src.models.proposal_models import (
 
 logger = logging.getLogger(__name__)
 
+
+# ── Layer-1B dedup helpers ─────────────────────────────────────────────────
+import hashlib as _hashlib
+import re as _re
+
+
+def _normalise_for_fingerprint(text: Optional[str]) -> str:
+    """Lowercase, strip punctuation/whitespace runs — collapses trivial
+    formatting drift ('Please repair!' vs 'please repair.') so an identical
+    proposal doesn't slip through the fingerprint check on cosmetic changes."""
+    if not text:
+        return ""
+    s = text.lower()
+    # Keep Latin + Tamil letters + digits + spaces. Strip everything else.
+    s = _re.sub(r"[^\w\s஀-௿]", " ", s)
+    s = _re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _proposal_fingerprint(org_name: Optional[str], title: Optional[str], ask: Optional[str]) -> str:
+    """sha1( org|title|normalised_ask ) — the Layer-1B fingerprint we look up
+    within the 90-day dedup window. sha1 is enough here (collision resistance
+    isn't a security goal; we just need a stable equality key)."""
+    parts = "|".join([
+        _normalise_for_fingerprint(org_name),
+        _normalise_for_fingerprint(title),
+        _normalise_for_fingerprint(ask),
+    ])
+    return _hashlib.sha1(parts.encode("utf-8")).hexdigest()
+
+
+_DEDUP_WINDOW_DAYS = 90
+
 # Intake limits — aligned to what Gemini can actually extract inline.
 #
 # The extraction service sends each proposal document as a single
@@ -84,12 +117,46 @@ class ProposalService:
     ) -> Dict[str, Any]:
         from src.services.appointment_service import appointment_service
         from src.services.storage_service import save_file
+        from src.core.config import settings as _settings
+        from sqlalchemy import func as _func
 
         valid = [f for f in files if f and f.filename]
         if not valid:
             raise HTTPException(status_code=400, detail="At least one proposal document (PDF) is required.")
         if len(valid) > _MAX_FILES:
             raise HTTPException(status_code=400, detail=f"Maximum {_MAX_FILES} documents per submission.")
+
+        # ── Layer-1 ingress guard: one proposal per phone per day ─────────────
+        # Mirror of ONE_PETITION_PER_DAY on the citizen QR form. A phone that
+        # already submitted a proposal today gets a 409 instead of another
+        # row in the reviewer queue. Gated by env flag so QA can iterate.
+        # Applied BEFORE any storage write so a duplicate never touches MinIO.
+        phone_idx = crypto.blind_index(phone)
+        if _settings.ONE_PROPOSAL_PER_DAY and phone_idx:
+            from datetime import timedelta as _td
+            today_start = now_utc().replace(hour=0, minute=0, second=0, microsecond=0)
+            existing_today = await db.scalar(
+                select(_func.count(ProposalSubmission.id))
+                .where(ProposalSubmission.phone_index == phone_idx)
+                .where(ProposalSubmission.created_at >= today_start)
+            ) or 0
+            if existing_today > 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "ALREADY_SUBMITTED_TODAY",
+                        "en": (
+                            "A proposal from this phone number was already submitted today. "
+                            "We've received it and it is being reviewed. Please try again "
+                            "tomorrow if you have a different proposal to share."
+                        ),
+                        "ta": (
+                            "இந்த தொலைபேசி எண்ணிலிருந்து ஒரு முன்மொழிவு இன்று ஏற்கனவே "
+                            "சமர்ப்பிக்கப்பட்டுள்ளது. அது ஏற்கப்பட்டு பரிசீலிக்கப்படுகிறது. "
+                            "வேறு முன்மொழிவு இருந்தால் நாளை மறுபடியும் முயற்சிக்கவும்."
+                        ),
+                    },
+                )
 
         tracking_ref = _mint_tracking_ref(category)
         documents: List[Dict[str, str]] = []
@@ -127,7 +194,7 @@ class ProposalService:
             designation=(designation or "").strip()[:200] or None,
             email_enc=crypto.encrypt((email or "").strip() or None),
             phone_enc=crypto.encrypt((phone or "").strip() or None),
-            phone_index=crypto.blind_index(phone),
+            phone_index=phone_idx,
             documents=documents,
             status=STATUS_QUEUED,
             created_at=submit_time,
@@ -255,6 +322,39 @@ class ProposalService:
                 # filter otherwise.
                 if result.document_date:
                     row.document_date = result.document_date
+
+                # ── Layer-1B: compute + check fingerprint ──────────────────
+                # sha1(org|title|normalised_ask). Look up matches in the
+                # 90-day rolling window. On hit, SOFT-flag (never refuse) so
+                # the row still lands in review — the drawer surfaces a
+                # "Duplicate of TKT-XXX" pill and the reviewer decides.
+                fp = _proposal_fingerprint(
+                    row.org_name,
+                    getattr(result, "title", None) or (result.model_dump(mode="json").get("title")),
+                    # `citizen_ask` isn't on ProposalExtraction; use the ask-
+                    # analog fields the schema exposes. `problem_statement`
+                    # gives the most stable signal — the pitch's core problem
+                    # — versus title (marketing) or estimated_cost (varies).
+                    getattr(result, "problem_statement", None),
+                )
+                row.dedup_fingerprint = fp
+                window_start = now_utc() - timedelta(days=_DEDUP_WINDOW_DAYS)
+                earlier = await db.scalar(
+                    select(ProposalSubmission)
+                    .where(ProposalSubmission.dedup_fingerprint == fp)
+                    .where(ProposalSubmission.id != row.id)
+                    .where(ProposalSubmission.created_at >= window_start)
+                    .order_by(ProposalSubmission.created_at.asc())
+                    .limit(1)
+                )
+                if earlier is not None:
+                    row.is_duplicate = True
+                    row.duplicate_of_id = earlier.id
+                    logger.info(
+                        "proposal id=%s → SOFT-FLAG duplicate_of proposal id=%s (fp=%s)",
+                        row.id, earlier.id, fp[:12],
+                    )
+
                 row.status = STATUS_AWAITING_REVIEW
                 row.error_message = None
                 row.processed_at = now_utc()

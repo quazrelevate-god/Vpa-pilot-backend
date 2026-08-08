@@ -108,6 +108,15 @@ class AiUpload(Base):
     # Source channel chosen at upload time (ai_scan / postal / cm_office / etc.)
     source             = Column(VARCHAR(50), nullable=False, server_default="ai_scan")
 
+    # Layer-1A dedup — SHA-256 hex of the uploaded file bytes (migration 057).
+    # Set at intake by create_batch; used to hard-refuse exact re-uploads with
+    # a helpful "already uploaded in batch X, ticket Y" toast. Nullable for
+    # legacy rows created before this column existed.
+    file_hash = Column(
+        VARCHAR(64), nullable=True, index=True,
+        comment="SHA-256 hex of the file bytes at upload time.",
+    )
+
     error_message = Column(Text, nullable=True, comment="Reason a PROCESSING run FAILED")
 
     # ── Classifier routing (set when the doc is a proposal/association) ─────────

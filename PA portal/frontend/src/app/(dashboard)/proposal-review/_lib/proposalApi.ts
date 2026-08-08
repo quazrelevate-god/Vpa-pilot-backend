@@ -40,6 +40,12 @@ export interface ProposalListItem {
   created_at: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  /** Layer-1B dedup soft-flag. `is_duplicate=true` means the fingerprint
+   *  matched an earlier row within 90 days — the reviewer sees a pill in the
+   *  drawer/list but the row still enters review. */
+  is_duplicate?: boolean;
+  duplicate_of_id?: number | null;
+  duplicate_of_tracking_ref?: string | null;
 }
 
 export interface ProposalDoc {

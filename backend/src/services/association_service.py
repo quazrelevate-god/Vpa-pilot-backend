@@ -23,8 +23,10 @@ tells the PA where the ticket came from.
 """
 from __future__ import annotations
 
+import hashlib as _hashlib
 import logging
-from datetime import datetime
+import re as _re
+from datetime import datetime, timedelta
 from src.core.timeutil import now_utc
 from typing import Any, Dict, List, Optional
 
@@ -40,6 +42,29 @@ from src.models.association_models import (
 logger = logging.getLogger(__name__)
 
 
+# ── Layer-1B dedup helpers ─────────────────────────────────────────────────
+def _normalise_for_fingerprint(text: Optional[str]) -> str:
+    """Lowercase, drop punctuation runs. Keeps Latin + Tamil letters + digits."""
+    if not text:
+        return ""
+    s = text.lower()
+    s = _re.sub(r"[^\w\s஀-௿]", " ", s)
+    s = _re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _association_fingerprint(name: Optional[str], ask: Optional[str]) -> str:
+    """sha1( name|normalised_ask ) — the Layer-1B key for the 90-day window."""
+    parts = "|".join([
+        _normalise_for_fingerprint(name),
+        _normalise_for_fingerprint(ask),
+    ])
+    return _hashlib.sha1(parts.encode("utf-8")).hexdigest()
+
+
+_DEDUP_WINDOW_DAYS = 90
+
+
 class AssociationService:
     async def create_from_extraction(
         self,
@@ -51,6 +76,28 @@ class AssociationService:
         db: AsyncSession,
     ) -> AssociationSubmission:
         ex = extraction
+
+        # ── Layer-1B: compute fingerprint + check the 90-day window ─────────
+        # sha1(association_name|normalised_ask). Same pattern as the proposal
+        # side — SOFT-flag (never refuse) so the row lands with a warning pill
+        # rather than blocking a legitimate second submission from the same body.
+        fp = _association_fingerprint(ex.association_name, ex.association_ask)
+        window_start = now_utc() - timedelta(days=_DEDUP_WINDOW_DAYS)
+        earlier = await db.scalar(
+            select(AssociationSubmission)
+            .where(AssociationSubmission.dedup_fingerprint == fp)
+            .where(AssociationSubmission.created_at >= window_start)
+            .order_by(AssociationSubmission.created_at.asc())
+            .limit(1)
+        )
+        is_dup = earlier is not None
+        dup_of = earlier.id if earlier is not None else None
+        if is_dup:
+            logger.info(
+                "association SOFT-FLAG duplicate at intake — matches assoc id=%s (fp=%s)",
+                dup_of, fp[:12],
+            )
+
         row = AssociationSubmission(
             source=source,
             source_ref=source_ref,
@@ -67,12 +114,15 @@ class AssociationService:
             extraction_json=ex.model_dump(mode="json"),
             status=STATUS_AWAITING_REVIEW,
             created_at=now_utc(),
+            dedup_fingerprint=fp,
+            is_duplicate=is_dup,
+            duplicate_of_id=dup_of,
         )
         db.add(row)
         await db.commit()
         await db.refresh(row)
-        logger.info("association submission created id=%s assoc=%r category=%s",
-                    row.id, row.association_name, row.category)
+        logger.info("association submission created id=%s assoc=%r category=%s dup=%s",
+                    row.id, row.association_name, row.category, is_dup)
         return row
 
     async def mint_ticket_from_association(

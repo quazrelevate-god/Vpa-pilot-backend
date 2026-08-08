@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 from src.core.timeutil import now_utc
 
-from sqlalchemy import BigInteger, Column, DateTime, Index, Text, VARCHAR
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Text, VARCHAR
 from sqlalchemy.dialects.postgresql import JSONB
 
 from src.core.database import Base
@@ -80,6 +80,28 @@ class ProposalSubmission(Base):
     reviewed_by   = Column(VARCHAR(100), nullable=True)
     reviewed_at   = Column(DateTime,     nullable=True)
     decision_note = Column(Text,         nullable=True, comment="Reviewer's reason / note on the decision")
+
+    # ── Layer-1B dedup (migration 057) ─────────────────────────────────────────
+    # Fingerprint = sha1(org_name.lower() + "|" + title.lower() + "|" + normalized_ask).
+    # Set once the extraction worker fills the brief. `is_duplicate` +
+    # `duplicate_of_id` are the SOFT-FLAG the drawer surfaces to the reviewer
+    # — the row still enters review, but with a "Duplicate of TKT-XXX" pill so
+    # the PA decides. Never auto-refuses (a slightly-edited legitimate
+    # re-submission must still be reviewable).
+    dedup_fingerprint = Column(
+        VARCHAR(40), nullable=True, index=True,
+        comment="sha1(org|title|normalised_ask) for the fingerprint match.",
+    )
+    is_duplicate = Column(
+        Boolean, nullable=False, default=False, server_default="false",
+        comment="Soft-flag: fingerprint matched an earlier row within window.",
+    )
+    duplicate_of_id = Column(
+        BigInteger, nullable=True, index=True,
+        comment="Back-pointer to the earlier proposal this row duplicates. "
+                "Plain FK-less BigInteger so hard-delete of the original "
+                "doesn't cascade this flag away.",
+    )
 
     # ── Provenance (set only by the petition→proposal migration tooling) ────────
     # appointment.id this proposal was migrated from. Plain BigInteger, NOT a FK:

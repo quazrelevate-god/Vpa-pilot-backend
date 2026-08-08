@@ -58,6 +58,10 @@ export interface AssociationListItem {
   ministry: string | null;
   urgency: string | null;
   district: string | null;
+  /** Layer-1B dedup soft-flag — see proposalApi.ts for the pattern. */
+  is_duplicate?: boolean;
+  duplicate_of_id?: number | null;
+  duplicate_of_name?: string | null;
   document_date: string | null;
   status: AssociationStatus;
   association_ask: string | null;

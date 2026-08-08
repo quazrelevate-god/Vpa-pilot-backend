@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # Enforce "one petition per phone per day" on submit. On in prod, off in dev
     # so QA can repeatedly test the same phone number without waiting a day.
     ONE_PETITION_PER_DAY: bool = True
+    # Same rule for the /proposal form — a phone that already submitted a
+    # proposal today gets a 409 with a helpful message. Prevents accidental
+    # re-submits (page refresh, back-button retry) from filling the reviewer
+    # queue with dupes. Off in dev so QA can iterate.
+    ONE_PROPOSAL_PER_DAY: bool = True
     # Set true in production (HTTPS) so session cookies get the Secure flag + HSTS.
     COOKIE_SECURE: bool = False
     # Comma-separated allowed CORS origins for the PA portal. In prod the portal is

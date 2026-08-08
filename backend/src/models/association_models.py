@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from src.core.timeutil import now_utc
 
-from sqlalchemy import BigInteger, Column, DateTime, Index, Text, VARCHAR
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Text, VARCHAR
 from sqlalchemy.dialects.postgresql import JSONB
 
 from src.core.database import Base
@@ -72,6 +72,24 @@ class AssociationSubmission(Base):
     # hard-deleted after migration — an FK would block that or null this out.
     # NULL for associations created directly by the intake router.
     source_appointment_id = Column(BigInteger, nullable=True)
+
+    # ── Layer-1B dedup (migration 057) ─────────────────────────────────────────
+    # Fingerprint = sha1(association_name.lower() + "|" + normalised_ask).
+    # Set at create_from_extraction time. `is_duplicate` + `duplicate_of_id`
+    # are the SOFT-FLAG the drawer surfaces — the row still enters review with
+    # a "Duplicate of TKT-XXX" pill so the PA decides. Never auto-refuses.
+    dedup_fingerprint = Column(
+        VARCHAR(40), nullable=True, index=True,
+        comment="sha1(name|normalised_ask) for the fingerprint match.",
+    )
+    is_duplicate = Column(
+        Boolean, nullable=False, default=False, server_default="false",
+        comment="Soft-flag: fingerprint matched an earlier row within window.",
+    )
+    duplicate_of_id = Column(
+        BigInteger, nullable=True, index=True,
+        comment="Back-pointer to the earlier association this row duplicates.",
+    )
 
     __table_args__ = (
         Index("ix_association_submissions_status", "status"),

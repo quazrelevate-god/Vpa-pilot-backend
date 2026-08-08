@@ -58,6 +58,12 @@ class ProposalListItem(BaseModel):
     created_at: Optional[str] = None
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[str] = None
+    # Layer-1B dedup surfacing. `is_duplicate` drives the drawer/list pill;
+    # `duplicate_of_id` + `duplicate_of_tracking_ref` power the "Duplicate of
+    # NK/SCH/2026/AB12C" link so the reviewer can jump to the original.
+    is_duplicate: bool = False
+    duplicate_of_id: Optional[int] = None
+    duplicate_of_tracking_ref: Optional[str] = None
 
 
 class ProposalListResponse(BaseModel):
@@ -94,8 +100,12 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
 
-def _list_item(row: ProposalSubmission) -> ProposalListItem:
+def _list_item(row: ProposalSubmission,
+               *, dup_ref_lookup: Optional[dict] = None) -> ProposalListItem:
     ej = row.extraction_json or {}
+    dup_ref = None
+    if row.is_duplicate and row.duplicate_of_id and dup_ref_lookup is not None:
+        dup_ref = dup_ref_lookup.get(int(row.duplicate_of_id))
     return ProposalListItem(
         id=row.id,
         tracking_ref=row.tracking_ref,
@@ -110,12 +120,26 @@ def _list_item(row: ProposalSubmission) -> ProposalListItem:
         created_at=_iso(row.created_at),
         reviewed_by=row.reviewed_by,
         reviewed_at=_iso(row.reviewed_at),
+        is_duplicate=bool(row.is_duplicate),
+        duplicate_of_id=(int(row.duplicate_of_id) if row.duplicate_of_id else None),
+        duplicate_of_tracking_ref=dup_ref,
     )
 
 
-def _detail(row: ProposalSubmission) -> ProposalDetail:
+async def _resolve_dup_ref(db: AsyncSession, dup_id: Optional[int]) -> Optional[str]:
+    if not dup_id:
+        return None
+    return await db.scalar(
+        select(ProposalSubmission.tracking_ref).where(ProposalSubmission.id == int(dup_id))
+    )
+
+
+def _detail(row: ProposalSubmission, dup_ref: Optional[str] = None) -> ProposalDetail:
     from src.services.storage_service import get_file_url
-    base = _list_item(row).model_dump()
+    base = _list_item(
+        row,
+        dup_ref_lookup=({int(row.duplicate_of_id): dup_ref} if row.duplicate_of_id and dup_ref else None),
+    ).model_dump()
     docs = []
     for d in (row.documents or []):
         url = None
@@ -221,6 +245,17 @@ async def list_proposals(
     stmt = stmt.order_by(ProposalSubmission.created_at.desc()).limit(limit).offset(offset)
     rows = (await db.execute(stmt)).scalars().all()
 
+    # Resolve the tracking_ref of any duplicate_of_id referenced by this page,
+    # in ONE query. Keeps the drawer / list free of an N+1 join.
+    dup_ids = [int(r.duplicate_of_id) for r in rows if r.duplicate_of_id]
+    dup_ref_lookup: dict[int, str] = {}
+    if dup_ids:
+        for id_, tref in (await db.execute(
+            select(ProposalSubmission.id, ProposalSubmission.tracking_ref)
+            .where(ProposalSubmission.id.in_(dup_ids))
+        )).all():
+            dup_ref_lookup[int(id_)] = tref
+
     total_stmt = _apply_list_filters(
         select(func.count()).select_from(ProposalSubmission),
         status=status, q=q, category=category, recommendation=recommendation,
@@ -242,7 +277,10 @@ async def list_proposals(
     counts_rows = (await db.execute(counts_stmt)).all()
     counts = {s: n for s, n in counts_rows}
 
-    return ProposalListResponse(items=[_list_item(r) for r in rows], total=total, counts=counts)
+    return ProposalListResponse(
+        items=[_list_item(r, dup_ref_lookup=dup_ref_lookup) for r in rows],
+        total=total, counts=counts,
+    )
 
 
 @router.get("/{proposal_id}", response_model=ProposalDetail, summary="Proposal detail + brief")
@@ -250,7 +288,8 @@ async def get_proposal(proposal_id: int, db: AsyncSession = Depends(get_db)) -> 
     row = await db.get(ProposalSubmission, proposal_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Proposal not found.")
-    return _detail(row)
+    dup_ref = await _resolve_dup_ref(db, row.duplicate_of_id)
+    return _detail(row, dup_ref=dup_ref)
 
 
 @router.post("/{proposal_id}/decision", response_model=ProposalDetail, summary="Record a decision")

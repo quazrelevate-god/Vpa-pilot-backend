@@ -54,6 +54,10 @@ class AssociationListItem(BaseModel):
     created_at: Optional[str] = None
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[str] = None
+    # Layer-1B soft-flag surfacing — drives the drawer/list duplicate pill.
+    is_duplicate: bool = False
+    duplicate_of_id: Optional[int] = None
+    duplicate_of_name: Optional[str] = None   # association_name of the earlier row
 
 
 class AssociationListResponse(BaseModel):
@@ -79,8 +83,12 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
 
-def _list_item(r: AssociationSubmission) -> AssociationListItem:
+def _list_item(r: AssociationSubmission,
+               *, dup_name_lookup: Optional[dict] = None) -> AssociationListItem:
     ej = r.extraction_json or {}
+    dup_name = None
+    if r.is_duplicate and r.duplicate_of_id and dup_name_lookup is not None:
+        dup_name = dup_name_lookup.get(int(r.duplicate_of_id))
     return AssociationListItem(
         id=r.id, association_name=r.association_name, representative_name=r.representative_name,
         representative_designation=r.representative_designation, member_count=r.member_count,
@@ -91,10 +99,13 @@ def _list_item(r: AssociationSubmission) -> AssociationListItem:
         association_ask_ta=ej.get("association_ask_ta") or None,
         ai_recommendation=ej.get("ai_recommendation") or None,
         created_at=_iso(r.created_at), reviewed_by=r.reviewed_by, reviewed_at=_iso(r.reviewed_at),
+        is_duplicate=bool(r.is_duplicate),
+        duplicate_of_id=(int(r.duplicate_of_id) if r.duplicate_of_id else None),
+        duplicate_of_name=dup_name,
     )
 
 
-def _detail(r: AssociationSubmission) -> AssociationDetail:
+def _detail(r: AssociationSubmission, dup_name: Optional[str] = None) -> AssociationDetail:
     from src.services.storage_service import get_file_url
     docs = []
     for d in (r.documents or []):
@@ -103,7 +114,8 @@ def _detail(r: AssociationSubmission) -> AssociationDetail:
         except Exception:
             url = None
         docs.append({"filename": d.get("original_filename"), "url": url, "mime": d.get("mime_type")})
-    base = _list_item(r).model_dump()
+    dup_lookup = {int(r.duplicate_of_id): dup_name} if (r.duplicate_of_id and dup_name) else None
+    base = _list_item(r, dup_name_lookup=dup_lookup).model_dump()
     # AssociationDetail already declares `district`; base carries the value now,
     # so drop it from base to avoid the duplicate-keyword TypeError.
     base.pop("district", None)
@@ -309,13 +321,27 @@ async def list_associations(
     stmt = stmt.order_by(AssociationSubmission.created_at.desc()).limit(limit).offset(offset)
     rows = (await db.execute(stmt)).scalars().all()
 
+    # One extra query to resolve duplicate_of_id -> association_name for the
+    # drawer/list pill. Keeps the frontend clean of an N+1 join.
+    dup_ids = [int(r.duplicate_of_id) for r in rows if r.duplicate_of_id]
+    dup_name_lookup: dict[int, str] = {}
+    if dup_ids:
+        for id_, nm in (await db.execute(
+            select(AssociationSubmission.id, AssociationSubmission.association_name)
+            .where(AssociationSubmission.id.in_(dup_ids))
+        )).all():
+            dup_name_lookup[int(id_)] = nm
+
     counts_stmt = _apply_assoc_filters(
         select(AssociationSubmission.status, func.count()).select_from(AssociationSubmission),
         status=None, **filter_kwargs,
     ).group_by(AssociationSubmission.status)
     counts_rows = (await db.execute(counts_stmt)).all()
     counts = {s: n for s, n in counts_rows}
-    return AssociationListResponse(items=[_list_item(r) for r in rows], total=total, counts=counts)
+    return AssociationListResponse(
+        items=[_list_item(r, dup_name_lookup=dup_name_lookup) for r in rows],
+        total=total, counts=counts,
+    )
 
 
 @router.get("/{assoc_id}", response_model=AssociationDetail, summary="Association detail")
@@ -323,7 +349,13 @@ async def get_association(assoc_id: int, db: AsyncSession = Depends(get_db)) -> 
     row = await db.get(AssociationSubmission, assoc_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Association submission not found.")
-    return _detail(row)
+    dup_name = None
+    if row.duplicate_of_id:
+        dup_name = await db.scalar(
+            select(AssociationSubmission.association_name)
+            .where(AssociationSubmission.id == int(row.duplicate_of_id))
+        )
+    return _detail(row, dup_name=dup_name)
 
 
 @router.post("/{assoc_id}/decision", response_model=AssociationDetail, summary="Record a review decision")
