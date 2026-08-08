@@ -120,7 +120,21 @@ interface InboxRow {
   petition?: AppointmentRow;
 }
 
-const CATEGORIES = ["action_required","proposals","transfer_requests","pension_requests","school_admission","job_requests","rti","associations_unions","school_upgradation","invitation","greetings","general","other"];
+// Category picker for the review drawer. `proposals`, `associations_unions`,
+// `greetings` and `invitation` are DELIBERATELY EXCLUDED — those documents
+// are routed OUT of the petition workflow by the classifier
+// (→ proposal-review, → association-review, → the events/courtesy pipeline)
+// and never legitimately show up as a petition category. Keeping them in
+// the picker would let a PA silently mis-tag a real petition to a
+// non-petition category and break downstream analytics/routing. Legacy rows
+// that still carry these categories can be moved via the "move-back"
+// controls on their respective surfaces.
+const CATEGORIES = ["action_required","transfer_requests","pension_requests","school_admission","job_requests","rti","school_upgradation","general","other"];
+
+// Same rule for the Category Distribution filter chips — never surface a
+// bar/filter for a non-petition category, even if legacy data still carries
+// it (a stale row shouldn't create a filter option that shouldn't exist).
+const NON_PETITION_CATEGORY_KEYS = new Set(["proposals", "associations_unions", "greetings", "invitation"]);
 const PRIORITIES = ["low", "medium", "high", "critical"];
 
 // Note: QUEUED / PROCESSING rows are hidden from the UI entirely — the PA
@@ -541,10 +555,28 @@ function AiReviewPageInner() {
     return p.toString();
   }, [page, pageSize, fStatus, fCategory, fPriority, fSource, batchFilter, dateFrom, dateTo, q, sort]);
 
-  const buildFacetsQuery = useCallback((): string => {
+  // TAB PILL counts scope — ONLY the structural filters (search + date +
+  // batch). Refinement filters (priority / source / category) must not
+  // collapse the tab pill counts; otherwise selecting "priority=high" makes
+  // Awaiting jump from 128 → 3 and Reviewed → 0, reading as if the queue
+  // vanished. Same fix as the tickets page. Status is also omitted here —
+  // that's the axis /facets counts across.
+  const buildTabsFacetsQuery = useCallback((): string => {
+    const p = new URLSearchParams();
+    if (batchFilter) p.set("batch_id",  batchFilter);
+    if (dateFrom)    p.set("from_date", dateFrom);
+    if (dateTo)      p.set("to_date",   dateTo);
+    if (q.trim())    p.set("q",         q.trim());
+    return p.toString();
+  }, [batchFilter, dateFrom, dateTo, q]);
+
+  // DISTRIBUTION chart scope — the full current slice (status + refinements)
+  // MINUS the axis the chart itself drives (category). Same rule as the
+  // tickets DistributionCard: bars should stay clickable representations of
+  // "how does my current slice break down by category".
+  const buildDistributionFacetsQuery = useCallback((): string => {
     const p = new URLSearchParams();
     if (fStatus)     p.set("status",    fStatus);
-    if (fCategory)   p.set("category",  fCategory);
     if (fPriority)   p.set("priority",  fPriority);
     if (fSource)     p.set("source",    fSource);
     if (batchFilter) p.set("batch_id",  batchFilter);
@@ -552,7 +584,7 @@ function AiReviewPageInner() {
     if (dateTo)      p.set("to_date",   dateTo);
     if (q.trim())    p.set("q",         q.trim());
     return p.toString();
-  }, [fStatus, fCategory, fPriority, fSource, batchFilter, dateFrom, dateTo, q]);
+  }, [fStatus, fPriority, fSource, batchFilter, dateFrom, dateTo, q]);
 
   // Aggregates take the same filters EXCEPT status + category — those are
   // what /aggregates COUNTS across (see backend `list_aggregates`).
@@ -569,19 +601,23 @@ function AiReviewPageInner() {
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      // Three feeds, one round-trip. All three see exactly the same filter
-      // set (except each excludes its own axis), so the numbers agree:
-      //  1. /api/petitions/inbox        — the CURRENT PAGE (server pagination).
-      //  2. /api/petitions/inbox/facets — tab counts + chart distribution,
-      //     across BOTH tables. Replaces the old 2000-row bulk fetch and the
-      //     JS-side aggregation that mixed status scopes.
-      //  3. /ai-uploads/aggregates      — upload-only globals the two axes
-      //     above don't own: active_jobs (poll trigger) and failed_count
-      //     (banner). Filter-INDEPENDENT by design.
-      const [inboxRes, facetsRes, aggRes] = await Promise.allSettled([
-        fetch(`/api/petitions/inbox?${buildInboxQuery()}`,       { credentials: "include", signal }).then(r => r.json()),
-        fetch(`/api/petitions/inbox/facets?${buildFacetsQuery()}`, { credentials: "include", signal }).then(r => r.json()),
-        fetch(api(`/aggregates?${buildAggregatesQuery()}`),      { credentials: "include", signal }).then(r => r.json()),
+      // Four feeds, one round-trip. Each has a purpose-built scope:
+      //  1. /api/petitions/inbox         — CURRENT PAGE (server pagination),
+      //     full filter set.
+      //  2. /facets (tabs scope)          — tab pill counts; scoped to just
+      //     search + date + batch so refinement filters (priority/source/
+      //     category) don't collapse the pills into 0s.
+      //  3. /facets (distribution scope)  — the category chart's bars +
+      //     total; scoped to status + priority + source (minus category —
+      //     that's the axis the chart drives) so bars reflect the current
+      //     slice.
+      //  4. /ai-uploads/aggregates        — upload-only globals: active_jobs
+      //     (poll trigger) and failed_count (banner). Filter-independent.
+      const [inboxRes, tabsRes, distRes, aggRes] = await Promise.allSettled([
+        fetch(`/api/petitions/inbox?${buildInboxQuery()}`,                     { credentials: "include", signal }).then(r => r.json()),
+        fetch(`/api/petitions/inbox/facets?${buildTabsFacetsQuery()}`,         { credentials: "include", signal }).then(r => r.json()),
+        fetch(`/api/petitions/inbox/facets?${buildDistributionFacetsQuery()}`, { credentials: "include", signal }).then(r => r.json()),
+        fetch(api(`/aggregates?${buildAggregatesQuery()}`),                    { credentials: "include", signal }).then(r => r.json()),
       ]);
       if (signal?.aborted) return;
 
@@ -590,10 +626,19 @@ function AiReviewPageInner() {
         setInboxItems(items);
         setInboxTotal(Number(inboxRes.value.total ?? items.length));
       }
-      if (facetsRes.status === "fulfilled" && facetsRes.value) {
-        setFacets(facetsRes.value as {
-          counts_by_status: Record<string, number>;
-          distribution: { key: string; count: number }[];
+      // Combine: pill counts from the tabs-scoped call, chart bars from the
+      // distribution-scoped call. Prefer either individually if only one
+      // fulfilled, so a transient failure on one doesn't blank the other.
+      const tabsOk = tabsRes.status === "fulfilled" && tabsRes.value;
+      const distOk = distRes.status === "fulfilled" && distRes.value;
+      if (tabsOk || distOk) {
+        setFacets({
+          counts_by_status: tabsOk
+            ? (tabsRes.value.counts_by_status ?? {})
+            : (distOk ? (distRes.value.counts_by_status ?? {}) : {}),
+          distribution: distOk
+            ? (distRes.value.distribution ?? [])
+            : (tabsOk ? (tabsRes.value.distribution ?? []) : []),
         });
       }
       if (aggRes.status === "fulfilled" && aggRes.value) {
@@ -604,7 +649,7 @@ function AiReviewPageInner() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [buildInboxQuery, buildFacetsQuery, buildAggregatesQuery]);
+  }, [buildInboxQuery, buildTabsFacetsQuery, buildDistributionFacetsQuery, buildAggregatesQuery]);
 
   // Batches lookup — fetched once for the "showing one batch" banner and
   // any future batch UI. Not filter-scoped: banner must be able to name any
@@ -745,7 +790,9 @@ function AiReviewPageInner() {
   }, [facets]);
 
   const distribution = useMemo(
-    () => facets?.distribution ?? [],
+    // Filter out non-petition categories so their bars never become filter
+    // chips here (see NON_PETITION_CATEGORY_KEYS above).
+    () => (facets?.distribution ?? []).filter((b) => !NON_PETITION_CATEGORY_KEYS.has(b.key)),
     [facets],
   );
 

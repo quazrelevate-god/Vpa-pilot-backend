@@ -440,7 +440,7 @@ function AppointmentsPageInner() {
     dateFrom || dateTo || apptDateFrom || apptDateTo || activeChip
   );
 
-  // Full scope — table + counts (includes the chart-selected category).
+  // Full scope — narrows the TABLE (includes refinement filters + chart category).
   const secondary = useMemo(() => ({
     kind: "meeting" as const,
     search: search || undefined,
@@ -449,6 +449,19 @@ function AppointmentsPageInner() {
     apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
     sort: sort || undefined,
   }), [search, priority, ministry, category, dateFrom, dateTo, apptDateFrom, apptDateTo, sort]);
+
+  // Pill-count scope — ONLY the structural filters (search + date ranges).
+  // Refinement filters (priority / ministry / category) must not collapse
+  // the tab pill counts; otherwise picking "priority=high" makes Scheduled
+  // jump from 42 → 3 and reads like the appointments vanished. Same fix as
+  // the tickets page — the active refinement is already legible via its
+  // own pill, the tab counts should stay a stable universe view.
+  const pillScope = useMemo(() => ({
+    kind: "meeting" as const,
+    search: search || undefined,
+    dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
+    apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
+  }), [search, dateFrom, dateTo, apptDateFrom, apptDateTo]);
 
   // Chart scope — same filters WITHOUT category, so the distribution keeps
   // showing every category even while one is selected to filter the table.
@@ -469,10 +482,10 @@ function AppointmentsPageInner() {
 
   const loadCounts = useCallback(async (signal: AbortSignal) => {
     try {
-      const data = await fetchAppointmentCounts(secondary, signal);
+      const data = await fetchAppointmentCounts(pillScope, signal);
       if (!signal.aborted) setCounts(data);
     } catch { /* aborts + transient errors are non-fatal */ }
-  }, [secondary]);
+  }, [pillScope]);
 
   useEffect(() => {
     const ctrl = new AbortController();
