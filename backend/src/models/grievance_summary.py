@@ -12,9 +12,18 @@ tracked separately on the ticket, and is still called "department" there.
 """
 from __future__ import annotations
 
+import logging
+import re
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+_logger = logging.getLogger(__name__)
+
+# ISO 8601 calendar-date only, no time, no timezone. Anchored so a value like
+# "2026-08-08 extra" gets rejected — extraction must return a clean date.
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class GrievanceCategory(str, Enum):
@@ -464,3 +473,42 @@ class GrievanceSummary(BaseModel):
             "document — never guess, never use today's date."
         ),
     )
+
+    # Post-parse validator: enforce the ISO 8601 shape Gemini is instructed to
+    # emit. Malformed dates (e.g. '12.02.2024', '2024-02-30') would otherwise
+    # persist as strings, break downstream date parsers and silently
+    # mis-filter. Coerce non-conforming values to None with a WARNING so the
+    # record still lands — dropping the extraction over a bad date is worse
+    # than losing the date field on that one row.
+    @field_validator("document_date", mode="before")
+    @classmethod
+    def _validate_document_date(cls, v):
+        if v is None or v == "":
+            return None
+        if not isinstance(v, str):
+            _logger.warning(
+                "grievance extraction returned non-string document_date %r — coercing to None.",
+                v,
+            )
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        if not _ISO_DATE_RE.match(s):
+            _logger.warning(
+                "grievance extraction returned non-ISO document_date %r — coercing to None. "
+                "Prompt asks for YYYY-MM-DD; update prompt if the model keeps drifting.",
+                s,
+            )
+            return None
+        # Real calendar-date check (rejects 2024-02-30, 2024-13-01, etc.).
+        from datetime import date as _date
+        try:
+            y, m, d = int(s[0:4]), int(s[5:7]), int(s[8:10])
+            _date(y, m, d)
+        except ValueError:
+            _logger.warning(
+                "grievance extraction returned an impossible date %r — coercing to None.", s,
+            )
+            return None
+        return s

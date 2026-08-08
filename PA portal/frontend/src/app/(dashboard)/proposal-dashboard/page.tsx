@@ -107,14 +107,24 @@ export default function ProposalDashboardPage() {
     return () => ac.abort();
   }, [router]);
 
-  // ── one full fetch; the dashboard is computed client-side from it ──
+  // The dashboard cross-filters everything client-side: every chart click
+  // re-runs analyze() on the filtered slice. That requires having the WHOLE
+  // dataset in memory. Loop the paginated list until exhausted (up to a
+  // 10k-row safety cap) instead of the old `limit: 200` cap that silently
+  // truncated the aggregates once the office crossed 200 proposals.
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      // Institutional proposals stay well under the endpoint's 200 cap; the
-      // whole dashboard is computed from this one fetch.
-      const res = await listProposals({ limit: 200 }, signal);
+      const PAGE = 200;                 // backend cap
+      const MAX_PAGES = 50;             // 10k rows — well past any realistic prod
+      const all: ProposalRow[] = [];
+      for (let p = 0; p < MAX_PAGES; p++) {
+        const res = await listProposals({ limit: PAGE, offset: p * PAGE }, signal);
+        if (signal?.aborted) return;
+        all.push(...res.items);
+        if (res.items.length < PAGE) break;   // exhausted
+      }
       if (!signal?.aborted) {
-        setRows(res.items); setErr(null);
+        setRows(all); setErr(null);
         setUpdated(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
       }
     } catch (e) { if (!signal?.aborted) setErr((e as Error).message); }

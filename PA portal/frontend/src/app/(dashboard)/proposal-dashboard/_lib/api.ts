@@ -71,13 +71,14 @@ export const getProposalAnalytics = (trendDays = 90, signal?: AbortSignal) =>
   getJSON<ProposalAnalytics>(`/api/v1/admin/proposals/analytics?trend_days=${trendDays}`, signal);
 
 export function listProposals(
-  { status, q, limit = 50 }: { status?: string; q?: string; limit?: number },
+  { status, q, limit = 50, offset = 0 }: { status?: string; q?: string; limit?: number; offset?: number },
   signal?: AbortSignal,
 ) {
   const p = new URLSearchParams();
   if (status) p.set("status", status);
   if (q) p.set("q", q);
   p.set("limit", String(limit));
+  p.set("offset", String(offset));
   return getJSON<ProposalListResponse>(`/api/v1/admin/proposals?${p.toString()}`, signal);
 }
 

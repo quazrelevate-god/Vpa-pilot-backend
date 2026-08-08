@@ -341,6 +341,27 @@ class AiUploadService:
             )
             # name_en → Latin display, name_ta → Tamil; gate on the strict
             # `citizen_name*` field so "empty = model wasn't sure" holds.
+            #
+            # Why this gate exists ONLY on the AI-upload path (not on the
+            # QR / manual / walk-in paths):
+            #
+            #   QR / manual / walk-in flows collect the citizen's name FROM
+            #   THE CITIZEN themselves (form input, staff-typed). Gemini's
+            #   `name_en`/`name_ta` on those paths is just a translation/
+            #   echo of an authoritative input — trusting it is correct.
+            #
+            #   AI-upload flow reads a name FROM A SCANNED PAGE where the
+            #   petitioner is one of many names on the sheet (addressee,
+            #   witnesses, officials cited). PetitionExtraction's strict
+            #   `citizen_name` field is Gemini's "I'm confident this is the
+            #   petitioner" signal. Empty citizen_name means the model saw
+            #   candidates but wouldn't commit → we drop the name-guess
+            #   rather than store a possibly-wrong identity that would send
+            #   SMS updates to the wrong person and mis-merge citizen records.
+            #
+            # If the two ever need to unify, converge on strict-everywhere
+            # (never trust-everywhere) — a mis-tagged petition is far more
+            # damaging than a "please add name" nudge in the review drawer.
             record.name_en = result.name_en if result.citizen_name.strip()    else ""
             record.name_ta = result.name_ta if result.citizen_name_ta.strip() else ""
             record.category = final_category
