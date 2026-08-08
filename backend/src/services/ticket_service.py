@@ -770,6 +770,38 @@ async def revert_ticket(
             },
         ))
 
+    # 3) Association-surface unwind. Shadow appointments (source_kind=
+    #    'association') are filtered out of the Petition Review queue by
+    #    _CITIZEN_APPT in dashboard_service, so step 2 alone would strand
+    #    the review — the PA would see no path back to re-decide it. Put
+    #    the review back on the association surface: flip the
+    #    AssociationSubmission to AWAITING_REVIEW and clear
+    #    source_appointment_id so mint_ticket_from_association mints a
+    #    fresh ticket on re-approve. The old REVERTED ticket + shadow
+    #    appt stay for audit; a re-approve creates new ones with a new
+    #    ticket number (asymmetric with the citizen revert flow, but
+    #    honest: the review needs to be redone on a different surface).
+    if appt is not None and appt.source_kind == "association":
+        from src.models.association_models import (
+            AssociationSubmission, STATUS_AWAITING_REVIEW,
+        )
+        assoc = await db.scalar(
+            select(AssociationSubmission)
+            .where(AssociationSubmission.source_appointment_id == appt.id)
+        )
+        if assoc is not None:
+            prev_assoc_status = assoc.status
+            assoc.status = STATUS_AWAITING_REVIEW
+            assoc.source_appointment_id = None
+            assoc.reviewed_by = None
+            assoc.reviewed_at = None
+            _log(db, t.id, _EventType.REVERTED, actor,
+                 note="association unwound to AWAITING_REVIEW",
+                 payload={
+                     "association_id": assoc.id,
+                     "from_assoc_status": prev_assoc_status,
+                 })
+
     await db.commit()
     return await get_ticket(db, ticket_id)
 

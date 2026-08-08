@@ -88,17 +88,11 @@ class AssociationService:
         `assoc.source_appointment_id`), or None if a ticket was already minted
         for this association.
 
-        Idempotent: if `source_appointment_id` is already set on the row we
-        return that id without creating a duplicate shadow — the reviewer may
-        toggle reviewed ↔ forwarded on the association surface without ever
-        re-minting the ticket.
+        Idempotent: if a shadow appointment + ticket ALREADY exist for this
+        association we return the existing appointment id without minting a
+        duplicate — the reviewer may toggle reviewed ↔ forwarded on the
+        association surface without ever re-creating the ticket.
         """
-        # Idempotency: never mint twice for the same association.
-        if assoc.source_appointment_id:
-            logger.info("association id=%s already has ticket appt=%s; skipping mint",
-                        assoc.id, assoc.source_appointment_id)
-            return int(assoc.source_appointment_id)
-
         # Local imports keep the module import graph tight (dashboard_service
         # pulls in a lot of heavy modules; only load when actually minting).
         from src.services.appointment_service import appointment_service
@@ -107,6 +101,33 @@ class AssociationService:
         from src.models.appointment_models import Appointment, Citizen, AppointmentAttachment
         from src.models.grievance_summary_record import GrievanceSummaryRecord
         from src.models.ticket_models import Ticket
+
+        # Idempotency: skip mint ONLY if the linked appointment still exists
+        # AND has a live Ticket. `source_appointment_id` is overloaded — the
+        # petition-to-association migration also wrote it, pointing at
+        # HARD-DELETED appointment ids (see the model comment). Treating that
+        # legacy value as "already minted" left every migrated association
+        # unable to ever produce a ticket. Guard with a real existence check.
+        if assoc.source_appointment_id:
+            existing_appt = await db.get(Appointment, int(assoc.source_appointment_id))
+            if existing_appt is not None:
+                existing_ticket = await db.scalar(
+                    select(Ticket).where(Ticket.appointment_id == existing_appt.id)
+                )
+                if existing_ticket is not None:
+                    logger.info(
+                        "association id=%s already has ticket %s (appt=%s); skipping mint",
+                        assoc.id, existing_ticket.ticket_number, existing_appt.id,
+                    )
+                    return int(existing_appt.id)
+            # Stale pointer (migrated-and-deleted appointment, or shadow
+            # deleted for cleanup). Clear it so the fresh mint below can set
+            # it to the newly-created appt id on the same row.
+            logger.info(
+                "association id=%s: stale source_appointment_id=%s (no live ticket) — minting fresh",
+                assoc.id, assoc.source_appointment_id,
+            )
+            assoc.source_appointment_id = None
 
         # Identity for the shadow Citizen. The representative is the natural
         # person we can attach the ticket to; the association's *name* is the
