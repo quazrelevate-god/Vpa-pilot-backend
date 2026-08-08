@@ -276,9 +276,32 @@ async def decide_association(
     row = await db.get(AssociationSubmission, assoc_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Association submission not found.")
+
+    reviewer = (
+        getattr(current, "full_name", None)
+        or getattr(current, "login_name", None)
+        or f"login:{current.id}"
+    )
+
+    # Mint the shadow Citizen + Appointment + Ticket the first time the
+    # association is decided (reviewed OR forwarded) — same downstream
+    # pipeline as an approved citizen petition. Idempotent on the association
+    # row's `source_appointment_id`, so toggling reviewed ↔ forwarded later
+    # never creates duplicate tickets.
+    from src.services.association_service import association_service
+    try:
+        await association_service.mint_ticket_from_association(
+            assoc=row, reviewed_by=reviewer, db=db,
+        )
+    except ValueError as exc:
+        # Missing identity fields — surface a 400 the reviewer can act on.
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Reload after the mint (which commits internally to spawn the ticket).
+    row = await db.get(AssociationSubmission, assoc_id)
     row.status = target
     row.decision_note = (body.note or "").strip() or None
-    row.reviewed_by = getattr(current, "full_name", None) or getattr(current, "login_name", None) or f"login:{current.id}"
+    row.reviewed_by = reviewer
     row.reviewed_at = now_utc()
     await db.commit()
     await db.refresh(row)

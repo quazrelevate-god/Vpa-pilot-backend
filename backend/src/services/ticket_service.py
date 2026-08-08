@@ -84,6 +84,13 @@ def _serialize_ticket_row(t: Ticket) -> Dict[str, Any]:
         "ticket_number":   t.ticket_number,
         "token":           f"TKN{appt.token_assigned}" if appt else None,
         "appointment_id":  t.appointment_id,
+        # Kind of the source appointment: 'citizen' for real citizen visits /
+        # petitions, 'association' for shadow appointments minted from an
+        # AssociationSubmission approval. Drives the "Association" badge on
+        # the tickets list so PAs can see at a glance where a ticket came
+        # from. Falls back to 'citizen' for legacy rows written before the
+        # source_kind column existed (migration 055).
+        "source_kind":     (appt.source_kind if appt and appt.source_kind else "citizen"),
         "citizen_name":    name,
         "citizen_mobile":  mobile,
         "status":          t.status,

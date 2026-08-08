@@ -200,7 +200,17 @@ const TicketTableRow = memo(function TicketTableRow({
       <td className="py-4 pl-4 pr-2">
         <div className="flex items-center gap-2.5">
           <span className={cn("h-8 w-1 rounded-full", PRIORITY_RAIL[row.priority ?? ""] ?? "bg-transparent")} />
-          <span className="font-mono text-[13px] font-semibold leading-tight text-brand">{row.ticket_number}</span>
+          <div className="flex min-w-0 flex-col items-start gap-1">
+            <span className="font-mono text-[13px] font-semibold leading-tight text-brand">{row.ticket_number}</span>
+            {row.source_kind === "association" && (
+              <span
+                className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-700"
+                title="Ticket created from an approved association / union submission"
+              >
+                Association
+              </span>
+            )}
+          </div>
         </div>
       </td>
       <td className="px-4 py-4">
@@ -264,6 +274,11 @@ const TicketCard = memo(function TicketCard({
       <div className="flex items-center gap-2.5">
         <span className={cn("h-7 w-1 rounded-full", PRIORITY_RAIL[row.priority ?? ""] ?? "bg-transparent")} />
         <span className="font-mono text-sm font-semibold text-brand">{row.ticket_number}</span>
+        {row.source_kind === "association" && (
+          <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-700">
+            Association
+          </span>
+        )}
         {row.priority && (
           <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide", PRIORITY_PILL[row.priority] ?? "bg-muted text-muted-foreground")}>{priorityText(row.priority, t)}</span>
         )}

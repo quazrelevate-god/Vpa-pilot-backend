@@ -291,6 +291,20 @@ class Appointment(Base):
         String(50), nullable=False, default="qr_citizen", server_default="qr_citizen",
     )
 
+    # Distinguishes real citizen appointments from shadow appointments minted
+    # from an AssociationSubmission approval (migration 055). Values:
+    #   'citizen'     — a real citizen visit / petition (every legacy row).
+    #   'association' — a shadow row created so the association can flow
+    #                   through the existing Citizen → Appointment → Ticket
+    #                   pipeline. Hidden from walk-in queue / scheduler /
+    #                   appointments list; surfaced only on the tickets page
+    #                   with an "Association" badge.
+    source_kind = Column(
+        String(20), nullable=False, default="citizen", server_default="citizen",
+        index=True,
+        comment="citizen | association — see migration 055 for the shadow-row rationale.",
+    )
+
     # v1 attr → v2 DB column "venue"
     venue_id = Column("venue", String(100), nullable=True)
 

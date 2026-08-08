@@ -145,6 +145,11 @@ export interface TicketRow {
   ticket_number: string;
   token?: string | null;
   appointment_id: number;
+  /** Kind of the source appointment. 'citizen' for real citizen petitions,
+   *  'association' for shadow appointments minted from an approved
+   *  AssociationSubmission. Drives the "Association" badge on the tickets
+   *  list. Legacy rows without the field read as 'citizen'. */
+  source_kind?: "citizen" | "association" | null;
   citizen_name?: string | null;
   citizen_mobile?: string | null;
   status: TicketStatus;

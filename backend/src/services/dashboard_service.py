@@ -44,6 +44,15 @@ def _category_label(value: Optional[str]) -> str:
     return CATEGORY_DISPLAY.get(value, value.replace("_", " ").title())
 
 
+# Every citizen-visit surface (stats, appointments list, counts, walk-in queue,
+# scheduler) must exclude "shadow" association appointments — rows minted from
+# an AssociationSubmission approval so the association can flow through the
+# existing Citizen → Appointment → Ticket pipeline. Those rows are NOT real
+# citizen visits and would mis-count queues / dashboards if they appeared on
+# citizen-facing surfaces. Ticket queries do include them (that's the point).
+_CITIZEN_APPT = Appointment.source_kind == "citizen"
+
+
 def _log_appt_event(db: AsyncSession, appointment_id: int, event_type: str, actor: str = "pa_admin",
                      note: Optional[str] = None, payload: Optional[dict] = None) -> None:
     """Append an activity audit row (v2 unified log)."""
@@ -102,8 +111,11 @@ async def get_stats(
     from sqlalchemy import cast, Date as SADate, and_
 
     def _df(extra=None):
-        """Build WHERE clause list scoped to Appointment.created_at."""
-        clauses = []
+        """Build WHERE clause list scoped to Appointment.created_at.
+        Always includes _CITIZEN_APPT so association shadow rows never inflate
+        dashboard stats or category charts.
+        """
+        clauses = [_CITIZEN_APPT]
         if date_from:
             clauses.append(Appointment.created_at >= _ist_start(date_from))
         if date_to:
@@ -405,6 +417,10 @@ async def get_appointments(
         )
     )
 
+    # Every returned row must be a real citizen visit — never a shadow
+    # association appointment (those live only on the tickets surface).
+    stmt = stmt.where(_CITIZEN_APPT)
+
     # Kind: meeting requests vs direct petitions (ordering is applied later).
     # v2: schedule_meeting is the persistent citizen-intent flag.
     if kind == "meeting":
@@ -601,6 +617,9 @@ async def get_appointment_counts(
     # .label keeps the hybrid's name on the subquery column (sub.c.status).
     base = select(Appointment.id, Appointment.status.label("status"), Appointment.schedule_meeting)
 
+    # Shadow association rows are never a visit — never in these counts.
+    base = base.where(_CITIZEN_APPT)
+
     if kind == "meeting":
         base = base.where(Appointment.schedule_meeting == True)   # noqa: E712
     elif kind == "petition":
@@ -650,6 +669,7 @@ async def get_appointment_counts(
             .options(selectinload(Appointment.citizen))
         )
         # Re-apply the same WHERE conditions on the ORM-level statement
+        stmt = stmt.where(_CITIZEN_APPT)
         if kind == "meeting":
             stmt = stmt.where(Appointment.schedule_meeting == True)   # noqa: E712
         elif kind == "petition":
