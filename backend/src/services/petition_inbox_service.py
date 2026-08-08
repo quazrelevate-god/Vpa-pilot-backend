@@ -60,6 +60,12 @@ from src.models.grievance_summary_record import GrievanceSummaryRecord
 from src.models.scheduling_models import AppointmentSlot
 from src.services import dashboard_service
 from src.services.ai_upload_service import ai_upload_service
+from src.services.appointment_service import COURTESY_CATEGORIES
+
+# Petition-review shows petitions only — courtesy submissions (greetings /
+# invitation) belong to the appointments module and must never surface here.
+# Reused as a list so SQLAlchemy's IN/NOT-IN accept it directly.
+_COURTESY_LIST = list(COURTESY_CATEGORIES)
 
 
 # ── StatusKey constants (mirror the frontend StatusKey union) ─────────────
@@ -301,6 +307,10 @@ class PetitionInboxService:
                     # Mirror the list-branch filters so counts/pagination agree.
                     .where(Appointment.schedule_meeting == False)  # noqa: E712
                     .where(Appointment.source != "ai_scan")
+                    # Defense-in-depth: even if a courtesy row somehow has
+                    # schedule_meeting=False, it must not surface in petition
+                    # review — courtesy lives on the appointments module.
+                    .where(Appointment.grievance_category.notin_(_COURTESY_LIST))
                 )
                 if source:
                     p_stmt = p_stmt.where(Appointment.source == source)
@@ -334,6 +344,8 @@ class PetitionInboxService:
                     .outerjoin(Citizen, Citizen.id == Appointment.citizen_id)
                     .where(Appointment.schedule_meeting == False)  # noqa: E712
                     .where(Appointment.source != "ai_scan")
+                    # Same courtesy exclusion as the non-search facet branch above.
+                    .where(Appointment.grievance_category.notin_(_COURTESY_LIST))
                 )
                 if source:
                     s_stmt = s_stmt.where(Appointment.source == source)
@@ -453,6 +465,10 @@ class PetitionInboxService:
         # kind="petition" -> schedule_meeting=False.
         stmt = stmt.where(Appointment.schedule_meeting == False)  # noqa: E712
         stmt = stmt.where(Appointment.source != "ai_scan")
+        # Courtesy (greetings / invitation) is an appointments-only surface — must
+        # never appear in the petition-review list, even when a data path has
+        # left schedule_meeting=False on a courtesy row.
+        stmt = stmt.where(Appointment.grievance_category.notin_(_COURTESY_LIST))
 
         if status:
             key = status.upper()
@@ -519,6 +535,7 @@ class PetitionInboxService:
             # Must mirror the non-search branch — see comment above.
             .where(Appointment.schedule_meeting == False)  # noqa: E712
             .where(Appointment.source != "ai_scan")
+            .where(Appointment.grievance_category.notin_(_COURTESY_LIST))
         )
         if status:
             key = status.upper()
