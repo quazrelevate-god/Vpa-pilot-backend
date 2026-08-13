@@ -864,6 +864,9 @@ class AiUploadService:
         rows = (await db.execute(stmt)).all()
 
         # Aggregate rows into { batch_id: { counts: {}, earliest, ... } }.
+        # ROUTED is initialised alongside the six visible states so it always
+        # ships in the payload (even for batches with zero routed rows) — the
+        # frontend legend/segment can then rely on the key being present.
         per_batch: Dict[str, Dict[str, Any]] = {}
         for batch, status_id_val, n, earliest in rows:
             status_val = admin.display_name(status_id_val) if status_id_val is not None else None
@@ -872,13 +875,36 @@ class AiUploadService:
                 "counts": {
                     STATUS_QUEUED: 0, STATUS_PROCESSING: 0,
                     STATUS_AWAITING_REVIEW: 0, STATUS_REVIEWED: 0,
-                    STATUS_FAILED: 0, STATUS_DISMISSED: 0,
+                    STATUS_FAILED: 0, STATUS_DISMISSED: 0, STATUS_ROUTED: 0,
                 },
+                # Split routed by destination so the batch card can offer a
+                # "View in Proposal Review" / "View in Association Review"
+                # jump link, matching the per-row option in the review drawer.
+                "routed_proposal": 0,
+                "routed_association": 0,
                 "earliest_created_at": None,
             })
             b["counts"][status_val] = int(n)
             if b["earliest_created_at"] is None or (earliest and earliest < b["earliest_created_at"]):
                 b["earliest_created_at"] = earliest
+
+        # Second pass — per-batch routed split by routed_to. One extra query,
+        # bounded by the count of routed rows (a small subset), same cost
+        # shape as the failed_stmt below.
+        routed_stmt = (
+            select(AiUpload.batch_id, AiUpload.routed_to, func.count(AiUpload.id))
+            .where(AiUpload.status == STATUS_ROUTED)
+            .group_by(AiUpload.batch_id, AiUpload.routed_to)
+        )
+        for batch, routed_to, n in (await db.execute(routed_stmt)).all():
+            b = per_batch.get(batch)
+            if b is None:
+                continue
+            key = "routed_proposal" if routed_to == "proposal" \
+                else "routed_association" if routed_to == "association" \
+                else None
+            if key:
+                b[key] = int(n)
 
         # Per-batch failed row ids (for the "Retry N" button). One extra query
         # only over FAILED rows — bounded by the count of failures, cheap.
@@ -891,8 +917,10 @@ class AiUploadService:
                 "id": batch,
                 "counts": {k: 0 for k in (
                     STATUS_QUEUED, STATUS_PROCESSING, STATUS_AWAITING_REVIEW,
-                    STATUS_REVIEWED, STATUS_FAILED, STATUS_DISMISSED,
+                    STATUS_REVIEWED, STATUS_FAILED, STATUS_DISMISSED, STATUS_ROUTED,
                 )},
+                "routed_proposal": 0,
+                "routed_association": 0,
                 "earliest_created_at": None,
             }).setdefault("failed_ids", []).append(upload_id)
         for b in per_batch.values():

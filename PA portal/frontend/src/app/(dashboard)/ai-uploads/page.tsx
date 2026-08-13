@@ -6,6 +6,7 @@ import {
   Sparkles, UploadCloud, Loader2, FolderUp, Files, Check, CheckCircle2,
   AlertTriangle, MoreVertical, Layers, Tag, ClipboardCheck, FileText,
   FileCheck2, Flag, ArrowRight, RefreshCw, Mail, Landmark, ScanLine, Trash2,
+  Route, ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,7 +23,7 @@ import {
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 
-type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED" | "DISMISSED";
+type StatusKey = "QUEUED" | "PROCESSING" | "AWAITING_REVIEW" | "REVIEWED" | "FAILED" | "DISMISSED" | "ROUTED";
 
 interface Batch {
   id: string;
@@ -30,6 +31,11 @@ interface Batch {
   earliest_created_at: string | null;
   counts: Record<StatusKey, number>;
   failed_ids: number[];
+  // Per-batch routed split — server splits ROUTED by routed_to so the batch
+  // card can offer a "View in Proposal Review" / "View in Association Review"
+  // deep-link (only rendered when the count > 0).
+  routed_proposal?: number;
+  routed_association?: number;
 }
 
 interface BatchesPayload {
@@ -461,8 +467,14 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
   // at e.g. "3 / 5 processed" with nothing left running.
   const extracted = (c.AWAITING_REVIEW || 0) + (c.REVIEWED || 0) + (c.DISMISSED || 0);
   const flagged = c.FAILED || 0;
+  // ROUTED = classifier moved the scan to the proposal / association queue.
+  // Counts toward "processed" (the file finished pipeline) but shown as its
+  // own segment / stat so a file that landed in another queue is visible.
+  const routed = c.ROUTED || 0;
+  const routedProposal = batch.routed_proposal || 0;
+  const routedAssociation = batch.routed_association || 0;
   const active = (c.QUEUED || 0) + (c.PROCESSING || 0);
-  const processed = extracted + flagged;
+  const processed = extracted + flagged + routed;
 
   const state: "processing" | "issues" | "completed" =
     active > 0 ? "processing" : flagged > 0 ? "issues" : "completed";
@@ -491,12 +503,17 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
           <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", badge.cls)}>{badge.label}</span>
         </div>
         <div className="mt-0.5 text-[13px] text-muted-foreground">{t("uploads.uploadedOn")} {when}</div>
-        {/* Segmented bar: green = successfully extracted, red = failed. A batch
-            with one failure now reads "80% done, 20% failed" instead of the
-            whole bar turning amber. The muted track behind is still-processing. */}
+        {/* Segmented bar: green = successfully extracted, violet = routed
+            (moved to proposal/association queue), red = failed. A batch with
+            one failure reads "80% done, 20% failed"; one with a routed scan
+            reads e.g. "66% extracted, 33% routed". The muted track behind is
+            still-processing. */}
         <div className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
           {extracted > 0 && (
             <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(extracted / total) * 100}%` }} />
+          )}
+          {routed > 0 && (
+            <div className="h-full bg-violet-500 transition-all" style={{ width: `${(routed / total) * 100}%` }} />
           )}
           {flagged > 0 && (
             <div className="h-full bg-red-500 transition-all" style={{ width: `${(flagged / total) * 100}%` }} />
@@ -504,12 +521,14 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
         </div>
         <div className="mt-1 text-[12px] tabular-nums text-muted-foreground">
           {processed} / {total} {t("uploads.filesProcessed")}
+          {routed > 0 && <span className="ml-1.5 font-semibold text-violet-700">· {routed} {t("uploads.routed")}</span>}
           {flagged > 0 && <span className="ml-1.5 font-semibold text-red-600">· {flagged} {t("uploads.flagged")}</span>}
         </div>
       </div>
 
       <div className="hidden shrink-0 items-center gap-5 sm:flex">
         <BatchStat icon={FileCheck2} value={extracted} label={t("uploads.extracted")} cls="text-emerald-600" />
+        <BatchStat icon={Route}      value={routed}    label={t("uploads.routed")}    cls={routed ? "text-violet-700" : "text-muted-foreground"} />
         <BatchStat icon={Flag}       value={flagged}   label={t("uploads.flagged")}   cls={flagged ? "text-amber-600" : "text-muted-foreground"} />
       </div>
 
@@ -533,6 +552,24 @@ function BatchRow({ batch, t, lang, onRetry, onDelete }: {
               <ClipboardCheck className="h-3.5 w-3.5" /> {t("uploads.openReview")}
             </Link>
           </DropdownMenuItem>
+          {/* Routed jumps — mirror the per-row "Open in Proposal / Association
+              Review" affordance the review drawer already offers. Only render
+              the item for a destination that actually received rows from this
+              batch, so the menu doesn't grow noise on batches with zero routed. */}
+          {routedProposal > 0 && (
+            <DropdownMenuItem asChild>
+              <Link href={`/proposal-review?batch=${encodeURIComponent(batch.id)}`}>
+                <ExternalLink className="h-3.5 w-3.5" /> {t("uploads.viewInProposal")} ({routedProposal})
+              </Link>
+            </DropdownMenuItem>
+          )}
+          {routedAssociation > 0 && (
+            <DropdownMenuItem asChild>
+              <Link href={`/association-review?batch=${encodeURIComponent(batch.id)}`}>
+                <ExternalLink className="h-3.5 w-3.5" /> {t("uploads.viewInAssociation")} ({routedAssociation})
+              </Link>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onSelect={onDelete}
             className="text-destructive focus:bg-destructive/10 focus:text-destructive"
