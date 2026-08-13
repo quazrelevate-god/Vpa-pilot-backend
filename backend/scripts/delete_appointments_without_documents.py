@@ -49,7 +49,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from sqlalchemy import delete, select  # noqa: E402
-from sqlalchemy.orm import selectinload  # noqa: E402
+from sqlalchemy.orm import load_only, selectinload  # noqa: E402
 
 # Import model modules so every mapper is registered before we query.
 import src.models.login_models  # noqa: E402,F401
@@ -65,6 +65,66 @@ from src.models.appointment_models import Appointment  # noqa: E402
 from src.services import storage_service  # noqa: E402
 from src.services.admin_lookup import admin  # noqa: E402
 from src.services.appointment_service import COURTESY_CATEGORIES  # noqa: E402
+
+
+# ── Interactive DB target picker ────────────────────────────────────────────
+# A destructive script must be explicit about which database it will hit —
+# .env can silently be pointing at prod while the operator thinks it's local.
+# The prompt below shows what .env would use (creds masked) and lets the
+# operator paste a different URL for this run only.
+import re  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession as _AsyncSession, async_sessionmaker as _async_sessionmaker,
+    create_async_engine as _create_async_engine,
+)
+
+
+def _mask_db_url(url: str) -> str:
+    if not url:
+        return "<not set>"
+    return re.sub(r"://[^:@/]+(?::[^@]*)?@", "://***:***@", url)
+
+
+def _to_async_url(url: str) -> str:
+    """Coerce common sync spellings to the async psycopg driver, matching
+    src.core.database's rewrite so a pasted URL behaves identically."""
+    if url.startswith("postgresql+psycopg://"):
+        return url.replace("postgresql+psycopg://", "postgresql+psycopg_async://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg_async://", 1)
+    return url
+
+
+def _prompt_db_target():
+    """Ask the operator whether to use the .env DATABASE_URL or a custom one.
+    Returns an async_sessionmaker bound to the chosen URL."""
+    from src.core.config import settings
+    default_url = settings.DATABASE_URL or ""
+    print(f"\nDetected DATABASE_URL from .env:  {_mask_db_url(default_url)}")
+    ans = input("Use this database? [Y/n]: ").strip().lower()
+    if ans in ("", "y", "yes"):
+        print("→ using .env DATABASE_URL\n")
+        return AsyncSessionLocal
+    entered = input("Paste the DATABASE_URL to use (postgresql://user:pass@host:port/db): ").strip()
+    if not entered:
+        print("No URL entered; aborting.")
+        sys.exit(1)
+    print(f"→ would use {_mask_db_url(entered)}")
+    confirm = input("Confirm? [y/N]: ").strip().lower()
+    if confirm not in ("y", "yes"):
+        print("Aborted.")
+        sys.exit(1)
+    # Fresh engine bound to the pasted URL — never touches the app's default
+    # AsyncSessionLocal / engine. Same pool_pre_ping + psycopg tweaks as the
+    # app, minus pool sizing (a one-shot script doesn't need a big pool).
+    engine = _create_async_engine(
+        _to_async_url(entered),
+        echo=False, pool_pre_ping=True, use_insertmanyvalues=False,
+    )
+    return _async_sessionmaker(
+        engine, class_=_AsyncSession, expire_on_commit=False,
+        autocommit=False, autoflush=False,
+    )
 
 # Attachment types that count as a "readable upload" — the reviewer's document.
 # AUDIO alone is NOT a document; it's a voice note attached to a petition (which
@@ -188,20 +248,30 @@ async def _decide(appt: Appointment, sem: asyncio.Semaphore) -> Decision:
     return Decision("DELETE", reason=reason, purge_keys=purge, cat=cat)
 
 
-async def run(*, commit: bool, limit: Optional[int], concurrency: int) -> None:
+async def run(*, commit: bool, limit: Optional[int], concurrency: int,
+              session_factory) -> None:
     sem = asyncio.Semaphore(max(1, concurrency))
     kept = skipped = inconclusive = 0
     deletes: List[Tuple[int, Decision]] = []
 
-    async with AsyncSessionLocal() as db:
+    async with session_factory() as db:
         # The Appointment.grievance_category hybrid reads through the admin
         # cache; a script run has no FastAPI startup to warm it, so we load it
         # ourselves before touching any hybrid column.
         await admin.load(db)
 
+        # load_only(id, category_id) so the SELECT lists only those two columns
+        # + the PK. Deferred columns (source_kind, document_date, etc.) are never
+        # touched by this script, so an older DB missing them stays out of trouble
+        # — and the grievance_category hybrid resolves purely from category_id via
+        # the admin cache, no extra query. selectinload keeps the per-appointment
+        # attachments load working in its own separate query.
         appts = (await db.execute(
             select(Appointment)
-            .options(selectinload(Appointment.attachments))
+            .options(
+                load_only(Appointment.id, Appointment.category_id),
+                selectinload(Appointment.attachments),
+            )
             .order_by(Appointment.id)
         )).scalars().all()
 
@@ -275,7 +345,11 @@ def main() -> None:
     p.add_argument("--concurrency", type=int, default=32,
                    help="max concurrent MinIO HEAD requests (default: 32)")
     args = p.parse_args()
-    asyncio.run(run(commit=args.yes, limit=args.limit, concurrency=args.concurrency))
+    session_factory = _prompt_db_target()
+    asyncio.run(run(
+        commit=args.yes, limit=args.limit, concurrency=args.concurrency,
+        session_factory=session_factory,
+    ))
 
 
 if __name__ == "__main__":

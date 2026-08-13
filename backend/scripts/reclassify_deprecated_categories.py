@@ -65,7 +65,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from sqlalchemy import select  # noqa: E402
-from sqlalchemy.orm import selectinload  # noqa: E402
+from sqlalchemy.orm import load_only, selectinload  # noqa: E402
 
 # Import model modules so every mapper is registered before we query.
 import src.models.login_models  # noqa: E402,F401
@@ -208,10 +208,19 @@ async def run(*, categories: List[str], commit: bool, limit: Optional[int],
         # it before any category assignment fires.
         await admin.load(db)
 
+        # load_only(id, category_id) so the SELECT lists only those two columns
+        # + the PK. Deferred columns (source_kind, document_date, file_hash on
+        # other tables, etc.) are never touched by this script, so an older DB
+        # missing them stays out of trouble. The grievance_category hybrid
+        # resolves purely from category_id via the admin cache (no extra query),
+        # and the setter at write time only touches category_id too.
         stmt = (
             select(Appointment)
             .where(Appointment.grievance_category.in_(categories))
-            .options(selectinload(Appointment.attachments))
+            .options(
+                load_only(Appointment.id, Appointment.category_id),
+                selectinload(Appointment.attachments),
+            )
             .order_by(Appointment.id)
         )
         appts = (await db.execute(stmt)).scalars().all()

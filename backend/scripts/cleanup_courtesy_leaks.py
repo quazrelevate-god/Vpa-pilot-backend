@@ -82,6 +82,66 @@ from src.services.admin_lookup import admin  # noqa: E402
 from src.services.appointment_service import COURTESY_CATEGORIES  # noqa: E402
 
 
+# ── Interactive DB target picker ────────────────────────────────────────────
+# A destructive script must be explicit about which database it will hit —
+# .env can silently be pointing at prod while the operator thinks it's local.
+# The prompt below shows what .env would use (creds masked) and lets the
+# operator paste a different URL for this run only.
+import re  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession as _AsyncSession, async_sessionmaker as _async_sessionmaker,
+    create_async_engine as _create_async_engine,
+)
+
+
+def _mask_db_url(url: str) -> str:
+    if not url:
+        return "<not set>"
+    return re.sub(r"://[^:@/]+(?::[^@]*)?@", "://***:***@", url)
+
+
+def _to_async_url(url: str) -> str:
+    """Coerce common sync spellings to the async psycopg driver, matching
+    src.core.database's rewrite so a pasted URL behaves identically."""
+    if url.startswith("postgresql+psycopg://"):
+        return url.replace("postgresql+psycopg://", "postgresql+psycopg_async://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg_async://", 1)
+    return url
+
+
+def _prompt_db_target():
+    """Ask the operator whether to use the .env DATABASE_URL or a custom one.
+    Returns an async_sessionmaker bound to the chosen URL."""
+    from src.core.config import settings
+    default_url = settings.DATABASE_URL or ""
+    print(f"\nDetected DATABASE_URL from .env:  {_mask_db_url(default_url)}")
+    ans = input("Use this database? [Y/n]: ").strip().lower()
+    if ans in ("", "y", "yes"):
+        print("→ using .env DATABASE_URL\n")
+        return AsyncSessionLocal
+    entered = input("Paste the DATABASE_URL to use (postgresql://user:pass@host:port/db): ").strip()
+    if not entered:
+        print("No URL entered; aborting.")
+        sys.exit(1)
+    print(f"→ would use {_mask_db_url(entered)}")
+    confirm = input("Confirm? [y/N]: ").strip().lower()
+    if confirm not in ("y", "yes"):
+        print("Aborted.")
+        sys.exit(1)
+    # Fresh engine bound to the pasted URL — never touches the app's default
+    # AsyncSessionLocal / engine. Same pool_pre_ping + psycopg tweaks as the
+    # app, minus pool sizing (a one-shot script doesn't need a big pool).
+    engine = _create_async_engine(
+        _to_async_url(entered),
+        echo=False, pool_pre_ping=True, use_insertmanyvalues=False,
+    )
+    return _async_sessionmaker(
+        engine, class_=_AsyncSession, expire_on_commit=False,
+        autocommit=False, autoflush=False,
+    )
+
+
 async def _purge_keys(keys: List[str], concurrency: int) -> int:
     """Best-effort parallel MinIO delete. Never raises — a purge failure just
     leaves an orphan blob; the DB truth is already correct by the time we get
@@ -102,8 +162,9 @@ async def _purge_keys(keys: List[str], concurrency: int) -> int:
     return sum(1 for r in results if r)
 
 
-async def run(*, commit: bool, limit: Optional[int], concurrency: int) -> None:
-    async with AsyncSessionLocal() as db:
+async def run(*, commit: bool, limit: Optional[int], concurrency: int,
+              session_factory) -> None:
+    async with session_factory() as db:
         # The GSR/ai_upload hybrid setters resolve slugs through admin, so
         # warm the cache before any status/category assignment fires.
         await admin.load(db)
@@ -146,29 +207,43 @@ async def run(*, commit: bool, limit: Optional[int], concurrency: int) -> None:
         #      shouldn't sit in the petition-review queue. We identify by the
         #      GSR's category (id-resolved via the hybrid) and skip rows that
         #      are already DISMISSED (idempotent).
+        #
+        #      Column-narrow SELECT (id + status only) rather than the whole
+        #      AiUpload entity: some DBs are behind the current model (e.g. the
+        #      dedup migration adding file_hash hasn't run there yet), and
+        #      selecting the entity would fetch every declared column and hit
+        #      UndefinedColumn. Cleanup only needs id (for the update) and
+        #      status (for the log line), so we ask for exactly those.
         courtesy_cat_ids = [
             admin.category(v) for v in COURTESY_CATEGORIES if admin.category(v) is not None
         ]
         ai_upload_rows_to_dismiss = []
         if courtesy_cat_ids:
             ai_upload_rows_to_dismiss = (await db.execute(
-                select(AiUpload)
+                select(AiUpload.id, AiUpload.status.label("status"))
                 .join(GrievanceSummaryRecord,
                       (GrievanceSummaryRecord.ai_upload_id == AiUpload.id) &
                       (GrievanceSummaryRecord.is_latest.is_(True)))
                 .where(GrievanceSummaryRecord.category_id.in_(courtesy_cat_ids))
                 .where(AiUpload.status != STATUS_DISMISSED)
                 .order_by(AiUpload.id)
-            )).scalars().all()
-        ai_upload_ids_to_dismiss = [u.id for u in ai_upload_rows_to_dismiss]
+            )).all()
+        ai_upload_ids_to_dismiss = [r.id for r in ai_upload_rows_to_dismiss]
 
         # ── E) petition_groups whose primary IS a courtesy appointment.
+        #      Column-narrow SELECT: PetitionGroup.primary_appointment relationship
+        #      is lazy="joined", so a full-entity load would eagerly SELECT every
+        #      Appointment column — and if the target DB is behind on migrations
+        #      that added new columns (055 source_kind, 056 document_date, etc.)
+        #      that query blows up with UndefinedColumn. We only need id and
+        #      primary_appointment_id here, so ask for exactly those and skip
+        #      the eager join entirely.
         pg_rows = (await db.execute(
-            select(PetitionGroup)
+            select(PetitionGroup.id, PetitionGroup.primary_appointment_id)
             .where(PetitionGroup.primary_appointment_id.in_(target))
             .order_by(PetitionGroup.id)
-        )).scalars().all() if target else []
-        pg_ids_to_unlink = [g.id for g in pg_rows]
+        )).all() if target else []
+        pg_ids_to_unlink = [r.id for r in pg_rows]
 
         # ── Per-appointment log — one line per affected appointment so the
         #    operator sees exactly what the batch will change.
@@ -208,9 +283,9 @@ async def run(*, commit: bool, limit: Optional[int], concurrency: int) -> None:
         #    courtesy appointment (they're classifier-verdict courtesy scans).
         if ai_upload_rows_to_dismiss:
             print()
-            for u in ai_upload_rows_to_dismiss:
-                print(f"  ai_upload {u.id}: DISMISS  (courtesy category on latest GSR; "
-                      f"was status={u.status})")
+            for r in ai_upload_rows_to_dismiss:
+                print(f"  ai_upload {r.id}: DISMISS  (courtesy category on latest GSR; "
+                      f"was status={r.status})")
 
         # ── Apply — one bulk statement per pass, all inside one transaction.
         if commit:
@@ -280,7 +355,11 @@ def main() -> None:
                    help="max concurrent MinIO deletes when purging ticket "
                         "attachments (default: 32)")
     args = p.parse_args()
-    asyncio.run(run(commit=args.yes, limit=args.limit, concurrency=args.concurrency))
+    session_factory = _prompt_db_target()
+    asyncio.run(run(
+        commit=args.yes, limit=args.limit, concurrency=args.concurrency,
+        session_factory=session_factory,
+    ))
 
 
 if __name__ == "__main__":
