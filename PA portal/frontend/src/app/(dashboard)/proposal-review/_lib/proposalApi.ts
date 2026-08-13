@@ -80,6 +80,9 @@ export interface ListProposalsArgs {
   recommendation?: string;
   dateFrom?: string;
   dateTo?: string;
+  /** AI-upload batch scope — mirrors the ai-review deep-link pattern.
+   *  When set, only proposals routed from this batch are returned. */
+  batchId?: string;
   limit?: number;
   offset?: number;
 }
@@ -102,6 +105,7 @@ export async function listProposals(
   if (args.recommendation) qs.set("recommendation", args.recommendation);
   if (args.dateFrom)       qs.set("date_from", args.dateFrom);
   if (args.dateTo)         qs.set("date_to", args.dateTo);
+  if (args.batchId)        qs.set("batch_id", args.batchId);
   qs.set("limit", String(args.limit ?? 50));
   qs.set("offset", String(args.offset ?? 0));
   const r = await fetch(`${BASE}?${qs.toString()}`, { credentials: "include", cache: "no-store" });

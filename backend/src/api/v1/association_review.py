@@ -233,6 +233,7 @@ def _apply_assoc_filters(
     recommendation: Optional[str],
     date_from: Optional[str],
     date_to: Optional[str],
+    batch_id: Optional[str] = None,
 ):
     """Shared WHERE builder — the list, total and counts queries all pass
     through here so `total` matches `items` and pill counts stay in sync
@@ -241,6 +242,19 @@ def _apply_assoc_filters(
     from datetime import datetime as _dt, timedelta as _td
     if status:
         stmt = stmt.where(AssociationSubmission.status == status)
+    if batch_id:
+        # Deep-link from the AI Uploads batch card: show only the associations
+        # the classifier routed from this specific batch. Linkage lives on
+        # ai_uploads.routed_ref_id (points at the association id) with
+        # status=ROUTED and routed_to='association'.
+        from src.models.ai_upload_models import AiUpload, STATUS_ROUTED
+        stmt = stmt.where(AssociationSubmission.id.in_(
+            select(AiUpload.routed_ref_id)
+            .where(AiUpload.batch_id == batch_id)
+            .where(AiUpload.routed_to == "association")
+            .where(AiUpload.status == STATUS_ROUTED)
+            .where(AiUpload.routed_ref_id.isnot(None))
+        ))
     if name is not None:
         nm = name.strip()
         if nm:
@@ -296,6 +310,7 @@ async def list_associations(
     recommendation: Optional[str] = Query(None, description="AI triage filter"),
     date_from: Optional[str] = Query(None, description="Submitted on-or-after (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Submitted on-or-before (YYYY-MM-DD, inclusive)"),
+    batch_id: Optional[str] = Query(None, description="Scope to associations routed from this AI-upload batch"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -310,7 +325,7 @@ async def list_associations(
     filter_kwargs = dict(
         q=q, name=name, category=category, urgency=urgency, district=district,
         ministry=ministry, recommendation=recommendation,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, batch_id=batch_id,
     )
     stmt = _apply_assoc_filters(select(AssociationSubmission), status=status, **filter_kwargs)
 

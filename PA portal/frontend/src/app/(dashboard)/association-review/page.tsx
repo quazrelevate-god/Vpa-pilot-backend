@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Users2, UserRound, Users, MapPin, CalendarClock,
   Inbox, ShieldAlert, Search, Download, Sparkles,
-  Landmark, Building2, Flag, X,
+  Landmark, Building2, Flag, X, Layers,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -156,6 +156,11 @@ export default function AssociationReviewPage() {
   const [data, setData] = useState<AssociationListResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // "?batch=<id>" deep-link from the AI Uploads batch card. Scopes the list
+  // to associations the classifier routed from that specific batch — same
+  // pattern as the ai-review page uses. Cleared via the chip button below.
+  const [batchFilter, setBatchFilter] = useState<string>("");
+
   // Filter state — null when the chip is at "Any". Filters combine (AND) with
   // each other, with the active tab (status), and with the search text.
   const [recFilter,      setRecFilter]      = useState<string | null>(null);
@@ -215,6 +220,7 @@ export default function AssociationReviewPage() {
         recommendation: recFilter || undefined,
         dateFrom: activeDateFrom || undefined,
         dateTo: activeDateTo || undefined,
+        batchId: batchFilter || undefined,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       });
@@ -222,11 +228,11 @@ export default function AssociationReviewPage() {
     } catch (e) {
       if (!signal?.aborted) { setLoading(false); toast.error((e as Error).message); }
     }
-  }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo, page]);
+  }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo, batchFilter, page]);
 
   // Any filter / search / tab change → reset to page 1 so narrowing from
   // page 5 doesn't leave you on an empty out-of-range page.
-  useEffect(() => { setPage(1); }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo]);
+  useEffect(() => { setPage(1); }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo, batchFilter]);
 
   useEffect(() => {
     if (gate.kind !== "ok") return;
@@ -238,7 +244,8 @@ export default function AssociationReviewPage() {
   }, [gate.kind, load]);
 
   // Deep-link: /association-review?id=42. Reads window.location once so we don't
-  // need the Next 15 useSearchParams Suspense boundary.
+  // need the Next 15 useSearchParams Suspense boundary. Also picks up
+  // ?batch=<id> from the AI Uploads batch card to scope the list.
   useEffect(() => {
     if (gate.kind !== "ok") return;
     if (typeof window === "undefined") return;
@@ -246,6 +253,8 @@ export default function AssociationReviewPage() {
     const raw = p.get("id");
     const id = raw ? Number(raw) : NaN;
     if (Number.isFinite(id)) setSelectedId(id);
+    const batch = p.get("batch");
+    if (batch) setBatchFilter(batch);
   }, [gate.kind]);
 
   // Dynamic dropdown options — pulled from the fetched rows so the reviewer
@@ -397,6 +406,33 @@ export default function AssociationReviewPage() {
         )}
         {gate.kind === "ok" && (
           <div className="mx-auto flex h-full max-w-[1440px] flex-col gap-4">
+            {/* Batch-scope chip — visible only when arrived via
+                "?batch=<id>" from the AI Uploads batch card. Clear resets
+                state AND strips the param from the URL so a reload doesn't
+                re-apply the scope. */}
+            {batchFilter && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3.5 py-2.5">
+                <Layers className="h-4 w-4 shrink-0 text-brand" />
+                <span className="text-[13px] text-foreground">
+                  Showing routed associations from batch{" "}
+                  <span className="font-mono text-[12.5px] font-bold text-brand">{batchFilter.slice(0, 8)}</span>
+                  {data && <span className="ml-2 text-muted-foreground">· {data.total} {data.total === 1 ? "row" : "rows"}</span>}
+                </span>
+                <button
+                  onClick={() => {
+                    setBatchFilter("");
+                    if (typeof window !== "undefined") {
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete("batch");
+                      window.history.replaceState({}, "", url.toString());
+                    }
+                  }}
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-muted"
+                >
+                  <X className="h-3.5 w-3.5" /> Clear
+                </button>
+              </div>
+            )}
             {/* Row 1 — tabs + search + export */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-wrap gap-1.5 rounded-xl bg-card p-1 shadow-card">

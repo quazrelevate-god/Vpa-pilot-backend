@@ -182,6 +182,7 @@ def _apply_list_filters(
     recommendation: Optional[str],
     date_from: Optional[str],
     date_to: Optional[str],
+    batch_id: Optional[str] = None,
 ):
     """Compose the WHERE clauses that both the list query and the total
     query must share. Keeping this in one function guarantees `total`
@@ -190,6 +191,19 @@ def _apply_list_filters(
     from datetime import datetime as _dt, timedelta as _td
     if status:
         stmt = stmt.where(ProposalSubmission.status == status)
+    if batch_id:
+        # Deep-link from the AI Uploads batch card: show only the proposals the
+        # classifier routed from this specific batch. Linkage lives on
+        # ai_uploads.routed_ref_id (points at the proposal id) with
+        # status=ROUTED and routed_to='proposal'.
+        from src.models.ai_upload_models import AiUpload, STATUS_ROUTED
+        stmt = stmt.where(ProposalSubmission.id.in_(
+            select(AiUpload.routed_ref_id)
+            .where(AiUpload.batch_id == batch_id)
+            .where(AiUpload.routed_to == "proposal")
+            .where(AiUpload.status == STATUS_ROUTED)
+            .where(AiUpload.routed_ref_id.isnot(None))
+        ))
     if category:
         stmt = stmt.where(ProposalSubmission.category == category)
     if recommendation:
@@ -228,6 +242,7 @@ async def list_proposals(
     recommendation: Optional[str] = Query(None, description="AI triage filter: review_closely | standard | needs_more_info"),
     date_from: Optional[str] = Query(None, description="Submitted on-or-after (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Submitted on-or-before (YYYY-MM-DD, inclusive)"),
+    batch_id: Optional[str] = Query(None, description="Scope to proposals routed from this AI-upload batch"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -240,7 +255,7 @@ async def list_proposals(
     stmt = _apply_list_filters(
         select(ProposalSubmission),
         status=status, q=q, category=category, recommendation=recommendation,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, batch_id=batch_id,
     )
     stmt = stmt.order_by(ProposalSubmission.created_at.desc()).limit(limit).offset(offset)
     rows = (await db.execute(stmt)).scalars().all()
@@ -259,7 +274,7 @@ async def list_proposals(
     total_stmt = _apply_list_filters(
         select(func.count()).select_from(ProposalSubmission),
         status=status, q=q, category=category, recommendation=recommendation,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, batch_id=batch_id,
     )
     total = (await db.scalar(total_stmt)) or 0
 
@@ -272,7 +287,7 @@ async def list_proposals(
         select(ProposalSubmission.status, func.count()).select_from(ProposalSubmission),
         status=None,  # exclude the axis being counted across
         q=q, category=category, recommendation=recommendation,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, batch_id=batch_id,
     ).group_by(ProposalSubmission.status)
     counts_rows = (await db.execute(counts_stmt)).all()
     counts = {s: n for s, n in counts_rows}

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Lightbulb, Building2, Sparkles, Inbox, ShieldAlert,
-  Search, Download, CalendarClock, X,
+  Search, Download, CalendarClock, X, Layers,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -135,6 +135,14 @@ export default function ProposalReviewPage() {
   const [data, setData] = useState<ProposalListResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // "?batch=<id>" deep-link from the AI Uploads batch card. Scopes the list
+  // to proposals the classifier routed from that specific batch — same
+  // pattern as the ai-review page uses. Read once from window.location so
+  // we don't need the Next 15 useSearchParams Suspense boundary; a "clear"
+  // button on the chip resets state AND strips the param from the URL so
+  // reloading doesn't re-apply the scope.
+  const [batchFilter, setBatchFilter] = useState<string>("");
+
   // Filter state — null when the chip is at "Any". Filters AND with tabs +
   // search + each other. Category, AI-recommendation, and submitted-date.
   const [recFilter,      setRecFilter]      = useState<string | null>(null);
@@ -186,6 +194,7 @@ export default function ProposalReviewPage() {
         recommendation: recFilter || undefined,
         dateFrom: activeDateFrom || undefined,
         dateTo: activeDateTo || undefined,
+        batchId: batchFilter || undefined,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       });
@@ -193,12 +202,12 @@ export default function ProposalReviewPage() {
     } catch (e) {
       if (!signal?.aborted) { setLoading(false); toast.error((e as Error).message); }
     }
-  }, [tab, debouncedQ, categoryFilter, recFilter, activeDateFrom, activeDateTo, page]);
+  }, [tab, debouncedQ, categoryFilter, recFilter, activeDateFrom, activeDateTo, batchFilter, page]);
 
   // Reset to page 1 whenever any filter / search / tab changes — otherwise
   // narrowing the results from page 5 could leave you looking at an empty
   // out-of-range page.
-  useEffect(() => { setPage(1); }, [tab, debouncedQ, categoryFilter, recFilter, activeDateFrom, activeDateTo]);
+  useEffect(() => { setPage(1); }, [tab, debouncedQ, categoryFilter, recFilter, activeDateFrom, activeDateTo, batchFilter]);
 
   useEffect(() => {
     if (gate.kind !== "ok") return;
@@ -221,6 +230,8 @@ export default function ProposalReviewPage() {
     const raw = p.get("id");
     const id = raw ? Number(raw) : NaN;
     if (Number.isFinite(id)) setSelectedId(id);
+    const batch = p.get("batch");
+    if (batch) setBatchFilter(batch);
   }, [gate.kind]);
 
   // Server drives filtering + pagination now — `data.items` is already the
@@ -350,6 +361,33 @@ export default function ProposalReviewPage() {
         )}
         {gate.kind === "ok" && (
           <div className="mx-auto flex h-full max-w-[1440px] flex-col gap-4">
+            {/* Batch-scope chip — visible only when arrived via
+                "?batch=<id>" from the AI Uploads batch card. Clear resets
+                state AND strips the param from the URL so a reload doesn't
+                re-apply the scope. */}
+            {batchFilter && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3.5 py-2.5">
+                <Layers className="h-4 w-4 shrink-0 text-brand" />
+                <span className="text-[13px] text-foreground">
+                  Showing routed proposals from batch{" "}
+                  <span className="font-mono text-[12.5px] font-bold text-brand">{batchFilter.slice(0, 8)}</span>
+                  {data && <span className="ml-2 text-muted-foreground">· {data.total} {data.total === 1 ? "row" : "rows"}</span>}
+                </span>
+                <button
+                  onClick={() => {
+                    setBatchFilter("");
+                    if (typeof window !== "undefined") {
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete("batch");
+                      window.history.replaceState({}, "", url.toString());
+                    }
+                  }}
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-muted"
+                >
+                  <X className="h-3.5 w-3.5" /> Clear
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-wrap gap-1.5 rounded-xl bg-card p-1 shadow-card">
                 {TABS.map((tb) => {
