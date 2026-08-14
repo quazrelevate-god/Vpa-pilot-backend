@@ -141,6 +141,26 @@ export async function fetchTicketsCounts(
   return r.json();
 }
 
+// Server-side SLA-breach count for the tickets header badge (H5 fix).
+// Only structural filters — search + date + dept — so the number stays a
+// stable "how many need SLA attention" figure and doesn't collapse when the
+// user narrows by priority/ministry/category. Previously the client fetched
+// page 1 and Python-filtered, silently understating past 25 rows.
+export async function fetchTicketBreachCount(
+  f: { search?: string; dateFrom?: string; dateTo?: string; department?: string },
+  signal?: AbortSignal,
+): Promise<number> {
+  const p = new URLSearchParams();
+  if (f.search)     p.set("search",     f.search);
+  if (f.dateFrom)   p.set("date_from",  f.dateFrom);
+  if (f.dateTo)     p.set("date_to",    f.dateTo);
+  if (f.department) p.set("department", f.department);
+  const r = await fetch(`/api/tickets/breach_count?${p.toString()}`, { credentials: "include", cache: "no-store", signal });
+  if (!r.ok) throw new Error(`ticket breach_count ${r.status}: ${await r.text()}`);
+  const data = await r.json();
+  return Number(data?.breached ?? 0);
+}
+
 export async function fetchTicket(id: number): Promise<TicketDetail> {
   const r = await fetch(`/api/tickets/${id}`, { credentials: "include", cache: "no-store" });
   if (!r.ok) throw new Error(`ticket ${r.status}: ${await r.text()}`);

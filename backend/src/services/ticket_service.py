@@ -311,29 +311,40 @@ async def list_tickets(
     if clauses:
         stmt = stmt.where(and_(*clauses))
 
-    count_stmt = select(func.count()).select_from(stmt.subquery())
-    total = await db.scalar(count_stmt) or 0
+    q = search.strip().lower() if (search and search.strip()) else None
 
-    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
-    result = await db.execute(stmt)
-    tickets = result.scalars().all()
-
-    # Post-decode search (name/mobile/token/ticket# all base64-or-plain)
-    items: List[Dict[str, Any]] = []
-    q = search.lower() if search else None
-    for t in tickets:
-        row = _serialize_ticket_row(t)
-        if q:
+    # Search path: name / mobile / ticket# / token / citizen_ask are decoded
+    # (encrypted, or Tamil, or bilingual labels) so we can only filter them in
+    # Python. If we counted + paginated first and Python-filtered the current
+    # page's 25 rows, `total` would anchor to the pre-search count and any match
+    # past page 1 would become unreachable — the report's H3 finding. Fix: on
+    # a search query, load the full DB-filtered set (already narrowed by
+    # dept/status/date/priority/etc.), decrypt-filter it, and paginate the
+    # matched list. No search → the plain SQL count + LIMIT/OFFSET fast path.
+    if q:
+        all_rows = (await db.execute(stmt)).scalars().all()
+        matched: List[Dict[str, Any]] = []
+        for t in all_rows:
+            row = _serialize_ticket_row(t)
             haystack = " ".join(filter(None, [
                 row.get("ticket_number"), row.get("token"),
                 row.get("citizen_name"), row.get("citizen_mobile"),
                 row.get("citizen_ask"), row.get("category_label"),
                 row.get("ministry_label"),
             ])).lower()
-            if q not in haystack:
-                continue
-        items.append(row)
+            if q in haystack:
+                matched.append(row)
+        total = len(matched)
+        start = (page - 1) * page_size
+        items = matched[start:start + page_size]
+        return {"items": items, "total": total, "page": page, "page_size": page_size}
 
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = await db.scalar(count_stmt) or 0
+
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    tickets = (await db.execute(stmt)).scalars().all()
+    items = [_serialize_ticket_row(t) for t in tickets]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
@@ -439,6 +450,92 @@ async def get_ticket_counts(
         "resolved": row.resolved or 0,
         "closed": row.closed or 0,
     }
+
+
+# SLA thresholds (days) by AI-review priority. Kept in lock-step with the
+# frontend's SLA_DAYS in tickets/page.tsx — if you change one, change the
+# other or the badge diverges from the row-level red/amber colouring.
+_SLA_DAYS = {"critical": 3, "high": 7, "medium": 14, "low": 28}
+
+
+async def get_ticket_breach_count(
+    db: AsyncSession,
+    search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    department: Optional[str] = None,
+) -> int:
+    """Server-side SLA-breach count for the tickets header badge.
+
+    Used to be computed client-side by fetching page 1 of tickets and
+    filtering with isBreached() in Python — silently understated once the
+    table crossed 25 rows. Now a single COUNT query over every ticket in
+    scope: not resolved/closed AND age >= priority's SLA threshold.
+
+    Honours only the "structural" filters (search + date + dept scope);
+    priority/ministry/category are deliberately IGNORED so the badge stays
+    a stable "how many SLA breaches" number that doesn't collapse to 0
+    when the user narrows by an unrelated axis. Same behaviour the
+    previous client-side version tried to express.
+
+    Search follows the decrypt-and-bucket pattern used elsewhere: run
+    the SQL breach filter first (usually a small set), then Python-filter
+    for the encrypted / bilingual fields. Cheap because breach scope is
+    naturally small (open tickets past their SLA).
+    """
+    now = now_utc()
+    # OR-of-ANDs over the four priority buckets → tickets whose age matches
+    # their priority's SLA threshold. GSR is the source of Ticket.priority.
+    breach_clause = or_(*[
+        and_(
+            GrievanceSummaryRecord.priority == prio,
+            Ticket.created_at <= now - timedelta(days=days),
+        )
+        for prio, days in _SLA_DAYS.items()
+    ])
+
+    stmt = (
+        select(Ticket)
+        .options(
+            selectinload(Ticket.appointment).selectinload(Appointment.citizen),
+            selectinload(Ticket.appointment).selectinload(Appointment.grievance_summary),
+        )
+        .join(
+            GrievanceSummaryRecord,
+            (GrievanceSummaryRecord.appointment_id == Ticket.appointment_id)
+            & (GrievanceSummaryRecord.is_latest == True),  # noqa: E712
+        )
+        .where(Ticket.status.notin_(["resolved", "closed"]))
+        .where(breach_clause)
+    )
+    if department:
+        stmt = stmt.where(Ticket.department == department)
+    if date_from:
+        stmt = stmt.where(Ticket.created_at >= _ist_start(date_from))
+    if date_to:
+        stmt = stmt.where(Ticket.created_at < _ist_end(date_to))
+
+    q = search.strip().lower() if (search and search.strip()) else None
+    if q is None:
+        return int(await db.scalar(
+            select(func.count()).select_from(stmt.subquery())
+        ) or 0)
+
+    # Search path — decrypt-and-bucket. Breach scope is small (open + past
+    # SLA), so materialising it to Python-filter is fine.
+    rows = (await db.execute(stmt)).scalars().all()
+    matched = 0
+    for t in rows:
+        row = _serialize_ticket_row(t)
+        haystack = " ".join(filter(None, [
+            row.get("ticket_number"), row.get("token"),
+            row.get("citizen_name"), row.get("citizen_mobile"),
+            row.get("citizen_ask"), row.get("category_label"),
+            row.get("ministry_label"),
+        ])).lower()
+        if q in haystack:
+            matched += 1
+    return matched
 
 
 async def get_ticket(db: AsyncSession, ticket_id: int) -> Optional[Dict[str, Any]]:

@@ -678,10 +678,20 @@ async def get_appointment_counts(
             stmt = stmt.where(Appointment.created_at >= _ist_start(date_from))
         if date_to:
             stmt = stmt.where(Appointment.created_at < _ist_end(date_to))
-        if appt_date_from:
-            stmt = stmt.where(Appointment.created_at >= _ist_start(appt_date_from))
-        if appt_date_to:
-            stmt = stmt.where(Appointment.created_at < _ist_end(appt_date_to))
+        # Appointment-date chips filter the scheduled MEETING date (slot
+        # availability), not created_at — must match the non-search branch and
+        # get_appointments exactly, otherwise "search + Today/Tomorrow" returns
+        # a slice the list endpoint never shows. Same _appt_slot_ids subquery.
+        if appt_date_from or appt_date_to:
+            _srch_slot_ids = (
+                select(AppointmentSlot.id)
+                .join(MLADailyAvailability, AppointmentSlot.availability_id == MLADailyAvailability.id)
+            )
+            if appt_date_from:
+                _srch_slot_ids = _srch_slot_ids.where(MLADailyAvailability.date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+            if appt_date_to:
+                _srch_slot_ids = _srch_slot_ids.where(MLADailyAvailability.date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+            stmt = stmt.where(Appointment.slot_id.in_(_srch_slot_ids))
         if priority or ministry or category:
             gsr_sub = (
                 select(GrievanceSummaryRecord.appointment_id)

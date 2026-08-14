@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { fetchTickets, fetchTicketsCounts, type TicketListFilters } from "@/lib/api";
+import { fetchTickets, fetchTicketsCounts, fetchTicketBreachCount, type TicketListFilters } from "@/lib/api";
 import type { TicketRow } from "@/lib/types";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR, PRIORITY_DISPLAY,
@@ -470,15 +470,17 @@ export default function TicketsPage() {
     return () => ctrl.abort();
   }, [loadCounts]);
 
-  // Breached count — across all statuses (not the active tab), honouring
-  // ONLY the structural filters (search + date) so the badge is a stable
-  // "how many need SLA attention" number and doesn't collapse to 0 when the
-  // user narrows by priority/ministry/etc. (SLA-breach is computed
-  // client-side; the backend has no SLA filter.)
+  // Breached count — server-computed (H5 fix). Was previously client-side:
+  // fetched page 1 and Python-filtered with isBreached(), so it silently
+  // understated once the queue crossed 25 tickets. The new endpoint counts
+  // across all statuses honouring only the "structural" filters (search +
+  // date), same intent as before — a stable "how many need SLA attention"
+  // number that doesn't collapse to 0 when the user narrows by priority
+  // /ministry/etc. Dept scope is applied server-side via the session.
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchTickets({ status: "", page: 1, search, dateFrom, dateTo }, ctrl.signal)
-      .then((d) => { if (!ctrl.signal.aborted) setBreachedCount(d.items.filter(isBreached).length); })
+    fetchTicketBreachCount({ search, dateFrom, dateTo }, ctrl.signal)
+      .then((n) => { if (!ctrl.signal.aborted) setBreachedCount(n); })
       .catch(() => {});
     return () => ctrl.abort();
   }, [search, dateFrom, dateTo]);

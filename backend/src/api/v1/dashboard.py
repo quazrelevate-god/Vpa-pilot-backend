@@ -838,6 +838,30 @@ async def api_ticket_counts(
     return JSONResponse(data)
 
 
+@router.get("/api/tickets/breach_count")
+async def api_ticket_breach_count(
+    search: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    department: str = "",
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(get_current_login),
+):
+    """Server-side SLA-breach count for the tickets header badge (H5 fix).
+    Was computed client-side by fetching page 1 and filtering — silently
+    understated once the queue crossed 25 tickets. Must be declared BEFORE
+    /{ticket_id} or FastAPI fails to parse "breach_count" as int.
+    """
+    count = await ticket_service.get_ticket_breach_count(
+        db,
+        search=search or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        department=_effective_department(current, department),
+    )
+    return JSONResponse({"breached": count})
+
+
 @router.get("/api/tickets/{ticket_id}")
 async def api_ticket_detail(
     ticket_id: int,
