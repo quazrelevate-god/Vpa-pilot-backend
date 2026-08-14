@@ -42,5 +42,9 @@ class DocumentClassification(BaseModel):
     reason: str = Field(
         default="",
         description="One short English sentence naming the concrete signal(s) behind the decision.",
-        max_length=300,
+        # was 300 — Gemini sometimes returns a longer explanation and the whole
+        # classification failed Pydantic validation, taking the row down with it.
+        # This field is log-only (not stored, indexed, or gating any decision),
+        # so a defensive 2000-char ceiling is plenty of headroom.
+        max_length=2000,
     )
