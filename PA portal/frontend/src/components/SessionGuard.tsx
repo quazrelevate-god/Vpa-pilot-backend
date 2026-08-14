@@ -64,14 +64,37 @@ export default function SessionGuard() {
   useEffect(() => {
     const original = window.fetch;
 
-    window.fetch = async (...args: Parameters<typeof fetch>): Promise<Response> => {
-      const resp = await original(...args);
+    // Wrap without inserting an `async` layer — return the original promise
+    // directly so the caller's semantics (in particular an AbortController
+    // cancel → AbortError rejection) are preserved exactly. The auth check
+    // runs on a separate side-effect .then chain that never touches what
+    // the caller sees.
+    //
+    // Bug this fixes: the previous `async (...) => { const r = await ... }`
+    // wrapper had a subtle window where an aborted-but-already-resolved
+    // fetch could still run the auth check and fire goToLogin() for a
+    // request the component had cancelled — producing stray login redirects
+    // after unmount. Handing the promise back untouched removes that window
+    // entirely: an aborted fetch rejects, .then's onFulfilled is skipped,
+    // goToLogin() cannot fire from the side chain.
+    window.fetch = (...args: Parameters<typeof fetch>): Promise<Response> => {
+      const p = original(...args);
       const input = args[0];
       const url = input instanceof Request ? input.url : String(input);
-      if (isDashboardApi(url) && isAuthFailure(resp)) {
-        goToLogin();
-      }
-      return resp;
+      p.then(
+        (resp) => {
+          if (isDashboardApi(url) && isAuthFailure(resp)) {
+            goToLogin();
+          }
+        },
+        () => {
+          // Swallow rejection on the side chain only — the caller still sees
+          // it on `p`. Without this noop the browser reports
+          // "Uncaught (in promise) AbortError" here even though the caller
+          // handles the rejection correctly on their branch of the promise.
+        },
+      );
+      return p;
     };
 
     return () => {
