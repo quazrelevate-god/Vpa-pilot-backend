@@ -59,6 +59,12 @@ import src.models.ai_upload_models  # noqa: E402,F401
 import src.models.scheduling_models  # noqa: E402,F401
 import src.models.activity_models  # noqa: E402,F401
 import src.models.referral_models  # noqa: E402,F401
+# Appointment.group_id is an FK into petition_groups; without this import the
+# mapper isn't registered and SQLAlchemy's flush-time table sort raises
+# NoReferencedTableError on commit — even though this script only deletes
+# from appointment (Postgres cascade handles petition_groups.primary_appointment_id
+# via its SET NULL rule).
+import src.models.petition_group  # noqa: E402,F401
 
 from src.core.database import AsyncSessionLocal  # noqa: E402
 from src.models.appointment_models import Appointment  # noqa: E402
