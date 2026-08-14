@@ -9,6 +9,13 @@ const PROTECTED_PREFIXES = [
   // "/tickets", so it needs its own entry to be session-guarded.
   "/ticket-insights",
   "/referrals", "/scheduling",
+  // Reviewer surfaces: AI-scan intake + petition/proposal/association queues.
+  "/ai-review", "/ai-uploads",
+  "/proposal-review", "/association-review",
+  // Read-only dashboards for the Minister-level lenses.
+  "/proposal-dashboard", "/association-dashboard",
+  // Ops surfaces.
+  "/crowd-qr", "/settings",
 ];
 
 export function middleware(req: NextRequest) {
@@ -126,6 +133,14 @@ export const config = {
     "/overview/:path*", "/appointments/:path*", "/tickets/:path*",
     "/ticket-insights/:path*",
     "/referrals/:path*", "/scheduling/:path*",
+    // Reviewer + Minister-lens dashboards + ops surfaces — every entry must
+    // also appear in PROTECTED_PREFIXES above. Without a matcher entry
+    // Next.js skips the middleware entirely, so PROTECTED_PREFIXES alone
+    // isn't enough — the pathname never even reaches our check.
+    "/ai-review/:path*", "/ai-uploads/:path*",
+    "/proposal-review/:path*", "/association-review/:path*",
+    "/proposal-dashboard/:path*", "/association-dashboard/:path*",
+    "/crowd-qr/:path*", "/settings/:path*",
     "/department", "/department/:path*",
     "/crowd", "/crowd/:path*",
     "/events", "/events/:path*",
