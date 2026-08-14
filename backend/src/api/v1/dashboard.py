@@ -1085,13 +1085,150 @@ def _parse_range(range_header: str, total: int):
     return start, end
 
 
+async def _authorize_file_access(
+    file_path: str,
+    current: Login,
+    db: AsyncSession,
+) -> None:
+    """Row-level authorization for the /dashboard/api/files/* endpoint.
+
+    Before: any authenticated staff could fetch any storage key they could
+    name — a classic IDOR. The MinIO branch of serve_stored_file passed the
+    incoming path straight to boto3 without ever asking whether the caller
+    was allowed to see the referenced object, so a leaked URL (screenshot,
+    log, browser history) worked for every staff account forever.
+
+    Now: the key's namespace prefix picks an owning table, one indexed
+    lookup confirms the key is referenced by a real row, and a role/dept
+    check gates access to that row. Unknown prefixes fail-closed so a new
+    upload namespace can't sneak into "wide open" territory by omission —
+    add a mapping branch below when a new namespace is introduced.
+
+    Raises HTTPException(403) on any failure. Callers do NOT distinguish
+    "orphan key" from "not your row" in the error — the file server must
+    not reveal which storage keys exist to a caller who isn't authorized
+    for them.
+    """
+    from sqlalchemy import func, text
+    from src.models.appointment_models import AppointmentAttachment
+    from src.models.ai_upload_models import AiUpload
+    from src.models.ticket_models import TicketAttachment
+    from src.models.login_models import ROLE_SUPER_ADMIN
+
+    _deny = HTTPException(status_code=403, detail="Not authorized to access this file.")
+    role = current.role
+
+    # ── attachments/… — citizen submission uploads on an Appointment ──────────
+    if file_path.startswith("attachments/"):
+        appt_id = (await db.execute(
+            select(AppointmentAttachment.appointment_id)
+            .where(AppointmentAttachment.storage_url == file_path)
+            .limit(1)
+        )).scalar_one_or_none()
+        if appt_id is None:
+            raise _deny
+        # Full-access roles: no further scoping — they can see any appointment.
+        # dept_officer is the exception: allowed only if a Ticket for this
+        # appointment is routed to their department, matching the /api/tickets
+        # scope rule already enforced by _officer_dept + _ticket_in_scope.
+        if role != ROLE_DEPT_OFFICER:
+            return
+        dept = _officer_dept(current)
+        allowed = await db.scalar(
+            select(func.count(_Ticket.id))
+            .where(_Ticket.appointment_id == appt_id)
+            .where(_Ticket.department == dept)
+        )
+        if not allowed:
+            raise _deny
+        return
+
+    # ── ticket_attachments/… — files uploaded to a Ticket (comments, etc.) ────
+    if file_path.startswith("ticket_attachments/"):
+        ticket_id = (await db.execute(
+            select(TicketAttachment.ticket_id)
+            .where(TicketAttachment.storage_url == file_path)
+            .limit(1)
+        )).scalar_one_or_none()
+        if ticket_id is None:
+            raise _deny
+        if role != ROLE_DEPT_OFFICER:
+            return
+        t = await db.get(_Ticket, ticket_id)
+        if t is None or t.department != _officer_dept(current):
+            raise _deny
+        return
+
+    # ── ai_uploads/… — AI-scan batch uploads (petition-review surface) ────────
+    if file_path.startswith("ai_uploads/"):
+        # dept_officer never works from the AI-scan queue — mirrors the H1
+        # pattern that denies them on /api/appointments/* wholesale.
+        if role == ROLE_DEPT_OFFICER:
+            raise _deny
+        exists = await db.scalar(
+            select(func.count(AiUpload.id))
+            .where(AiUpload.storage_url == file_path)
+        )
+        if not exists:
+            raise _deny
+        return
+
+    # ── proposals/… — proposal-review documents (super_admin surface) ─────────
+    #    Keeps the file server in lockstep with the review page's role gate.
+    if file_path.startswith("proposals/"):
+        if role != ROLE_SUPER_ADMIN:
+            raise _deny
+        exists = await db.scalar(text("""
+            SELECT 1 FROM proposal_submissions
+             WHERE documents IS NOT NULL
+               AND EXISTS (
+                 SELECT 1 FROM jsonb_array_elements(documents) doc
+                  WHERE doc->>'storage_url' = :key
+               )
+             LIMIT 1
+        """).bindparams(key=file_path))
+        if not exists:
+            raise _deny
+        return
+
+    # ── associations/… — association-review documents (super_admin) ───────────
+    if file_path.startswith("associations/"):
+        if role != ROLE_SUPER_ADMIN:
+            raise _deny
+        exists = await db.scalar(text("""
+            SELECT 1 FROM association_submissions
+             WHERE documents IS NOT NULL
+               AND EXISTS (
+                 SELECT 1 FROM jsonb_array_elements(documents) doc
+                  WHERE doc->>'storage_url' = :key
+               )
+             LIMIT 1
+        """).bindparams(key=file_path))
+        if not exists:
+            raise _deny
+        return
+
+    # ── Unknown namespace — fail-closed. New upload paths must be added to
+    #    the mapping above; the file server refuses everything else so a new
+    #    intake path can never accidentally ship wide open.
+    raise _deny
+
+
 @router.get("/api/files/{file_path:path}")
 async def serve_upload(
     file_path: str,
     request: Request,
+    db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
+    current: Login = Depends(get_current_login),
 ):
-    """Serve uploaded files — requires dashboard auth. Prevents public access.
+    """Serve uploaded files — requires dashboard auth AND row-level
+    authorization on the specific storage key (see _authorize_file_access).
+
+    Prevents the IDOR class of bug the H2 report flagged: even with a
+    leaked URL, only staff with legitimate access to the owning row
+    (appointment, ticket, ai_upload, proposal, association) can fetch
+    the bytes. Fail-closed on unknown namespaces.
 
     Supports HTTP Range requests so audio/video is seekable and browsers can
     discover the true duration of header-less WebM/Opus clips (recorded by the
@@ -1103,6 +1240,7 @@ async def serve_upload(
       - No FILE_STORAGE_ENDPOINT → serve from local uploads/ via FileResponse,
         which handles Range/Accept-Ranges/206 natively.
     """
+    await _authorize_file_access(file_path, current, db)
     return await serve_stored_file(file_path, request)
 
 
