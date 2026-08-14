@@ -687,22 +687,42 @@ function AiReviewPageInner() {
 
   useEffect(() => {
     // Sync the open drawer with fresh list data (e.g. after a live poll ticks).
-    // The list payload is "light" post-refactor — it doesn't carry summary /
-    // summary_ta / key_details*. Overwriting the drawer with that would blank
-    // out the narrative fetched via GET /{id} on open, so we selectively
-    // reapply the light fields on top of whatever full detail we already have.
-    if (review && !editing) {
-      const fresh = uploads.find(u => u.id === review.id);
-      if (fresh) setReview({
-        ...review,
-        ...fresh,
-        summary:        review.summary,
-        summary_ta:     review.summary_ta,
-        key_details:    review.key_details,
-        key_details_ta: review.key_details_ta,
-      });
-    }
-  }, [uploads]); // eslint-disable-line react-hooks/exhaustive-deps
+    // The list payload is "light" — it doesn't carry the drawer-only fields
+    // (attachments/audio_url/audio_transcript, summary*, key_details*,
+    // citizen_ask*) that GET /{id} loaded when the drawer opened. Previously
+    // this effect did `...fresh` and re-preserved only 4 of those, so every
+    // 4s poll tick blanked the attachments preview + audio player until the
+    // reviewer re-opened the drawer.
+    //
+    // Correct model: the drawer is the authoritative source for the row it's
+    // showing; the live poll only exists to surface fields that change over
+    // time (worker moves status, extraction fills category/priority/ministry/
+    // district, approval stamps ticket_number/appointment_id, classifier
+    // populates routed_to/routed_ref_id, an error fills error). Merge exactly
+    // those; keep everything else as-is.
+    //
+    // Deps: [uploads, review?.id, editing]. Depending on review?.id (not
+    // review) avoids the loop where setReview would re-trigger the effect —
+    // the id is stable across the merge. `editing` freezes the drawer while
+    // the reviewer has an in-flight edit; without it a poll tick mid-typing
+    // would overwrite the reviewer's staged changes.
+    if (!review || editing) return;
+    const fresh = uploads.find(u => u.id === review.id);
+    if (!fresh) return;
+    setReview({
+      ...review,
+      status:          fresh.status,
+      priority:        fresh.priority,
+      category:        fresh.category,
+      ministry:        fresh.ministry,
+      district:        fresh.district,
+      error:           fresh.error,
+      ticket_number:   fresh.ticket_number,
+      appointment_id:  fresh.appointment_id,
+      routed_to:       fresh.routed_to,
+      routed_ref_id:   fresh.routed_ref_id,
+    });
+  }, [uploads, review?.id, editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!review) return;
