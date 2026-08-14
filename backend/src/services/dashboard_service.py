@@ -710,7 +710,7 @@ async def get_appointment_counts(
                 stmt = stmt.where(Appointment.id.in_(gsr_sub))
 
         rows = (await db.execute(stmt)).scalars().all()
-        scheduled = rescheduled = all_count = 0
+        scheduled = rescheduled = awaiting_review = reviewed = all_count = 0
         for appt in rows:
             citizen = appt.citizen
             name = _decode(citizen.encrypted_name) if citizen else ""
@@ -727,9 +727,18 @@ async def get_appointment_counts(
                 scheduled += 1
             elif appt.status == "RESCHEDULED":
                 rescheduled += 1
+            elif appt.status == "AWAITING_REVIEW":
+                awaiting_review += 1
+            elif appt.status == "REVIEWED":
+                reviewed += 1
+        # Keys mirror get_appointments' status_filter strings so the pill lookup
+        # is a direct match. Awaiting Review + Reviewed were previously omitted
+        # entirely, so the Petition Review tab badge was always 0.
         return {
             "Scheduled": scheduled,
             "Rescheduled": rescheduled,
+            "Awaiting Review": awaiting_review,
+            "Reviewed": reviewed,
             "All": all_count,
         }
 
@@ -741,11 +750,15 @@ async def get_appointment_counts(
             and_(sub.c.status == "SCHEDULED", sub.c.schedule_meeting == True)  # noqa: E712
         ).label("scheduled"),
         func.count().filter(sub.c.status == "RESCHEDULED").label("rescheduled"),
+        func.count().filter(sub.c.status == "AWAITING_REVIEW").label("awaiting_review"),
+        func.count().filter(sub.c.status == "REVIEWED").label("reviewed"),
     ).select_from(sub)
     row = (await db.execute(agg)).one()
     return {
         "Scheduled": row.scheduled or 0,
         "Rescheduled": row.rescheduled or 0,
+        "Awaiting Review": row.awaiting_review or 0,
+        "Reviewed": row.reviewed or 0,
         "All": row.all_count or 0,
     }
 

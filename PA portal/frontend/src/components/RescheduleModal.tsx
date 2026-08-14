@@ -50,31 +50,42 @@ export default function RescheduleModal({
     if (!open) return;
     setDates(null); setDate(null); setSlots(null); setSlot(null); setBusy(false);
 
+    const ctrl = new AbortController();
     (async () => {
       try {
-        const r = await fetch("/api/v1/scheduling/open-dates", { credentials: "include" });
+        const r = await fetch("/api/v1/scheduling/open-dates", { credentials: "include", signal: ctrl.signal });
         const ds = (await r.json()) as OpenDate[];
+        if (ctrl.signal.aborted) return;
         setDates(Array.isArray(ds) ? ds : []);
         if (Array.isArray(ds) && ds.length) setDate(ds[0].date);
-      } catch {
+      } catch (e) {
+        if ((e as Error)?.name === "AbortError") return;
         setDates([]);
       }
     })();
+    return () => ctrl.abort();
   }, [open]);
 
-  // Load slots whenever the picked date changes.
+  // Load slots whenever the picked date changes. AbortController prevents
+  // a stale slot response from a previous date from overwriting the current
+  // one — the reviewer clicks A→B and A's slower response used to arrive
+  // second and clobber B's slots.
   useEffect(() => {
     if (!open || !date) return;
     setSlots(null); setSlot(null);
+    const ctrl = new AbortController();
     (async () => {
       try {
-        const r = await fetch(`/api/v1/scheduling/slots/available?target_date=${date}`, { credentials: "include" });
+        const r = await fetch(`/api/v1/scheduling/slots/available?target_date=${date}`, { credentials: "include", signal: ctrl.signal });
         const d = await r.json() as { slots?: Slot[] };
+        if (ctrl.signal.aborted) return;
         setSlots(d.slots ?? []);
-      } catch {
+      } catch (e) {
+        if ((e as Error)?.name === "AbortError") return;
         setSlots([]);
       }
     })();
+    return () => ctrl.abort();
   }, [open, date]);
 
   const submit = useCallback(async () => {

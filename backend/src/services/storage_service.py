@@ -57,6 +57,17 @@ def _bucket() -> str:
     return getattr(settings, "FILE_STORAGE_BUCKET", "vpa-uploads")
 
 
+def _local_disk_ok() -> bool:
+    """True iff FILE_STORAGE_ENDPOINT is unset — legitimate dev/local-disk mode.
+    False when MinIO IS configured: the read/delete paths must NOT silently
+    fall back to local disk when the client failed to initialise, because
+    that's exactly how prod uploads have gone missing (written to MinIO on
+    save, then read attempts hit local disk after a client blip, get None,
+    UI shows 'file not found' with no signal). Return the fail-safe (None /
+    False) instead so 404s surface + logs record the config error."""
+    return not getattr(settings, "FILE_STORAGE_ENDPOINT", None)
+
+
 def ensure_bucket() -> None:
     """Ensure the MinIO bucket exists. Called once at startup (T-2) so save_file
     no longer pays a head_bucket round-trip (and a create on 404) on every
@@ -140,6 +151,49 @@ def get_file_url(storage_path: str) -> str:
     return "/api/files/" + quote(rel, safe="/")
 
 
+def get_file_metadata(storage_path: str) -> Optional[dict]:
+    """Return {size, last_modified, content_type} in ONE HEAD call, or None.
+
+    Used by the file-server ETag builder so a same-key overwrite (rare but
+    real — e.g. re-uploading a scan) invalidates cached copies. Building the
+    ETag from (size + last_modified) instead of just (size) means content
+    change → mtime change → new ETag → browser refetches instead of serving
+    a stale 304. Doubling the HEAD cost of get_file_size would be wasted;
+    this returns everything the ETag needs in a single call.
+
+    last_modified is the boto3 datetime's ISO string (str-cast for MinIO;
+    st_mtime for local disk). content_type is included so callers with the
+    same need don't have to make a second HEAD via get_file_content_type.
+    """
+    client = _get_client()
+    if client:
+        key = storage_path.replace("\\", "/")
+        if key.startswith("uploads/"):
+            key = key[len("uploads/"):]
+        try:
+            obj = client.head_object(Bucket=_bucket(), Key=key)
+            lm = obj.get("LastModified")
+            return {
+                "size": int(obj["ContentLength"]),
+                "last_modified": lm.isoformat() if lm is not None else "",
+                "content_type": obj.get("ContentType") or "",
+            }
+        except Exception as e:
+            logger.warning(
+                "get_file_metadata MinIO head failed | bucket=%s key=%s err=%s",
+                _bucket(), key, repr(e),
+            )
+            return None
+    if not _local_disk_ok():
+        logger.error("MinIO client unavailable — refusing local-disk metadata fallback (path=%s)", storage_path)
+        return None
+    p = Path(storage_path)
+    if not p.exists():
+        return None
+    st = p.stat()
+    return {"size": st.st_size, "last_modified": str(int(st.st_mtime)), "content_type": ""}
+
+
 def get_file_size(storage_path: str) -> Optional[int]:
     """Return the total byte size of a stored file, or None if missing.
 
@@ -159,6 +213,9 @@ def get_file_size(storage_path: str) -> Optional[int]:
                 _bucket(), key, repr(e),
             )
             return None
+    if not _local_disk_ok():
+        logger.error("MinIO client unavailable — refusing local-disk size fallback (path=%s)", storage_path)
+        return None
     p = Path(storage_path)
     return p.stat().st_size if p.exists() else None
 
@@ -218,6 +275,9 @@ def get_file_range_bytes(storage_path: str, start: int, end: int) -> Optional[by
                 _bucket(), key, start, end, repr(e),
             )
             return None
+    if not _local_disk_ok():
+        logger.error("MinIO client unavailable — refusing local-disk range fallback (path=%s)", storage_path)
+        return None
     p = Path(storage_path)
     if not p.exists():
         return None
@@ -249,6 +309,9 @@ def delete_file(storage_path: str) -> bool:
                 _bucket(), key, repr(e),
             )
             return False
+    if not _local_disk_ok():
+        logger.error("MinIO client unavailable — refusing local-disk delete fallback (path=%s)", storage_path)
+        return False
     p = Path(storage_path)
     try:
         if p.exists():
@@ -277,12 +340,14 @@ def get_file_bytes(storage_path: str) -> Optional[bytes]:
                 _bucket(), key, getattr(settings, "FILE_STORAGE_ENDPOINT", None), repr(e),
             )
             return None
-    else:
-        logger.warning(
-            "get_file_bytes: no MinIO client (endpoint=%r access_key_set=%s). "
-            "Falling back to local disk read.",
+    if not _local_disk_ok():
+        logger.error(
+            "get_file_bytes: MinIO endpoint configured but client init failed "
+            "(endpoint=%r access_key_set=%s) — refusing local-disk fallback",
             getattr(settings, "FILE_STORAGE_ENDPOINT", None),
             bool(getattr(settings, "FILE_STORAGE_ACCESS_KEY", None)),
         )
-        p = Path(storage_path)
-        return p.read_bytes() if p.exists() else None
+        return None
+    # Local-disk mode (dev): FILE_STORAGE_ENDPOINT unset.
+    p = Path(storage_path)
+    return p.read_bytes() if p.exists() else None

@@ -137,37 +137,54 @@ export default function OverviewPage() {
     return p.toString();
   }, [preset, filters]);
 
-  const loadAnalytics = useCallback(async () => {
+  // AbortController-scoped loaders: when a filter/preset changes rapidly
+  // (e.g. clicking category chips), the effect re-fires with a new signal;
+  // the previous fetch's signal is aborted, so a slow stale response can't
+  // arrive AFTER the fresh one and overwrite state. All three loaders share
+  // the same guarded pattern; AbortError is swallowed intentionally (it's
+  // an intentional cancellation, not a real error).
+  const loadAnalytics = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/analytics?${qs()}`, { credentials: "include" });
+      const r = await fetch(`/api/analytics?${qs()}`, { credentials: "include", signal });
+      if (signal?.aborted) return;
       if (!r.ok) { setError(`${t("ov.errRequest")} (HTTP ${r.status}).`); return; }
       setError(null); setData(await r.json());
       setLastUpdated(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
-    } catch (e) { setError(`${t("ov.errUnreachable")}: ${(e as Error).message}`); }
-    finally { setLoading(false); }
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+      setError(`${t("ov.errUnreachable")}: ${(e as Error).message}`);
+    } finally { if (!signal?.aborted) setLoading(false); }
     // `t` matters: lang hydrates from localStorage AFTER first render, so a
     // callback cached without it would keep formatting errors in English.
   }, [qs, t]);
 
-  const loadPetitions = useCallback(async () => {
+  const loadPetitions = useCallback(async (signal?: AbortSignal) => {
     try {
-      const r = await fetch(`/api/analytics/petitions?${qs({ page, page_size: 25, sort: sort.by, direction: sort.dir })}`, { credentials: "include" });
+      const r = await fetch(`/api/analytics/petitions?${qs({ page, page_size: 25, sort: sort.by, direction: sort.dir })}`, { credentials: "include", signal });
+      if (signal?.aborted) return;
       if (!r.ok) { setPets({ items: [], total: 0, page: 1, pages: 1 }); return; }
       setPets(await r.json());
-    } catch { setPets({ items: [], total: 0, page: 1, pages: 1 }); }
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+      setPets({ items: [], total: 0, page: 1, pages: 1 });
+    }
   }, [qs, page, sort]);
 
-  const loadOps = useCallback(async () => {
+  const loadOps = useCallback(async (signal?: AbortSignal) => {
     try {
-      const r = await fetch(`/api/analytics/operations?${qs()}`, { credentials: "include" });
+      const r = await fetch(`/api/analytics/operations?${qs()}`, { credentials: "include", signal });
+      if (signal?.aborted) return;
       if (r.ok) setOps(await r.json());
-    } catch { /* soft-fail — panels show their empty state */ }
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+      /* soft-fail — panels show their empty state */
+    }
   }, [qs]);
 
-  useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
-  useEffect(() => { loadPetitions(); }, [loadPetitions]);
-  useEffect(() => { loadOps(); }, [loadOps]);
+  useEffect(() => { const c = new AbortController(); loadAnalytics(c.signal); return () => c.abort(); }, [loadAnalytics]);
+  useEffect(() => { const c = new AbortController(); loadPetitions(c.signal); return () => c.abort(); }, [loadPetitions]);
+  useEffect(() => { const c = new AbortController(); loadOps(c.signal);        return () => c.abort(); }, [loadOps]);
   useEffect(() => { setPage(1); }, [preset, filters]);
 
   function toggle(dim: keyof Filters, key: string) {

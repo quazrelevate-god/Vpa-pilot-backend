@@ -1088,6 +1088,13 @@ def _parse_range(range_header: str, total: int):
     seeking, which never sends multi-range."""
     if not range_header or not range_header.startswith("bytes="):
         return None
+    # Empty object: any byte range is technically "unsatisfiable", but 416 on
+    # a zero-length file breaks browsers that were probing for size (they
+    # abandon the request and log the error). Return None so the caller
+    # sends a plain 200 with an empty body — RFC 7233 permits either, and
+    # 200-empty is the friendlier of the two.
+    if total <= 0:
+        return None
     spec = range_header[len("bytes="):].split(",")[0].strip()
     start_s, _, end_s = spec.partition("-")
     try:
@@ -1281,6 +1288,7 @@ async def serve_stored_file(file_path: str, request: Request) -> Response:
     import mimetypes
     from src.services.storage_service import (
         get_file_bytes, get_file_size, get_file_range_bytes, get_file_content_type,
+        get_file_metadata,
     )
     from pathlib import PurePosixPath
     from urllib.parse import quote
@@ -1331,9 +1339,16 @@ async def serve_stored_file(file_path: str, request: Request) -> Response:
         # boto3 is blocking — run every storage call in a worker thread so it
         # never stalls the async event loop (one slow fetch used to freeze the
         # whole portal).
-        total = await asyncio.to_thread(get_file_size, file_path)
-        if total is None:
+        # ONE head_object via get_file_metadata gets size + last_modified in
+        # a single round trip; the ETag then binds to (file_path + size +
+        # last_modified + media_type) so a same-key overwrite invalidates the
+        # cache instead of a stale 304. Previously only (size) was in the
+        # hash — a same-size overwrite silently served the old bytes.
+        meta = await asyncio.to_thread(get_file_metadata, file_path)
+        if meta is None:
             return JSONResponse({"error": "Not found"}, status_code=404)
+        total = int(meta["size"])
+        last_modified = meta.get("last_modified") or ""
 
         # Attachments have unique, immutable filenames (token_hex), so the
         # browser can cache them hard and skip the re-fetch that made repeat
@@ -1344,7 +1359,7 @@ async def serve_stored_file(file_path: str, request: Request) -> Response:
         # Content-Type must invalidate, or a cached octet-stream copy would 304
         # forever and keep downloading instead of previewing.
         etag = '"%s"' % hashlib.md5(
-            ("%s:%d:%s" % (file_path, total, media_type)).encode()
+            ("%s:%d:%s:%s" % (file_path, total, last_modified, media_type)).encode()
         ).hexdigest()
         cache_headers = {
             "Cache-Control": cache_control,

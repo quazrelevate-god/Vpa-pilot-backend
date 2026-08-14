@@ -823,7 +823,16 @@ function AiReviewPageInner() {
   // pagination total that lagged the tab count.
   const total = inboxTotal;
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
-  useEffect(() => { if (page > lastPage) setPage(lastPage); }, [page, lastPage]);
+  // Gate the clamp on !loading: during a filter/tab change the load fires
+  // fresh but the previous fetch's inboxTotal is still on screen for a beat,
+  // which briefly collapses lastPage and used to trigger a spurious setPage
+  // that then rendered stale rows for one tick before the fresh fetch
+  // resolved. Only clamp once loading has settled — page/lastPage are then
+  // both derived from the current filter set.
+  useEffect(() => {
+    if (loading) return;
+    if (page > lastPage) setPage(lastPage);
+  }, [page, lastPage, loading]);
   const offset = (page - 1) * pageSize;
 
   // Global counts — filter-independent (from /aggregates). The FAILED banner

@@ -985,12 +985,21 @@ function AppointmentsPageInner() {
         open={!!rescheduleFor}
         appointmentId={rescheduleFor?.id ?? null}
         onClose={() => setRescheduleFor(null)}
-        onRebooked={() => {
-          // Backend flipped the row back to SCHEDULED with the new date. The
-          // parent list overlay follows suit so the row doesn't hang on the
-          // Rescheduled tab until the next fetch.
+        onRebooked={(info) => {
+          // Backend flipped the row back to SCHEDULED with the new date/time.
+          // Merge the fresh schedule into the parent-list overlay so the row
+          // reflects the new meeting time IMMEDIATELY — previously the callback
+          // ignored `info` and the row kept showing the OLD date/time until the
+          // next poll fetched it (which reviewers noticed as "the reschedule
+          // didn't take"). Status flip to "Scheduled" is the same as before so
+          // the row also leaves the Rescheduled tab without waiting for refresh.
           if (rescheduleFor) {
-            setRows((prev) => prev.map((r) => (r.id === rescheduleFor.id ? { ...r, status: "Scheduled" as const } : r)));
+            setRows((prev) => prev.map((r) => (r.id === rescheduleFor.id ? {
+              ...r,
+              status: "Scheduled" as const,
+              scheduled_date: info.scheduled_date,
+              scheduled_time: info.scheduled_time,
+            } : r)));
           }
           setRescheduleFor(null);
         }}
