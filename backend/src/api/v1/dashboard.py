@@ -13,9 +13,30 @@ from src.core.database import get_db
 from src.core.config import settings
 from src.core.dash_auth import create_session_cookie, require_auth
 from src.core.rate_limit import limiter
+from src.core.rbac import get_current_login
+from src.models.login_models import Login, ROLE_DEPT_OFFICER
 from src.services import dashboard_service
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+
+async def _no_dept_officer(current: Login = Depends(get_current_login)) -> None:
+    """Deny dept_officer sessions. Attached to every /api/appointments/* route
+    so a compromised or misused dept_officer credential can't read or mutate
+    the PA's appointments queue.
+
+    Domain rationale: appointments are the PA's workspace; dept_officers work
+    from Tickets (their department-scoped surface). The frontend already
+    redirects dept_officers away from /appointments to /tickets on login
+    (see the api_login handler), so this is closing a gap between UI intent
+    and API enforcement — every other role (super_admin, pa, petition_reviewer,
+    auditor) continues to pass through untouched.
+    """
+    if current.role == ROLE_DEPT_OFFICER:
+        raise HTTPException(
+            status_code=403,
+            detail="Dept officers cannot access appointments. Use Tickets instead.",
+        )
 
 _TMPL_DIR = Path(__file__).resolve().parents[3] / "templates" / "dashboard"
 templates = Jinja2Templates(directory=str(_TMPL_DIR))
@@ -206,7 +227,7 @@ async def api_analytics_export(
     )
 
 
-@router.get("/api/appointments/counts")
+@router.get("/api/appointments/counts", dependencies=[Depends(_no_dept_officer)])
 async def api_appointment_counts(
     request: Request,
     search: str = "",
@@ -239,7 +260,7 @@ async def api_appointment_counts(
     return JSONResponse(data)
 
 
-@router.get("/api/appointments/{appointment_id}")
+@router.get("/api/appointments/{appointment_id}", dependencies=[Depends(_no_dept_officer)])
 async def api_appointment_detail(
     appointment_id: int, db: AsyncSession = Depends(get_db), user: str = Depends(require_auth),
 ):
@@ -414,7 +435,7 @@ async def api_stats(
     return JSONResponse(data)
 
 
-@router.get("/api/appointments")
+@router.get("/api/appointments", dependencies=[Depends(_no_dept_officer)])
 async def api_appointments(
     request: Request,
     status: str = "All",
@@ -452,7 +473,7 @@ async def api_appointments(
     return JSONResponse(data)
 
 
-@router.patch("/api/appointments/{appointment_id}/details")
+@router.patch("/api/appointments/{appointment_id}/details", dependencies=[Depends(_no_dept_officer)])
 async def api_update_appointment_details(
     appointment_id: int,
     request: Request,
@@ -485,7 +506,7 @@ async def api_update_appointment_details(
     return JSONResponse({"ok": True})
 
 
-@router.patch("/api/appointments/{appointment_id}/status")
+@router.patch("/api/appointments/{appointment_id}/status", dependencies=[Depends(_no_dept_officer)])
 async def api_update_status(
     appointment_id: int,
     request: Request,
@@ -514,7 +535,7 @@ async def api_update_status(
     return JSONResponse({"ok": True})
 
 
-@router.post("/api/appointments/{appointment_id}/approve")
+@router.post("/api/appointments/{appointment_id}/approve", dependencies=[Depends(_no_dept_officer)])
 async def api_approve_petition(
     appointment_id: int,
     db: AsyncSession = Depends(get_db),
@@ -533,7 +554,7 @@ async def api_approve_petition(
 
 
 # ── Signature-petition merging (v054) ────────────────────────────────────────
-@router.get("/api/appointments/{appointment_id}/similar")
+@router.get("/api/appointments/{appointment_id}/similar", dependencies=[Depends(_no_dept_officer)])
 async def api_find_similar_petitions(
     appointment_id: int,
     db: AsyncSession = Depends(get_db),
@@ -547,7 +568,7 @@ async def api_find_similar_petitions(
     return JSONResponse(await find_similar(db, appointment_id))
 
 
-@router.post("/api/appointments/{appointment_id}/approve-with-signatories")
+@router.post("/api/appointments/{appointment_id}/approve-with-signatories", dependencies=[Depends(_no_dept_officer)])
 async def api_approve_with_signatories(
     appointment_id: int,
     payload: dict = Body(...),
@@ -614,7 +635,7 @@ async def api_ticket_signatories(
     return JSONResponse(await roster_for_ticket(db, ticket_id))
 
 
-@router.post("/api/appointments/{appointment_id}/dismiss")
+@router.post("/api/appointments/{appointment_id}/dismiss", dependencies=[Depends(_no_dept_officer)])
 async def api_dismiss_petition(
     appointment_id: int,
     db: AsyncSession = Depends(get_db),
@@ -631,7 +652,7 @@ async def api_dismiss_petition(
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
-@router.post("/api/appointments/{appointment_id}/restore")
+@router.post("/api/appointments/{appointment_id}/restore", dependencies=[Depends(_no_dept_officer)])
 async def api_restore_petition(
     appointment_id: int,
     db: AsyncSession = Depends(get_db),
@@ -646,7 +667,7 @@ async def api_restore_petition(
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
-@router.post("/api/appointments/{appointment_id}/attachment")
+@router.post("/api/appointments/{appointment_id}/attachment", dependencies=[Depends(_no_dept_officer)])
 async def api_add_appointment_attachment(
     appointment_id: int,
     file: UploadFile = File(...),
@@ -668,7 +689,7 @@ async def api_add_appointment_attachment(
     return JSONResponse(result)
 
 
-@router.get("/api/appointments/{appointment_id}/activity")
+@router.get("/api/appointments/{appointment_id}/activity", dependencies=[Depends(_no_dept_officer)])
 async def api_appointment_activity(
     appointment_id: int,
     db: AsyncSession = Depends(get_db),
