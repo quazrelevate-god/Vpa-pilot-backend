@@ -473,10 +473,10 @@ async def get_appointments(
         elif status_filter == "Rescheduled":
             stmt = stmt.where(Appointment.status == "RESCHEDULED")
 
-    # AI-derived filters: priority + department live only on GrievanceSummaryRecord.
-    # Category also falls back to Appointment.grievance_category for petitions
-    # that haven't been AI-summarised yet (AWAITING_REVIEW with form-selected category).
-    if priority or ministry or category:
+    # priority + ministry live only on GrievanceSummaryRecord — apply them
+    # via an IN-subquery so we don't join GSR into the list statement (that
+    # would need a distinct or make the ORM eager-loads more expensive).
+    if priority or ministry:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
@@ -485,30 +485,18 @@ async def get_appointments(
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
         if ministry:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
-        if category:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
+        stmt = stmt.where(Appointment.id.in_(gsr_sub))
 
-        # Form-category fallback is ONLY safe when priority/ministry aren't set.
-        # Those filters live on GSR — pre-AI rows have no GSR, so we can't
-        # confirm they match. Including them via the form-category OR would
-        # bypass the priority/ministry narrow and over-count: e.g. picking
-        # priority=medium + category=job_requests used to show 7 rows (3 AI-
-        # classified + 4 pre-AI whose priority was unknown), disagreeing with
-        # the distribution chart's correct "3". When priority or ministry is
-        # set, restrict strictly to AI-classified rows via gsr_sub.
-        if category and not (priority or ministry):
-            from sqlalchemy import or_
-            appt_cat_sub = select(Appointment.id).where(
-                Appointment.grievance_category == category
-            )
-            stmt = stmt.where(
-                or_(
-                    Appointment.id.in_(gsr_sub),
-                    Appointment.id.in_(appt_cat_sub),
-                )
-            )
-        else:
-            stmt = stmt.where(Appointment.id.in_(gsr_sub))
+    # Category matches the AXIS THE ROW DISPLAYS — Appointment.grievance_category
+    # (the form-selected value). Same axis the Category Distribution card
+    # aggregates on. Previously this filter used GSR.category, which meant a
+    # row could match the filter (GSR.category='general') while displaying a
+    # different category (Appointment.grievance_category='action_required'
+    # because the citizen picked that on the form and AI reclassified). The
+    # user saw "General filter selected, list shows Action Required rows"
+    # and reasonably called it broken. Filter now matches display + chart.
+    if category:
+        stmt = stmt.where(Appointment.grievance_category == category)
 
     # ── Ordering ────────────────────────────────────────────────────────────────
     if sort == "priority":
@@ -758,7 +746,11 @@ async def get_appointment_counts(
     if venue:
         base = base.where(Appointment.venue_id == venue)
 
-    if priority or ministry or category:
+    # Same axis rule as get_appointments — see the long comment there.
+    # priority + ministry via GSR (AI-derived); category directly on
+    # Appointment.grievance_category so pills / list / distribution all
+    # narrow by the same field the row visually displays.
+    if priority or ministry:
         gsr_sub = (
             select(GrievanceSummaryRecord.appointment_id)
             .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
@@ -767,16 +759,9 @@ async def get_appointment_counts(
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
         if ministry:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
-        if category:
-            gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
-        # Same OR-fallback rule as get_appointments: only allow the pre-AI
-        # form-category fallback when priority/ministry aren't set. Otherwise
-        # the counts over-report vs the distribution/list.
-        if category and not (priority or ministry):
-            appt_cat_sub = select(Appointment.id).where(Appointment.grievance_category == category)
-            base = base.where(or_(Appointment.id.in_(gsr_sub), Appointment.id.in_(appt_cat_sub)))
-        else:
-            base = base.where(Appointment.id.in_(gsr_sub))
+        base = base.where(Appointment.id.in_(gsr_sub))
+    if category:
+        base = base.where(Appointment.grievance_category == category)
 
     # ── Search path: decrypt-and-bucket (matches list endpoint's semantics) ──
     if search and search.strip():
@@ -814,7 +799,8 @@ async def get_appointment_counts(
         # + venue" would ignore the venue narrow.
         if venue:
             stmt = stmt.where(Appointment.venue_id == venue)
-        if priority or ministry or category:
+        # Same axis rule as get_appointments / the non-search branch above.
+        if priority or ministry:
             gsr_sub = (
                 select(GrievanceSummaryRecord.appointment_id)
                 .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
@@ -823,17 +809,9 @@ async def get_appointment_counts(
                 gsr_sub = gsr_sub.where(GrievanceSummaryRecord.priority == priority)
             if ministry:
                 gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
-            if category:
-                gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
-            # Same OR-fallback rule as get_appointments / the non-search
-            # branch above: only allow the form-category fallback when
-            # priority/ministry aren't set (otherwise it silently bypasses
-            # them and over-counts).
-            if category and not (priority or ministry):
-                appt_cat_sub = select(Appointment.id).where(Appointment.grievance_category == category)
-                stmt = stmt.where(or_(Appointment.id.in_(gsr_sub), Appointment.id.in_(appt_cat_sub)))
-            else:
-                stmt = stmt.where(Appointment.id.in_(gsr_sub))
+            stmt = stmt.where(Appointment.id.in_(gsr_sub))
+        if category:
+            stmt = stmt.where(Appointment.grievance_category == category)
 
         rows = (await db.execute(stmt)).scalars().all()
         scheduled = rescheduled = awaiting_review = reviewed = all_count = 0
