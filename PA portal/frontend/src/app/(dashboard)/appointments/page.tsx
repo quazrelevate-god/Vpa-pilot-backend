@@ -630,6 +630,14 @@ function AppointmentsPageInner() {
     setExporting(true);
     try {
       const data = await fetchAppointments({ status: tab, page: 1, pageSize: allRows ? 5000 : pageSize, ...secondary });
+      // Race guard: the button is disabled when total === 0, but a filter
+      // change between dialog-open and dialog-confirm can leave the confirm
+      // enabled against an empty result. Skip the empty-CSV download and
+      // tell the reviewer why.
+      if (data.items.length === 0) {
+        toast(t("appts.exportNothing"));
+        return;
+      }
       const csv = rowsToCsv(data.items);
       const a = document.createElement("a");
       a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
@@ -759,7 +767,13 @@ function AppointmentsPageInner() {
                   </span>
                 )}
               </button>
-              <Button variant="outline" onClick={() => setShowExportDialog(true)} className="h-[38px] rounded-xl">
+              <Button
+                variant="outline"
+                onClick={() => setShowExportDialog(true)}
+                className="h-[38px] rounded-xl"
+                disabled={total === 0}
+                title={total === 0 ? t("appts.exportNothing") : undefined}
+              >
                 <Download className="h-4 w-4 text-brand" /> {t("action.export")}
               </Button>
             </div>
