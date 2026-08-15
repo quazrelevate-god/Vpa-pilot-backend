@@ -488,9 +488,15 @@ async def get_appointments(
         if category:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
 
-        if category:
-            # Also match appointments where citizen selected the category in the form
-            # (Appointment.grievance_category) and AI hasn't processed yet.
+        # Form-category fallback is ONLY safe when priority/ministry aren't set.
+        # Those filters live on GSR — pre-AI rows have no GSR, so we can't
+        # confirm they match. Including them via the form-category OR would
+        # bypass the priority/ministry narrow and over-count: e.g. picking
+        # priority=medium + category=job_requests used to show 7 rows (3 AI-
+        # classified + 4 pre-AI whose priority was unknown), disagreeing with
+        # the distribution chart's correct "3". When priority or ministry is
+        # set, restrict strictly to AI-classified rows via gsr_sub.
+        if category and not (priority or ministry):
             from sqlalchemy import or_
             appt_cat_sub = select(Appointment.id).where(
                 Appointment.grievance_category == category
@@ -763,7 +769,10 @@ async def get_appointment_counts(
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
         if category:
             gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
-        if category:
+        # Same OR-fallback rule as get_appointments: only allow the pre-AI
+        # form-category fallback when priority/ministry aren't set. Otherwise
+        # the counts over-report vs the distribution/list.
+        if category and not (priority or ministry):
             appt_cat_sub = select(Appointment.id).where(Appointment.grievance_category == category)
             base = base.where(or_(Appointment.id.in_(gsr_sub), Appointment.id.in_(appt_cat_sub)))
         else:
@@ -816,7 +825,11 @@ async def get_appointment_counts(
                 gsr_sub = gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
             if category:
                 gsr_sub = gsr_sub.where(GrievanceSummaryRecord.category == category)
-            if category:
+            # Same OR-fallback rule as get_appointments / the non-search
+            # branch above: only allow the form-category fallback when
+            # priority/ministry aren't set (otherwise it silently bypasses
+            # them and over-counts).
+            if category and not (priority or ministry):
                 appt_cat_sub = select(Appointment.id).where(Appointment.grievance_category == category)
                 stmt = stmt.where(or_(Appointment.id.in_(gsr_sub), Appointment.id.in_(appt_cat_sub)))
             else:
