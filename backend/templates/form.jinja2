@@ -2360,7 +2360,7 @@
                     var stateClass, pillText;
                     if (isPast)         { stateClass = 'slot-card--past';    pillText = copy.slotPassed; }
                     else if (isFull)    { stateClass = 'slot-card--full';    pillText = copy.slotFull; }
-                    else if (isPartial) { stateClass = 'slot-card--partial'; pillText = slot.remaining + ' ' + copy.slotLeft; }
+                    else if (isPartial) { stateClass = 'slot-card--partial'; pillText = copy.slotAvailable; }
                     else                { stateClass = 'slot-card--open';    pillText = copy.slotAvailable; }
 
                     var selectedCls = (isSelected && isBookable) ? ' slot-card--selected' : '';
