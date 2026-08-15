@@ -58,6 +58,19 @@ def _decrypt_safe(token):
 def upgrade() -> None:
     bind = op.get_bind()
 
+    # 0) Free up the "ix_citizens_mobile_index" name. It was created by
+    #    migration 013 when the column was still called mobile_index. The
+    #    v1→v2 cutover script (backend/scripts/v1_to_v2_cutover.py) renamed
+    #    the COLUMN to identity_index but left the INDEX name alone, so
+    #    databases that ran the cutover carry a stale-named UNIQUE index
+    #    that actually guards identity_index. Rename it to match reality
+    #    before we create the real mobile_index column + index below.
+    #    IF EXISTS handles both cutover-applied and fresh databases.
+    bind.execute(sa.text(
+        "ALTER INDEX IF EXISTS ix_citizens_mobile_index "
+        "RENAME TO ix_citizens_identity_index"
+    ))
+
     # 1) Add the new mobile-only blind-index column.
     op.add_column(
         "citizens",
@@ -106,3 +119,10 @@ def downgrade() -> None:
 
     op.drop_index("ix_citizens_mobile_index", table_name="citizens")
     op.drop_column("citizens", "mobile_index")
+
+    # Restore the original stale index name so the DB matches its
+    # pre-059 state (the underlying column is still identity_index).
+    bind.execute(sa.text(
+        "ALTER INDEX IF EXISTS ix_citizens_identity_index "
+        "RENAME TO ix_citizens_mobile_index"
+    ))
