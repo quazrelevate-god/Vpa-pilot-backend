@@ -1123,20 +1123,25 @@ class AiUploadService:
         enc_mobile = appointment_service._encrypt_field(mobile or "")
         token_assigned, legacy_slot_ref = await appointment_service._assign_daily_token(db, now)
 
+        # Find-or-create keyed on (name, mobile). Same phone + different
+        # name → new citizen row, never an overwrite. See migration 059.
         from src.core import crypto
-        mobile_idx = crypto.blind_index(mobile) if mobile else None
+        mobile_idx   = crypto.blind_index(mobile) if mobile else None
+        identity_idx = crypto.identity_blind_index(name, mobile) if mobile else None
         citizen = None
-        if mobile:
-            citizen = await db.scalar(select(Citizen).where(Citizen.mobile_index == mobile_idx))
+        if identity_idx:
+            citizen = await db.scalar(
+                select(Citizen).where(Citizen.identity_index == identity_idx)
+            )
         if citizen is None:
             citizen = Citizen(
                 encrypted_name=enc_name, encrypted_mobile=enc_mobile,
-                mobile_index=mobile_idx, created_at=now,
+                identity_index=identity_idx, mobile_index=mobile_idx,
+                created_at=now,
             )
             db.add(citizen)
             await db.flush()
-        else:
-            citizen.encrypted_name = enc_name
+        # Existing citizen reused as-is — name never overwritten.
 
         from src.services.v2_helpers import v2
         ai_ids = v2.new_appointment_ids(

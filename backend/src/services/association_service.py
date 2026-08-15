@@ -320,7 +320,8 @@ class AssociationService:
         citizen = Citizen(
             encrypted_name=enc_name,
             encrypted_mobile=enc_mobile,
-            mobile_index=None,   # no mobile → no blind-index dedupe
+            identity_index=None,  # no mobile → no (name,mobile) dedupe
+            mobile_index=None,    # no mobile → no rate-gate participation
             created_at=now,
         )
         db.add(citizen)

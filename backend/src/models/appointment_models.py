@@ -113,11 +113,19 @@ class Citizen(Base):
     encrypted_name = Column(Text, nullable=False)
     encrypted_mobile = Column(String(512), nullable=False)
 
-    # v1 attr name 'mobile_index' → v2 DB column 'identity_index'
+    # Blind-index columns for dedup. identity_index is the (name, mobile)
+    # uniqueness key — one row per unique (name, mobile) pair so a shared
+    # phone can carry many named citizens without overwriting each other.
+    # mobile_index is the mobile-only HMAC, kept for the "one petition per
+    # phone per day" rate gate and any mobile-scoped join. See migration
+    # 059_citizen_identity_split.py for the split + backfill.
+    identity_index = Column(
+        String(64), nullable=True, unique=True, index=True,
+        comment="HMAC of normalise(name)|digits(mobile) — (name,mobile) uniqueness",
+    )
     mobile_index = Column(
-        "identity_index", String(64),
-        nullable=True, unique=True, index=True,
-        comment="Deterministic HMAC of the mobile for dedup",
+        String(64), nullable=True, index=True,
+        comment="HMAC of digits(mobile) — rate-gate + mobile-scoped joins",
     )
 
     created_at = Column(DateTime, nullable=False, default=now_utc)

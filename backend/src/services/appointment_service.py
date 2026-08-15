@@ -913,26 +913,31 @@ class AppointmentService:
                 encrypted_mobile = self._encrypt_field(mobile)
                 encrypted_grievance = self._encrypt_field(description)
                 
-                # Step 8: Create or get existing citizen record (dedup by mobile_index)
+                # Step 8: Find-or-create citizen keyed on (name, mobile).
+                # Same phone + different name = a new citizen row, never an
+                # overwrite. See migration 059 / crypto.identity_blind_index.
                 from src.core import crypto
-                mobile_idx = crypto.blind_index(mobile)
-                citizen_stmt = select(Citizen).where(Citizen.mobile_index == mobile_idx)
-                citizen_result = await db.execute(citizen_stmt)
-                citizen = citizen_result.scalar_one_or_none()
+                mobile_idx   = crypto.blind_index(mobile)
+                identity_idx = crypto.identity_blind_index(name, mobile)
+                citizen = None
+                if identity_idx:
+                    citizen = (await db.execute(
+                        select(Citizen).where(Citizen.identity_index == identity_idx)
+                    )).scalar_one_or_none()
 
                 if not citizen:
-                    # Create new citizen record
                     citizen = Citizen(
                         encrypted_name=encrypted_name,
                         encrypted_mobile=encrypted_mobile,
+                        identity_index=identity_idx,
                         mobile_index=mobile_idx,
-                        created_at=current_time
+                        created_at=current_time,
                     )
                     db.add(citizen)
                     await db.flush()  # Get citizen.id
-                else:
-                    # Update name in case citizen re-submitted with a different name
-                    citizen.encrypted_name = encrypted_name
+                # Existing citizen (same name + same mobile) is reused as-is —
+                # name is never overwritten, so shared-phone submissions no
+                # longer clobber a previous submitter's identity.
                 
                 # Step 9: Audio is uploaded in Step 11, concurrently with the
                 # image/PDF attachments (keyed by token, which we already have).
@@ -1448,25 +1453,29 @@ class AppointmentService:
             encrypted_mobile = self._encrypt_field(mobile or "")
             description_text = f"Handwritten petition scanned by {submitted_by}. {len(valid_files)} page(s) uploaded."
 
-            # ── Citizen (dedup by mobile_index) ───────────────────────────────
+            # ── Citizen — find-or-create keyed on (name, mobile) ──────────────
+            # Same phone + different name → new citizen row. Never overwrite.
             from src.core import crypto
-            mobile_idx = crypto.blind_index(mobile) if mobile else None
+            mobile_idx   = crypto.blind_index(mobile) if mobile else None
+            identity_idx = crypto.identity_blind_index(name, mobile) if mobile else None
             citizen = None
-            if mobile:
-                result = await db.execute(select(Citizen).where(Citizen.mobile_index == mobile_idx))
+            if identity_idx:
+                result = await db.execute(
+                    select(Citizen).where(Citizen.identity_index == identity_idx)
+                )
                 citizen = result.scalar_one_or_none()
 
             if not citizen:
                 citizen = Citizen(
                     encrypted_name=encrypted_name,
                     encrypted_mobile=encrypted_mobile,
+                    identity_index=identity_idx,
                     mobile_index=mobile_idx,
                     created_at=current_time,
                 )
                 db.add(citizen)
                 await db.flush()
-            else:
-                citizen.encrypted_name = encrypted_name
+            # Existing citizen reused as-is — name never overwritten.
 
             # ── Appointment (AWAITING_REVIEW — same as direct-submit) ─────────
             manual_ids = v2.new_appointment_ids(status="AWAITING_REVIEW")
@@ -1642,25 +1651,27 @@ class AppointmentService:
                 + (f" {len(file_contents)} page(s) attached." if file_contents else "")
             )
 
-            # ── Citizen (dedup by mobile_index) ───────────────────────────────
+            # ── Citizen — find-or-create keyed on (name, mobile) ──────────────
+            # Same phone + different name → new citizen row. Never overwrite.
             from src.core import crypto
-            mobile_idx = crypto.blind_index(mobile) if mobile else None
+            mobile_idx   = crypto.blind_index(mobile) if mobile else None
+            identity_idx = crypto.identity_blind_index(name, mobile) if mobile else None
             citizen = None
-            if mobile:
+            if identity_idx:
                 citizen = (await db.execute(
-                    select(Citizen).where(Citizen.mobile_index == mobile_idx)
+                    select(Citizen).where(Citizen.identity_index == identity_idx)
                 )).scalar_one_or_none()
             if not citizen:
                 citizen = Citizen(
                     encrypted_name=encrypted_name,
                     encrypted_mobile=self._encrypt_field(mobile or ""),
+                    identity_index=identity_idx,
                     mobile_index=mobile_idx,
                     created_at=current_time,
                 )
                 db.add(citizen)
                 await db.flush()
-            else:
-                citizen.encrypted_name = encrypted_name
+            # Existing citizen reused as-is — name never overwritten.
 
             walkin_status = "SCHEDULED" if take_slot_path else "AWAITING_REVIEW"
             walkin_ids = v2.new_appointment_ids(

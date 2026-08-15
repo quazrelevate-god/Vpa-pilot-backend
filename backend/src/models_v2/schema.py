@@ -122,8 +122,14 @@ class Citizen(Base):
     id               = Column(Integer, primary_key=True, autoincrement=True)
     encrypted_name   = Column(Text, nullable=False, comment="Fernet")
     encrypted_mobile = Column(String(512), nullable=False, comment="Fernet")
-    identity_index   = Column(String(64), nullable=False, unique=True,
-                              comment="HMAC of normalised name|mobile — (name,mobile) uniqueness")
+    # (name, mobile) uniqueness — one row per unique (name, mobile) pair so
+    # a shared phone carries many named citizens. mobile_index is the
+    # mobile-only HMAC used by the "one petition per phone per day" rate
+    # gate and other mobile-scoped joins. See migration 059.
+    identity_index   = Column(String(64), nullable=True, unique=True,
+                              comment="HMAC of normalise(name)|digits(mobile)")
+    mobile_index     = Column(String(64), nullable=True, index=True,
+                              comment="HMAC of digits(mobile) — rate gate + mobile joins")
     created_at       = Column(DateTime, nullable=False, default=now_utc)
 
 

@@ -1059,8 +1059,33 @@ async def update_appointment_derived_fields(
 
     if name is not None and name.strip():
         # v2: the English name lives on the Citizen record (no per-appointment copy).
+        # Post-059 semantics: a name edit REASSIGNS this appointment to the
+        # (name, mobile) citizen — finding an existing row for that tuple or
+        # creating a new one. Never overwrite the shared citizen row, or every
+        # other appointment on the same phone gets clobbered too.
         if appt.citizen:
-            appt.citizen.encrypted_name = crypto.encrypt(name.strip())
+            new_name = name.strip()
+            current_name = crypto.decrypt(appt.citizen.encrypted_name) or ""
+            if new_name != current_name.strip():
+                mobile_plain = crypto.decrypt(appt.citizen.encrypted_mobile) or ""
+                identity_idx = crypto.identity_blind_index(new_name, mobile_plain)
+                target = None
+                if identity_idx:
+                    target = await db.scalar(
+                        select(Citizen).where(Citizen.identity_index == identity_idx)
+                    )
+                if target is None:
+                    target = Citizen(
+                        encrypted_name=crypto.encrypt(new_name),
+                        encrypted_mobile=appt.citizen.encrypted_mobile,
+                        identity_index=identity_idx,
+                        mobile_index=crypto.blind_index(mobile_plain) if mobile_plain else None,
+                        created_at=now_utc(),
+                    )
+                    db.add(target)
+                    await db.flush()
+                appt.citizen_id = target.id
+                appt.citizen    = target
     if name_ta is not None:
         appt.encrypted_name_ta = crypto.encrypt(name_ta.strip()) if name_ta.strip() else None
 

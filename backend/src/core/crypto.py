@@ -105,3 +105,30 @@ def blind_index(value: Optional[str]) -> Optional[str]:
         return None
     normalized = "".join(ch for ch in value if ch.isdigit()) or value.strip()
     return hmac.new(_secret().encode("utf-8"), normalized.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _norm_name(name: Optional[str]) -> str:
+    """Trim + lowercase + collapse inner whitespace. So 'Yogesh ', 'yogesh',
+    '  Yogesh' all match; 'Yogesh Kumar' stays distinct. Byte-identical after
+    normalisation is the whole match rule — no transliteration, so an EN name
+    and its Tamil-script counterpart are two different citizens."""
+    if not name:
+        return ""
+    return " ".join(name.strip().lower().split())
+
+
+def identity_blind_index(
+    name: Optional[str], mobile: Optional[str]
+) -> Optional[str]:
+    """Deterministic HMAC of (normalise(name) | digits(mobile)) — the
+    (name, mobile) uniqueness key on citizens.
+
+    Returns None if either side is empty (association shadow citizens and
+    other headless rows are intentionally exempt from uniqueness — Postgres
+    allows many NULLs under a unique index)."""
+    norm_name = _norm_name(name)
+    digits = "".join(ch for ch in (mobile or "") if ch.isdigit())
+    if not norm_name or not digits:
+        return None
+    payload = f"{norm_name}|{digits}"
+    return hmac.new(_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
