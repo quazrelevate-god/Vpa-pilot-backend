@@ -187,6 +187,12 @@ export default function AppointmentDetailDrawer({
                 already routed through Petition Review. */}
             {(() => {
               const s = a.status;
+              // Courtesy rows (invitation / greetings) are not grievances —
+              // converting one to a petition creates a leak in the review
+              // queue. Suppress the Convert-to-Petition action and swap the
+              // Scheduled hint to something honest for this row type.
+              const cat = (a.category || "").toLowerCase();
+              const isCourtesy = cat === "invitation" || cat === "greetings";
               const cfg =
                 s === "Rescheduled" ? {
                   bg: "bg-blue-50/50", tone: "text-blue-700", sub: "text-blue-900/80",
@@ -197,7 +203,7 @@ export default function AppointmentDetailDrawer({
                 : s === "Scheduled" ? {
                   bg: "bg-emerald-50/60", tone: "text-emerald-700", sub: "text-emerald-900/80",
                   title: t("appt.scheduledMeeting"),
-                  hint: t("appt.scheduledMeetingHint"),
+                  hint: isCourtesy ? t("appt.courtesyMeetingHint") : t("appt.scheduledMeetingHint"),
                   primary: null,
                 }
                 : null;
@@ -213,25 +219,27 @@ export default function AppointmentDetailDrawer({
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    <Button size="sm" variant="outline"
-                      disabled={busy}
-                      className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand"
-                      onClick={async () => {
-                        if (!a) return;
-                        setBusy(true);
-                        try {
-                          await updateAppointmentStatus(a.id, "Awaiting Review");
-                          toast.success("Moved to Awaiting Review");
-                          onStatusChange?.(a, "Awaiting Review");
-                          onClose();
-                        } catch (e) {
-                          toast.error("Failed", { description: (e as Error).message });
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}>
-                      {t("appt.convertPetition")}
-                    </Button>
+                    {!isCourtesy && (
+                      <Button size="sm" variant="outline"
+                        disabled={busy}
+                        className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand"
+                        onClick={async () => {
+                          if (!a) return;
+                          setBusy(true);
+                          try {
+                            await updateAppointmentStatus(a.id, "Awaiting Review");
+                            toast.success("Moved to Awaiting Review");
+                            onStatusChange?.(a, "Awaiting Review");
+                            onClose();
+                          } catch (e) {
+                            toast.error("Failed", { description: (e as Error).message });
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}>
+                        {t("appt.convertPetition")}
+                      </Button>
+                    )}
                     {cfg.primary && (
                       <Button size="sm" onClick={() => setRescheduleOpen(true)} disabled={busy}>
                         <CalendarDays className="h-4 w-4" />
