@@ -389,6 +389,7 @@ async def get_appointments(
     priority: Optional[str] = None,
     ministry: Optional[str] = None,
     category: Optional[str] = None,
+    venue: Optional[str] = None,   # VenueRegistry.key — narrows to one scan venue
     kind: Optional[str] = None,
     sort: Optional[str] = None,
     page: int = 1,
@@ -402,6 +403,9 @@ async def get_appointments(
             "petition" → only direct petitions (schedule_meeting=False);
             None/other → both (legacy behaviour).
     `sort`: "priority" → Critical→High→Medium→Low (then newest); else newest first.
+    `venue`: VenueRegistry.key value — narrows to appointments scanned at that
+             venue. Historical appointments from a since-deactivated venue are
+             still matched (the filter is on the key, not is_active).
     """
     from datetime import datetime as dt
     is_scheduled_tab = status_filter == "Scheduled"
@@ -449,6 +453,12 @@ async def get_appointments(
         if appt_date_to:
             _appt_slot_ids = _appt_slot_ids.where(MLADailyAvailability.date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
         stmt = stmt.where(Appointment.slot_id.in_(_appt_slot_ids))
+
+    # Venue scope: Appointment.venue_id holds the VenueRegistry.key from the
+    # QR that was scanned. Exact match — deactivated venues still match
+    # historical rows by key, so the filter works for cold-case review.
+    if venue:
+        stmt = stmt.where(Appointment.venue_id == venue)
 
     if status_filter and status_filter != "All":
         if status_filter == "Scheduled":
@@ -604,6 +614,7 @@ async def get_appointment_counts(
     priority: Optional[str] = None,
     ministry: Optional[str] = None,
     category: Optional[str] = None,
+    venue: Optional[str] = None,  # VenueRegistry.key — same filter get_appointments uses
     kind: Optional[str] = None,
 ) -> Dict[str, int]:
     """
@@ -642,6 +653,12 @@ async def get_appointment_counts(
         if appt_date_to:
             _cnt_slot_ids = _cnt_slot_ids.where(MLADailyAvailability.date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
         base = base.where(Appointment.slot_id.in_(_cnt_slot_ids))
+
+    # Venue: exact match on Appointment.venue_id (the VenueRegistry.key
+    # captured from the scanned QR). Mirrors get_appointments so list + pills
+    # stay in lockstep.
+    if venue:
+        base = base.where(Appointment.venue_id == venue)
 
     if priority or ministry or category:
         gsr_sub = (
@@ -692,6 +709,10 @@ async def get_appointment_counts(
             if appt_date_to:
                 _srch_slot_ids = _srch_slot_ids.where(MLADailyAvailability.date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
             stmt = stmt.where(Appointment.slot_id.in_(_srch_slot_ids))
+        # Venue: same as the non-search branch; must apply here too or "search
+        # + venue" would ignore the venue narrow.
+        if venue:
+            stmt = stmt.where(Appointment.venue_id == venue)
         if priority or ministry or category:
             gsr_sub = (
                 select(GrievanceSummaryRecord.appointment_id)

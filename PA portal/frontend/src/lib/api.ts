@@ -35,10 +35,20 @@ export interface AppointmentListOpts {
   priority?: string;
   ministry?: string;
   category?: string;
+  /** VenueRegistry.key — narrows to appointments scanned at that venue.
+   *  Matches historical rows even if the venue was later deactivated. */
+  venue?: string;
   kind?: string;
   sort?: string;
   page?: number;
   pageSize?: number;
+}
+
+export interface VenueOption {
+  key: string;
+  display_en: string;
+  display_ta: string | null;
+  is_active: boolean;
 }
 
 function _appointmentParams(opts: AppointmentListOpts, includeStatus: boolean): URLSearchParams {
@@ -52,8 +62,15 @@ function _appointmentParams(opts: AppointmentListOpts, includeStatus: boolean): 
   if (opts.priority) params.set("priority", opts.priority);
   if (opts.ministry) params.set("ministry", opts.ministry);
   if (opts.category) params.set("category", opts.category);
+  if (opts.venue)    params.set("venue",    opts.venue);
   if (opts.kind) params.set("kind", opts.kind);
   return params;
+}
+
+export async function fetchVenues(signal?: AbortSignal): Promise<VenueOption[]> {
+  const resp = await fetch("/api/venues", { credentials: "include", cache: "no-store", signal });
+  if (!resp.ok) throw new Error(`venues ${resp.status}: ${await resp.text()}`);
+  return resp.json();
 }
 
 export async function fetchAppointments(

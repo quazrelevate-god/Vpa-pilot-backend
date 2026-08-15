@@ -31,7 +31,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn, formatDateTime } from "@/lib/utils";
-import { fetchAppointments, fetchAppointmentCounts, updateAppointmentStatus, type AppointmentListOpts } from "@/lib/api";
+import { fetchAppointments, fetchAppointmentCounts, fetchVenues, updateAppointmentStatus, type AppointmentListOpts, type VenueOption } from "@/lib/api";
 import type { AppointmentRow, AppointmentStatus } from "@/lib/types";
 import { priorityOptions, ministryOptions, categoryOptions, CATEGORY_DISPLAY_TA, CATEGORY_DISPLAY_EN } from "@/lib/enums";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -385,7 +385,7 @@ export default function AppointmentsPage() {
 }
 
 function AppointmentsPageInner() {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as Tab) || DEFAULT_TAB;
@@ -404,6 +404,11 @@ function AppointmentsPageInner() {
   const [priority, setPriority] = useState("");
   const [ministry, setMinistry] = useState("");
   const [category, setCategory] = useState("");
+  const [venue, setVenue] = useState("");
+  // Venue registry — fetched ONCE on mount (small, stable list). Not a filter
+  // state; feeds the dropdown's option list. The registry rarely changes; a
+  // page reload picks up a super_admin edit, which is acceptable UX.
+  const [venues, setVenues] = useState<VenueOption[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [apptDateFrom, setApptDateFrom] = useState("");
@@ -431,12 +436,45 @@ function AppointmentsPageInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Fetch the venue registry once on mount. AbortController on unmount so a
+  // slow response can't setState on a torn-down component. Errors soft-fail
+  // to an empty list — the dropdown just shows "All venues" alone, which is
+  // strictly better than blocking the page.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchVenues(ctrl.signal)
+      .then((list) => { if (!ctrl.signal.aborted) setVenues(list); })
+      .catch(() => { /* soft-fail */ });
+    return () => ctrl.abort();
+  }, []);
+
+  // Dropdown options: "All venues" first, then the registry sorted the way
+  // the backend already ordered it (built-in first, then alphabetical). We
+  // show BOTH active and inactive venues so a reviewer can still filter to
+  // historical scans from a since-deactivated venue; inactive rows get a
+  // trailing "(inactive)" tag so the state is legible without a separate
+  // column. Label follows the UI language — Tamil label falls back to
+  // English when a venue hasn't been translated yet.
+  const venueOptions = useMemo(() => {
+    const opts: Array<{ value: string; label: string }> = [
+      { value: "", label: t("appts.allVenues") },
+    ];
+    for (const v of venues) {
+      const base = (lang === "ta" && v.display_ta) ? v.display_ta : v.display_en;
+      opts.push({
+        value: v.key,
+        label: v.is_active ? base : `${base} ${t("appts.venueInactiveTag")}`,
+      });
+    }
+    return opts;
+  }, [venues, lang, t]);
+
   const advancedFilterCount =
-    (priority ? 1 : 0) + (ministry ? 1 : 0) + (category ? 1 : 0) +
+    (priority ? 1 : 0) + (ministry ? 1 : 0) + (category ? 1 : 0) + (venue ? 1 : 0) +
     (dateFrom || dateTo ? 1 : 0) + (!activeChip && (apptDateFrom || apptDateTo) ? 1 : 0);
 
   const anyFilterActive = Boolean(
-    search || priority || ministry || category ||
+    search || priority || ministry || category || venue ||
     dateFrom || dateTo || apptDateFrom || apptDateTo || activeChip
   );
 
@@ -445,23 +483,30 @@ function AppointmentsPageInner() {
     kind: "meeting" as const,
     search: search || undefined,
     priority: priority || undefined, ministry: ministry || undefined, category: category || undefined,
+    venue: venue || undefined,
     dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
     apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
     sort: sort || undefined,
-  }), [search, priority, ministry, category, dateFrom, dateTo, apptDateFrom, apptDateTo, sort]);
+  }), [search, priority, ministry, category, venue, dateFrom, dateTo, apptDateFrom, apptDateTo, sort]);
 
-  // Pill-count scope — ONLY the structural filters (search + date ranges).
-  // Refinement filters (priority / ministry / category) must not collapse
-  // the tab pill counts; otherwise picking "priority=high" makes Scheduled
-  // jump from 42 → 3 and reads like the appointments vanished. Same fix as
-  // the tickets page — the active refinement is already legible via its
-  // own pill, the tab counts should stay a stable universe view.
+  // Pill-count scope — matches the ACTIVE filter set on the list, including
+  // priority / ministry / category / venue. Rationale: the previous design
+  // excluded refinement filters so pills showed a stable universe view
+  // ("Scheduled 42 always"), but that meant list-vs-pill disagreement
+  // (list "3 rows", pill "Scheduled 42") which reviewers read as broken.
+  // Now the pill is the truth about the current filter — pick priority=high
+  // and pills narrow with the list ("Scheduled 3"). Tickets page still uses
+  // the stable-universe pattern; only appointments is switched.
   const pillScope = useMemo(() => ({
     kind: "meeting" as const,
     search: search || undefined,
     dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
     apptDateFrom: apptDateFrom || undefined, apptDateTo: apptDateTo || undefined,
-  }), [search, dateFrom, dateTo, apptDateFrom, apptDateTo]);
+    priority: priority || undefined,
+    ministry: ministry || undefined,
+    category: category || undefined,
+    venue: venue || undefined,
+  }), [search, dateFrom, dateTo, apptDateFrom, apptDateTo, priority, ministry, category, venue]);
 
   // Chart scope — same filters WITHOUT category, so the distribution keeps
   // showing every category even while one is selected to filter the table.
@@ -548,7 +593,7 @@ function AppointmentsPageInner() {
   }, [activeChip]);
 
   const clearAllFilters = useCallback(() => {
-    setPriority(""); setMinistry(""); setCategory("");
+    setPriority(""); setMinistry(""); setCategory(""); setVenue("");
     setDateFrom(""); setDateTo(""); setApptDateFrom(""); setApptDateTo("");
     setActiveChip(null); setSearch(""); setPage(1);
   }, []);
@@ -915,6 +960,8 @@ function AppointmentsPageInner() {
                               onChange={(v) => { setPage(1); setPriority(v); }} options={priorityOptions} />
                 <FilterSelect label={t("label.ministry")} value={ministry}
                               onChange={(v) => { setPage(1); setMinistry(v); }} options={ministryOptions} />
+                <FilterSelect label={t("label.venue")} value={venue}
+                              onChange={(v) => { setPage(1); setVenue(v); }} options={venueOptions} />
                 <DateRangePill
                   label={t("appts.dateSubmitted")} from={dateFrom} to={dateTo}
                   onFrom={(v) => { setPage(1); setDateFrom(v); }} onTo={(v) => { setPage(1); setDateTo(v); }}

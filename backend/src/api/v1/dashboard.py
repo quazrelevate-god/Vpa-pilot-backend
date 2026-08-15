@@ -227,6 +227,38 @@ async def api_analytics_export(
     )
 
 
+@router.get("/api/venues")
+async def api_venues(
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """Venue registry for filter dropdowns on the dashboard pages.
+
+    Same shape the super_admin /api/v1/admin/venues returns, minus the
+    super_admin gate — a regular PA / petition_reviewer / auditor needs the
+    list to render the "Filter by venue" dropdown on the appointments page.
+    Returns ALL rows (active + inactive) so historical scans from a
+    since-deactivated venue remain filterable; the client tags the inactive
+    ones in the label. Sorted built-in first, then alphabetically by
+    display_en — the same order the admin endpoint uses.
+    """
+    from src.models.registry_models import VenueRegistry
+    rows = (await db.execute(
+        select(VenueRegistry).order_by(
+            VenueRegistry.is_builtin.desc(), VenueRegistry.display_en,
+        )
+    )).scalars().all()
+    return JSONResponse([
+        {
+            "key":        r.key,
+            "display_en": r.display_en,
+            "display_ta": r.display_ta,
+            "is_active":  bool(r.is_active),
+        }
+        for r in rows
+    ])
+
+
 @router.get("/api/appointments/counts", dependencies=[Depends(_no_dept_officer)])
 async def api_appointment_counts(
     request: Request,
@@ -238,6 +270,7 @@ async def api_appointment_counts(
     priority: str = "",
     ministry: str = "",
     category: str = "",
+    venue: str = "",
     kind: str = "",
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
@@ -255,6 +288,7 @@ async def api_appointment_counts(
         priority=priority or None,
         ministry=ministry or None,
         category=category or None,
+        venue=venue or None,
         kind=kind or None,
     )
     return JSONResponse(data)
@@ -447,6 +481,7 @@ async def api_appointments(
     priority: str = "",
     ministry: str = "",
     category: str = "",
+    venue: str = "",
     kind: str = "",
     sort: str = "",
     page: int = 1,
@@ -465,6 +500,7 @@ async def api_appointments(
         priority=priority or None,
         ministry=ministry or None,
         category=category or None,
+        venue=venue or None,
         kind=kind or None,
         sort=sort or None,
         page=page,
