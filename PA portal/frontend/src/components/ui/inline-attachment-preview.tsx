@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   FileText, Film, Mic, Paperclip, ImageIcon,
-  ZoomIn, ZoomOut, RotateCcw, Maximize2, RotateCw,
+  ZoomIn, ZoomOut, RefreshCcw, Maximize2, RotateCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
@@ -357,7 +357,7 @@ function ImageZoomViewer({ src, alt }: { src: string; alt: string }) {
           <Maximize2 className="h-4 w-4" />
         </ZoomBtn>
         <ZoomBtn label="Reset" onClick={reset}>
-          <RotateCcw className="h-4 w-4" />
+          <RefreshCcw className="h-4 w-4" />
         </ZoomBtn>
       </div>
     </div>
