@@ -94,6 +94,13 @@ export interface AppointmentRow {
 export interface AppointmentsResponse {
   items: AppointmentRow[];
   total: number;
+  /** Server-computed category distribution over the current filter set
+   *  (chart scope = list scope minus the category filter itself, so the
+   *  chart's bars stay populated when a category is selected). Absent on
+   *  pre-deploy stale bundles — consumers should fall back to aggregating
+   *  from `items` in that case. Populated in both no-search + search
+   *  branches of the backend; search-branch scope includes category. */
+  distribution?: { key: string; count: number }[];
 }
 
 export interface AppointmentActivityEvent {

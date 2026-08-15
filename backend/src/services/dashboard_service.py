@@ -564,6 +564,62 @@ async def get_appointments(
             Appointment.created_at.desc(),
         )
 
+    # ── Category distribution (server-side chart data) ────────────────────────
+    # Fixes the "chart shows only the page (10) not the filter set (68)" bug.
+    # Chart scope = every filter that scopes the list EXCEPT category itself
+    # (A+B behaviour) so bars stay populated when a category is selected —
+    # otherwise clicking a bar to filter would collapse every other bar to 0.
+    #
+    # Built as a bare select(Appointment.id) with the same WHERE clauses that
+    # `stmt` above already accumulated MINUS category, then aggregated by
+    # category_id. Duplicating the WHERE clauses keeps the original list
+    # semantics (which relies on an OR fallback when category is combined
+    # with priority/ministry) untouched — safer than refactoring the
+    # combined filter block.
+    from src.services.admin_lookup import admin as _admin
+    chart_scope_ids = select(Appointment.id).where(_CITIZEN_APPT)
+    if kind == "meeting":
+        chart_scope_ids = chart_scope_ids.where(Appointment.schedule_meeting == True)   # noqa: E712
+    elif kind == "petition":
+        chart_scope_ids = chart_scope_ids.where(Appointment.schedule_meeting == False)  # noqa: E712
+    if date_from:
+        chart_scope_ids = chart_scope_ids.where(Appointment.created_at >= _ist_start(date_from))
+    if date_to:
+        chart_scope_ids = chart_scope_ids.where(Appointment.created_at < _ist_end(date_to))
+    if appt_date_from or appt_date_to:
+        _cs_slot_ids = (
+            select(AppointmentSlot.id)
+            .join(MLADailyAvailability, AppointmentSlot.availability_id == MLADailyAvailability.id)
+        )
+        if appt_date_from:
+            _cs_slot_ids = _cs_slot_ids.where(MLADailyAvailability.date >= dt.strptime(appt_date_from, "%Y-%m-%d").date())
+        if appt_date_to:
+            _cs_slot_ids = _cs_slot_ids.where(MLADailyAvailability.date <= dt.strptime(appt_date_to, "%Y-%m-%d").date())
+        chart_scope_ids = chart_scope_ids.where(Appointment.slot_id.in_(_cs_slot_ids))
+    if venue:
+        chart_scope_ids = chart_scope_ids.where(Appointment.venue_id == venue)
+    if status_filter and status_filter != "All":
+        if status_filter == "Scheduled":
+            chart_scope_ids = chart_scope_ids.where(
+                Appointment.status == "SCHEDULED", Appointment.schedule_meeting == True,  # noqa: E712
+            )
+        elif status_filter == "Reviewed":
+            chart_scope_ids = chart_scope_ids.where(Appointment.status == "REVIEWED")
+        elif status_filter == "Awaiting Review":
+            chart_scope_ids = chart_scope_ids.where(Appointment.status == "AWAITING_REVIEW")
+        elif status_filter == "Rescheduled":
+            chart_scope_ids = chart_scope_ids.where(Appointment.status == "RESCHEDULED")
+    if priority or ministry:
+        _cs_gsr_sub = (
+            select(GrievanceSummaryRecord.appointment_id)
+            .where(GrievanceSummaryRecord.is_latest == True)  # noqa: E712
+        )
+        if priority:
+            _cs_gsr_sub = _cs_gsr_sub.where(GrievanceSummaryRecord.priority == priority)
+        if ministry:
+            _cs_gsr_sub = _cs_gsr_sub.where(GrievanceSummaryRecord.ministry == ministry)
+        chart_scope_ids = chart_scope_ids.where(Appointment.id.in_(_cs_gsr_sub))
+
     # ── Search path ───────────────────────────────────────────────────────────
     # Name and mobile are encrypted, so they can't be matched in SQL. Decrypt-and-
     # match across the FULL filtered set, then paginate in Python — otherwise a
@@ -589,11 +645,43 @@ async def get_appointments(
         page_rows = matched[start:start + page_size]
         items = [build_appointment_row(appt) for appt in page_rows]
         await _attach_venue_labels(db, items)
-        return {"items": items, "total": total, "page": page, "page_size": page_size}
+        # Distribution under search: simple A (over the search-matched set,
+        # which honours ALL filters including category). Not full A+B here —
+        # the fully-correct chart would need a second decrypt pass over the
+        # broader chart-scope set (potentially thousands of crypto.decrypt()
+        # calls per keystroke), an unwarranted cost for the small edge case
+        # of "search + click a category bar" collapsing the chart. When no
+        # search is active (the 99% path) the no-search branch below runs
+        # the full A+B SQL aggregate and behaves correctly.
+        _dist: dict[str, int] = {}
+        for appt in matched:
+            key = appt.grievance_category or "—"
+            _dist[key] = _dist.get(key, 0) + 1
+        distribution = [{"key": k, "count": n} for k, n in _dist.items()]
+        return {
+            "items": items, "total": total,
+            "page": page, "page_size": page_size,
+            "distribution": distribution,
+        }
 
     # ── No-search path: efficient DB-side count + pagination ────────────────────
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = await db.scalar(count_stmt) or 0
+
+    # Distribution over chart scope — one indexed GROUP BY on category_id.
+    _dist_stmt = (
+        select(Appointment.category_id, func.count(Appointment.id).label("cnt"))
+        .where(Appointment.id.in_(chart_scope_ids))
+        .group_by(Appointment.category_id)
+    )
+    _dist_rows = (await db.execute(_dist_stmt)).all()
+    distribution = [
+        {
+            "key": (_admin.display_name(cat_id) if cat_id is not None else None) or "—",
+            "count": int(n),
+        }
+        for cat_id, n in _dist_rows
+    ]
 
     stmt = stmt.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(stmt)
@@ -601,7 +689,11 @@ async def get_appointments(
 
     items = [build_appointment_row(appt) for appt in appointments]
     await _attach_venue_labels(db, items)
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
+    return {
+        "items": items, "total": total,
+        "page": page, "page_size": page_size,
+        "distribution": distribution,
+    }
 
 
 async def get_appointment_counts(

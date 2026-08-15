@@ -399,6 +399,11 @@ function AppointmentsPageInner() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  // Server-computed category distribution over the current filter set (chart
+  // scope = filter set minus category). Populated on every list load. Null
+  // pre-load or if the backend didn't send one — CategoryDistributionCard
+  // falls back to aggregating over `rows` in that case.
+  const [distribution, setDistribution] = useState<{ key: string; count: number }[] | null>(null);
   const [openRow, setOpenRow] = useState<AppointmentRow | null>(null);
 
   const [priority, setPriority] = useState("");
@@ -508,8 +513,6 @@ function AppointmentsPageInner() {
     venue: venue || undefined,
   }), [search, dateFrom, dateTo, apptDateFrom, apptDateTo, priority, ministry, category, venue]);
 
-  // Chart scope — same filters WITHOUT category, so the distribution keeps
-  // showing every category even while one is selected to filter the table.
   const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
     try {
@@ -517,6 +520,10 @@ function AppointmentsPageInner() {
       if (signal.aborted) return;
       setRows(data.items);
       setTotal(data.total);
+      // Server sends distribution over the chart scope (filter set minus
+      // category). null-guard against pre-deploy stale bundles where the
+      // field isn't in the response yet — the card gracefully falls back.
+      setDistribution(data.distribution ?? null);
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
       toast.error(t("appts.loadFailed"), { description: (e as Error).message });
@@ -977,6 +984,7 @@ function AppointmentsPageInner() {
             </Card>
             <CategoryDistributionCard
               rows={rows}
+              distribution={distribution}
               loading={loading}
               activeCategory={category}
               onSelect={(key) => { setPage(1); setCategory((c) => (c === key ? "" : key)); }}
@@ -1137,23 +1145,41 @@ const DONUT_PALETTE = ["#1E40AF", "#4C82F2", "#EE9A3C", "#34A26C", "#E5484D", "#
 /** Category Distribution — donut aggregated from the CURRENT list view's rows
  *  (no separate fetch). Reflects exactly what's loaded in the table. */
 function CategoryDistributionCard({
-  rows, loading, className, activeCategory, onSelect,
+  rows, distribution, loading, className, activeCategory, onSelect,
 }: {
-  rows: AppointmentRow[]; loading?: boolean; className?: string;
+  rows: AppointmentRow[];
+  /** Server-computed distribution over the current filter set MINUS the
+   *  category filter (chart scope). Preferred when present. `rows` is kept
+   *  as a defensive fallback so a stale bundle deployed against a fresh
+   *  server (or vice-versa) still renders SOMETHING sensible instead of an
+   *  empty chart. */
+  distribution?: { key: string; count: number }[] | null;
+  loading?: boolean; className?: string;
   activeCategory?: string; onSelect?: (key: string) => void;
 }) {
   const { lang, t } = useLang();
 
-  // Aggregate by category KEY from the rows already loaded for the table —
-  // language-agnostic (labels render live).
+  // Bars come from the server's chart-scope aggregate — matches the tab
+  // count (e.g. "Scheduled 68"), not the visible page (10). Falls back to
+  // aggregating over `rows` if the server didn't send distribution.
   const cats = useMemo(() => {
+    if (distribution && distribution.length >= 0) {
+      // Normalise the key to lowercase to match activeCategory comparison
+      // below (which is set from row.category_key at click time — also lc'd).
+      return distribution.map((d) => ({
+        key: (d.key || "—").toLowerCase(),
+        count: d.count,
+      }));
+    }
+    // Fallback: aggregate the currently-visible page. Same behaviour as
+    // before the server-side distribution was added.
     const m = new Map<string, number>();
     for (const r of rows) {
       const key = (r.category_key || r.category || "—").toLowerCase();
       m.set(key, (m.get(key) ?? 0) + 1);
     }
     return Array.from(m, ([key, count]) => ({ key, count }));
-  }, [rows]);
+  }, [distribution, rows]);
 
   const catLabel = (key: string) =>
     (lang === "ta" ? CATEGORY_DISPLAY_TA[key] : CATEGORY_DISPLAY_EN[key]) ?? key;
