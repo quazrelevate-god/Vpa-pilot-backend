@@ -41,6 +41,20 @@ from src.models_v2.schema import Admin
 logger = logging.getLogger(__name__)
 
 
+def _norm(name: str) -> str:
+    """Canonicalise a lookup key to snake_case-lower.
+
+    Both the frontend enum keys and the DB `admin.name` column are
+    snake_case-lower today, so this normalisation is idempotent on all
+    correctly-formed callers. It exists to rescue accidental display-label
+    leaks (e.g. Select components that route `label` through instead of
+    `value`) — "Action Required" → "action_required" → matches the row.
+    Without it, a single label leak in any frontend surface 500s the
+    entire PATCH endpoint.
+    """
+    return name.strip().lower().replace(" ", "_").replace("-", "_")
+
+
 class AdminLookup:
     """Cached (entity, name) ↔ id map backed by the admin table."""
 
@@ -67,7 +81,7 @@ class AdminLookup:
         self._by_key.clear()
         self._by_id.clear()
         for admin_id, entity, name in rows:
-            key = (entity.lower(), name.lower())
+            key = (entity.lower(), _norm(name))
             self._by_key[key] = admin_id
             self._by_id[admin_id] = (entity, name)
 
@@ -94,7 +108,7 @@ class AdminLookup:
 
     def resolve(self, entity: str, name: str) -> int:
         """Return admin.id or raise ValueError with valid names listed."""
-        key = (entity.lower(), name.lower())
+        key = (entity.lower(), _norm(name))
         admin_id = self._by_key.get(key)
         if admin_id is None:
             raise ValueError(
@@ -105,7 +119,7 @@ class AdminLookup:
 
     def get(self, entity: str, name: str) -> Optional[int]:
         """Return admin.id or None (no exception)."""
-        return self._by_key.get((entity.lower(), name.lower()))
+        return self._by_key.get((entity.lower(), _norm(name)))
 
     def name_of(self, admin_id: int) -> Tuple[str, str]:
         """Reverse: id → (entity, name). Raises KeyError if unknown."""
@@ -126,7 +140,7 @@ class AdminLookup:
 
     def is_valid(self, entity: str, name: str) -> bool:
         """Check whether (entity, name) exists in the lookup."""
-        return (entity.lower(), name.lower()) in self._by_key
+        return (entity.lower(), _norm(name)) in self._by_key
 
     # ═══════════════════════════════════════════════════════════════════════
     #  Domain shortcuts — one-liner access for every entity group
