@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
-  listProposals, getProposal, decideProposal,
+  listProposals, getProposal, decideProposal, updateProposalNote,
   type ProposalListItem, type ProposalListResponse, type ProposalDetail,
   type Decision,
 } from "./_lib/proposalApi";
@@ -276,6 +276,25 @@ export default function ProposalReviewPage() {
   const counts = data?.counts || {};
   const countFor = (key: string) =>
     key === "" ? Object.values(counts).reduce((a, b) => a + b, 0) : (counts[key] || 0);
+
+  // Note-only save — updates decision_note without flipping status.
+  // Used by the compact banner's "Edit note" affordance so a reviewer can
+  // add a follow-up clarification on a NEEDS_CLARIFICATION row (or amend
+  // the reason on any decided row) without the drive-by effect of decide().
+  const saveNote = async (newNote: string) => {
+    if (!detail) return;
+    setDeciding(true);
+    try {
+      const updated = await updateProposalNote(detail.id, newNote);
+      setDetail(updated);
+      toast.success("Note updated.");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDeciding(false);
+    }
+  };
 
   const decide = async (decision: Decision) => {
     if (!detail) return;
@@ -545,6 +564,7 @@ export default function ProposalReviewPage() {
               note={note} setNote={setNote}
               deciding={deciding}
               onDecide={decide}
+              onNoteSave={saveNote}
               onClose={() => setSelectedId(null)}
               onCategorySaved={(updated) => { setDetail(updated); load(); }}
             />

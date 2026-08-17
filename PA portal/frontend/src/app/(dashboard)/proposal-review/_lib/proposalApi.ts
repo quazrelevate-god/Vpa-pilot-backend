@@ -199,3 +199,17 @@ export async function decideProposal(id: number, decision: Decision, note?: stri
   if (!r.ok) throw await apiError(r);
   return r.json();
 }
+
+/** Update decision_note WITHOUT flipping status — used to add follow-up
+ *  clarifications on a NEEDS_CLARIFICATION row (or amend the note on any
+ *  decided row) without the side-effects of the /decision endpoint. */
+export async function updateProposalNote(id: number, note: string): Promise<ProposalDetail> {
+  const r = await fetch(`${BASE}/${id}/note`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note }),
+  });
+  if (!r.ok) throw await apiError(r);
+  return r.json();
+}

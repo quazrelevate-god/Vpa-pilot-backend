@@ -10,7 +10,7 @@ import {
   Check, X, HelpCircle, Building2, IndianRupee, CalendarClock,
   Sparkles, AlertTriangle, Loader2, User, Download,
   Briefcase, Landmark, Wallet, ShieldAlert as RiskIcon, FolderOpen, Pencil,
-  Search as SearchIcon,
+  Search as SearchIcon, RefreshCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -152,6 +152,11 @@ export interface ProposalDrawerProps {
   setNote?: (v: string) => void;
   deciding?: boolean;
   onDecide?: (dec: Decision) => void;
+  /** Save-only update to `decision_note` on an already-decided row. Distinct
+   *  from onDecide because it doesn't touch status / reviewed_by, so the
+   *  reviewer can add follow-up clarifications without the "did you change
+   *  your mind?" side-effects. */
+  onNoteSave?: (note: string) => Promise<void> | void;
   /** Called with the refreshed row after the desk is reassigned, so the list
    *  behind the drawer can pick up the new category. */
   onCategorySaved?: (updated: ProposalDetail) => void;
@@ -161,6 +166,7 @@ export function ProposalDrawer({
   d, onClose, readOnly = false,
   note = "", setNote,
   deciding = false, onDecide,
+  onNoteSave,
   onCategorySaved,
 }: ProposalDrawerProps) {
   const { lang } = useLang();
@@ -175,10 +181,17 @@ export function ProposalDrawer({
 
   // Sticky decision bar: once decided, hide the action buttons behind a
   // "Change decision" toggle so a stray click can't accidentally re-stamp
-  // reviewed_by / reviewed_at on an already-decided proposal. Auto-collapses
-  // whenever the drawer switches to a different proposal.
+  // reviewed_by / reviewed_at on an already-decided proposal. A separate
+  // `editingNote` mode reveals only a textarea + Save, keyed to the
+  // note-only endpoint — lets the reviewer add follow-up clarifications
+  // without flipping status. Both auto-collapse when the drawer switches
+  // proposals or the row's status changes.
   const [changingDecision, setChangingDecision] = useState(false);
-  useEffect(() => { setChangingDecision(false); }, [d.id, d.status]);
+  const [editingNote, setEditingNote] = useState(false);
+  useEffect(() => {
+    setChangingDecision(false);
+    setEditingNote(false);
+  }, [d.id, d.status]);
 
   async function saveCategory() {
     if (!catDirty || savingCat) return;
@@ -307,10 +320,10 @@ export function ProposalDrawer({
               <button
                 type="button"
                 onClick={openSimilarPanel}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                title="Fuzzy-scan same desk for similar proposals."
+                className="inline-flex items-center gap-1.5 rounded-md border border-brand/40 bg-brand/5 px-2.5 py-1 text-[12px] font-semibold text-brand shadow-sm transition-colors hover:border-brand hover:bg-brand/10"
+                title="Fuzzy-scan same category for similar proposals."
               >
-                <SearchIcon className="h-3 w-3" />
+                <SearchIcon className="h-3.5 w-3.5" />
                 Find similar
                 {simLoading && <Loader2 className="h-3 w-3 animate-spin" />}
                 {!simLoading && simCands !== null && simCount > 0 && (
@@ -626,31 +639,92 @@ export function ProposalDrawer({
           already-decided proposal (backend also 409s the same-status no-op,
           but the UI shouldn't offer it in the first place). */}
       {!readOnly && setNote && onDecide && (
-        <div className="shrink-0 space-y-2.5 border-t border-border bg-card px-5 py-4 sm:px-7">
-          {decided && !changingDecision ? (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-              <div className="min-w-0 flex items-center gap-2 text-[13px]">
-                <Check className="h-4 w-4 shrink-0 text-emerald-600" />
-                <div className="min-w-0">
-                  <div className="truncate font-semibold text-foreground">
+        <div className="shrink-0 space-y-3 border-t border-border bg-card px-5 py-4 sm:px-7">
+          {/* ─ (a) Decided + idle: prominent status card + two clear actions ─ */}
+          {decided && !changingDecision && !editingNote && (
+            <div className="rounded-lg border-2 border-border bg-muted/30 p-3.5">
+              <div className="flex items-start gap-2.5">
+                <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-bold text-foreground">
                     {st.label}
-                    {d.reviewed_by && <span className="ml-1 text-muted-foreground"> · by {d.reviewed_by}</span>}
+                    {d.reviewed_by && (
+                      <span className="ml-1.5 text-[12.5px] font-normal text-muted-foreground">
+                        · by {d.reviewed_by}
+                      </span>
+                    )}
                   </div>
-                  {d.decision_note && (
-                    <div className="mt-0.5 line-clamp-2 text-[12.5px] text-muted-foreground">{d.decision_note}</div>
+                  {d.decision_note ? (
+                    <div className="mt-1 whitespace-pre-wrap rounded-md bg-background/70 px-2.5 py-1.5 text-[13px] leading-snug text-foreground/85">
+                      {d.decision_note}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-[12.5px] italic text-muted-foreground">No note yet.</div>
                   )}
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => { setChangingDecision(true); setNote(d.decision_note ?? ""); }}
-                className="shrink-0"
-              >
-                <Pencil className="h-3.5 w-3.5" /> Change decision
-              </Button>
+              {/* Prominent action row — full-width, side-by-side, each with a
+                  distinct visual weight so neither disappears. */}
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {onNoteSave && (
+                  <Button
+                    variant="outline"
+                    onClick={() => { setEditingNote(true); setNote(d.decision_note ?? ""); }}
+                    className="border-2 border-brand/40 font-semibold text-brand hover:border-brand hover:bg-brand/5 hover:text-brand"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    {d.decision_note ? "Edit note" : "Add note"}
+                  </Button>
+                )}
+                <Button
+                  onClick={() => { setChangingDecision(true); setNote(d.decision_note ?? ""); }}
+                  className="bg-slate-800 font-semibold text-white hover:bg-slate-900 !bg-none"
+                >
+                  <RefreshCcw className="h-4 w-4" /> Change decision
+                </Button>
+              </div>
             </div>
-          ) : (
+          )}
+
+          {/* ─ (b) Editing note only — no status flip ─ */}
+          {decided && editingNote && (
+            <>
+              <div className="flex items-center justify-between gap-2 text-[12.5px] font-medium text-muted-foreground">
+                <span>Editing note on <strong>{st.label.toLowerCase()}</strong>. Status won't change.</span>
+                <button
+                  type="button"
+                  onClick={() => setEditingNote(false)}
+                  className="text-brand hover:underline"
+                >
+                  Cancel
+                </button>
+              </div>
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Follow-up note or clarification ask…"
+                className="min-h-[70px] resize-none text-sm"
+                autoFocus
+              />
+              <div className="flex justify-end">
+                <Button
+                  disabled={deciding || !onNoteSave}
+                  onClick={async () => {
+                    if (!onNoteSave) return;
+                    await onNoteSave(note.trim());
+                    setEditingNote(false);
+                  }}
+                  className="bg-brand font-semibold text-white hover:bg-brand/90 !bg-none"
+                >
+                  {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Save note
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* ─ (c) Changing decision (or first-decide on AWAITING_REVIEW) ─ */}
+          {(!decided || changingDecision) && (
             <>
               {decided && changingDecision && (
                 <div className="flex items-center justify-between gap-2 text-[12.5px] font-medium text-muted-foreground">
@@ -721,9 +795,9 @@ function SimilarProposalsPanel({
       right={
         <button
           onClick={() => { onToggle(); if (cands === null && !loading) onScan(); }}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="inline-flex items-center gap-1.5 rounded-md border border-brand/40 bg-brand/5 px-3 py-1.5 text-[12.5px] font-semibold text-brand shadow-sm transition-colors hover:border-brand hover:bg-brand/10"
         >
-          <SearchIcon className="h-3 w-3" />
+          <SearchIcon className="h-3.5 w-3.5" />
           {open ? "Hide" : "Find similar"}
           {!loading && cands !== null && cands.length > 0 && (
             <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">

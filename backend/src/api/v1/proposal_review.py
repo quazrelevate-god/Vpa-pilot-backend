@@ -90,6 +90,11 @@ class CategoryBody(BaseModel):
     category: str = Field(..., description="school | tamil | information | film")
 
 
+class NoteBody(BaseModel):
+    note: str = Field(..., max_length=4000,
+                      description="New decision-note text. Empty string clears the note.")
+
+
 # The four desks a proposal can sit with — mirrors _VALID_CATEGORIES on the
 # public /proposal intake so the form and the review surface never disagree.
 _VALID_CATEGORIES = {"school", "tamil", "information", "film"}
@@ -360,6 +365,38 @@ async def decide_proposal(
     if body.note is not None:
         row.decision_note = body.note.strip() or None
     row.reviewed_by = getattr(current, "full_name", None) or getattr(current, "login_name", None) or f"login:{current.id}"
+    row.reviewed_at = now_utc()
+    await db.commit()
+    await db.refresh(row)
+    return _detail(row)
+
+
+@router.patch("/{proposal_id}/note", response_model=ProposalDetail, summary="Update the decision note only")
+async def update_proposal_note(
+    proposal_id: int,
+    body: NoteBody,
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(require_super_admin),
+) -> ProposalDetail:
+    """Edit the decision_note on an already-decided proposal WITHOUT flipping
+    status. Used by the reviewer to add follow-up clarifications on a
+    NEEDS_CLARIFICATION row (or amend the reason on any decided row) without
+    the drive-by effect of the /decision endpoint.
+
+    Only decided rows are eligible — updating a note on an AWAITING_REVIEW row
+    would be recorded against a decision the reviewer never made. reviewed_by
+    stays unchanged (the decision itself wasn't touched); reviewed_at is bumped
+    so the timeline can order the note update in-place.
+    """
+    row = await db.get(ProposalSubmission, proposal_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Proposal not found.")
+    if row.status not in DECISION_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Proposal is '{row.status}' — a note can only be updated on a decided row.",
+        )
+    row.decision_note = body.note.strip() or None
     row.reviewed_at = now_utc()
     await db.commit()
     await db.refresh(row)
