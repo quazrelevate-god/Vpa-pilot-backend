@@ -320,10 +320,10 @@ export function ProposalDrawer({
               <button
                 type="button"
                 onClick={openSimilarPanel}
-                className="inline-flex items-center gap-1.5 rounded-md border border-brand/40 bg-brand/5 px-2.5 py-1 text-[12px] font-semibold text-brand shadow-sm transition-colors hover:border-brand hover:bg-brand/10"
+                className="group inline-flex items-center gap-1.5 rounded-md border border-brand/60 bg-brand/10 px-3 py-1.5 text-[12px] font-semibold text-brand shadow-[0_0_0_3px_rgba(91,91,214,0.12)] ring-1 ring-brand/30 transition-all hover:-translate-y-0.5 hover:bg-brand/15 hover:shadow-[0_4px_12px_rgba(91,91,214,0.25)] motion-safe:animate-pulse-soft"
                 title="Fuzzy-scan same category for similar proposals."
               >
-                <SearchIcon className="h-3.5 w-3.5" />
+                <SearchIcon className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
                 Find similar
                 {simLoading && <Loader2 className="h-3 w-3 animate-spin" />}
                 {!simLoading && simCands !== null && simCount > 0 && (
@@ -663,24 +663,27 @@ export function ProposalDrawer({
                   )}
                 </div>
               </div>
-              {/* Prominent action row — full-width, side-by-side, each with a
-                  distinct visual weight so neither disappears. */}
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {/* Compact action row — right-aligned auto-width buttons so the
+                  card stays tight and the two actions don't dominate the
+                  drawer visually. */}
+              <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                 {onNoteSave && (
                   <Button
+                    size="sm"
                     variant="outline"
                     onClick={() => { setEditingNote(true); setNote(d.decision_note ?? ""); }}
                     className="border-2 border-brand/40 font-semibold text-brand hover:border-brand hover:bg-brand/5 hover:text-brand"
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Pencil className="h-3.5 w-3.5" />
                     {d.decision_note ? "Edit note" : "Add note"}
                   </Button>
                 )}
                 <Button
+                  size="sm"
                   onClick={() => { setChangingDecision(true); setNote(d.decision_note ?? ""); }}
                   className="bg-slate-800 font-semibold text-white hover:bg-slate-900 !bg-none"
                 >
-                  <RefreshCcw className="h-4 w-4" /> Change decision
+                  <RefreshCcw className="h-3.5 w-3.5" /> Change decision
                 </Button>
               </div>
             </div>
@@ -744,26 +747,28 @@ export function ProposalDrawer({
                 placeholder="Decision note (required to reject or request more info)…"
                 className="min-h-[60px] resize-none text-sm"
               />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {/* Each action button is hidden if it would be a no-op against
-                    the current status. Combined with the backend guard this
-                    means you can never click "Approve" on an approved row. */}
-                {d.status !== "APPROVED" && (
-                  <Button disabled={deciding} onClick={() => onDecide("approved")}
-                    className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
-                    {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Approve proposal
-                  </Button>
-                )}
+              {/* Approve is the primary action — full-width, filled green.
+                  Request info + Reject are secondary — right-aligned,
+                  auto-width, distinct colours (sky for the inquiry action,
+                  red for the destructive one) so they don't read as
+                  duplicate destructive buttons. */}
+              {d.status !== "APPROVED" && (
+                <Button disabled={deciding} onClick={() => onDecide("approved")}
+                  className="w-full bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
+                  {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Approve proposal
+                </Button>
+              )}
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {d.status !== "NEEDS_CLARIFICATION" && (
-                  <Button disabled={deciding} variant="outline" onClick={() => onDecide("needs_clarification")}
-                    className="border-orange-300 text-orange-700 hover:bg-orange-50">
-                    <HelpCircle className="h-4 w-4" /> Request info
+                  <Button size="sm" disabled={deciding} variant="outline" onClick={() => onDecide("needs_clarification")}
+                    className="border-sky-300 text-sky-700 hover:bg-sky-50 hover:text-sky-800">
+                    <HelpCircle className="h-3.5 w-3.5" /> Request info
                   </Button>
                 )}
                 {d.status !== "REJECTED" && (
-                  <Button disabled={deciding} variant="outline" onClick={() => onDecide("rejected")}
-                    className="border-red-300 text-red-700 hover:bg-red-50">
-                    <X className="h-4 w-4" /> Reject
+                  <Button size="sm" disabled={deciding} variant="outline" onClick={() => onDecide("rejected")}
+                    className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800">
+                    <X className="h-3.5 w-3.5" /> Reject
                   </Button>
                 )}
               </div>
@@ -795,9 +800,14 @@ function SimilarProposalsPanel({
       right={
         <button
           onClick={() => { onToggle(); if (cands === null && !loading) onScan(); }}
-          className="inline-flex items-center gap-1.5 rounded-md border border-brand/40 bg-brand/5 px-3 py-1.5 text-[12.5px] font-semibold text-brand shadow-sm transition-colors hover:border-brand hover:bg-brand/10"
+          className={cn(
+            "group inline-flex items-center gap-1.5 rounded-md border border-brand/60 bg-brand/10 px-3 py-1.5 text-[12.5px] font-semibold text-brand shadow-[0_0_0_3px_rgba(91,91,214,0.12)] ring-1 ring-brand/30 transition-all hover:-translate-y-0.5 hover:bg-brand/15 hover:shadow-[0_4px_12px_rgba(91,91,214,0.25)]",
+            // Pulse only while un-scanned so the invitation is loud on
+            // first landing; once results are known the button is quiet.
+            !open && cands === null && !loading && "motion-safe:animate-pulse-soft"
+          )}
         >
-          <SearchIcon className="h-3.5 w-3.5" />
+          <SearchIcon className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
           {open ? "Hide" : "Find similar"}
           {!loading && cands !== null && cands.length > 0 && (
             <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">

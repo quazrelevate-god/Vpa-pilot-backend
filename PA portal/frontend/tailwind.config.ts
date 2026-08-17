@@ -129,11 +129,19 @@ const config: Config = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        // Subtle attention-nudge for CTAs the user should notice but not
+        // be pestered by. Softer than Tailwind's built-in animate-pulse
+        // (never dips below 85% opacity, longer 2.4s cycle).
+        "pulse-soft": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.85" },
+        },
       },
       animation: {
         shimmer: "shimmer 1.3s infinite",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "pulse-soft": "pulse-soft 2.4s ease-in-out infinite",
       },
     },
   },
