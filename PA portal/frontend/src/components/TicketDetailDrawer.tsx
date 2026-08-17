@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowRight, MessageSquare, CheckCircle2, Lock, RotateCcw, Send, Building2,
@@ -26,6 +26,7 @@ import {
 import { useDepartments, departmentText, type Department } from "@/lib/departments";
 import { useLang } from "@/lib/lang-context";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import AttachmentUploadDialog from "@/components/ui/attachment-upload-dialog";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -136,7 +137,8 @@ export default function TicketDetailDrawer({
   const { rows: departments } = useDepartments();
 
   const [commentText, setCommentText] = useState("");
-  const attachRef = useRef<HTMLInputElement>(null);
+  const [attachDialogOpen, setAttachDialogOpen] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
   const [closureReason, setClosureReason] = useState("");
   const [closeNotes, setCloseNotes] = useState("");
   const [reopenReason, setReopenReason] = useState("");
@@ -290,21 +292,60 @@ export default function TicketDetailDrawer({
     } finally { setBusy(false); }
   }
 
-  async function handleAttach(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";               // allow re-picking the same file
-    if (!file || ticketId == null) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error(tr("attach.tooLarge")); return; }
-    setBusy(true);
+  // Batch save: fan every staged file out to /api/tickets/{id}/attachment
+  // in parallel, then POST the optional note to the existing ticket comment
+  // endpoint. Partial failures keep the succeeded uploads and re-throw so
+  // the dialog stays open with the failed batch visible for retry.
+  // The activity timeline picks up the per-file attachment_added events
+  // (PR 1) and the comment_added event on its own — no extra client work.
+  async function saveTicketAttachments(files: File[], comment: string) {
+    if (ticketId == null) return;
+    setAttachBusy(true);
     try {
-      await uploadTicketAttachment(ticketId, file);
-      setData(await fetchTicket(ticketId));   // refresh so the new file shows
-      onMutated?.();
-      toast.success(tr("attach.added"));
-    } catch (err) {
-      toast.error((err as Error).message || tr("attach.failed"));
+      const uploaded = await Promise.all(files.map(async (f) => {
+        try {
+          const att = await uploadTicketAttachment(ticketId, f);
+          return { ok: true as const, att, name: f.name };
+        } catch (e) {
+          return { ok: false as const, name: f.name, err: (e as Error).message };
+        }
+      }));
+
+      const okAtt = uploaded.filter((r) => r.ok);
+      const failed = uploaded.filter((r) => !r.ok);
+
+      // Comment posts only if at least one file survived — mirrors the
+      // petition-side rule so a rejected batch can't leave a dangling note.
+      if (comment && okAtt.length) {
+        const res = await fetch(`/api/tickets/${ticketId}/comment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ text: comment }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          toast.error(d.error || tr("attach.uploadFailed"));
+        }
+      }
+
+      // Refresh regardless of failure count — succeeded files must show up.
+      if (okAtt.length) {
+        setData(await fetchTicket(ticketId));
+        onMutated?.();
+      }
+
+      if (failed.length) {
+        toast.error(tr("attach.uploadFailed"), {
+          description: failed.map((r) => r.name).join(", "),
+        });
+        throw new Error("partial");
+      }
+
+      toast.success(`${okAtt.length} attached`);
+      setAttachDialogOpen(false);
     } finally {
-      setBusy(false);
+      setAttachBusy(false);
     }
   }
 
@@ -378,18 +419,15 @@ export default function TicketDetailDrawer({
             </div>
           </div>
           {t && (
-            <>
-              <input
-                ref={attachRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                className="hidden"
-                onChange={handleAttach}
-              />
-              <Button variant="outline" size="sm" disabled={busy} className="shrink-0" onClick={() => attachRef.current?.click()}>
-                <Paperclip className="h-4 w-4" /> {tr("attach.cta")}
-              </Button>
-            </>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || attachBusy}
+              className="shrink-0"
+              onClick={() => setAttachDialogOpen(true)}
+            >
+              <Paperclip className="h-4 w-4" /> {tr("attach.cta")}
+            </Button>
           )}
           <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
             <X className="h-5 w-5" />
@@ -962,6 +1000,15 @@ export default function TicketDetailDrawer({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Shared attachment-upload dialog — batch upload + optional note.
+          Mounted inside the Sheet so it closes when the drawer closes. */}
+      <AttachmentUploadDialog
+        open={attachDialogOpen}
+        onOpenChange={setAttachDialogOpen}
+        onSave={saveTicketAttachments}
+        busy={attachBusy}
+      />
     </Sheet>
   );
 }
