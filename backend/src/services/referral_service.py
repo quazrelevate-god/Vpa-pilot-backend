@@ -17,6 +17,7 @@ from sqlalchemy import select, func, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
+from src.core.timeutil import now_utc
 from src.core import crypto
 from src.models.referral_models import (
     ReferralAvailability,
@@ -98,10 +99,27 @@ class ReferralService:
         Open target_date for referral bookings — creates 4 slots (11:00–13:00),
         all AVAILABLE. Resets the date if it exists with zero bookings.
         """
-        if target_date < date.today():
+        # Reject past dates outright.
+        today_ist = (now_utc() + timedelta(hours=5, minutes=30)).date()
+        if target_date < today_ist:
             raise ValueError(
                 f"Cannot open a past date ({target_date.strftime('%d %b %Y')})."
             )
+        # For today, reject if the entire fixed window (11:00–13:00) has
+        # already passed — every slot would be inserted as BLOCKED, which
+        # is not what the reviewer wants. Concretely: if the LAST slot's
+        # start time is not in the future, no slot is bookable today.
+        if target_date == today_ist:
+            now_t = (now_utc() + timedelta(hours=5, minutes=30)).time()
+            slot_starts = [start for _, start, _ in _slot_times()]
+            if slot_starts and not any(start > now_t for start in slot_starts):
+                raise ValueError(
+                    f"Cannot open {target_date.strftime('%d %b %Y')} — "
+                    f"the referral window ({FIXED_START_TIME.strftime('%H:%M')}"
+                    f"–{FIXED_END_TIME.strftime('%H:%M')}) has already passed "
+                    f"for today (it is {now_t.strftime('%H:%M')} now). "
+                    f"Please use a future date."
+                )
 
         existing = await db.scalar(
             select(ReferralAvailability)

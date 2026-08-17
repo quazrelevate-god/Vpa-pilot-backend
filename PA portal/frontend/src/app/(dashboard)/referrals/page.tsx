@@ -84,6 +84,9 @@ export default function ReferralsPage() {
   const [qr, setQr]             = useState<QrData | null>(null);
   const [loadingGrid, setLoadingGrid] = useState(false);
   const [opening, setOpening]   = useState(false);
+  // "Open a new date" form moved into a dialog (was middle card in row 1)
+  // so row 1 can fit 4 cards without the form taking a stretched slot.
+  const [openDateDialogOpen, setOpenDateDialogOpen] = useState(false);
   const [maxCapacity, setMaxCapacity] = useState(12);
   const [confirmSlot, setConfirmSlot] = useState<Slot | null>(null);
   const [busyId, setBusyId]     = useState<number | null>(null);
@@ -148,7 +151,7 @@ export default function ReferralsPage() {
         body: JSON.stringify({ date: selectedDate, max_capacity: maxCapacity }),
       });
       const d = await res.json();
-      if (res.ok) { toast.success("Date opened", { description: d.message }); loadGrid(selectedDate); loadOpenDates(); }
+      if (res.ok) { toast.success("Date opened", { description: d.message }); loadGrid(selectedDate); loadOpenDates(); setOpenDateDialogOpen(false); }
       else toast.error(d.error || "Failed to open date.");
     } catch { toast.error("Network error."); }
     finally { setOpening(false); }
@@ -241,9 +244,12 @@ export default function ReferralsPage() {
         <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-6 animate-in-up xl:min-h-full">
           <p className="shrink-0 text-sm text-muted-foreground">{t("ref.subtitle")}</p>
 
-          {/* Top row — QR · Open a date · Open dates */}
+          {/* Top row — 3 cards: QR · Open Dates (with "+ new" button) · Slots
+              for the selected date. The old row-2 "Slots for X" section is
+              gone — its content is folded into card 3 in a compact 2×2 grid
+              so the bookings table below gets the reclaimed vertical space. */}
           <div className="grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-3">
-            {/* QR card */}
+            {/* 1 · QR card */}
             <Card className="flex flex-col p-5 shadow-card-md">
               <CardHead icon={QrCode} title={t("ref.qrTitle")} sub={t("ref.qrSubtitle")} />
               <div className="flex flex-1 flex-col items-center justify-center gap-3 pt-4">
@@ -263,37 +269,19 @@ export default function ReferralsPage() {
               </div>
             </Card>
 
-            {/* Open a date */}
+            {/* 2 · Open Dates list — with the "+ Open a new date" action right
+                 in the header (opens the dialog). Keeps the reviewer's two
+                 date-related affordances in one card. */}
             <Card className="flex flex-col p-5 shadow-card-md">
-              <CardHead icon={CalendarDays} title={t("ref.openDate")} sub={t("ref.openDateSub")} />
-              <div className="flex flex-1 flex-col gap-4 pt-4">
-                <div ref={dateInputRef}>
-                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("ref.date")}</label>
-                  <SingleDatePill value={selectedDate} min={todayIso()}
-                    onChange={setSelectedDate} ariaLabel={t("ref.date")} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("ref.personsPerSlot")}</label>
-                  <Select value={String(maxCapacity)} onValueChange={(v) => setMaxCapacity(Number(v))}>
-                    <SelectTrigger className="h-11 rounded-xl text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {PERSON_OPTIONS.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button className="aurora-primary mt-auto h-11 w-full rounded-xl" onClick={handleOpenDate} disabled={opening || !selectedDate}>
-                  <Plus className="mr-1.5 h-4 w-4" /> {opening ? t("ref.opening") : t("ref.openThisDate")}
-                </Button>
-              </div>
-            </Card>
-
-            {/* Open dates list */}
-            <Card className="flex flex-col p-5 shadow-card-md">
-              <div className="mb-1 flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <CardHead icon={CalendarDays} title={t("ref.openDates")} />
-                {openDates.length > 0 && (
-                  <span className="text-[13px] font-semibold text-muted-foreground tabular-nums">{openDates.length}</span>
-                )}
+                <Button
+                  size="sm"
+                  onClick={() => setOpenDateDialogOpen(true)}
+                  className="aurora-primary h-8 rounded-lg px-3 text-[12.5px] font-semibold"
+                >
+                  <Plus className="h-3.5 w-3.5" /> {t("ref.openThisDate")}
+                </Button>
               </div>
               <div className="flex flex-1 flex-col gap-2 pt-3">
                 {openDates.map((d) => {
@@ -317,104 +305,110 @@ export default function ReferralsPage() {
                     </button>
                   );
                 })}
-                <button onClick={focusOpenDate}
-                  className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-5 text-center transition-colors hover:border-brand/40 hover:bg-accent/40">
-                  <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-brand"><CalendarPlus className="h-4 w-4" /></span>
-                  <span className="text-[13px] font-semibold text-foreground">{t("ref.noMoreDates")}</span>
-                  <span className="text-[12px] text-muted-foreground">{t("ref.openNewDate")}</span>
-                </button>
-              </div>
-            </Card>
-          </div>
-
-          {/* Slot grid */}
-          <Card className="shrink-0 p-5 shadow-card-md">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <h2 className="type-card-heading text-foreground">{t("ref.slotsFor")} {dateLabel}</h2>
-                {grid?.has_availability && (
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{t("ref.openBadge")}</span>
+                {openDates.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-border py-6 text-center text-[13px] text-muted-foreground">
+                    {t("ref.noMoreDates")}
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                {grid?.has_availability && (
-                  showCancel ? (
+            </Card>
+
+            {/* 3 · Slots for the selected date — the entire slot grid content
+                 that used to be a row-2 card lives here now, in a 2×2 layout
+                 so it fits alongside the other two cards. Cancel-all +
+                 Refresh live in the header. */}
+            <Card className="flex flex-col p-5 shadow-card-md">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <CardHead icon={CalendarDays} title={t("ref.slotsFor") + " " + dateLabel} />
+                  {grid?.has_availability && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{t("ref.openBadge")}</span>
+                  )}
+                </div>
+                <button onClick={() => loadGrid(selectedDate)}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label={t("ref.refresh")}
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", loadingGrid && "animate-spin")} />
+                </button>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                {[
+                  { cls: "bg-emerald-500", label: t("ref.legendAvailable") },
+                  { cls: "bg-amber-500",   label: t("ref.legendPartial") },
+                  { cls: "bg-red-500",     label: t("ref.legendFull") },
+                  { cls: "bg-slate-400",   label: t("ref.legendBlocked") },
+                ].map((l) => (
+                  <span key={l.label} className="flex items-center gap-1">
+                    <span className={cn("inline-block h-2 w-2 rounded-full", l.cls)} /> {l.label}
+                  </span>
+                ))}
+              </div>
+
+              <div className="mt-3 flex-1">
+                {!grid?.has_availability ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {["11:00 – 11:30", "11:30 – 12:00", "12:00 – 12:30", "12:30 – 01:00"].map((tm) => (
+                      <div key={tm} className="flex h-20 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center text-[11px] text-muted-foreground/50">
+                        <span className="font-semibold">{tm}</span>
+                        <span>{loadingGrid ? t("ref.loading") : t("ref.notOpen")}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {(grid.slots ?? []).map((slot) => {
+                      const badge = slotBadge(slot, t);
+                      const loading = busyId === slot.id;
+                      return (
+                        <button key={slot.id} onClick={() => setConfirmSlot(slot)}
+                          className={cn("relative flex flex-col gap-1.5 rounded-xl border p-2.5 text-left transition-all", slotColor(slot), loading && "pointer-events-none opacity-60")}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[12.5px] font-semibold text-foreground">{slot.start} – {slot.end}</span>
+                            {slot.status === "BLOCKED" ? <Lock className="h-3 w-3 text-slate-400" />
+                              : isAdminClosed(slot) ? <Lock className="h-3 w-3 text-red-500" />
+                              : <Unlock className="h-3 w-3 text-muted-foreground/30" />}
+                          </div>
+                          <div className="h-1 w-full overflow-hidden rounded-full bg-black/[0.07]">
+                            <div className={cn("h-full rounded-full transition-all", barColor(slot))}
+                              style={{ width: `${Math.min(100, (slot.booked_count / Math.max(1, slot.max_capacity)) * 100)}%` }} />
+                          </div>
+                          <div className="flex items-baseline justify-between text-[11px]">
+                            <span className={cn("font-semibold", badge.cls)}>{badge.label}</span>
+                            <span className="tabular-nums text-muted-foreground">{slot.booked_count}/{slot.max_capacity}</span>
+                          </div>
+                          {loading && <div className="absolute inset-0 grid place-items-center rounded-xl bg-white/60"><RefreshCw className="h-4 w-4 animate-spin text-brand" /></div>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {grid?.has_availability && (
+                <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
+                  {showCancel ? (
                     <>
-                      <span className="text-sm font-semibold text-destructive">
+                      <span className="text-[12px] font-semibold text-destructive">
                         {t("ref.cancelAllConfirmFor").replace("{date}", dateLabel)}
                       </span>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setShowCancel(false)}>{t("ref.no")}</Button>
-                      <Button size="sm" className="rounded-xl bg-red-600 text-white hover:bg-red-700" onClick={handleCancelAll} disabled={cancelling}>
+                      <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => setShowCancel(false)}>{t("ref.no")}</Button>
+                      <Button size="sm" className="h-8 rounded-lg bg-red-600 text-white hover:bg-red-700" onClick={handleCancelAll} disabled={cancelling}>
                         {cancelling ? t("ref.cancelling") : t("ref.yesCancelAll")}
                       </Button>
                     </>
                   ) : (
                     <Button size="sm" variant="outline"
-                      className="h-9 rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                      className="h-8 rounded-lg border-red-200 text-red-600 hover:bg-red-50"
                       onClick={() => setShowCancel(true)}>
-                      <Trash2 className="h-4 w-4" /> {t("ref.cancelAllFor").replace("{date}", dateLabel)}
+                      <Trash2 className="h-3.5 w-3.5" /> {t("ref.cancelAllFor").replace("{date}", dateLabel)}
                     </Button>
-                  )
-                )}
-                <button onClick={() => loadGrid(selectedDate)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                  <RefreshCw className={cn("h-3.5 w-3.5", loadingGrid && "animate-spin")} /> {t("ref.refresh")}
-                </button>
-              </div>
-            </div>
-
-            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px]">
-              {[
-                { cls: "bg-emerald-500", label: t("ref.legendAvailable") },
-                { cls: "bg-amber-500",   label: t("ref.legendPartial") },
-                { cls: "bg-red-500",     label: t("ref.legendFull") },
-                { cls: "bg-slate-400",   label: t("ref.legendBlocked") },
-              ].map((l) => (
-                <span key={l.label} className="flex items-center gap-1.5 text-muted-foreground">
-                  <span className={cn("inline-block h-2.5 w-2.5 rounded-full", l.cls)} /> {l.label}
-                </span>
-              ))}
-              <span className="text-muted-foreground/70">· {t("ref.clickSlot")}</span>
-            </div>
-
-            {!grid?.has_availability ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {["11:00 – 11:30", "11:30 – 12:00", "12:00 – 12:30", "12:30 – 01:00"].map((tm) => (
-                  <div key={tm} className="flex h-24 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center text-[12px] text-muted-foreground/50">
-                    <span className="font-semibold">{tm}</span>
-                    <span>{loadingGrid ? t("ref.loading") : t("ref.notOpen")}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {(grid.slots ?? []).map((slot) => {
-                  const badge = slotBadge(slot, t);
-                  const loading = busyId === slot.id;
-                  return (
-                    <button key={slot.id} onClick={() => setConfirmSlot(slot)}
-                      className={cn("relative flex flex-col gap-2 rounded-xl border p-3.5 text-left transition-all", slotColor(slot), loading && "pointer-events-none opacity-60")}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-foreground">{slot.start} – {slot.end}</span>
-                        {slot.status === "BLOCKED" ? <Lock className="h-3.5 w-3.5 text-slate-400" />
-                          : isAdminClosed(slot) ? <Lock className="h-3.5 w-3.5 text-red-500" />
-                          : <Unlock className="h-3.5 w-3.5 text-muted-foreground/30" />}
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.07]">
-                        <div className={cn("h-full rounded-full transition-all", barColor(slot))}
-                          style={{ width: `${Math.min(100, (slot.booked_count / Math.max(1, slot.max_capacity)) * 100)}%` }} />
-                      </div>
-                      <div className="flex items-baseline justify-between">
-                        <span className={cn("text-[13px] font-semibold", badge.cls)}>{badge.label}</span>
-                        <span className="text-[12px] tabular-nums text-muted-foreground">{slot.booked_count} / {slot.max_capacity} {t("ref.bookingsWord")}</span>
-                      </div>
-                      {loading && <div className="absolute inset-0 grid place-items-center rounded-xl bg-white/60"><RefreshCw className="h-4 w-4 animate-spin text-brand" /></div>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
+                  )}
+                </div>
+              )}
+            </Card>
+          </div>
 
           {/* Bookings table — fills the remaining height; body scrolls */}
           {/* Bookings fill the leftover height on tall screens, but every sibling
@@ -479,6 +473,52 @@ export default function ReferralsPage() {
           </Card>
         </div>
       </main>
+
+      {/* Open-a-new-date dialog — used to be a middle-column card in row 1;
+          moved into a dialog so row 1 fits 4 cards cleanly and the slot
+          grid + bookings table below reclaim the vertical space. */}
+      <Dialog open={openDateDialogOpen} onOpenChange={setOpenDateDialogOpen}>
+        <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="h-5 w-5 text-brand" /> {t("ref.openDate")}
+            </DialogTitle>
+            <DialogDescription>{t("ref.openDateSub")}</DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 flex flex-col gap-4">
+            <div ref={dateInputRef}>
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("ref.date")}</label>
+              <SingleDatePill value={selectedDate} min={todayIso()}
+                onChange={setSelectedDate} ariaLabel={t("ref.date")} />
+            </div>
+            <div>
+              <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+                <Users className="h-3.5 w-3.5" />
+                {t("ref.personsPerSlot")}
+              </label>
+              <Select value={String(maxCapacity)} onValueChange={(v) => setMaxCapacity(Number(v))}>
+                <SelectTrigger className="h-11 rounded-xl text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PERSON_OPTIONS.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm" className="w-full sm:w-auto">{t("ref.dlgCancel")}</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              className="aurora-primary w-full rounded-xl sm:w-auto"
+              onClick={handleOpenDate}
+              disabled={opening || !selectedDate}
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> {opening ? t("ref.opening") : t("ref.openThisDate")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Slot action dialog */}
       <Dialog open={confirmSlot !== null} onOpenChange={(o) => { if (!o) setConfirmSlot(null); }}>
