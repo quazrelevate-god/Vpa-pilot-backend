@@ -301,6 +301,12 @@ export default function ProposalReviewPage() {
 
   const [exporting, setExporting] = useState(false);
   const doExport = async () => {
+    // Empty-result guard — button is disabled when total === 0, this just
+    // protects against a filter change slipping through.
+    if (total === 0) {
+      toast(t("appts.exportNothing"));
+      return;
+    }
     // Export the ENTIRE filtered set, not just the current page — the old
     // implementation exported `filtered` (a client-slice of the first 100)
     // so an office with 240 proposals silently exported 100. Loop the
@@ -422,7 +428,13 @@ export default function ProposalReviewPage() {
               </div>
 
               <div className="ml-auto">
-                <Button variant="outline" size="sm" onClick={doExport} disabled={exporting}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={doExport}
+                  disabled={exporting || total === 0}
+                  title={total === 0 ? t("appts.exportNothing") : undefined}
+                >
                   <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export"}
                 </Button>
               </div>

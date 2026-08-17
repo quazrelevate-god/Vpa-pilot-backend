@@ -533,6 +533,12 @@ export default function TicketsPage() {
   const hi = Math.min(offset + PAGE_SIZE, total);
 
   async function doExport() {
+    // Empty-result guard — the button is disabled when total === 0, this
+    // just protects against a filter change slipping through.
+    if (total === 0) {
+      toast(t("appts.exportNothing"));
+      return;
+    }
     setExporting(true);
     try {
       const all: TicketRow[] = [];
@@ -680,7 +686,13 @@ export default function TicketsPage() {
                   </span>
                 )}
               </button>
-              <Button variant="outline" onClick={doExport} disabled={exporting} className="h-[38px] rounded-xl">
+              <Button
+                variant="outline"
+                onClick={doExport}
+                disabled={exporting || total === 0}
+                title={total === 0 ? t("appts.exportNothing") : undefined}
+                className="h-[38px] rounded-xl"
+              >
                 <Download className="h-4 w-4 text-brand" /> {t("tickets.export")}
               </Button>
             </div>

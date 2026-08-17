@@ -344,6 +344,12 @@ export default function AssociationReviewPage() {
 
   const [exporting, setExporting] = useState(false);
   const doExport = async () => {
+    // Empty-result guard — button is disabled when total === 0, this just
+    // protects against a filter change slipping through.
+    if (total === 0) {
+      toast(t("appts.exportNothing"));
+      return;
+    }
     // Export the ENTIRE filtered set, not just the current page — old
     // implementation exported the first-100 slice.
     setExporting(true);
@@ -468,7 +474,13 @@ export default function AssociationReviewPage() {
               </div>
 
               <div className="ml-auto">
-                <Button variant="outline" size="sm" onClick={doExport} disabled={exporting}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={doExport}
+                  disabled={exporting || total === 0}
+                  title={total === 0 ? t("appts.exportNothing") : undefined}
+                >
                   <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export"}
                 </Button>
               </div>

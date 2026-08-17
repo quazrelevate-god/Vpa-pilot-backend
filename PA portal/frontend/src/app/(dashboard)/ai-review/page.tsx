@@ -1065,6 +1065,12 @@ function AiReviewPageInner() {
   }
 
   async function doExport() {
+    // Empty-result guard — the button is disabled when total === 0, this
+    // just protects against a filter change slipping through.
+    if (total === 0) {
+      toast(t("appts.exportNothing"));
+      return;
+    }
     // Export the WHOLE filtered set, not just the current page. Ask the inbox
     // endpoint for a max-cap slice (server enforces page_size≤200) via a
     // pagination loop — small feed today, and the loop is bounded by `total`
@@ -1274,7 +1280,13 @@ function AiReviewPageInner() {
                 className="grid h-[38px] w-[38px] place-items-center rounded-xl border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                 <RefreshCw className="h-4 w-4" />
               </button>
-              <Button variant="outline" onClick={doExport} className="h-[38px] rounded-xl">
+              <Button
+                variant="outline"
+                onClick={doExport}
+                disabled={total === 0}
+                title={total === 0 ? t("appts.exportNothing") : undefined}
+                className="h-[38px] rounded-xl"
+              >
                 <Download className="h-4 w-4 text-brand" /> {t("petition.export")}
               </Button>
             </div>
