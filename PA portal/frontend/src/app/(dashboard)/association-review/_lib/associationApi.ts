@@ -194,3 +194,18 @@ export async function decideAssociation(
   if (!r.ok) throw await apiError(r);
   return r.json();
 }
+
+/** Update decision_note WITHOUT flipping status — used to amend the note
+ *  on any decided row (REVIEWED / FORWARDED) without the side-effects of
+ *  the /decision endpoint (which re-runs the ticket mint and re-stamps
+ *  reviewed_by). */
+export async function updateAssociationNote(id: number, note: string): Promise<AssociationDetail> {
+  const r = await fetch(`${BASE}/${id}/note`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note }),
+  });
+  if (!r.ok) throw await apiError(r);
+  return r.json();
+}

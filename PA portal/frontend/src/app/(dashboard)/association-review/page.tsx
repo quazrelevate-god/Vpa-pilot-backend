@@ -24,7 +24,7 @@ import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
-  listAssociations, getAssociation, decideAssociation,
+  listAssociations, getAssociation, decideAssociation, updateAssociationNote,
   type AssociationListItem, type AssociationListResponse, type AssociationDetail,
   type AssociationDecision,
 } from "./_lib/associationApi";
@@ -323,6 +323,24 @@ export default function AssociationReviewPage() {
   const countFor = (key: string) =>
     key === "" ? Object.values(counts).reduce((a, b) => a + b, 0) : (counts[key] || 0);
 
+  // Note-only save — updates decision_note without touching status or
+  // re-running the ticket mint. Wired into the drawer's "Edit note"
+  // affordance in the compact status card.
+  const saveNote = async (newNote: string) => {
+    if (!detail) return;
+    setDeciding(true);
+    try {
+      const updated = await updateAssociationNote(detail.id, newNote);
+      setDetail(updated);
+      toast.success("Note updated.");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDeciding(false);
+    }
+  };
+
   const decide = async (decision: AssociationDecision) => {
     if (!detail) return;
     if (decision === "forwarded" && !note.trim()) {
@@ -491,7 +509,7 @@ export default function AssociationReviewPage() {
             <div className="flex flex-wrap items-center gap-2">
               <FilterChip
                 icon={<Sparkles className="h-3.5 w-3.5" />}
-                label="AI"
+                label="AI hint"
                 value={recFilter} onValue={setRecFilter}
                 options={REC_OPTIONS}
               />
@@ -611,6 +629,7 @@ export default function AssociationReviewPage() {
               note={note} setNote={setNote}
               deciding={deciding}
               onDecide={decide}
+              onNoteSave={saveNote}
               onClose={() => setSelectedId(null)}
             />
           ) : (
@@ -644,8 +663,8 @@ function AssociationCard({ a, lang, selected, onOpen }: {
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         {rec ? (
-          <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
-            <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
+          <span className={cn("inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-semibold", rec.cls)} title="AI's triage hint — not the reviewer's decision">
+            <Sparkles className="h-3 w-3" /> {rec.label}
           </span>
         ) : <span />}
         <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", st.cls)}>{st.label}</span>

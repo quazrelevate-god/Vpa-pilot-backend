@@ -79,6 +79,11 @@ class DecisionBody(BaseModel):
     note: Optional[str] = Field(None, max_length=4000)
 
 
+class NoteBody(BaseModel):
+    note: str = Field(..., max_length=4000,
+                      description="New decision-note text. Empty string clears the note.")
+
+
 def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
@@ -400,6 +405,18 @@ async def decide_association(
     row = await db.get(AssociationSubmission, assoc_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Association submission not found.")
+    # Guard the no-op self-transition (REVIEWED → REVIEWED etc.). Without
+    # this, a stray click on an already-decided row re-runs the mint
+    # (idempotent by source_appointment_id today, but the stale-pointer
+    # path in association_service can silently null the pointer and spawn
+    # a second ticket) AND overwrites reviewed_by / reviewed_at / note
+    # with the current call's values. Cross-decision transitions
+    # (REVIEWED ↔ FORWARDED) stay allowed by design.
+    if row.status == target:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Association is already '{target}' — nothing to change.",
+        )
 
     reviewer = (
         getattr(current, "full_name", None)
@@ -424,8 +441,45 @@ async def decide_association(
     # Reload after the mint (which commits internally to spawn the ticket).
     row = await db.get(AssociationSubmission, assoc_id)
     row.status = target
-    row.decision_note = (body.note or "").strip() or None
+    # Preserve the previous decision_note if the caller didn't send one.
+    # Only overwrite when the body explicitly carried a `note` field so a
+    # re-decision without a note doesn't wipe the reason from the prior
+    # decision (partial audit history until we add a proper event log).
+    if body.note is not None:
+        row.decision_note = body.note.strip() or None
     row.reviewed_by = reviewer
+    row.reviewed_at = now_utc()
+    await db.commit()
+    await db.refresh(row)
+    return _detail(row)
+
+
+@router.patch("/{assoc_id}/note", response_model=AssociationDetail, summary="Update the decision note only")
+async def update_association_note(
+    assoc_id: int,
+    body: NoteBody,
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(require_super_admin),
+) -> AssociationDetail:
+    """Edit the decision_note on an already-decided association WITHOUT
+    flipping status. Mirrors the proposal-side /note endpoint — used by
+    the reviewer to amend the note without the drive-by effects of
+    /decision (which re-runs the ticket mint and re-stamps reviewed_by).
+
+    Only decided rows are eligible — updating a note on AWAITING_REVIEW
+    would be recorded against a decision the reviewer never made.
+    reviewed_by stays unchanged; reviewed_at is bumped so the timeline
+    can order the note update in-place.
+    """
+    row = await db.get(AssociationSubmission, assoc_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Association submission not found.")
+    if row.status not in (STATUS_REVIEWED, STATUS_FORWARDED):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Association is '{row.status}' — a note can only be updated on a decided row.",
+        )
+    row.decision_note = body.note.strip() or None
     row.reviewed_at = now_utc()
     await db.commit()
     await db.refresh(row)

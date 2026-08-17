@@ -16,7 +16,7 @@ import {
   Check, Send, Building2, UserRound, Users, MapPin, CalendarClock,
   Loader2, Sparkles, AlertTriangle, Landmark, Target, Flag,
   ShieldAlert as RiskIcon, ScrollText, FolderOpen, X, Download,
-  Search as SearchIcon,
+  Search as SearchIcon, Pencil, RefreshCcw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -160,18 +160,29 @@ export interface AssociationDrawerProps {
   setNote?: (v: string) => void;
   deciding?: boolean;
   onDecide?: (dec: AssociationDecision) => void;
+  /** Save-only update to `decision_note` on an already-decided row. Distinct
+   *  from onDecide because it doesn't re-run the ticket mint or re-stamp
+   *  reviewed_by — pure note edit. */
+  onNoteSave?: (note: string) => Promise<void> | void;
 }
 
 export function AssociationDrawer({
   d, onClose, readOnly = false,
   note = "", setNote,
   deciding = false, onDecide,
+  onNoteSave,
 }: AssociationDrawerProps) {
   const { lang } = useLang();
   const ta = lang === "ta";
-  const L = useCallback((en?: string, taStr?: string) => {
-    if (ta && taStr && taStr.trim()) return taStr;
-    return (en || taStr || "").trim();
+  // Defensive: the extraction JSON is typed as strings but at runtime AI
+  // sometimes returns an array or object (partial extraction, prompt drift).
+  // Coerce non-strings to "" so a bad field can't crash the whole drawer
+  // with "trim is not a function".
+  const L = useCallback((en?: unknown, taStr?: unknown) => {
+    const enS   = typeof en === "string" ? en : "";
+    const taStrS = typeof taStr === "string" ? taStr : "";
+    if (ta && taStrS.trim()) return taStrS;
+    return (enS || taStrS || "").trim();
   }, [ta]);
 
   const ex: AssociationBrief = d.extraction || {};
@@ -181,6 +192,20 @@ export function AssociationDrawer({
   const decided = ["REVIEWED", "FORWARDED"].includes(d.status);
   const days = daysSince(d.created_at);
 
+  // Sticky decision bar: once decided, hide the action buttons behind a
+  // "Change decision" toggle so a stray click can't re-run the ticket mint
+  // + re-stamp reviewed_by / reviewed_at (the endpoint also 409s the
+  // same-status no-op now, but the UI shouldn't offer it in the first
+  // place). Separate `editingNote` mode reveals only a textarea + Save so
+  // the reviewer can amend the note without touching status. Both
+  // auto-reset when the drawer switches rows or the row's status changes.
+  const [changingDecision, setChangingDecision] = useState(false);
+  const [editingNote, setEditingNote] = useState(false);
+  useEffect(() => {
+    setChangingDecision(false);
+    setEditingNote(false);
+  }, [d.id, d.status]);
+
   const ask       = L(ex.association_ask,   ex.association_ask_ta);
   const summary   = L(ex.summary,           ex.summary_ta);
   const demand    = L(ex.demand_context,    ex.demand_context_ta);
@@ -188,9 +213,13 @@ export function AssociationDrawer({
   const precedent = L(ex.precedent_context, ex.precedent_context_ta);
   const rationale = L(ex.ai_rationale,      ex.ai_rationale_ta);
 
-  const keyDetails   = (ta && ex.key_details_ta?.length ? ex.key_details_ta : ex.key_details) || [];
-  const stakeholders = (ta && ex.key_stakeholders_ta?.length ? ex.key_stakeholders_ta : ex.key_stakeholders) || [];
-  const risks        = (ta && ex.risks_if_ignored_ta?.length ? ex.risks_if_ignored_ta : ex.risks_if_ignored) || [];
+  // Defensive: extraction arrays occasionally arrive as strings/objects when
+  // the AI's response drifts from the schema. Fall back to [] so .map() on
+  // them can't crash the drawer.
+  const asArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  const keyDetails   = ta && asArr(ex.key_details_ta).length     ? asArr(ex.key_details_ta)     : asArr(ex.key_details);
+  const stakeholders = ta && asArr(ex.key_stakeholders_ta).length ? asArr(ex.key_stakeholders_ta) : asArr(ex.key_stakeholders);
+  const risks        = ta && asArr(ex.risks_if_ignored_ta).length ? asArr(ex.risks_if_ignored_ta) : asArr(ex.risks_if_ignored);
 
   const docAtts = useMemo(() => toAttachments(d.documents), [d.documents]);
 
@@ -258,8 +287,8 @@ export function AssociationDrawer({
             )}
             <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", st.cls)}>{st.label}</span>
             {rec && (
-              <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
-                <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
+              <span className={cn("inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-semibold", rec.cls)} title="AI's triage hint — not the reviewer's decision">
+                <Sparkles className="h-3 w-3" /> {rec.label}
               </span>
             )}
             {d.is_duplicate && (
@@ -290,10 +319,10 @@ export function AssociationDrawer({
               <button
                 type="button"
                 onClick={openSimilarPanel}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="group inline-flex items-center gap-1.5 rounded-md border border-brand/60 bg-brand/10 px-3 py-1.5 text-[12px] font-semibold text-brand shadow-[0_0_0_3px_rgba(91,91,214,0.12)] ring-1 ring-brand/30 transition-all hover:-translate-y-0.5 hover:bg-brand/15 hover:shadow-[0_4px_12px_rgba(91,91,214,0.25)] motion-safe:animate-pulse-soft"
                 title="Fuzzy-scan same category + district for similar submissions."
               >
-                <SearchIcon className="h-3 w-3" />
+                <SearchIcon className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
                 Find similar
                 {simLoading && <Loader2 className="h-3 w-3 animate-spin" />}
                 {!simLoading && simCands !== null && simCount > 0 && (
@@ -472,8 +501,8 @@ export function AssociationDrawer({
             <SectionShell
               n={6} id="ai-brief" title="AI Assessment"
               right={rec ? (
-                <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
-                  <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
+                <span className={cn("inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-semibold", rec.cls)} title="AI's triage hint — not the reviewer's decision">
+                  <Sparkles className="h-3 w-3" /> {rec.label}
                 </span>
               ) : undefined}
             >
@@ -529,41 +558,140 @@ export function AssociationDrawer({
               )}
             </SectionShell>
 
-            {decided && d.decision_note && (
-              <div className="rounded-lg border border-border bg-secondary/60 px-3.5 py-3 text-[13.5px]">
-                <span className="font-semibold">Decision note:</span> {d.decision_note}
-                {d.reviewed_by && <div className="mt-0.5 text-[11.5px] text-muted-foreground">— {d.reviewed_by}, {fmtDate(d.reviewed_at)}</div>}
-              </div>
-            )}
           </div>
         </div>
       </div>
 
-      {/* Sticky decision bar — hidden entirely in read-only mode. */}
+      {/* Sticky decision bar — hidden entirely in read-only mode. Post-
+          decision, action buttons hide behind a "Change decision" toggle
+          so a stray click can't re-run the ticket mint or re-stamp
+          reviewed_by / reviewed_at (backend also 409s the same-status
+          no-op, but the UI shouldn't offer it in the first place). */}
       {!readOnly && setNote && onDecide && (
-        <div className="shrink-0 space-y-2.5 border-t border-border bg-card px-5 py-4 sm:px-7">
-          {decided && (
-            <div className="flex items-center gap-1.5 text-[12.5px] font-medium text-muted-foreground">
-              <Check className="h-3.5 w-3.5 text-emerald-600" />
-              Already {st.label.toLowerCase()} — you can change the decision below.
+        <div className="shrink-0 space-y-3 border-t border-border bg-card px-5 py-4 sm:px-7">
+          {/* ─ (a) Decided + idle: prominent status card + two clear actions ─ */}
+          {decided && !changingDecision && !editingNote && (
+            <div className="rounded-lg border-2 border-border bg-muted/30 p-3.5">
+              <div className="flex items-start gap-2.5">
+                <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-bold text-foreground">
+                    {st.label}
+                    {d.reviewed_by && (
+                      <span className="ml-1.5 text-[12.5px] font-normal text-muted-foreground">
+                        · by {d.reviewed_by}
+                      </span>
+                    )}
+                  </div>
+                  {d.decision_note ? (
+                    <div className="mt-1 whitespace-pre-wrap rounded-md bg-background/70 px-2.5 py-1.5 text-[13px] leading-snug text-foreground/85">
+                      {d.decision_note}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-[12.5px] italic text-muted-foreground">No note yet.</div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                {onNoteSave && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setEditingNote(true); setNote(d.decision_note ?? ""); }}
+                    className="border-2 border-brand/40 font-semibold text-brand hover:border-brand hover:bg-brand/5 hover:text-brand"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    {d.decision_note ? "Edit note" : "Add note"}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => { setChangingDecision(true); setNote(d.decision_note ?? ""); }}
+                  className="bg-slate-800 font-semibold text-white hover:bg-slate-900 !bg-none"
+                >
+                  <RefreshCcw className="h-3.5 w-3.5" /> Change decision
+                </Button>
+              </div>
             </div>
           )}
-          <Textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Decision note (required when forwarding to a department)…"
-            className="min-h-[60px] resize-none text-sm"
-          />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Button disabled={deciding} onClick={() => onDecide("reviewed")}
-              className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
-              {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Mark reviewed
-            </Button>
-            <Button disabled={deciding} variant="outline" onClick={() => onDecide("forwarded")}
-              className="border-sky-300 text-sky-700 hover:bg-sky-50">
-              <Send className="h-4 w-4" /> Forward to department
-            </Button>
-          </div>
+
+          {/* ─ (b) Editing note only — no status flip ─ */}
+          {decided && editingNote && (
+            <>
+              <div className="flex items-center justify-between gap-2 text-[12.5px] font-medium text-muted-foreground">
+                <span>Editing note on <strong>{st.label.toLowerCase()}</strong>. Status won't change.</span>
+                <button
+                  type="button"
+                  onClick={() => setEditingNote(false)}
+                  className="text-brand hover:underline"
+                >
+                  Cancel
+                </button>
+              </div>
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Follow-up note…"
+                className="min-h-[70px] resize-none text-sm"
+                autoFocus
+              />
+              <div className="flex justify-end">
+                <Button
+                  disabled={deciding || !onNoteSave}
+                  onClick={async () => {
+                    if (!onNoteSave) return;
+                    await onNoteSave(note.trim());
+                    setEditingNote(false);
+                  }}
+                  className="bg-brand font-semibold text-white hover:bg-brand/90 !bg-none"
+                >
+                  {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Save note
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* ─ (c) Changing decision (or first-decide on AWAITING_REVIEW) ─ */}
+          {(!decided || changingDecision) && (
+            <>
+              {decided && changingDecision && (
+                <div className="flex items-center justify-between gap-2 text-[12.5px] font-medium text-muted-foreground">
+                  <span>Changing from <strong>{st.label.toLowerCase()}</strong>. Pick a different decision below.</span>
+                  <button
+                    type="button"
+                    onClick={() => setChangingDecision(false)}
+                    className="text-brand hover:underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Decision note (required when forwarding to a department)…"
+                className="min-h-[60px] resize-none text-sm"
+              />
+              {/* Compact right-aligned auto-width row. Each button hidden
+                  if it would be a no-op against the current status —
+                  matches the backend guard so a stray click can't fire. */}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {d.status !== "REVIEWED" && (
+                  <Button size="sm" disabled={deciding} onClick={() => onDecide("reviewed")}
+                    className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
+                    {deciding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Mark reviewed
+                  </Button>
+                )}
+                {d.status !== "FORWARDED" && (
+                  <Button size="sm" disabled={deciding} variant="outline" onClick={() => onDecide("forwarded")}
+                    className="border-sky-300 text-sky-700 hover:bg-sky-50 hover:text-sky-800">
+                    <Send className="h-3.5 w-3.5" /> Forward to department
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -593,9 +721,14 @@ function SimilarAssociationsPanel({
       right={
         <button
           onClick={() => { onToggle(); if (cands === null && !loading) onScan(); }}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className={cn(
+            "group inline-flex items-center gap-1.5 rounded-md border border-brand/60 bg-brand/10 px-3 py-1.5 text-[12.5px] font-semibold text-brand shadow-[0_0_0_3px_rgba(91,91,214,0.12)] ring-1 ring-brand/30 transition-all hover:-translate-y-0.5 hover:bg-brand/15 hover:shadow-[0_4px_12px_rgba(91,91,214,0.25)]",
+            // Pulse only while un-scanned so the invitation is loud on
+            // first landing; once results are known the button is quiet.
+            !open && cands === null && !loading && "motion-safe:animate-pulse-soft"
+          )}
         >
-          <SearchIcon className="h-3 w-3" />
+          <SearchIcon className="h-3.5 w-3.5 transition-transform group-hover:scale-110" />
           {open ? "Hide" : "Find similar"}
           {!loading && cands !== null && cands.length > 0 && (
             <span className="num rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
