@@ -210,9 +210,15 @@ export function ProposalDrawer({
     }
   }
   const ta = lang === "ta";
-  const L = useCallback((en?: string, taStr?: string) => {
-    if (ta && taStr && taStr.trim()) return taStr;
-    return (en || taStr || "").trim();
+  // Defensive: the extraction JSON is typed as strings but at runtime AI
+  // sometimes returns an array or object (partial extraction, prompt drift).
+  // Coerce non-strings to "" so a bad field can't crash the whole drawer
+  // with "trim is not a function".
+  const L = useCallback((en?: unknown, taStr?: unknown) => {
+    const enS   = typeof en === "string" ? en : "";
+    const taStrS = typeof taStr === "string" ? taStr : "";
+    if (ta && taStrS.trim()) return taStrS;
+    return (enS || taStrS || "").trim();
   }, [ta]);
 
   const ex: ProposalBrief = d.extraction || {};
@@ -747,18 +753,17 @@ export function ProposalDrawer({
                 placeholder="Decision note (required to reject or request more info)…"
                 className="min-h-[60px] resize-none text-sm"
               />
-              {/* Approve is the primary action — full-width, filled green.
-                  Request info + Reject are secondary — right-aligned,
-                  auto-width, distinct colours (sky for the inquiry action,
-                  red for the destructive one) so they don't read as
-                  duplicate destructive buttons. */}
-              {d.status !== "APPROVED" && (
-                <Button disabled={deciding} onClick={() => onDecide("approved")}
-                  className="w-full bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
-                  {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Approve proposal
-                </Button>
-              )}
+              {/* All three actions in one compact right-aligned row. Approve
+                  stays visually primary (filled emerald) but sized to
+                  content — no more full-width dominance. Request info uses
+                  sky-blue so it stops reading as a second Reject. */}
               <div className="flex flex-wrap items-center justify-end gap-2">
+                {d.status !== "APPROVED" && (
+                  <Button size="sm" disabled={deciding} onClick={() => onDecide("approved")}
+                    className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
+                    {deciding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Approve
+                  </Button>
+                )}
                 {d.status !== "NEEDS_CLARIFICATION" && (
                   <Button size="sm" disabled={deciding} variant="outline" onClick={() => onDecide("needs_clarification")}
                     className="border-sky-300 text-sky-700 hover:bg-sky-50 hover:text-sky-800">
