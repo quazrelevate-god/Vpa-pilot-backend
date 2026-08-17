@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Users2, UserRound, Users, MapPin, CalendarClock,
   Inbox, ShieldAlert, Search, Download, Sparkles,
-  Landmark, Building2, Flag, X, Layers,
+  Landmark, Building2, Flag, X, Layers, SlidersHorizontal,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useLang } from "@/lib/lang-context";
+import { useIsDesktop } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
@@ -160,6 +161,13 @@ export default function AssociationReviewPage() {
   // to associations the classifier routed from that specific batch — same
   // pattern as the ai-review page uses. Cleared via the chip button below.
   const [batchFilter, setBatchFilter] = useState<string>("");
+
+  // Filter chips row visibility — hidden by default on smaller-than-desktop
+  // screens so the list gets full width. Toggle reveals it in the same
+  // inline position on any size.
+  const isDesktop = useIsDesktop();
+  const [showFilters, setShowFilters] = useState(isDesktop);
+  useEffect(() => { setShowFilters(isDesktop); }, [isDesktop]);
 
   // Filter state — null when the chip is at "Any". Filters combine (AND) with
   // each other, with the active tab (status), and with the search text.
@@ -495,6 +503,23 @@ export default function AssociationReviewPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => setShowFilters((s) => !s)}
+                  className={cn(
+                    showFilters && "border-brand/50 bg-brand/5 text-brand",
+                    activeFilterCount > 0 && !showFilters && "border-brand/40 text-brand",
+                  )}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="ml-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand px-1 text-[10.5px] font-bold text-white tabular-nums">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={doExport}
                   disabled={exporting || total === 0}
                   title={total === 0 ? t("appts.exportNothing") : undefined}
@@ -505,7 +530,10 @@ export default function AssociationReviewPage() {
             </div>
 
             {/* Row 2 — filter chips. All AND with tabs + search. `activeFilterCount`
-                shows an inline Clear-all pill only when at least one chip is set. */}
+                shows an inline Clear-all pill only when at least one chip is set.
+                Hidden by default at ≤lg; reveal via the Filters button in the
+                toolbar. */}
+            {showFilters && (
             <div className="flex flex-wrap items-center gap-2">
               <FilterChip
                 icon={<Sparkles className="h-3.5 w-3.5" />}
@@ -566,6 +594,7 @@ export default function AssociationReviewPage() {
                 {total === 0 ? "0 results" : `${lo}–${hi} of ${total}`}
               </span>
             </div>
+            )}
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               {loading && !data ? (

@@ -15,6 +15,7 @@ import { motion } from "framer-motion";
 import TopBar from "@/components/TopBar";
 import PriorityBadge from "@/components/PriorityBadge";
 import { useLang } from "@/lib/lang-context";
+import { useIsDesktop } from "@/lib/use-media-query";
 import RescheduleModal from "@/components/RescheduleModal";
 import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
 import { Card } from "@/components/ui/card";
@@ -420,9 +421,15 @@ function AppointmentsPageInner() {
   const [apptDateTo, setApptDateTo] = useState("");
   const [activeChip, setActiveChip] = useState<QuickChip | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  // Filters rail visibility — open by default (this page has always shown its
-  // filters), but collapsible now so it matches Tickets / Petition Review.
-  const [showRail, setShowRail] = useState(true);
+  // Filters rail visibility — default OPEN only on desktop (≥xl 1280px);
+  // hidden on mobile/tablet/medium screens so the list gets full width by
+  // default and the reviewer pops the rail on demand via the Filters button.
+  // Rail stacks below the list on non-xl (existing behaviour).
+  const isDesktop = useIsDesktop();
+  const [showRail, setShowRail] = useState(isDesktop);
+  // Follow the viewport as it resizes across the xl boundary — only mirror
+  // the auto-open/close if the user hasn't manually toggled since mount.
+  useEffect(() => { setShowRail(isDesktop); }, [isDesktop]);
   const [exporting, setExporting] = useState(false);
 
   const [rescheduleFor, setRescheduleFor] = useState<{ id: number; name: string } | null>(null);

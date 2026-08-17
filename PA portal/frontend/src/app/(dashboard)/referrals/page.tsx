@@ -417,11 +417,11 @@ export default function ReferralsPage() {
               unreachable. min-h keeps the list visible; the page scrolls if it
               no longer fits. */}
           <Card className="overflow-hidden p-0 shadow-card-md xl:flex xl:min-h-[320px] xl:flex-1 xl:flex-col">
-            <div className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-4">
-              <Users className="h-4 w-4 text-brand" />
-              <h2 className="type-card-heading text-foreground">{t("ref.bookingsFor")} — {dateLabel}</h2>
-              <span className="ml-auto text-[13px] text-muted-foreground tabular-nums">{bookings.length} {t("ref.bookingCount")}</span>
-              <Button variant="outline" onClick={exportBookings} disabled={!bookings.length} className="h-9 rounded-xl">
+            <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-5 py-4">
+              <Users className="h-4 w-4 shrink-0 text-brand" />
+              <h2 className="type-card-heading min-w-0 truncate text-foreground">{t("ref.bookingsFor")} — {dateLabel}</h2>
+              <span className="ml-auto shrink-0 text-[13px] text-muted-foreground tabular-nums">{bookings.length} {t("ref.bookingCount")}</span>
+              <Button variant="outline" onClick={exportBookings} disabled={!bookings.length} className="h-9 shrink-0 rounded-xl">
                 <Download className="h-4 w-4 text-brand" /> {t("ref.export")}
               </Button>
             </div>

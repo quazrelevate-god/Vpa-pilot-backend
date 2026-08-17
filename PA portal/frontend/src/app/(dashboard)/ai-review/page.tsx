@@ -29,6 +29,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { useLang } from "@/lib/lang-context";
+import { useIsDesktop } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { uploadAppointmentAttachment } from "@/lib/api";
 import { MINISTRY_DISPLAY, DISTRICT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
@@ -557,7 +558,11 @@ function AiReviewPageInner() {
   const [dateChip, setDateChip] = useState<DateChip | null>(null);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"submitted_desc" | "submitted_asc" | "priority_desc">("submitted_desc");
-  const [showRail, setShowRail] = useState(true);
+  // Filters rail — default OPEN only on desktop (≥xl). Rail stacks below the
+  // list on non-xl (already handled by the existing grid switch).
+  const isDesktop = useIsDesktop();
+  const [showRail, setShowRail] = useState(isDesktop);
+  useEffect(() => { setShowRail(isDesktop); }, [isDesktop]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -1707,7 +1712,7 @@ function AiReviewPageInner() {
                 {/* Overview */}
                 <section className="rounded-2xl border border-border bg-card p-5 shadow-card">
                   <SectionHeader icon={LayoutGrid} title={t("petition.grpOverview")} />
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+                  <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
                     <Field label={editing ? t("petition.fNameEn") : t("petition.colName")} labelIcon={User} editing={editing} value={form.name} fallback={lang === "ta" && review.name_ta?.trim() ? review.name_ta : review.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
                     {/* Phone stays read-only for petitions — it's the OTP-verified, uniquely-indexed citizen mobile. */}
                     <Field label={t("petition.colPhone")} labelIcon={Phone} editing={editing && review._kind !== "petition"} value={form.mobile} fallback={review.mobile} onChange={v => setForm(f => ({ ...f, mobile: v }))} />

@@ -852,6 +852,17 @@
             .step-label { font-size: 0.78rem; }
             .step-line { width: 20px; }
         }
+        /* Very narrow phones (≤360px) — the fixed, centered stepper can clip
+           at both ends once the three labels + lines exceed the viewport,
+           especially with longer Tamil labels. Below this width, drop the
+           text labels and keep just the numbered circles + connectors, which
+           always fit (3×28px + 2 short lines). */
+        @media (max-width: 360px) {
+            .stepper { padding: 0.7rem 0.5rem; }
+            .step { gap: 0; }
+            .step-label { display: none; }
+            .step-line { width: 24px; }
+        }
     </style>
 </head>
 <body>

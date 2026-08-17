@@ -35,7 +35,11 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-card-lg rounded-xl",
+        // w-[calc(100%-2rem)] keeps a 1rem gutter each side on phones (was
+        // flush 100vw edge-to-edge below the max-w). max-h + overflow-y-auto
+        // lets a tall dialog scroll instead of pushing its footer/close off
+        // the viewport. Both cascade to every DialogContent consumer.
+        "fixed left-[50%] top-[50%] z-50 grid w-[calc(100%-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto border border-border bg-card p-6 shadow-card-lg rounded-xl",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-top-[2%] data-[state=open]:slide-in-from-top-[2%]",
         className
       )}

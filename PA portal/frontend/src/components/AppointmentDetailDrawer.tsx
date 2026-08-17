@@ -209,7 +209,7 @@ export default function AppointmentDetailDrawer({
                 : null;
               if (!cfg) return null;
               return (
-                <div className={cn("flex items-center justify-between gap-3 border-b border-border px-6 py-3", cfg.bg)}>
+                <div className={cn("flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-6", cfg.bg)}>
                   <div className="min-w-0">
                     <div className={cn("text-[11px] font-bold uppercase tracking-wider", cfg.tone)}>
                       {cfg.title}

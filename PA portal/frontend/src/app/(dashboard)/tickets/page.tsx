@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 import TopBar from "@/components/TopBar";
 import { useLang } from "@/lib/lang-context";
+import { useIsDesktop } from "@/lib/use-media-query";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -271,7 +272,7 @@ const TicketCard = memo(function TicketCard({
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(row.id); } }}
       className="w-full cursor-pointer rounded-xl border border-border bg-card p-3.5 text-left shadow-card transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <span className={cn("h-7 w-1 rounded-full", PRIORITY_RAIL[row.priority ?? ""] ?? "bg-transparent")} />
         <span className="font-mono text-sm font-semibold text-brand">{row.ticket_number}</span>
         {row.source_kind === "association" && (
@@ -347,7 +348,11 @@ export default function TicketsPage() {
   // resolve to Object.is-equal values, so the effect chain wouldn't re-run
   // and reverted/closed/reopened tickets stayed visible until manual refresh.
   const [refreshTick, setRefreshTick] = useState(0);
-  const [showRail, setShowRail] = useState(true);
+  // Filters rail — default OPEN only on desktop (≥xl). Rail stacks below the
+  // list on non-xl (already handled by the existing grid switch).
+  const isDesktop = useIsDesktop();
+  const [showRail, setShowRail] = useState(isDesktop);
+  useEffect(() => { setShowRail(isDesktop); }, [isDesktop]);
 
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [breachedCount, setBreachedCount] = useState(0);   // breached across all statuses

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Lightbulb, Building2, Sparkles, Inbox, ShieldAlert,
-  Search, Download, CalendarClock, X, Layers,
+  Search, Download, CalendarClock, X, Layers, SlidersHorizontal,
 } from "lucide-react";
 
 import TopBar from "@/components/TopBar";
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
+import { useIsDesktop } from "@/lib/use-media-query";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
   listProposals, getProposal, decideProposal, updateProposalNote,
@@ -148,6 +149,13 @@ export default function ProposalReviewPage() {
   const [recFilter,      setRecFilter]      = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [dateFilter,     setDateFilter]     = useState<string | null>(null);
+
+  // Filter chips row — hidden by default on smaller-than-desktop screens
+  // so the list gets full width. Toggle button (below) reveals it inline
+  // in the same position on any size.
+  const isDesktop = useIsDesktop();
+  const [showFilters, setShowFilters] = useState(isDesktop);
+  useEffect(() => { setShowFilters(isDesktop); }, [isDesktop]);
   const [dateFrom,       setDateFrom]       = useState<string>("");
   const [dateTo,         setDateTo]         = useState<string>("");
 
@@ -446,7 +454,24 @@ export default function ProposalReviewPage() {
                 />
               </div>
 
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowFilters((s) => !s)}
+                  className={cn(
+                    showFilters && "border-brand/50 bg-brand/5 text-brand",
+                    activeFilterCount > 0 && !showFilters && "border-brand/40 text-brand",
+                  )}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="ml-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand px-1 text-[10.5px] font-bold text-white tabular-nums">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -460,7 +485,9 @@ export default function ProposalReviewPage() {
             </div>
 
             {/* Filter chips — AND with tabs + search. Chip flips to a coloured
-                pill with an inline clear when a value is picked. */}
+                pill with an inline clear when a value is picked. Hidden by
+                default at ≤lg; reveal via the Filters button in the toolbar. */}
+            {showFilters && (
             <div className="flex flex-wrap items-center gap-2">
               <FilterChip
                 icon={<Sparkles className="h-3.5 w-3.5" />}
@@ -499,6 +526,7 @@ export default function ProposalReviewPage() {
                 {total === 0 ? "0 results" : `${lo}–${hi} of ${total}`}
               </span>
             </div>
+            )}
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               {loading && !data ? (

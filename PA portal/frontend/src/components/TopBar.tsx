@@ -1,9 +1,11 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { Menu } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { subscribeLoading, getLoadingSnapshot } from "@/lib/loading-bar";
+import { toggleSidebar } from "@/lib/sidebar-drawer";
 
 /** Indeterminate loading bar pinned to the header's bottom border. Shows while
  *  any API request is in flight (see lib/loading-bar). */
@@ -42,7 +44,17 @@ export default function TopBar({ rightSlot, searchSlot, title, subtitle, icon }:
   return (
     <header className="sticky top-0 z-30 h-20 flex-shrink-0 border-b border-border bg-card relative">
       <HeaderLoadingBar />
-      <div className="flex h-full items-center gap-4 px-6">
+      <div className="flex h-full items-center gap-3 px-4 sm:gap-4 sm:px-6">
+        {/* Hamburger — opens the sidebar drawer on mobile/tablet (< lg).
+            Hidden at lg+ where the sidebar is a permanent static column. */}
+        <button
+          type="button"
+          aria-label="Open menu"
+          onClick={toggleSidebar}
+          className="lg:hidden grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl border border-border bg-card text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         {/* Left — page identity. Default is the Nam Kural mark in the ivory
             + gold container that matches the Minister sidebar and Events
             top bar; callers that pass their own `icon` prop keep the

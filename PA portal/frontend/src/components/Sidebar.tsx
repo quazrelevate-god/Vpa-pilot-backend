@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import {
   CalendarDays, ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Clock, Ticket, Landmark, UserPlus, Sparkles, ClipboardCheck, QrCode,
-  BarChart3, Lightbulb, Users2, PieChart, Activity,
+  BarChart3, Lightbulb, Users2, PieChart, Activity, X,
   Settings as SettingsIcon,
 } from "lucide-react";
+import { subscribeSidebar, getSidebarSnapshot, closeSidebar } from "@/lib/sidebar-drawer";
+import { useMediaQuery } from "@/lib/use-media-query";
 
 /** Operations Center mark — four rounded nodes (Departments · MLAs · Ministers
  *  · Citizens) linked into a connected ring. Inherits currentColor. */
@@ -99,6 +101,19 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
     return () => mql.removeEventListener("change", apply);
   }, []);
 
+  // ── Mobile / tablet off-canvas drawer ──────────────────────────────────────
+  // Below lg (1024px) the sidebar is a fixed overlay opened by the hamburger
+  // in TopBar (shared state via the sidebar-drawer store). At lg+ it's a
+  // static in-flow column and the drawer state is irrelevant (CSS lg: classes
+  // pin it open). Content is always shown expanded inside the drawer, so labels
+  // render even when the desktop rail is collapsed.
+  const drawerOpen = useSyncExternalStore(subscribeSidebar, getSidebarSnapshot, () => false);
+  const isLargeUp = useMediaQuery("(min-width: 1024px)", true);
+  const showExpanded = isLargeUp ? expanded : true;
+
+  // Auto-close the drawer whenever the route changes (nav click on mobile).
+  useEffect(() => { closeSidebar(); }, [pathname]);
+
   useEffect(() => {
     const loadBadges = () => {
       fetchTicketsOpenCount().then(setOpenTickets).catch(() => {});
@@ -165,20 +180,35 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
   };
 
   return (
-    <aside
-      className={cn(
-        "aurora-sidebar relative flex flex-shrink-0 flex-col text-sidebar-foreground",
-        "transition-[width] duration-200 ease-out",
-        expanded ? "w-64" : "w-[72px]",
+    <>
+      {/* Mobile backdrop — click closes the drawer. lg:hidden so the desktop
+          static sidebar never dims the page behind it. */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[1px] lg:hidden"
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
       )}
-    >
+      <aside
+        className={cn(
+          "aurora-sidebar flex flex-col text-sidebar-foreground",
+          // < lg: off-canvas fixed drawer that slides in/out via translate.
+          "fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] shadow-2xl transition-transform duration-200 ease-out",
+          drawerOpen ? "translate-x-0" : "-translate-x-full",
+          // ≥ lg: static in-flow column — width transitions, no transform/shadow.
+          "lg:static lg:z-auto lg:max-w-none lg:flex-shrink-0 lg:translate-x-0 lg:shadow-none lg:transition-[width]",
+          expanded ? "lg:w-64" : "lg:w-[72px]",
+        )}
+      >
       {/* Brand — NamKural (links home) */}
       <div className="flex items-start gap-2 px-3 pb-4 pt-5">
         <Link
           href="/overview"
+          onClick={() => closeSidebar()}
           className={cn(
             "flex min-w-0 flex-1 items-center gap-3 rounded-xl transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            expanded ? "px-2" : "justify-center px-0",
+            showExpanded ? "px-2" : "justify-center px-0",
           )}
           title={`${t("brand.name")} — ${t("brand.tagline")}`}
         >
@@ -192,7 +222,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
             alt=""
             className="h-12 w-12 flex-shrink-0 rounded-full object-cover"
           />
-          {expanded && (
+          {showExpanded && (
             <span className="min-w-0 leading-tight">
               <span className="block truncate text-[15px] font-bold leading-snug tracking-tight text-foreground">
                 {t("brand.name")}
@@ -201,14 +231,24 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
             </span>
           )}
         </Link>
-        {/* Collapse / expand toggle — hidden on xl since the sidebar is pinned open there. */}
+        {/* Close button — mobile drawer only (< lg). */}
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={closeSidebar}
+          className="lg:hidden grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg border border-sidebar-border bg-white/70 text-muted-foreground transition-colors hover:bg-sidebar-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        {/* Collapse / expand rail toggle — desktop only (lg→xl). Hidden < lg
+            (drawer is always full) and ≥ xl (pinned open). */}
         <button
           type="button"
           aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
           aria-expanded={expanded}
           onClick={() => setExpanded((v) => !v)}
           className={cn(
-            "xl:hidden grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg border border-sidebar-border bg-white/70 text-muted-foreground transition-colors hover:bg-sidebar-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "hidden lg:grid xl:hidden h-8 w-8 flex-shrink-0 place-items-center rounded-lg border border-sidebar-border bg-white/70 text-muted-foreground transition-colors hover:bg-sidebar-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             !expanded && "mx-auto mt-1",
           )}
         >
@@ -218,7 +258,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
 
       {/* Nav */}
       <nav aria-label="Main navigation" className="nav-scroll-fade sidebar-scroll flex-1 overflow-y-auto px-3 pb-3 pt-1">
-        {expanded && (
+        {showExpanded && (
           <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
             {t("nav.menu")}
           </div>
@@ -231,14 +271,15 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
               <Link
                 key={href}
                 href={href}
-                title={expanded ? `${t(tKey)} — Alt+${i + 1}` : t(tKey)}
+                onClick={() => closeSidebar()}
+                title={showExpanded ? `${t(tKey)} — Alt+${i + 1}` : t(tKey)}
                 aria-current={active ? "page" : undefined}
                 aria-label={t(tKey)}
                 className={cn(
                   "group relative flex h-12 items-center rounded-[12px] text-sm font-medium",
                   "transition-colors duration-150",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                  expanded ? "gap-3 px-3.5" : "justify-center px-0",
+                  showExpanded ? "gap-3 px-3.5" : "justify-center px-0",
                   active
                     ? "text-[#FFFFFF]"
                     : "aurora-nav-item text-[#303446] hover:text-[#1E40AF]",
@@ -259,9 +300,9 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
                       : "text-[#4A4E5E] group-hover:translate-x-0.5 group-hover:text-[#1E40AF]",
                   )}
                 />
-                {expanded && <span className="relative z-[1] flex-1 truncate">{t(tKey)}</span>}
+                {showExpanded && <span className="relative z-[1] flex-1 truncate">{t(tKey)}</span>}
                 {badgeVal != null && badgeVal > 0 && (
-                  expanded ? (
+                  showExpanded ? (
                     <span
                       key={badgeVal}
                       aria-label={`${badgeVal} ${t(tKey)}`}
@@ -299,6 +340,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
             return (
               <Link
                 href={href}
+                onClick={() => closeSidebar()}
                 title={t(tKey)}
                 aria-current={active ? "page" : undefined}
                 aria-label={t(tKey)}
@@ -306,7 +348,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
                   "group relative flex h-12 items-center rounded-[12px] text-sm font-medium",
                   "transition-colors duration-150",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                  expanded ? "gap-3 px-3.5" : "justify-center px-0",
+                  showExpanded ? "gap-3 px-3.5" : "justify-center px-0",
                   active
                     ? "text-[#FFFFFF]"
                     : "aurora-nav-item text-[#303446] hover:text-[#1E40AF]",
@@ -327,7 +369,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
                       : "text-[#4A4E5E] group-hover:translate-x-0.5 group-hover:text-[#1E40AF]",
                   )}
                 />
-                {expanded && <span className="relative z-[1] flex-1 truncate">{t(tKey)}</span>}
+                {showExpanded && <span className="relative z-[1] flex-1 truncate">{t(tKey)}</span>}
               </Link>
             );
           })()}
@@ -336,7 +378,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
 
       {/* Foot — office card (language toggle now lives in the header) */}
       <div className="border-t border-sidebar-border p-3">
-        {expanded ? (
+        {showExpanded ? (
           <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 shadow-card">
             <div className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg bg-accent text-accent-foreground">
               <Landmark className="h-[18px] w-[18px]" />
@@ -401,6 +443,7 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
           </DropdownMenu>
         )}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
