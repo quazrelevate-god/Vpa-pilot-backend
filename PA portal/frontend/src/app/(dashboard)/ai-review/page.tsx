@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, Suspense, useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from "react";
+import { memo, Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
@@ -21,6 +21,7 @@ import { DateRangePill } from "@/components/ui/date-range-pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import AttachmentUploadDialog from "@/components/ui/attachment-upload-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -486,7 +487,8 @@ function AiReviewPageInner() {
   const [loading, setLoading] = useState(true);
   const [review, setReview] = useState<Upload | null>(null);
   const [editing, setEditing] = useState(false);
-  const reviewAttachRef = useRef<HTMLInputElement>(null);
+  const [attachDialogOpen, setAttachDialogOpen] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
   const [form, setForm] = useState<Partial<Upload>>({});
   const [busy, setBusy] = useState(false);
   // Dismiss confirmation — pretty Radix dialog instead of the browser's
@@ -904,25 +906,74 @@ function AiReviewPageInner() {
     } catch (e) { toast.error((e as Error).message || "Network error"); } finally { setBusy(false); }
   }
 
-  async function handleReviewAttach(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";               // allow re-picking the same file
-    if (!file || !review) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error(t("attach.tooLarge")); return; }
-    setBusy(true);
+  // Batch save: upload every staged file in parallel, then POST the optional
+  // comment. Partial failures keep the succeeded uploads (no atomic-file API)
+  // but re-throw so the dialog stays open with the failing files still
+  // visible for retry. The activity timeline picks up the events on its own
+  // via the new attachment_added / comment_added rows the backend emits.
+  async function saveAttachments(files: File[], comment: string) {
+    if (!review) return;
+    setAttachBusy(true);
     try {
-      const att = await uploadAppointmentAttachment(review.id, file);
-      setReview({
-        ...review,
-        attachments: [...(review.attachments ?? []),
-          { name: att.name, url: att.url, type: att.type as AppointmentAttachment["type"] }],
-      });
-      toast.success(t("attach.added"));
+      const uploaded = await Promise.all(files.map(async (f) => {
+        try {
+          const att = await uploadAppointmentAttachment(review.id, f);
+          return { ok: true as const, att, name: f.name };
+        } catch (e) {
+          return { ok: false as const, name: f.name, err: (e as Error).message };
+        }
+      }));
+
+      const okAtt = uploaded.filter((r) => r.ok);
+      const failed = uploaded.filter((r) => !r.ok);
+
+      // Merge every successful upload into the local review so the
+      // attachments strip refreshes without waiting for load() to round-trip.
+      if (okAtt.length) {
+        setReview({
+          ...review,
+          attachments: [
+            ...(review.attachments ?? []),
+            ...okAtt.map((r) => ({
+              name: r.att.name,
+              url:  r.att.url,
+              type: r.att.type as AppointmentAttachment["type"],
+            })),
+          ],
+        });
+      }
+
+      // Comment posts only if it survived trim() AND at least one file made
+      // it — otherwise a rejected batch would leave a note referencing files
+      // that never landed.
+      if (comment && okAtt.length) {
+        const res = await fetch(`/api/appointments/${review.id}/comment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ text: comment }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          toast.error(d.error || t("attach.uploadFailed"));
+        }
+      }
+
+      if (failed.length) {
+        toast.error(t("attach.uploadFailed"), {
+          description: failed.map((r) => r.name).join(", "),
+        });
+        // Re-throw so the dialog stays open for the user to retry — the
+        // successful files are already in the drawer, so the retry batch is
+        // just the failed ones (the user will re-add them from disk).
+        throw new Error("partial");
+      }
+
+      toast.success(`${okAtt.length} attached`);
+      setAttachDialogOpen(false);
       load();
-    } catch (err) {
-      toast.error((err as Error).message || t("attach.failed"));
     } finally {
-      setBusy(false);
+      setAttachBusy(false);
     }
   }
 
@@ -1639,19 +1690,17 @@ function AiReviewPageInner() {
                   </div>
                 </section>
 
-                {/* Add attachment — available while editing a petition */}
+                {/* Add attachments — opens the shared batch dialog */}
                 {editing && review._kind === "petition" && (
                   <section className="rounded-2xl border border-dashed border-border bg-card p-4 shadow-card">
-                    <input
-                      ref={reviewAttachRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      className="hidden"
-                      onChange={handleReviewAttach}
-                    />
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-[13px] text-muted-foreground">{t("attach.help")}</span>
-                      <Button size="sm" variant="outline" disabled={busy} onClick={() => reviewAttachRef.current?.click()}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy || attachBusy}
+                        onClick={() => setAttachDialogOpen(true)}
+                      >
                         <Paperclip className="mr-1.5 h-3.5 w-3.5" /> {t("attach.cta")}
                       </Button>
                     </div>
@@ -1932,6 +1981,16 @@ function AiReviewPageInner() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Shared attachment-upload dialog (petition edit mode). Mounted at
+          the page root so it lives alongside the other dialogs; its own
+          `open` state gates whether it renders anything. */}
+      <AttachmentUploadDialog
+        open={attachDialogOpen}
+        onOpenChange={setAttachDialogOpen}
+        onSave={saveAttachments}
+        busy={attachBusy}
+      />
     </>
   );
 }
