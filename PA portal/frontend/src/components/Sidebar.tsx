@@ -182,9 +182,16 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
           )}
           title={`${t("brand.name")} — ${t("brand.tagline")}`}
         >
-          <span className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-2xl border border-[#CFE0FB] bg-gradient-to-br from-white to-[#EAF1FE] text-[#1E40AF] shadow-[0_2px_8px_rgba(47,111,237,0.12)]">
-            <OpsLogo className="h-[22px] w-[22px]" />
-          </span>
+          {/* Nam Kural mark rendered as a bare circle — no ivory-gold window
+              wrapper. Larger footprint (h-12 w-12) than the previous 22px
+              icon-in-container so the mark reads clearly on the sidebar.
+              rounded-full clips the SVG into a proper circle. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/brand/namkural-icon.svg"
+            alt=""
+            className="h-12 w-12 flex-shrink-0 rounded-full object-cover"
+          />
           {expanded && (
             <span className="min-w-0 leading-tight">
               <span className="block truncate text-[15px] font-bold leading-snug tracking-tight text-foreground">

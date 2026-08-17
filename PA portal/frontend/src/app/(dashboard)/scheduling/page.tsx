@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Users, Clock, CheckCircle2, AlertCircle, CalendarClock, CalendarDays,
-  Lock, Unlock, RefreshCw, Plus, Info, ChevronRight, Trash2,
+  Lock, Unlock, RefreshCw, Plus, ChevronRight, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -339,10 +339,13 @@ export default function SchedulingPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">{t("sched.personsPerSlot")}</label>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" />
+                    {t("sched.personsPerSlot")}
+                  </label>
                   <Select value={String(maxCapacity)} onValueChange={(v) => setMaxCapacity(Number(v))}>
                     <SelectTrigger className="h-11 rounded-xl text-sm">
-                      <span className="flex items-center gap-2"><Users className="h-4 w-4 text-muted-foreground" /><SelectValue /></span>
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {PERSON_OPTIONS.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
@@ -464,11 +467,6 @@ export default function SchedulingPage() {
                 )}
               </div>
             </Card>
-          </div>
-
-          {/* Note */}
-          <div className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3 text-[13px] text-muted-foreground">
-            <Info className="h-4 w-4 shrink-0 text-brand" /> {t("sched.note")}
           </div>
         </div>
       </main>

@@ -42,7 +42,12 @@ export function middleware(req: NextRequest) {
   }
 
   // ── Crowd Management PWA: its own cookie (display_session) + login page ────────
-  if (pathname.startsWith("/crowd")) {
+  // Tighten to `/crowd` proper and `/crowd/*` so this branch doesn't swallow
+  // admin routes that happen to share the prefix — /crowd-qr in particular
+  // is the admin's crowd-QR page (fcb203a's added it to the matcher and the
+  // startsWith("/crowd") swallowed it, redirecting super_admins to
+  // /crowd/login instead of rendering the QR).
+  if (pathname === "/crowd" || pathname.startsWith("/crowd/")) {
     // API calls proxy straight to the backend, which enforces its own auth (401).
     // Never page-redirect them, or fetch() gets login HTML instead of JSON.
     if (pathname.startsWith("/crowd/api")) return NextResponse.next();
