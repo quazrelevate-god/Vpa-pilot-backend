@@ -1185,6 +1185,16 @@ async def _authorize_file_access(
     _deny = HTTPException(status_code=403, detail="Not authorized to access this file.")
     role = current.role
 
+    # ── super_admin bypass ────────────────────────────────────────────────────
+    # super_admin is the "see everything" role by contract, so the file server
+    # trusts them for any storage key — including orphaned rows (dangling
+    # files from cleanup runs) and legacy/unknown prefixes that predate the
+    # mapping below. Without this, the per-prefix existence checks and the
+    # fail-closed fallback would 403 super_admin on files they are supposed
+    # to see, breaking the invariant the role is defined by.
+    if role == ROLE_SUPER_ADMIN:
+        return
+
     # ── attachments/… — citizen submission uploads on an Appointment ──────────
     if file_path.startswith("attachments/"):
         appt_id = (await db.execute(
