@@ -48,8 +48,8 @@ export const STATUS_META: Record<string, { label: string; cls: string }> = {
 
 export const REC_META: Record<string, { label: string; cls: string; dot: string }> = {
   review_closely:  { label: "Review closely",      cls: "border-violet-300 bg-violet-50 text-violet-700",   dot: "bg-violet-500"  },
-  standard:        { label: "Ready to review",     cls: "border-emerald-300 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
-  needs_more_info: { label: "Needs clarification", cls: "border-amber-300 bg-amber-50 text-amber-700",     dot: "bg-amber-500"   },
+  standard:        { label: "Looks routine",       cls: "border-emerald-300 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
+  needs_more_info: { label: "Vague brief",         cls: "border-amber-300 bg-amber-50 text-amber-700",     dot: "bg-amber-500"   },
 };
 
 // ── formatters ────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ export function ProposalDrawer({
 }: ProposalDrawerProps) {
   const { lang } = useLang();
 
-  // Desk reassignment (section 9). Draft lives here until Save, so an
+  // Category reassignment (section 10). Draft lives here until Save, so an
   // accidental change to the picker never writes anything.
   const [catDraft, setCatDraft] = useState<string>(d.category ?? "");
   const [savingCat, setSavingCat] = useState(false);
@@ -173,12 +173,19 @@ export function ProposalDrawer({
   useEffect(() => { setCatDraft(d.category ?? ""); }, [d.id, d.category]);
   const catDirty = !!catDraft && catDraft !== (d.category ?? "");
 
+  // Sticky decision bar: once decided, hide the action buttons behind a
+  // "Change decision" toggle so a stray click can't accidentally re-stamp
+  // reviewed_by / reviewed_at on an already-decided proposal. Auto-collapses
+  // whenever the drawer switches to a different proposal.
+  const [changingDecision, setChangingDecision] = useState(false);
+  useEffect(() => { setChangingDecision(false); }, [d.id, d.status]);
+
   async function saveCategory() {
     if (!catDirty || savingCat) return;
     setSavingCat(true);
     try {
       const updated = await updateProposalCategory(d.id, catDraft);
-      toast.success("Desk updated", {
+      toast.success("Category updated", {
         description: `Moved to ${CATEGORY_LABEL[catDraft] ?? catDraft}.`,
       });
       onCategorySaved?.(updated);
@@ -271,8 +278,8 @@ export function ProposalDrawer({
             )}
             <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", st.cls)}>{st.label}</span>
             {rec && (
-              <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
-                <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
+              <span className={cn("inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-semibold", rec.cls)} title="AI's triage hint — not the reviewer's decision">
+                <Sparkles className="h-3 w-3" /> {rec.label}
               </span>
             )}
             {d.is_duplicate && (
@@ -372,8 +379,8 @@ export function ProposalDrawer({
             <SectionShell
               n={1} id="ai-brief" title="AI Assessment & Executive Brief"
               right={rec ? (
-                <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
-                  <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
+                <span className={cn("inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-semibold", rec.cls)} title="AI's triage hint — not the reviewer's decision">
+                  <Sparkles className="h-3 w-3" /> {rec.label}
                 </span>
               ) : undefined}
             >
@@ -476,7 +483,6 @@ export function ProposalDrawer({
               </ul>
             </SectionShell>
 
-            {/* 5 — Financial */}
             {/* 5 — Financial. Funding ask ALWAYS renders — an unstated cost is
                    itself a signal the Minister should see ("No cost mentioned"
                    rather than a hidden section). Contribution stays optional. */}
@@ -497,7 +503,7 @@ export function ProposalDrawer({
             <SectionShell n={6} id="ask" title="The ask" hidden={!specified(partnership) && !d.category}>
               <div className="space-y-3">
                 <div className="grid gap-2.5 sm:grid-cols-2">
-                  <Tile icon={<Landmark className="h-3 w-3" />} label="Portfolio" value={CATEGORY_LABEL[d.category ?? ""] ?? d.category ?? null} />
+                  <Tile icon={<Landmark className="h-3 w-3" />} label="Category" value={CATEGORY_LABEL[d.category ?? ""] ?? d.category ?? null} />
                 </div>
                 <Reading label="Partnership model" text={partnership} />
               </div>
@@ -544,13 +550,13 @@ export function ProposalDrawer({
               )}
             </SectionShell>
 
-            {/* 10 — Desk assignment. The only editable thing in this drawer,
-                    so it is hidden entirely in read-only mode. */}
+            {/* 10 — Category reassignment. The only editable thing in this
+                    drawer, so it is hidden entirely in read-only mode. */}
             {!readOnly && (
               <SectionShell
                 n={10}
-                id="desk"
-                title="Desk assignment"
+                id="category"
+                title="Category assignment"
                 right={
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                     <Pencil className="h-3 w-3" /> Editable
@@ -614,35 +620,81 @@ export function ProposalDrawer({
         </div>
       </div>
 
-      {/* Sticky decision bar — hidden in read-only mode. */}
+      {/* Sticky decision bar — hidden in read-only mode. Post-decision, the
+          three action buttons hide behind a "Change decision" toggle so a
+          stray click can't silently re-stamp reviewed_by / reviewed_at on an
+          already-decided proposal (backend also 409s the same-status no-op,
+          but the UI shouldn't offer it in the first place). */}
       {!readOnly && setNote && onDecide && (
         <div className="shrink-0 space-y-2.5 border-t border-border bg-card px-5 py-4 sm:px-7">
-          {decided && (
-            <div className="flex items-center gap-1.5 text-[12.5px] font-medium text-muted-foreground">
-              <Check className="h-3.5 w-3.5 text-emerald-600" />
-              Already {st.label.toLowerCase()} — you can change the decision below.
+          {decided && !changingDecision ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+              <div className="min-w-0 flex items-center gap-2 text-[13px]">
+                <Check className="h-4 w-4 shrink-0 text-emerald-600" />
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-foreground">
+                    {st.label}
+                    {d.reviewed_by && <span className="ml-1 text-muted-foreground"> · by {d.reviewed_by}</span>}
+                  </div>
+                  {d.decision_note && (
+                    <div className="mt-0.5 line-clamp-2 text-[12.5px] text-muted-foreground">{d.decision_note}</div>
+                  )}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setChangingDecision(true); setNote(d.decision_note ?? ""); }}
+                className="shrink-0"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Change decision
+              </Button>
             </div>
+          ) : (
+            <>
+              {decided && changingDecision && (
+                <div className="flex items-center justify-between gap-2 text-[12.5px] font-medium text-muted-foreground">
+                  <span>Changing from <strong>{st.label.toLowerCase()}</strong>. Pick a different decision below.</span>
+                  <button
+                    type="button"
+                    onClick={() => setChangingDecision(false)}
+                    className="text-brand hover:underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Decision note (required to reject or request more info)…"
+                className="min-h-[60px] resize-none text-sm"
+              />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {/* Each action button is hidden if it would be a no-op against
+                    the current status. Combined with the backend guard this
+                    means you can never click "Approve" on an approved row. */}
+                {d.status !== "APPROVED" && (
+                  <Button disabled={deciding} onClick={() => onDecide("approved")}
+                    className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
+                    {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Approve proposal
+                  </Button>
+                )}
+                {d.status !== "NEEDS_CLARIFICATION" && (
+                  <Button disabled={deciding} variant="outline" onClick={() => onDecide("needs_clarification")}
+                    className="border-orange-300 text-orange-700 hover:bg-orange-50">
+                    <HelpCircle className="h-4 w-4" /> Request info
+                  </Button>
+                )}
+                {d.status !== "REJECTED" && (
+                  <Button disabled={deciding} variant="outline" onClick={() => onDecide("rejected")}
+                    className="border-red-300 text-red-700 hover:bg-red-50">
+                    <X className="h-4 w-4" /> Reject
+                  </Button>
+                )}
+              </div>
+            </>
           )}
-          <Textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Decision note (required to reject or request clarification)…"
-            className="min-h-[60px] resize-none text-sm"
-          />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Button disabled={deciding} onClick={() => onDecide("approved")}
-              className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
-              {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Approve proposal
-            </Button>
-            <Button disabled={deciding} variant="outline" onClick={() => onDecide("needs_clarification")}
-              className="border-orange-300 text-orange-700 hover:bg-orange-50">
-              <HelpCircle className="h-4 w-4" /> Request clarification
-            </Button>
-            <Button disabled={deciding} variant="outline" onClick={() => onDecide("rejected")}
-              className="border-red-300 text-red-700 hover:bg-red-50">
-              <X className="h-4 w-4" /> Reject
-            </Button>
-          </div>
         </div>
       )}
     </div>

@@ -51,8 +51,8 @@ const CATEGORY_OPTIONS: { value: string; label: string }[] = [
 
 const REC_OPTIONS: { value: string; label: string }[] = [
   { value: "review_closely",  label: "Review closely" },
-  { value: "standard",        label: "Ready to review" },
-  { value: "needs_more_info", label: "Needs clarification" },
+  { value: "standard",        label: "Looks routine" },
+  { value: "needs_more_info", label: "Vague brief" },
 ];
 
 const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
@@ -445,13 +445,13 @@ export default function ProposalReviewPage() {
             <div className="flex flex-wrap items-center gap-2">
               <FilterChip
                 icon={<Sparkles className="h-3.5 w-3.5" />}
-                label="AI"
+                label="AI hint"
                 value={recFilter} onValue={setRecFilter}
                 options={REC_OPTIONS}
               />
               <FilterChip
                 icon={<Building2 className="h-3.5 w-3.5" />}
-                label="Portfolio"
+                label="Category"
                 value={categoryFilter} onValue={setCategoryFilter}
                 options={CATEGORY_OPTIONS}
               />
@@ -577,8 +577,8 @@ function ProposalCard({ p, selected, onOpen }: {
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         {rec ? (
-          <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold", rec.cls)}>
-            <span className={cn("h-1.5 w-1.5 rounded-full", rec.dot)} />{rec.label}
+          <span className={cn("inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-semibold", rec.cls)} title="AI's triage hint — not the reviewer's decision">
+            <Sparkles className="h-3 w-3" /> {rec.label}
           </span>
         ) : <span />}
         <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", st.cls)}>{st.label}</span>

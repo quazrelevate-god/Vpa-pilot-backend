@@ -342,9 +342,23 @@ async def decide_proposal(
             status_code=409,
             detail=f"Proposal is '{row.status}' — it can only be decided once its brief is ready (AWAITING_REVIEW).",
         )
+    # Guard the no-op self-transition (APPROVED → APPROVED etc.). Without this
+    # a stray click on an already-decided row silently re-stamps reviewed_by /
+    # reviewed_at with no audit trail. Cross-decision transitions (approved →
+    # rejected, rejected → approved) stay allowed by design.
+    if row.status == target:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Proposal is already '{target}' — nothing to change.",
+        )
 
     row.status = target
-    row.decision_note = (body.note or "").strip() or None
+    # Preserve the previous decision_note if the caller didn't send one.
+    # Only overwrite when the body explicitly carried a `note` field so a
+    # re-decision without a note doesn't wipe the reason from the prior
+    # decision (partial audit history until we add a proper event log).
+    if body.note is not None:
+        row.decision_note = body.note.strip() or None
     row.reviewed_by = getattr(current, "full_name", None) or getattr(current, "login_name", None) or f"login:{current.id}"
     row.reviewed_at = now_utc()
     await db.commit()
