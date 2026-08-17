@@ -716,6 +716,31 @@ async def api_add_appointment_attachment(
         result = await dashboard_service.add_case_attachment(
             db, appointment_id, file.filename or "file", raw,
             file.content_type or "application/octet-stream",
+            actor=user,
+        )
+    except ValueError as e:
+        await db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if result is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse(result)
+
+
+@router.post("/api/appointments/{appointment_id}/comment", dependencies=[Depends(_no_dept_officer)])
+async def api_add_appointment_comment(
+    appointment_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(require_auth),
+):
+    """PA-authored note on a petition/appointment. Logs one Activity row
+    (event_type=comment_added) so the timeline shows who left the note and
+    when. Called alongside attachment uploads by the "Save" step of the new
+    upload dialog."""
+    body = await request.json()
+    try:
+        result = await dashboard_service.add_appointment_comment(
+            db, appointment_id, actor=user, text=body.get("text", ""),
         )
     except ValueError as e:
         await db.rollback()
@@ -1002,6 +1027,7 @@ async def api_add_ticket_attachment(
         result = await dashboard_service.add_case_attachment(
             db, appointment_id, file.filename or "file", raw,
             file.content_type or "application/octet-stream",
+            actor=current.login_name, ticket_id=ticket_id,
         )
     except ValueError as e:
         await db.rollback()

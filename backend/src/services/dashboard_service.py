@@ -975,12 +975,21 @@ async def appointment_id_for_ticket(db: AsyncSession, ticket_id: int) -> Optiona
 
 async def add_case_attachment(
     db: AsyncSession, appointment_id: int, filename: str, raw: bytes, mime: str,
+    *,
+    actor: str = "pa_admin",
+    ticket_id: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """Attach a PA-uploaded file (≤5 MB, image/PDF) to a case's appointment.
 
     Stored in the same per-token folder as the citizen's own media so the
     petition review and the ticket detail both surface it. Raises ValueError on
     a bad type/size; returns None if the appointment doesn't exist.
+
+    Emits one `attachment_added` Activity row so uploads appear in the
+    timeline. `ticket_id` is set when the upload came from the ticket drawer
+    so the event also surfaces in the ticket-side timeline (which queries
+    Activity by ticket_id, not appointment_id). Falls back to the generic
+    "pa_admin" actor for older callers that don't thread the login through.
     """
     import asyncio
     import secrets
@@ -1018,13 +1027,53 @@ async def add_case_attachment(
         mime_type=mime,
     )
     db.add(att)
+    display_name = Path(storage_url).name
+    # Timeline event — carries both FKs when uploaded via a ticket so the
+    # activity surfaces on the ticket detail (queries by ticket_id) as well
+    # as the petition drawer (queries by appointment_id).
+    db.add(Activity(
+        appointment_id=appt.id,
+        ticket_id=ticket_id,
+        user=actor,
+        action_type="attachment_added",
+        message=None,
+        payload={
+            "filename": display_name,
+            "mime": mime,
+            "size": len(raw),
+        },
+    ))
     await db.commit()
     return {
         "url": get_file_url(storage_url),
         "type": attachment_type,
         "mime": mime,
-        "name": Path(storage_url).name,
+        "name": display_name,
     }
+
+
+async def add_appointment_comment(
+    db: AsyncSession, appointment_id: int, actor: str, text: str,
+) -> Optional[Dict[str, Any]]:
+    """PA-authored note attached to an appointment. Logs one Activity row.
+
+    Mirrors ticket_service.add_comment so the "upload → preview + comment →
+    Save" dialog can call it alongside the attachment uploads. No comment
+    table — the note lives in Activity.message, which is what the timeline
+    reads anyway. Returns None if the appointment doesn't exist; raises
+    ValueError on empty text.
+    """
+    if not text or not text.strip():
+        raise ValueError("Comment text is required.")
+    appt = await db.get(Appointment, appointment_id)
+    if appt is None:
+        return None
+    _log_appt_event(
+        db, appointment_id, "comment_added",
+        actor=actor, note=text.strip(),
+    )
+    await db.commit()
+    return {"ok": True}
 
 
 async def update_appointment_derived_fields(
