@@ -6,7 +6,7 @@ import {
   ClipboardCheck, RefreshCw, Check, Pencil, X, FileText, Search,
   AlertTriangle, Clock, Loader2, Ticket as TicketIcon, Phone, ShieldAlert,
   QrCode, ScanLine, UserCog, SlidersHorizontal, Forward, ChevronLeft, ChevronRight,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, CalendarDays,
+  ArrowUpDown, ArrowUp, ArrowDown, ArrowRight, Download, CalendarDays,
   CalendarCheck, CalendarRange, HelpCircle, LayoutGrid, User, Tag, BarChart3, Building2, MapPin,
   Mail, Landmark, Archive, Paperclip, Layers, RotateCcw, Route, Undo2, ExternalLink,
 } from "lucide-react";
@@ -117,6 +117,10 @@ interface InboxRow {
   ticket_number: string | null;
   summary: string | null;       // citizen's ask ("what they want") shown in the list
   summary_ta: string | null;
+  // Downstream destination for ROUTED uploads. Drives the list row's
+  // "→ Proposal" / "→ Association" badge so a reviewer can see at a glance
+  // where each routed scan went without opening the drawer.
+  routed_to: "proposal" | "association" | null;
   upload?: Upload;
   petition?: AppointmentRow;
 }
@@ -313,6 +317,23 @@ function pageList(current: number, last: number): (number | "…")[] {
   return out;
 }
 
+// Compact "→ Proposal" / "→ Association" badge for ROUTED uploads in the
+// list view. Occupies the Category cell where the label would otherwise be
+// blank (routed rows never got a category — the classifier redirected them
+// out of the petition workflow instead). Colors are distinct at a glance
+// without competing with the source pill or priority chip.
+function RoutedBadge({ to }: { to: "proposal" | "association" }) {
+  const cls = to === "proposal"
+    ? "bg-violet-50 text-violet-700 ring-1 ring-violet-200"
+    : "bg-teal-50 text-teal-700 ring-1 ring-teal-200";
+  const label = to === "proposal" ? "Proposal" : "Association";
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-bold uppercase tracking-wide", cls)}>
+      <ArrowRight className="h-3 w-3" /> {label}
+    </span>
+  );
+}
+
 const InboxTableRow = memo(function InboxTableRow({
   row, t, lang, active, onOpen,
 }: {
@@ -363,7 +384,11 @@ const InboxTableRow = memo(function InboxTableRow({
           </span>
         ) : <span className="text-muted-foreground/40">—</span>}
       </td>
-      <td className="px-4 py-4 text-[15px] font-semibold text-foreground">{catLabel(row.categoryKey, lang)}</td>
+      <td className="px-4 py-4 text-[15px] font-semibold text-foreground">
+        {row.routed_to
+          ? <RoutedBadge to={row.routed_to} />
+          : catLabel(row.categoryKey, lang)}
+      </td>
       <td className="px-4 py-4">
         {row.priority
           ? <span className={cn("rounded-md px-2 py-0.5 text-[12px] font-bold uppercase", PRIORITY_CLS[row.priority])}>{row.priority}</span>
@@ -424,9 +449,11 @@ const InboxCard = memo(function InboxCard({
             {row.priority && (
               <span className={cn("rounded px-2 py-0.5 text-[13px] font-semibold uppercase", PRIORITY_CLS[row.priority])}>{row.priority}</span>
             )}
-            {row.categoryKey && (
-              <span className="text-sm text-muted-foreground">{catLabel(row.categoryKey, lang)}</span>
-            )}
+            {row.routed_to
+              ? <RoutedBadge to={row.routed_to} />
+              : row.categoryKey && (
+                <span className="text-sm text-muted-foreground">{catLabel(row.categoryKey, lang)}</span>
+              )}
           </div>
           {row.ticket_number && (
             <div className="mt-2 font-mono text-sm text-emerald-600">{row.ticket_number}</div>
@@ -772,6 +799,7 @@ function AiReviewPageInner() {
           priority: u.priority, statusKey: u.status, source: u.source || "ai_scan", venue: null, venue_label: null,
           created_at: u.created_at, ticket_number: u.ticket_number,
           summary: u.citizen_ask ?? (routed ? u.filename : null), summary_ta: u.citizen_ask_ta ?? null,
+          routed_to: routed ? (u.routed_to ?? null) : null,
           upload: u,
         };
       }
@@ -783,6 +811,7 @@ function AiReviewPageInner() {
         statusKey: petitionStatusKey(p.status), source: p.source || "qr_citizen", venue: p.venue ?? null, venue_label: p.venue_label ?? null,
         created_at: p.created_at, ticket_number: null,
         summary: p.citizen_ask ?? null, summary_ta: p.citizen_ask_ta ?? null,
+        routed_to: null, // petitions never routed out
         petition: p,
       };
     });
