@@ -393,13 +393,17 @@ export default function TicketsPage() {
     category, search, dateFrom, dateTo,
   }), [priority, deptParams, showAssignedDeptFilter, assignedDept, showSourceFilter, sourceValue, category, search, dateFrom, dateTo]);
 
-  // Scope for the STATUS TAB PILLS and the SLA-BREACHED CHIP. Only the
-  // structural filters (search + date) narrow the universe here — refinement
-  // filters (priority / ministry / department / source / category) narrow the
-  // LIST but MUST NOT collapse the pill counts. Otherwise picking "high"
-  // priority makes Open jump from 5 → 1, Closed from 4 → 0, etc., which reads
-  // like the tickets vanished. Tabs are meant to be a stable universe view;
-  // the active refinement filter is already legible via its own badge/pill.
+  // Scope for the STATUS TAB PILLS. Only the structural filters (search +
+  // date) narrow the universe — refinement filters (priority / ministry /
+  // department / source / category) narrow the LIST but MUST NOT collapse
+  // the pill counts. Otherwise picking "high" priority makes Open jump
+  // from 5 → 1, Closed from 4 → 0, etc., which reads like the tickets
+  // vanished. Tabs are meant to be a stable universe view; the active
+  // refinement filter is already legible via its own badge/pill.
+  //
+  // The SLA-BREACHED CHIP used to share this scope but is now filter-aware
+  // (uses `secondary` + status below) so the count matches the current view
+  // — user asked for WYSIWYG.
   const pillScope = useMemo<Omit<TicketListFilters, "status" | "page">>(() => ({
     search, dateFrom, dateTo,
   }), [search, dateFrom, dateTo]);
@@ -470,20 +474,18 @@ export default function TicketsPage() {
     return () => ctrl.abort();
   }, [loadCounts]);
 
-  // Breached count — server-computed (H5 fix). Was previously client-side:
-  // fetched page 1 and Python-filtered with isBreached(), so it silently
-  // understated once the queue crossed 25 tickets. The new endpoint counts
-  // across all statuses honouring only the "structural" filters (search +
-  // date), same intent as before — a stable "how many need SLA attention"
-  // number that doesn't collapse to 0 when the user narrows by priority
-  // /ministry/etc. Dept scope is applied server-side via the session.
+  // Breached count — server-computed, filter-aware. Reflects the SAME set
+  // of filters the list uses (secondary) plus the active status tab, so
+  // the header chip's number matches what you'll actually see. Chip greys
+  // out on 0 (existing styling — the branch just triggers naturally now
+  // instead of only in the office-wide "everything is fine" case).
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchTicketBreachCount({ search, dateFrom, dateTo }, ctrl.signal)
+    fetchTicketBreachCount({ ...secondary, status }, ctrl.signal)
       .then((n) => { if (!ctrl.signal.aborted) setBreachedCount(n); })
       .catch(() => {});
     return () => ctrl.abort();
-  }, [search, dateFrom, dateTo]);
+  }, [secondary, status]);
 
   // Aurora Recall — ⌘K focuses the header search from anywhere.
   useEffect(() => {
@@ -646,11 +648,14 @@ export default function TicketsPage() {
                 </button>
               ))}
               <button
-                // Acts as an action, not a passive toggle: jump to the All tab
-                // and filter to breached; click again to clear.
+                // Pure toggle — since the count is filter-aware (WYSIWYG),
+                // preserving the reviewer's filters when they click makes
+                // the number match what they actually see. Previously this
+                // cleared status/dept/category, which would have surfaced
+                // extra rows the greyed-out "0" chip promised weren't there.
                 onClick={() => {
-                  if (breachedOnly) { setBreachedOnly(false); setPage(1); return; }
-                  setStatus(""); setDeptValue(""); setCategory(""); setBreachedOnly(true); setPage(1);
+                  setBreachedOnly((v) => !v);
+                  setPage(1);
                 }}
                 className={cn(
                   "inline-flex h-[38px] items-center gap-1.5 rounded-xl border px-3.5 text-sm font-semibold transition-colors",

@@ -464,24 +464,36 @@ async def get_ticket_breach_count(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     department: Optional[str] = None,
+    priority: Optional[str] = None,
+    ministry: Optional[str] = None,
+    category: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+    forwarded_to_dept: Optional[str] = None,
+    source: Optional[str] = None,
+    status: Optional[str] = None,   # restrict to a single status; "" / None = all
 ) -> int:
     """Server-side SLA-breach count for the tickets header badge.
 
-    Used to be computed client-side by fetching page 1 of tickets and
-    filtering with isBreached() in Python — silently understated once the
-    table crossed 25 rows. Now a single COUNT query over every ticket in
-    scope: not resolved/closed AND age >= priority's SLA threshold.
+    Filter semantics: honours the SAME axes as list_tickets / get_ticket_counts
+    (search, date, dept scope, priority, ministry, category, assigned_to,
+    forwarded_to_dept, source, status) so the badge always reflects the
+    currently visible filter set — WYSIWYG.
 
-    Honours only the "structural" filters (search + date + dept scope);
-    priority/ministry/category are deliberately IGNORED so the badge stays
-    a stable "how many SLA breaches" number that doesn't collapse to 0
-    when the user narrows by an unrelated axis. Same behaviour the
-    previous client-side version tried to express.
+    Prior version deliberately ignored priority/ministry/category to keep the
+    number a stable "how many SLA breaches office-wide" signal (H5 rationale),
+    but reviewers found the disconnect between the filtered table and the
+    header count misleading — a red "24" over a filtered view showing 0
+    breached rows. Filter-aware is now the contract; the chip's click flow
+    was simplified in the frontend to a pure toggle so the count matches
+    what you'll actually see after clicking.
 
-    Search follows the decrypt-and-bucket pattern used elsewhere: run
-    the SQL breach filter first (usually a small set), then Python-filter
-    for the encrypted / bilingual fields. Cheap because breach scope is
-    naturally small (open tickets past their SLA).
+    Still applies status.notin_(resolved, closed) as a floor — resolved /
+    closed tickets aren't "actively breaching" regardless of their age. If a
+    caller passes status="resolved" or "closed", the result is naturally 0.
+
+    Search follows the decrypt-and-bucket pattern: run the SQL breach filter
+    first (usually a small set), then Python-filter for the encrypted /
+    bilingual fields. Cheap because breach scope is naturally small.
     """
     now = now_utc()
     # OR-of-ANDs over the four priority buckets → tickets whose age matches
@@ -514,6 +526,30 @@ async def get_ticket_breach_count(
         stmt = stmt.where(Ticket.created_at >= _ist_start(date_from))
     if date_to:
         stmt = stmt.where(Ticket.created_at < _ist_end(date_to))
+    if assigned_to:
+        stmt = stmt.where(Ticket.assigned_to_pa == assigned_to)
+    if forwarded_to_dept:
+        stmt = stmt.where(Ticket.forwarded_to_dept == forwarded_to_dept)
+    if source:
+        # Source lives on the Appointment — subquery to keep it a set membership.
+        stmt = stmt.where(
+            Ticket.appointment_id.in_(
+                select(Appointment.id).where(Appointment.source == source)
+            )
+        )
+    if status:
+        # Caller wants breach count for a specific status tab. The
+        # notin_(resolved, closed) floor in the base stmt still applies,
+        # so status="resolved" / "closed" collapse to 0 naturally.
+        stmt = stmt.where(Ticket.status == status)
+    # priority is already constrained by the breach_clause (one bucket per
+    # SLA threshold); a caller-supplied priority narrows it further.
+    if priority:
+        stmt = stmt.where(GrievanceSummaryRecord.priority == priority)
+    if ministry:
+        stmt = stmt.where(GrievanceSummaryRecord.ministry == ministry)
+    if category:
+        stmt = stmt.where(GrievanceSummaryRecord.category == category)
 
     q = search.strip().lower() if (search and search.strip()) else None
     if q is None:

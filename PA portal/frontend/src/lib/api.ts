@@ -158,20 +158,32 @@ export async function fetchTicketsCounts(
   return r.json();
 }
 
-// Server-side SLA-breach count for the tickets header badge (H5 fix).
-// Only structural filters — search + date + dept — so the number stays a
-// stable "how many need SLA attention" figure and doesn't collapse when the
-// user narrows by priority/ministry/category. Previously the client fetched
-// page 1 and Python-filtered, silently understating past 25 rows.
+// Server-side SLA-breach count for the tickets header badge. Filter-aware:
+// the badge reflects whatever filter + status the user is currently viewing
+// (WYSIWYG). Chip greys out at 0. Prior behaviour was a stable office-wide
+// number but reviewers found the disconnect between the filtered table and
+// the header count misleading (red "24" over a filtered view showing 0).
 export async function fetchTicketBreachCount(
-  f: { search?: string; dateFrom?: string; dateTo?: string; department?: string },
+  f: {
+    search?: string; dateFrom?: string; dateTo?: string;
+    department?: string; priority?: string; ministry?: string; category?: string;
+    assignedTo?: string; forwardedToDept?: string; source?: string;
+    status?: string;
+  },
   signal?: AbortSignal,
 ): Promise<number> {
   const p = new URLSearchParams();
-  if (f.search)     p.set("search",     f.search);
-  if (f.dateFrom)   p.set("date_from",  f.dateFrom);
-  if (f.dateTo)     p.set("date_to",    f.dateTo);
-  if (f.department) p.set("department", f.department);
+  if (f.search)           p.set("search",             f.search);
+  if (f.dateFrom)         p.set("date_from",          f.dateFrom);
+  if (f.dateTo)           p.set("date_to",            f.dateTo);
+  if (f.department)       p.set("department",         f.department);
+  if (f.priority)         p.set("priority",           f.priority);
+  if (f.ministry)         p.set("ministry",           f.ministry);
+  if (f.category)         p.set("category",           f.category);
+  if (f.assignedTo)       p.set("assigned_to",        f.assignedTo);
+  if (f.forwardedToDept)  p.set("forwarded_to_dept",  f.forwardedToDept);
+  if (f.source)           p.set("source",             f.source);
+  if (f.status)           p.set("status",             f.status);
   const r = await fetch(`/api/tickets/breach_count?${p.toString()}`, { credentials: "include", cache: "no-store", signal });
   if (!r.ok) throw new Error(`ticket breach_count ${r.status}: ${await r.text()}`);
   const data = await r.json();

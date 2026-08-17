@@ -905,13 +905,22 @@ async def api_ticket_breach_count(
     date_from: str = "",
     date_to: str = "",
     department: str = "",
+    priority: str = "",
+    ministry: str = "",
+    category: str = "",
+    assigned_to: str = "",
+    forwarded_to_dept: str = "",
+    source: str = "",
+    status: str = "",
     db: AsyncSession = Depends(get_db),
     current: Login = Depends(get_current_login),
 ):
-    """Server-side SLA-breach count for the tickets header badge (H5 fix).
-    Was computed client-side by fetching page 1 and filtering — silently
-    understated once the queue crossed 25 tickets. Must be declared BEFORE
-    /{ticket_id} or FastAPI fails to parse "breach_count" as int.
+    """Server-side SLA-breach count for the tickets header badge.
+
+    Filter-aware: honours the same axes as list_tickets so the badge count
+    always matches the current view (WYSIWYG). Chip greys out on 0 in the
+    frontend. Must be declared BEFORE /{ticket_id} or FastAPI fails to
+    parse "breach_count" as int.
     """
     count = await ticket_service.get_ticket_breach_count(
         db,
@@ -919,6 +928,13 @@ async def api_ticket_breach_count(
         date_from=date_from or None,
         date_to=date_to or None,
         department=_effective_department(current, department),
+        priority=priority or None,
+        ministry=ministry or None,
+        category=category or None,
+        assigned_to=assigned_to or None,
+        forwarded_to_dept=forwarded_to_dept or None,
+        source=source or None,
+        status=status or None,
     )
     return JSONResponse({"breached": count})
 
