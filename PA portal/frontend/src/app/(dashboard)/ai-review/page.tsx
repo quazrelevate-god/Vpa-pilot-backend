@@ -1600,7 +1600,15 @@ function AiReviewPageInner() {
                   {review.status === "AWAITING_REVIEW" && (
                     editing
                       ? <>
-                          <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>{t("petition.cancel")}</Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditing(false)}
+                            disabled={busy}
+                            className="border-dashed border-destructive/60 text-destructive hover:border-destructive hover:bg-destructive/10 hover:text-destructive hover:-translate-y-0.5 hover:shadow-sm transition-all"
+                          >
+                            <X className="mr-1.5 h-3.5 w-3.5" /> {t("petition.cancel")}
+                          </Button>
                           <Button size="sm" variant="outline" onClick={saveEdits} disabled={busy}><Check className="mr-1.5 h-3.5 w-3.5" /> {t("petition.saveLabel")}</Button>
                         </>
                       : <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Pencil className="mr-1.5 h-3.5 w-3.5" /> {t("petition.editLabel")}</Button>
