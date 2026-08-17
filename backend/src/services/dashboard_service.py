@@ -1036,7 +1036,10 @@ async def add_case_attachment(
         ticket_id=ticket_id,
         user=actor,
         action_type="attachment_added",
-        message=None,
+        # Put the filename into `message` so the timeline's default
+        # note-render (TicketDetailDrawer.renderEventBody's fallback branch)
+        # already displays it — no per-event-type UI branch needed.
+        message=display_name,
         payload={
             "filename": display_name,
             "mime": mime,
