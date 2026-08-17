@@ -1,7 +1,6 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { ShieldCheck } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 import { subscribeLoading, getLoadingSnapshot } from "@/lib/loading-bar";
@@ -39,17 +38,33 @@ export default function TopBar({ rightSlot, searchSlot, title, subtitle, icon }:
   const { lang, setLang, t } = useLang();
   const headerTitle = title ?? t("topbar.title");
   const headerSubtitle = subtitle ?? t("topbar.subtitle");
-  const headerIcon = icon ?? <ShieldCheck className="h-4 w-4" />;
 
   return (
     <header className="sticky top-0 z-30 h-20 flex-shrink-0 border-b border-border bg-card relative">
       <HeaderLoadingBar />
       <div className="flex h-full items-center gap-4 px-6">
-        {/* Left — page identity */}
+        {/* Left — page identity. Default is the Nam Kural mark in the ivory
+            + gold container that matches the Minister sidebar and Events
+            top bar; callers that pass their own `icon` prop keep the
+            neutral brand-shield container so page-specific icons
+            (Association Dashboard's Users, etc.) still read right. */}
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl border border-border bg-card text-brand shadow-card">
-            {headerIcon}
-          </div>
+          {icon ? (
+            <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl border border-border bg-card text-brand shadow-card">
+              {icon}
+            </div>
+          ) : (
+            <span
+              className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl"
+              style={{
+                background: "rgba(233,184,76,0.12)",
+                boxShadow: "inset 0 0 0 1px rgba(233,184,76,0.28)",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/namkural-icon.svg" alt="" className="h-6 w-6" />
+            </span>
+          )}
           <div className="min-w-0 leading-tight">
             <div className="type-page-title truncate text-foreground">
               {headerTitle}
