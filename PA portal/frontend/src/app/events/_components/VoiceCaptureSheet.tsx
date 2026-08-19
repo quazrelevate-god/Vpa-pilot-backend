@@ -69,11 +69,13 @@ export default function VoiceCaptureSheet({
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
   const mimeRef = useRef<string>("");
-  // Guards a double-tap on Send. A ref (not state) because we don't want a
-  // re-render — the sheet is about to unmount anyway. Reset would only ever
-  // matter if send throws synchronously before the sheet closes; the
-  // fetch runs inside an IIFE so the ref is set true, sheet closes, done.
+  // Guards a double-tap on Send. Stays true through the optimistic
+  // send-and-close, and is cleared when the sheet is re-opened for a fresh
+  // recording. (The sheet is NOT unmounted between opens — CaptureFab keeps
+  // it mounted with an `open` prop — so without this reset the ref latched
+  // true after the first send and silently killed every voice memo after it.)
   const sendingRef = useRef(false);
+  useEffect(() => { if (open) sendingRef.current = false; }, [open]);
 
   // Preview URL lifecycle
   useEffect(() => {

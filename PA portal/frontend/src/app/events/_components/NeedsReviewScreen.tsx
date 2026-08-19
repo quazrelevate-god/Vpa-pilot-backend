@@ -12,7 +12,7 @@ import type { EventItem } from "../_lib/types";
 import { displayTitle, pickVenue, typeMeta } from "../_lib/types";
 import { fmtLongDate } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
-import { AlertTriangle, Inbox, Loader2 } from "../_lib/icons";
+import { AlertTriangle, ChevronDown, Inbox, Loader2 } from "../_lib/icons";
 
 // An event is approvable when:
 //   1. Extraction (or manual save) finished cleanly (status=READY).
@@ -58,8 +58,15 @@ function statusChip(e: EventItem, t: (en: string, ta: string) => string) {
   if (e.is_approved) {
     return { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", label: t("Attended", "வருகை பதிந்தது") };
   }
-  // Only remaining case for a row that reaches Needs Review: unapproved
-  // AND today or later (server predicate excludes past unapproved).
+  // Past + unapproved. The server now surfaces these (they used to be hidden,
+  // which silently swallowed a retry that re-extracted to a past date). A
+  // past event can't be approved as-is, so tell the reviewer to fix the date.
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  if (e.date && e.date < todayISO) {
+    return { cls: "bg-slate-100 text-slate-600 border-slate-200", label: t("Past — edit the date to approve", "கடந்தது — தேதியை மாற்றி அனுமதிக்கவும்") };
+  }
+  // Remaining case: unapproved AND today or later.
   return { cls: "bg-blue-50 text-blue-700 border-blue-200", label: t("Awaiting confirmation", "உறுதிசெய்ய காத்திருக்கிறது") };
 }
 
@@ -105,7 +112,7 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
   // Undated rows (no event_date yet — either OCR gap or manual save with a
   // dropped date) get a "No date" section pinned at the top; those are the
   // most urgent to fix because the reviewer can't approve them.
-  // Dated rows are ordered ascending so the closest events come first.
+  // Dated rows are ordered DESCENDING — latest date first.
   //
   // MUST live above the loading / empty early returns — hooks-rules-of-order.
   // React counts hook calls positionally per render; if items goes from null
@@ -120,13 +127,38 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
       arr.push(e);
       map.set(key, arr);
     }
-    const dated = [...map.entries()].filter(([k]) => k).sort(([a], [b]) => a.localeCompare(b));
+    const dated = [...map.entries()].filter(([k]) => k).sort(([a], [b]) => b.localeCompare(a));
     const undated = map.get("") ?? [];
     const out: { key: string; date: string | null; rows: EventItem[] }[] = [];
     if (undated.length) out.push({ key: "__no_date__", date: null, rows: undated });
     for (const [k, rows] of dated) out.push({ key: k, date: k, rows });
     return out;
   }, [items]);
+
+  // Per-date collapse. Empty set = all expanded (default — the attention
+  // queue shouldn't hide rows on load); tapping a date header folds it so a
+  // long list is easy to scan.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleSection = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  // Prune collapse-keys for date sections that no longer exist. Otherwise a
+  // date the reviewer collapsed and then cleared leaves a stale key behind —
+  // and if a new event later arrives for that same date, its section would
+  // render collapsed (hidden) and could be missed.
+  useEffect(() => {
+    setCollapsed((prev) => {
+      if (prev.size === 0) return prev;
+      const valid = new Set(sections.map((s) => s.key));
+      let changed = false;
+      const next = new Set<string>();
+      for (const k of prev) { if (valid.has(k)) next.add(k); else changed = true; }
+      return changed ? next : prev;
+    });
+  }, [sections]);
 
   if (items === null) {
     return (
@@ -169,12 +201,26 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
         </span>
       </div>
 
-      {sections.map((section) => (
+      {sections.map((section) => {
+        const isCollapsed = collapsed.has(section.key);
+        return (
         <section key={section.key} className="flex flex-col gap-2">
-          {/* Date header — sticky-ish top of each section. Undated rows get
-              a highlighted "No date" chip so the reviewer's eye lands there
-              first (most actionable data hole). */}
-          <div className="flex items-center gap-3">
+          {/* Date header — tap to collapse/expand this date's rows. Undated
+              rows get a highlighted "No date" chip so the reviewer's eye
+              lands there first (most actionable data hole). */}
+          <button
+            type="button"
+            onClick={() => toggleSection(section.key)}
+            aria-expanded={!isCollapsed}
+            className="flex w-full items-center gap-3 rounded-lg py-1 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
+          >
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200",
+                isCollapsed && "-rotate-90",
+              )}
+              strokeWidth={2}
+            />
             <div
               className={cn(
                 "text-[0.72rem] font-bold uppercase tracking-wider",
@@ -189,8 +235,9 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
             <span className="rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums text-slate-500">
               {section.rows.length}
             </span>
-          </div>
+          </button>
 
+          {!isCollapsed && (
           <div className="flex flex-col gap-2">
             {section.rows.map((e) => (
               <NeedsReviewRow
@@ -204,8 +251,10 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
               />
             ))}
           </div>
+          )}
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }

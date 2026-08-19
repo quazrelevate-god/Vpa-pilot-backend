@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,12 +43,19 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
   }, [open, onClose, images.length]);
 
   if (!open || images.length === 0) return null;
+  // SSR guard — createPortal needs a real DOM target.
+  if (typeof document === "undefined") return null;
 
   const current = images[index];
   const hasPrev = index > 0;
   const hasNext = index < images.length - 1;
 
-  return (
+  // Portal to <body> so the overlay's `fixed inset-0` is relative to the
+  // viewport, NOT to any CSS-transformed ancestor. Rendered inline, a lightbox
+  // opened from inside a transformed Dialog (translate-x/y-[-50%]) gets trapped
+  // inside the dialog's box instead of covering the screen — the bug this
+  // fixes on the Events popup's photo tab.
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 animate-in fade-in-0"
       onClick={onClose}
@@ -114,7 +122,8 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
           <ChevronRight className="h-5 w-5" />
         </button>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

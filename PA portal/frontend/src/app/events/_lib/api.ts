@@ -7,6 +7,17 @@ import type { EventItem, EventsFeed, NeedsReviewFeed, OverviewData } from "./typ
 async function readJSON<T>(r: Response): Promise<T> {
   const d = await r.json().catch(() => ({} as Record<string, unknown>));
   if (!r.ok) {
+    // Session expired mid-use → bounce to login. Central here so every
+    // screen (which mostly swallow errors in their poll .catch) doesn't
+    // silently go empty. Guarded off the login page so a bad-credentials
+    // 401 on the login POST doesn't loop — it surfaces the error instead.
+    if (
+      r.status === 401
+      && typeof window !== "undefined"
+      && !window.location.pathname.endsWith("/events/login")
+    ) {
+      window.location.href = "/events/login";
+    }
     const msg = (d as { detail?: string; error?: string }).detail
       || (d as { error?: string }).error
       || `http ${r.status}`;

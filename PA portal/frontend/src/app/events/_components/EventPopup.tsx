@@ -80,6 +80,44 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
     setConfirmOpen(false);
   }, [event]);
 
+  // While the row is still extracting — after a Retry, or a fresh capture
+  // opened straight away — poll the single event so the popup shows the live
+  // outcome without the reviewer closing and reopening: Extracting… →
+  // Approve banner (success) or the error + Retry banner (failure). Stops the
+  // moment the status leaves QUEUED/PROCESSING (onChanged updates the event
+  // prop → this effect re-evaluates and clears the interval).
+  const isProcessing = !!event && (event.status === "QUEUED" || event.status === "PROCESSING");
+  useEffect(() => {
+    // Pause while the reviewer is actively editing — delivering a terminal
+    // status via onChanged would reset the popup and silently wipe their
+    // in-progress edit. Polling resumes when they save/cancel (editing → false
+    // re-runs this effect).
+    if (!event || !isProcessing || editing) return;
+    const id = event.id;
+    let live = true;
+    const timer = setInterval(async () => {
+      try {
+        const fresh = await api.get(id);
+        if (!live) return;
+        if (fresh.status !== "QUEUED" && fresh.status !== "PROCESSING") {
+          onChanged(fresh);
+        }
+      } catch (err) {
+        if (!live) return;
+        // Event deleted server-side — stop and close instead of spinning
+        // "Extracting…" against a 404 forever. Other errors are transient.
+        if ((err as { status?: number }).status === 404) {
+          live = false;
+          clearInterval(timer);
+          toast(t("This event was removed.", "இந்த நிகழ்வு நீக்கப்பட்டது."));
+          onClose();
+        }
+      }
+    }, 3000);
+    return () => { live = false; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id, isProcessing, editing]);
+
   if (!event) return null;
   const meta = typeMeta(event.event_type);
   const processing = event.status === "QUEUED" || event.status === "PROCESSING";
@@ -294,6 +332,32 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                 );
               })()}
 
+              {/* Past + unapproved hint. These rows now surface in Needs
+                  Review (a retry can re-extract to a past date); a past event
+                  can't be approved as-is, so point the reviewer at the fix. */}
+              {(() => {
+                if (event.is_approved) return null;
+                if (event.status !== "READY") return null;
+                if (!event.date || !event.start_time) return null;
+                const today = new Date();
+                const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                if (event.date >= todayISO) return null;
+                return (
+                  <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" strokeWidth={1.75} />
+                    <div>
+                      <div className="font-bold text-slate-700">{t("This event is in the past", "இந்த நிகழ்வு கடந்துவிட்டது")}</div>
+                      <div className="mt-0.5 opacity-90">
+                        {t(
+                          "Approval is forward-looking — edit the date to a future day to approve it, or delete it.",
+                          "அனுமதி எதிர்கால நிகழ்வுகளுக்கே — அனுமதிக்க தேதியை எதிர்கால நாளாக மாற்றவும், அல்லது நீக்கவும்.",
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Attended banner removed — calendar now filters to approved
                   rows only, so anything the reviewer opens from the calendar
                   is by definition attended. The banner was redundant noise. */}
@@ -340,7 +404,7 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                       <Pencil className="h-5 w-5" strokeWidth={1.75} /> {t("Edit", "திருத்து")}
                     </Button>
                     <Button variant="outline" onClick={() => setConfirmOpen(true)}
-                      className="h-12 gap-2 border-red-200 px-5 text-base font-bold text-red-600">
+                      className="h-12 gap-2 border-red-200 px-5 text-base font-bold text-red-600 hover:border-red-300 hover:bg-red-50 hover:text-red-700">
                       <Trash2 className="h-5 w-5" strokeWidth={1.75} /> {t("Delete", "நீக்கு")}
                     </Button>
                   </div>

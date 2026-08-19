@@ -39,12 +39,18 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
     return { start: toISO(cells[0]), end: toISO(cells[41]) };
   }, [mode, anchor]);
 
+  // Request-sequence guard: rapid prev/next taps start overlapping range
+  // fetches; without this the LAST-resolving (possibly older) response wins
+  // and paints the wrong period — which then sticks if nothing visible is
+  // processing (the poll is gated on that). Only the newest request applies.
+  const reqSeq = useRef(0);
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true);
+    const seq = ++reqSeq.current;
     api.range(span.start, span.end)
-      .then((d) => setEvents(d.items))
+      .then((d) => { if (seq === reqSeq.current) setEvents(d.items); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (seq === reqSeq.current) setLoading(false); });
   }, [span.start, span.end]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
