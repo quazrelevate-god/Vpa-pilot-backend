@@ -61,6 +61,21 @@ _STALE_MINUTES = 15
 # the tier's RPS ceiling and rack up cost. Tasks still enqueue immediately; only
 # this many run the extraction at once. Sized via EVENT_EXTRACT_MAX_CONCURRENCY.
 _EVENT_EXTRACT_GATE = asyncio.Semaphore(max(1, int(os.getenv("EVENT_EXTRACT_MAX_CONCURRENCY", "4"))))
+
+# Strong refs to detached extraction tasks. asyncio holds only a WEAK ref to a
+# bare create_task() result, so a fire-and-forget process_event task can be
+# garbage-collected mid-run — leaving its row stuck QUEUED/PROCESSING (the UI
+# then spins "Extracting…" forever) until a server restart re-runs
+# recover_stale. Keep the task referenced until it completes.
+_BG_TASKS: set = set()
+
+
+def _spawn_bg(coro):
+    """create_task that survives GC — see _BG_TASKS."""
+    task = asyncio.create_task(coro)
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
+    return task
 # Audio > 60s starts to feel long for a "speak the event" input. 90s is our
 # voluntary cap on the frontend recorder — long enough for a rambling PA to
 # describe the entire card without hitting Gemini's larger multi-minute limits.
@@ -319,7 +334,7 @@ async def create_event(
     await db.commit()
     await db.refresh(event)
 
-    asyncio.create_task(process_event(event.id))
+    _spawn_bg(process_event(event.id))
     return event
 
 
@@ -550,7 +565,7 @@ async def recover_stale() -> int:
         await db.commit()
     ids = queued_ids + stuck_ids
     for eid in ids:
-        asyncio.create_task(process_event(eid))
+        _spawn_bg(process_event(eid))
     if ids:
         logger.info(
             "events: recovered %d row(s) (queued=%d, stuck=%d)",
@@ -585,31 +600,29 @@ _NEEDS_REVIEW_HARD_LIMIT = 200
 
 
 async def list_needs_review(db: AsyncSession) -> list[InvitationEvent]:
-    """Everything a reviewer can still act on. Past-dated events are hidden
-    entirely — even data-hole ones — since the reviewer can no longer approve
-    them and any missing fields are now cosmetic history. Undated rows
-    (event_date IS NULL) still surface because we can't tell if they're past.
+    """Everything a reviewer can still act on — the safety net whose whole job
+    is that nothing captured is ever silently lost.
 
-    Two layers to the filter:
-      1. Actionability gate: event_date IS NULL OR event_date >= today (IST).
-         Anything past drops out of the list.
-      2. Within actionable rows, surface if:
-         • FAILED / still-processing (data isn't final)
-         • Missing date / start / end time (data hole to fix)
-         • Not yet approved (reviewer's confirm-with-Minister queue)
+    Previously this hid ALL past-dated rows on the theory that a past event
+    can't be approved (attendance is forward-looking). But that silently
+    swallowed a real case: a FAILED row that a reviewer Retries can re-extract
+    to a PAST date — it would then vanish from this list AND stay off the
+    calendar (approved-only), leaving the reviewer with "where did it go?".
+    So past-dated rows now surface too, as long as they still need attention;
+    the frontend tags them "Past — edit the date to approve" so the reviewer
+    can fix the date (→ approvable) or delete, instead of losing them.
 
-    Rolling 30-day window (by created_at) plus a hard LIMIT so a stale pile
-    of undated invitations can never balloon this endpoint.
+    A row surfaces if it isn't a finished, on-calendar entry — i.e. any of:
+      • FAILED / still-processing (data isn't final)
+      • Missing date / start time (data hole to fix)
+      • Not yet approved (reviewer's confirm-with-Minister queue), past or not
+
+    Rolling 30-day window (by created_at) plus a hard LIMIT keep the endpoint
+    bounded regardless of date.
     """
     cutoff = now_utc() - timedelta(days=_NEEDS_REVIEW_DAYS)
-    today = _ist_today()
     result = await db.execute(
         select(InvitationEvent)
-        # Actionability gate — no past events, ever.
-        .where(
-            (InvitationEvent.event_date.is_(None))
-            | (InvitationEvent.event_date >= today)
-        )
         # Reason to surface. end_time is intentionally NOT here — many
         # invitations only announce a start ("6 PM at SRM Mahal") and
         # mandating end was just noise. Start time is still required.
@@ -644,7 +657,11 @@ async def overview_events(db: AsyncSession) -> dict:
     counts the reviewer's to-do queue (today+ unapproved, extraction clean);
     `needs_attention` covers data-hole rows.
     """
-    today = date.today()
+    # IST, not the server's UTC date — otherwise during 00:00–05:30 IST
+    # (18:30–24:00 UTC) every KPI keys off "yesterday": today's events drop
+    # out of the Today count, and yesterday's past events get counted as
+    # today / as still-approvable. Single source feeds all the bounds below.
+    today = _ist_today()
     # Monday-anchored week bounds (matches the calendar's Mon-first grid).
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
@@ -949,7 +966,7 @@ async def retry_event(db: AsyncSession, event_id: int) -> InvitationEvent:
     event.error_message = None
     await db.commit()
     await db.refresh(event)
-    asyncio.create_task(process_event(event.id))
+    _spawn_bg(process_event(event.id))
     return event
 
 
