@@ -76,7 +76,14 @@ export interface VenueRow {
  * return `detail` as an ARRAY of objects ([{loc, msg, type}]) — passing that to
  * `new Error()` stringifies to "[object Object]". Flatten it to the message(s).
  */
-export async function apiError(r: Response): Promise<Error> {
+export async function apiError(r: Response): Promise<Error & { status?: number }> {
+  // 5xx: never surface the body (may be an HTML page or a stack). Attach the
+  // status; lib/errors.toUserMessage turns it into a friendly generic.
+  if (r.status >= 500) {
+    const err = new Error(`Request failed (${r.status})`) as Error & { status?: number };
+    err.status = r.status;
+    return err;
+  }
   let data: unknown = null;
   try { data = await r.json(); } catch { /* non-JSON body */ }
   const d = (data as { detail?: unknown })?.detail;
@@ -86,11 +93,13 @@ export async function apiError(r: Response): Promise<Error> {
   } else if (Array.isArray(d)) {
     msg = d.map((x) => (x as { msg?: string })?.msg).filter(Boolean).join("; ") || "Invalid input.";
   } else if (d && typeof d === "object") {
-    msg = (d as { msg?: string }).msg ?? JSON.stringify(d);
+    msg = (d as { msg?: string }).msg ?? "Invalid input.";
   } else {
-    msg = String((data as { error?: string })?.error ?? r.statusText ?? `HTTP ${r.status}`);
+    msg = String((data as { error?: string })?.error ?? r.statusText ?? `Request failed (${r.status})`);
   }
-  return new Error(msg);
+  const err = new Error(msg) as Error & { status?: number };
+  err.status = r.status;
+  return err;
 }
 
 // ── Session helpers ────────────────────────────────────────────────────────

@@ -41,8 +41,14 @@ async function getJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { credentials: "include", cache: "no-store", signal });
   if (r.status === 401) throw new Unauthorized();
   if (!r.ok) {
-    const d = await r.json().catch(() => ({}));
-    throw new Error((d as { error?: string }).error || `Request failed (${r.status})`);
+    // 5xx: drop the body (may be HTML/stack); keep a clean 4xx `error`. Attach
+    // status so lib/errors.toUserMessage can genericize technical failures.
+    const d = r.status < 500 ? await r.json().catch(() => ({})) : {};
+    const err = new Error(
+      (d as { error?: string }).error || `Request failed (${r.status})`,
+    ) as Error & { status?: number };
+    err.status = r.status;
+    throw err;
   }
   return r.json() as Promise<T>;
 }

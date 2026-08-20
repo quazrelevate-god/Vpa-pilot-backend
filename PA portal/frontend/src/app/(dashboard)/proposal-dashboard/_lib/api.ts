@@ -63,7 +63,12 @@ export function fmtINR(rupees?: number | null): string {
 
 async function getJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { credentials: "include", cache: "no-store", signal });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `Request failed (${r.status})`);
+  if (!r.ok) {
+    const detail = r.status < 500 ? (await r.json().catch(() => ({}))).detail : null;
+    const err = new Error(detail || `Request failed (${r.status})`) as Error & { status?: number };
+    err.status = r.status;
+    throw err;
+  }
   return r.json();
 }
 

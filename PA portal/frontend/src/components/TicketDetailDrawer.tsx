@@ -27,6 +27,7 @@ import { useDepartments, departmentText, type Department } from "@/lib/departmen
 import { useLang } from "@/lib/lang-context";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { DrawerNav } from "@/components/ui/drawer-nav";
+import { toUserMessage } from "@/lib/errors";
 import AttachmentUploadDialog from "@/components/ui/attachment-upload-dialog";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -200,7 +201,7 @@ export default function TicketDetailDrawer({
     let cancelled = false;   // guard against a slow earlier fetch overwriting a newer one
     fetchTicket(ticketId)
       .then((d) => { if (!cancelled) setData(d); })
-      .catch((e) => { if (!cancelled) alert(`Failed to load ticket: ${e.message}`); })
+      .catch((e) => { if (!cancelled) toast.error(toUserMessage(e, "Couldn't load this ticket.")); })
       .finally(() => { if (!cancelled) setLoading(false); });
     // Roster fetch runs in parallel — most tickets will have signatory_count=0
     // or 1; the endpoint returns quickly either way.
@@ -248,7 +249,7 @@ export default function TicketDetailDrawer({
     if (ticketId == null) return;
     setBusy(true);
     try { setData(await patchTicket(ticketId, p)); onMutated?.(); }
-    catch (e) { alert((e as Error).message); }
+    catch (e) { toast.error(toUserMessage(e, "Couldn't update this ticket.")); }
     finally { setBusy(false); }
   }
 
@@ -300,10 +301,7 @@ export default function TicketDetailDrawer({
       }
       setData(updated);
     } catch (e) {
-      // Use a toast for revert (matches Dismiss), keep the legacy alert for
-      // close/reopen so their existing UX is unchanged.
-      if (action === "revert") toast.error((e as Error).message || tr("tkt.revertedFailed"));
-      else alert((e as Error).message);
+      toast.error(toUserMessage(e, action === "revert" ? tr("tkt.revertedFailed") : "That action didn't go through."));
     } finally { setBusy(false); }
   }
 

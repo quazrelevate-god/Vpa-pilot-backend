@@ -10,6 +10,7 @@ import {
   ChartCard, BarBreakdown, DonutBreakdown, TrendArea,
 } from "@/components/insights/DashboardKit";
 import { cn } from "@/lib/utils";
+import { toUserMessage } from "@/lib/errors";
 import { useT } from "../_lib/i18n";
 import { api, Unauthorized, type TicketRow } from "../_lib/api";
 import { analyzeTickets } from "../_lib/analyzeTickets";
@@ -46,7 +47,7 @@ export default function TicketsOverview() {
       .catch((e) => {
         if (ac.signal.aborted) return;
         if (e instanceof Unauthorized) { window.location.href = "/minister/login"; return; }
-        setErr((e as Error).message);
+        setErr(toUserMessage(e, "Couldn't load this view."));
       });
     return () => ac.abort();
   }, []);

@@ -14,6 +14,7 @@ import {
 } from "@/app/(dashboard)/proposal-dashboard/_lib/api";
 import { ProposalDrawer } from "@/app/(dashboard)/proposal-review/_lib/ProposalDrawer";
 import { cn } from "@/lib/utils";
+import { toUserMessage } from "@/lib/errors";
 import { useT } from "../_lib/i18n";
 import { api, Unauthorized } from "../_lib/api";
 import { useDetail } from "../_lib/useDetail";
@@ -46,7 +47,7 @@ export default function ProposalsOverview() {
       .catch((e) => {
         if (ac.signal.aborted) return;
         if (e instanceof Unauthorized) { window.location.href = "/minister/login"; return; }
-        setErr((e as Error).message);
+        setErr(toUserMessage(e, "Couldn't load this view."));
       });
     return () => ac.abort();
   }, []);

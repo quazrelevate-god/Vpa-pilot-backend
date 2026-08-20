@@ -11,6 +11,7 @@ import {
 import TamilNaduMap from "@/components/TamilNaduMap";
 import { useT } from "../_lib/i18n";
 import { api, Unauthorized, type PetitionRow, type PetitionFilters } from "../_lib/api";
+import { toUserMessage } from "@/lib/errors";
 import type { DashboardAnalytics, OperationsData } from "../_lib/types";
 import { useDetail } from "../_lib/useDetail";
 import { DrawerSheet } from "./DrawerSheet";
@@ -49,7 +50,7 @@ export default function DashboardOverview() {
       .catch((e) => {
         if (ac.signal.aborted) return;
         if (e instanceof Unauthorized) { window.location.href = "/minister/login"; return; }
-        setErr((e as Error).message); setLoading(false);
+        setErr(toUserMessage(e, "Couldn't load this view.")); setLoading(false);
       });
     return () => ac.abort();
   }, [filters]);

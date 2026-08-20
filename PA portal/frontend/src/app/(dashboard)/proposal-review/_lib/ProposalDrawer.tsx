@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { DrawerNav } from "@/components/ui/drawer-nav";
+import { toUserMessage } from "@/lib/errors";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
@@ -211,7 +212,7 @@ export function ProposalDrawer({
       });
       onCategorySaved?.(updated);
     } catch (e) {
-      toast.error("Couldn't update the desk", { description: (e as Error).message });
+      toast.error(toUserMessage(e, "Couldn't update the category."));
       setCatDraft(d.category ?? "");   // roll the picker back to the stored value
     } finally {
       setSavingCat(false);
@@ -270,7 +271,7 @@ export function ProposalDrawer({
       setSimCands(res.candidates || []);
       setSimReason(res.reason || null);
     } catch (e) {
-      setSimErr((e as Error).message);
+      setSimErr(toUserMessage(e, "Couldn't run the scan."));
     } finally {
       setSimLoading(false);
     }

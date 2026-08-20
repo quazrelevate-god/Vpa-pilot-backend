@@ -23,6 +23,7 @@ import {
 import { useLang } from "@/lib/lang-context";
 import { useIsDesktop } from "@/lib/use-media-query";
 import { useDrawerNav } from "@/lib/use-drawer-nav";
+import { toUserMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
@@ -235,7 +236,7 @@ export default function AssociationReviewPage() {
       });
       if (!signal?.aborted) { setData(res); setLoading(false); }
     } catch (e) {
-      if (!signal?.aborted) { setLoading(false); toast.error((e as Error).message); }
+      if (!signal?.aborted) { setLoading(false); toast.error(toUserMessage(e)); }
     }
   }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo, batchFilter, page]);
 
@@ -329,7 +330,7 @@ export default function AssociationReviewPage() {
         const det = await getAssociation(selectedId);
         if (alive) setDetail(det);
       } catch (e) {
-        if (alive) { toast.error((e as Error).message); setDetail(null); }
+        if (alive) { toast.error(toUserMessage(e)); setDetail(null); }
       } finally {
         if (alive) setDetailLoading(false);
       }
@@ -353,7 +354,7 @@ export default function AssociationReviewPage() {
       toast.success("Note updated.");
       load();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(toUserMessage(e));
     } finally {
       setDeciding(false);
     }
@@ -372,7 +373,7 @@ export default function AssociationReviewPage() {
       toast.success(decision === "reviewed" ? "Marked reviewed." : "Forwarded to department.");
       load();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(toUserMessage(e));
     } finally {
       setDeciding(false);
     }
@@ -425,7 +426,7 @@ export default function AssociationReviewPage() {
       a.click();
       toast.success(`${all.length} association(s) exported.`);
     } catch (e) {
-      toast.error(`Export failed: ${(e as Error).message}`);
+      toast.error(toUserMessage(e, "Export failed."));
     } finally {
       setExporting(false);
     }

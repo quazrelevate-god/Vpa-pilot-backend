@@ -148,12 +148,12 @@ export default function OverviewPage() {
     try {
       const r = await fetch(`/api/analytics?${qs()}`, { credentials: "include", signal });
       if (signal?.aborted) return;
-      if (!r.ok) { setError(`${t("ov.errRequest")} (HTTP ${r.status}).`); return; }
+      if (!r.ok) { setError(t("ov.errRequest")); return; }
       setError(null); setData(await r.json());
       setLastUpdated(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
     } catch (e) {
       if ((e as Error)?.name === "AbortError") return;
-      setError(`${t("ov.errUnreachable")}: ${(e as Error).message}`);
+      setError(t("ov.errUnreachable"));
     } finally { if (!signal?.aborted) setLoading(false); }
     // `t` matters: lang hydrates from localStorage AFTER first render, so a
     // callback cached without it would keep formatting errors in English.

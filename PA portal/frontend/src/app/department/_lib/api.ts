@@ -65,7 +65,19 @@ const base = (path: string) => `/department/api${path}`;
 
 function ok<T>(r: Response, fallback: T | null = null): Promise<T> {
   if (!r.ok) {
-    return r.json().then((d) => Promise.reject(new Error(d.error ?? d.detail ?? r.statusText)));
+    const build = (msg: string) => {
+      const err = new Error(msg) as Error & { status?: number };
+      err.status = r.status;
+      return err;
+    };
+    // 5xx: don't parse/surface the body (may be HTML and would reject the
+    // unguarded r.json() with a raw parse error). Keep a clean 4xx message.
+    if (r.status >= 500) return Promise.reject(build(`Request failed (${r.status})`));
+    return r.json().catch(() => ({})).then((d) =>
+      Promise.reject(build(
+        (d as { error?: string }).error ?? (d as { detail?: string }).detail ?? `Request failed (${r.status})`,
+      )),
+    );
   }
   return r.json() as Promise<T>;
 }

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 import { useT } from "../_lib/i18n";
+import { businessMessage } from "@/lib/errors";
 import { api } from "../_lib/api";
 import type { OpenDate, Slot, IntakeResult } from "../_lib/types";
 import { Check } from "../_lib/icons";
@@ -167,7 +168,7 @@ export default function RegisterWizard({
 
     api.intake(fd)
       .then((d) => onDone(d))
-      .catch((e) => { setBusy(false); toast.error(e?.message || t("Failed — try again", "தோல்வி — மீண்டும்")); });
+      .catch((e) => { setBusy(false); toast.error(businessMessage(e) || t("Failed — try again", "தோல்வி — மீண்டும்")); });
   }
 
   const canBook = !!slot;

@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { useIsDesktop } from "@/lib/use-media-query";
 import { useDrawerNav } from "@/lib/use-drawer-nav";
+import { toUserMessage } from "@/lib/errors";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
   listProposals, getProposal, decideProposal, updateProposalNote,
@@ -209,7 +210,7 @@ export default function ProposalReviewPage() {
       });
       if (!signal?.aborted) { setData(res); setLoading(false); }
     } catch (e) {
-      if (!signal?.aborted) { setLoading(false); toast.error((e as Error).message); }
+      if (!signal?.aborted) { setLoading(false); toast.error(toUserMessage(e)); }
     }
   }, [tab, debouncedQ, categoryFilter, recFilter, activeDateFrom, activeDateTo, batchFilter, page]);
 
@@ -283,7 +284,7 @@ export default function ProposalReviewPage() {
         const det = await getProposal(selectedId);
         if (alive) setDetail(det);
       } catch (e) {
-        if (alive) { toast.error((e as Error).message); setDetail(null); }
+        if (alive) { toast.error(toUserMessage(e)); setDetail(null); }
       } finally {
         if (alive) setDetailLoading(false);
       }
@@ -308,7 +309,7 @@ export default function ProposalReviewPage() {
       toast.success("Note updated.");
       load();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(toUserMessage(e));
     } finally {
       setDeciding(false);
     }
@@ -330,7 +331,7 @@ export default function ProposalReviewPage() {
       );
       load();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(toUserMessage(e));
     } finally {
       setDeciding(false);
     }
@@ -381,7 +382,7 @@ export default function ProposalReviewPage() {
       a.click();
       toast.success(`${all.length} proposal(s) exported.`);
     } catch (e) {
-      toast.error(`Export failed: ${(e as Error).message}`);
+      toast.error(toUserMessage(e, "Export failed."));
     } finally {
       setExporting(false);
     }

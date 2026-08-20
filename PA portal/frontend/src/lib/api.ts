@@ -13,6 +13,28 @@ import type {
 // Cookies sit on the Next.js origin so credentials: 'include' Just Works.
 const J = { "Content-Type": "application/json" } as const;
 
+// Build a thrown error from a non-OK response WITHOUT leaking internals.
+// Previously these dumped `await r.text()` — raw backend HTML / 500 stacks /
+// SQLAlchemy text — straight into toast messages. Now: read a clean JSON
+// `{detail}`/`{error}` when present (intentional 4xx business messages), drop
+// the body entirely on 5xx, and always attach `.status` so lib/errors
+// (toUserMessage) can classify it. See lib/errors.ts.
+async function apiError(r: Response, label: string): Promise<Error & { status?: number }> {
+  let msg = "";
+  if (r.status < 500) {
+    try {
+      const d = await r.clone().json();
+      const detail = (d as { detail?: unknown }).detail;
+      const error = (d as { error?: unknown }).error;
+      if (typeof detail === "string") msg = detail;
+      else if (typeof error === "string") msg = error;
+    } catch { /* non-JSON body — never surface it */ }
+  }
+  const err = new Error(msg || `${label} failed (${r.status})`) as Error & { status?: number };
+  err.status = r.status;
+  return err;
+}
+
 export async function fetchStats(dateFrom?: string, dateTo?: string): Promise<StatsResponse> {
   const params = new URLSearchParams();
   if (dateFrom) params.set("date_from", dateFrom);
@@ -21,7 +43,7 @@ export async function fetchStats(dateFrom?: string, dateTo?: string): Promise<St
     credentials: "include",
     cache: "no-store",
   });
-  if (!resp.ok) throw new Error(`stats ${resp.status}: ${await resp.text()}`);
+  if (!resp.ok) throw await apiError(resp, "Stats");
   return resp.json();
 }
 
@@ -69,7 +91,7 @@ function _appointmentParams(opts: AppointmentListOpts, includeStatus: boolean): 
 
 export async function fetchVenues(signal?: AbortSignal): Promise<VenueOption[]> {
   const resp = await fetch("/api/venues", { credentials: "include", cache: "no-store", signal });
-  if (!resp.ok) throw new Error(`venues ${resp.status}: ${await resp.text()}`);
+  if (!resp.ok) throw await apiError(resp, "Venues");
   return resp.json();
 }
 
@@ -86,7 +108,7 @@ export async function fetchAppointments(
     cache: "no-store",
     signal,
   });
-  if (!resp.ok) throw new Error(`appointments ${resp.status}: ${await resp.text()}`);
+  if (!resp.ok) throw await apiError(resp, "Appointments");
   return resp.json();
 }
 
@@ -100,7 +122,7 @@ export async function fetchAppointmentCounts(
     cache: "no-store",
     signal,
   });
-  if (!resp.ok) throw new Error(`appointment counts ${resp.status}: ${await resp.text()}`);
+  if (!resp.ok) throw await apiError(resp, "Appointment counts");
   return resp.json();
 }
 
@@ -144,7 +166,7 @@ export async function fetchTickets(f: TicketListFilters = {}, signal?: AbortSign
   const p = _ticketParams(f, true);
   p.set("page", String(f.page ?? 1));
   const r = await fetch(`/api/tickets?${p.toString()}`, { credentials: "include", cache: "no-store", signal });
-  if (!r.ok) throw new Error(`tickets ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw await apiError(r, "Tickets");
   return r.json();
 }
 
@@ -154,7 +176,7 @@ export async function fetchTicketsCounts(
 ): Promise<Record<string, number>> {
   const p = _ticketParams(f, false);
   const r = await fetch(`/api/tickets/counts?${p.toString()}`, { credentials: "include", cache: "no-store", signal });
-  if (!r.ok) throw new Error(`ticket counts ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw await apiError(r, "Ticket counts");
   return r.json();
 }
 
@@ -185,14 +207,14 @@ export async function fetchTicketBreachCount(
   if (f.source)           p.set("source",             f.source);
   if (f.status)           p.set("status",             f.status);
   const r = await fetch(`/api/tickets/breach_count?${p.toString()}`, { credentials: "include", cache: "no-store", signal });
-  if (!r.ok) throw new Error(`ticket breach_count ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw await apiError(r, "SLA count");
   const data = await r.json();
   return Number(data?.breached ?? 0);
 }
 
 export async function fetchTicket(id: number): Promise<TicketDetail> {
   const r = await fetch(`/api/tickets/${id}`, { credentials: "include", cache: "no-store" });
-  if (!r.ok) throw new Error(`ticket ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw await apiError(r, "Ticket");
   return r.json();
 }
 
@@ -216,7 +238,7 @@ export async function patchTicket(
   const r = await fetch(`/api/tickets/${id}`, {
     method: "PATCH", headers: J, credentials: "include", body: JSON.stringify(patch),
   });
-  if (!r.ok) throw new Error(`patch ticket ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw await apiError(r, "Update");
   return r.json();
 }
 
@@ -228,17 +250,9 @@ export async function ticketAction(
   const r = await fetch(`/api/tickets/${id}/${action}`, {
     method: "POST", headers: J, credentials: "include", body: JSON.stringify(body),
   });
-  if (!r.ok) {
-    const detail = await r.text();
-    // Surface the {"error": "..."} message from FastAPI 400s so the toast
-    // says something specific instead of "revert 400: {...}".
-    let msg: string | null = null;
-    try {
-      const json = JSON.parse(detail);
-      if (typeof json?.error === "string") msg = json.error;
-    } catch { /* not JSON */ }
-    throw new Error(msg ?? `${action} ${r.status}: ${detail}`);
-  }
+  // apiError surfaces the {"error"/"detail": "..."} 4xx business message and
+  // genericizes 5xx (no raw body), with `.status` attached.
+  if (!r.ok) throw await apiError(r, action);
   return r.json();
 }
 
@@ -256,7 +270,7 @@ export async function uploadTicketAttachment(id: number, file: File): Promise<Up
   const r = await fetch(`/api/tickets/${id}/attachment`, {
     method: "POST", credentials: "include", body: fd,
   });
-  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+  if (!r.ok) throw await apiError(r, "Upload");
   return r.json();
 }
 
@@ -267,7 +281,7 @@ export async function uploadAppointmentAttachment(id: number, file: File): Promi
   const r = await fetch(`/api/appointments/${id}/attachment`, {
     method: "POST", credentials: "include", body: fd,
   });
-  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+  if (!r.ok) throw await apiError(r, "Upload");
   return r.json();
 }
 
@@ -281,7 +295,7 @@ export async function updateAppointmentStatus(
     credentials: "include",
     body: JSON.stringify({ status }),
   });
-  if (!resp.ok) throw new Error(`status ${resp.status}`);
+  if (!resp.ok) throw await apiError(resp, "Status update");
 }
 
 export async function updateAppointmentDetails(
@@ -294,7 +308,7 @@ export async function updateAppointmentDetails(
     credentials: "include",
     body: JSON.stringify(patch),
   });
-  if (!resp.ok) throw new Error(`details ${resp.status}`);
+  if (!resp.ok) throw await apiError(resp, "Update");
 }
 
 export async function fetchAppointmentActivity(id: number): Promise<AppointmentActivityResponse> {
@@ -302,6 +316,6 @@ export async function fetchAppointmentActivity(id: number): Promise<AppointmentA
     credentials: "include",
     cache: "no-store",
   });
-  if (!resp.ok) throw new Error(`activity ${resp.status}`);
+  if (!resp.ok) throw await apiError(resp, "Activity");
   return resp.json();
 }

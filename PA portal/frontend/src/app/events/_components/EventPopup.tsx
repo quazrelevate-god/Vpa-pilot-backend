@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
+import { businessMessage } from "@/lib/errors";
 import { api } from "../_lib/api";
 import type { EventItem } from "../_lib/types";
 import { EVENT_TYPE_META, displayTitle, pickRawSummary, pickTitle, pickVenue, typeMeta } from "../_lib/types";
@@ -134,7 +135,7 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
       setEditing(false);
       onChanged(updated);
     } catch (err) {
-      toast.error((err as Error).message || t("Could not save.", "சேமிக்க முடியவில்லை."));
+      toast.error(businessMessage(err) || t("Could not save.", "சேமிக்க முடியவில்லை."));
     } finally {
       setBusy(false);
     }
@@ -149,7 +150,7 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
       setConfirmOpen(false);
       onDeleted();
     } catch (err) {
-      toast.error((err as Error).message || t("Could not delete.", "நீக்க முடியவில்லை."));
+      toast.error(businessMessage(err) || t("Could not delete.", "நீக்க முடியவில்லை."));
     } finally {
       setBusy(false);
     }
@@ -163,7 +164,7 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
       toast(t("Retrying extraction…", "மீண்டும் முயற்சிக்கிறது…"));
       onChanged(updated);
     } catch (err) {
-      toast.error((err as Error).message);
+      toast.error(businessMessage(err) || t("Retry failed.", "மீண்டும் முயற்சி தோல்வி."));
     } finally {
       setBusy(false);
     }
@@ -177,7 +178,7 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
       toast.success(t("Approved — now on the calendar", "அனுமதிக்கப்பட்டது — நாட்காட்டியில் காட்டப்படுகிறது"));
       onChanged(updated);
     } catch (err) {
-      toast.error((err as Error).message || t("Approve failed", "அனுமதி தோல்வி"));
+      toast.error(businessMessage(err) || t("Approve failed", "அனுமதி தோல்வி"));
     } finally {
       setBusy(false);
     }

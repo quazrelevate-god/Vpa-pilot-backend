@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { DrawerNav } from "@/components/ui/drawer-nav";
+import { toUserMessage } from "@/lib/errors";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
@@ -249,7 +250,7 @@ export function AssociationDrawer({
       setSimCands(res.candidates || []);
       setSimReason(res.reason || null);
     } catch (e) {
-      setSimErr((e as Error).message);
+      setSimErr(toUserMessage(e, "Couldn't run the scan."));
     } finally {
       setSimLoading(false);
     }

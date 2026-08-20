@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import TamilNaduMap from "@/components/TamilNaduMap";
 import { cn } from "@/lib/utils";
+import { toUserMessage } from "@/lib/errors";
 import { fetchMe } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
   StatTile, ChartCard, BarBreakdown, DonutBreakdown, TrendArea,
@@ -99,7 +100,7 @@ export default function AssociationDashboardPage() {
         setA(res); setErr(null);
         setUpdated(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
       }
-    } catch (e) { if (!signal?.aborted) setErr((e as Error).message); }
+    } catch (e) { if (!signal?.aborted) setErr(toUserMessage(e, "Couldn't load the dashboard.")); }
   }, []);
 
   useEffect(() => {

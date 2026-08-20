@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Unauthorized } from "./api";
+import { toUserMessage } from "@/lib/errors";
 
 /**
  * Shared data hook for every Minister overview screen: fetch on mount, poll on
@@ -33,7 +34,7 @@ export function useOverview<T>(
           window.location.href = "/minister/login";
           return;
         }
-        if (alive) { setErr((e as Error).message); setLoading(false); }
+        if (alive) { setErr(toUserMessage(e, "Couldn't load this view.")); setLoading(false); }
       }
     };
 

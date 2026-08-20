@@ -12,6 +12,7 @@ import {
 import TamilNaduMap from "@/components/TamilNaduMap";
 import { AssociationDrawer } from "@/app/(dashboard)/association-review/_lib/AssociationDrawer";
 import { cn } from "@/lib/utils";
+import { toUserMessage } from "@/lib/errors";
 import { useT } from "../_lib/i18n";
 import { api, Unauthorized, type AssociationRow } from "../_lib/api";
 import { analyzeAssociations } from "../_lib/analyzeAssoc";
@@ -41,7 +42,7 @@ export default function AssociationsOverview() {
       .catch((e) => {
         if (ac.signal.aborted) return;
         if (e instanceof Unauthorized) { window.location.href = "/minister/login"; return; }
-        setErr((e as Error).message);
+        setErr(toUserMessage(e, "Couldn't load this view."));
       });
     return () => ac.abort();
   }, []);
