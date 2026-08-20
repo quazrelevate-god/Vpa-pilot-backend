@@ -238,9 +238,21 @@ async def list_proposals(
     db: AsyncSession = Depends(get_db),
     login: Login = Depends(require_minister),
 ):
-    """Delegate to the super-admin list_proposals — same row shape."""
+    """Delegate to the super-admin list_proposals — same row shape.
+
+    NB: _lp is a FastAPI route handler; its unpassed params default to the
+    `Query(...)` marker OBJECTS (not None) when it's called directly like
+    this, so EVERY filter it defines must be passed explicitly as None or
+    those Query objects leak into the filter logic (e.g. strptime(Query) →
+    TypeError 500). Keep this in sync if list_proposals gains a param.
+    """
     from src.api.v1.proposal_review import list_proposals as _lp
-    return await _lp(status=status, q=q, limit=limit, offset=offset, db=db)
+    return await _lp(
+        status=status, q=q,
+        category=None, recommendation=None,
+        date_from=None, date_to=None, batch_id=None,
+        limit=limit, offset=offset, db=db,
+    )
 
 
 @router.get("/api/list/associations")
@@ -251,9 +263,21 @@ async def list_associations(
     db: AsyncSession = Depends(get_db),
     login: Login = Depends(require_minister),
 ):
-    """Delegate to the super-admin list_associations — same row shape."""
+    """Delegate to the super-admin list_associations — same row shape.
+
+    NB: _la is a FastAPI route handler; its unpassed params default to the
+    `Query(...)` marker OBJECTS (not None) when called directly, so EVERY
+    filter it defines must be passed explicitly as None — otherwise those
+    Query objects reach the filter logic (strptime(Query) → TypeError 500,
+    the reported bug). Keep this in sync if list_associations gains a param.
+    """
     from src.api.v1.association_review import list_associations as _la
-    return await _la(status=status, q=q, name=name, limit=limit, offset=offset, db=db)
+    return await _la(
+        status=status, q=q, name=name,
+        category=None, urgency=None, district=None, ministry=None,
+        recommendation=None, date_from=None, date_to=None, batch_id=None,
+        limit=limit, offset=offset, db=db,
+    )
 
 
 @router.get("/api/list/tickets")
