@@ -182,10 +182,17 @@ export default function TicketDetailDrawer({
 
   const open = ticketId != null;
 
+  const prevTicketIdRef = useRef<number | null>(null);
   useEffect(() => {
-    if (ticketId == null) return; // keep last data during the close animation
+    if (ticketId == null) { prevTicketIdRef.current = null; return; } // keep last data during the close animation
     setLoading(true);
-    setData(null);   // drop the previous ticket so the loader shows, not stale data
+    // Fresh open (from closed) → drop the previous ticket so the loader
+    // shows, not stale data. Prev/next navigation (prev id was non-null) →
+    // KEEP the current ticket on screen and swap when the next one loads, so
+    // arrowing doesn't flash a full skeleton each step (matches the review
+    // drawers; the DrawerNav spinner is the loading cue).
+    if (prevTicketIdRef.current == null) setData(null);
+    prevTicketIdRef.current = ticketId;
     setTab("details");
     setActiveAction(null);
     setPendingDept(null); setPendingDue(null); setAssigning(false);
@@ -437,16 +444,18 @@ export default function TicketDetailDrawer({
               <Paperclip className="h-4 w-4" /> {tr("attach.cta")}
             </Button>
           )}
-          {onPrev && onNext && (
-            <DrawerNav
-              onPrev={onPrev} onNext={onNext}
-              hasPrev={!!hasPrev} hasNext={!!hasNext}
-              loading={loading || !!navBusy}
-            />
-          )}
-          <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-            <X className="h-5 w-5" />
-          </SheetClose>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onPrev && onNext && (
+              <DrawerNav
+                onPrev={onPrev} onNext={onNext}
+                hasPrev={!!hasPrev} hasNext={!!hasNext}
+                loading={loading || !!navBusy}
+              />
+            )}
+            <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+              <X className="h-5 w-5" />
+            </SheetClose>
+          </div>
         </div>
 
         {t ? (

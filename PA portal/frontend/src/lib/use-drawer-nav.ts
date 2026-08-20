@@ -48,6 +48,12 @@ export function useDrawerNav<T>(opts: UseDrawerNavOptions<T>): DrawerNavState {
 
   // "first" / "last" = which row to select once the crossed-to page loads.
   const [pending, setPending] = useState<null | "first" | "last">(null);
+  // The list reference AT THE MOMENT we asked to cross pages. The pending
+  // selection must NOT be applied against this (old) list — otherwise, on the
+  // re-render right after setPage, the old page's rows are still loaded and we
+  // would jump to the OLD page's first/last row (the "loops in old data" bug).
+  // We only select once `list` becomes a DIFFERENT reference (the new page).
+  const pendingBaseRef = useRef<T[] | null>(null);
 
   const idx = currentKey == null ? -1 : list.findIndex((r) => keyOf(r) === currentKey);
   const hasPrev = currentKey != null && (idx > 0 || page > 1);
@@ -57,24 +63,27 @@ export function useDrawerNav<T>(opts: UseDrawerNavOptions<T>): DrawerNavState {
     const o = ref.current;
     const i = o.currentKey == null ? -1 : o.list.findIndex((r) => o.keyOf(r) === o.currentKey);
     if (i > 0) { o.onSelect(o.list[i - 1]); return; }
-    if (o.page > 1) { setPending("last"); o.onPage(o.page - 1); }
+    if (o.page > 1) { pendingBaseRef.current = o.list; setPending("last"); o.onPage(o.page - 1); }
   }, []);
 
   const goNext = useCallback(() => {
     const o = ref.current;
     const i = o.currentKey == null ? -1 : o.list.findIndex((r) => o.keyOf(r) === o.currentKey);
     if (i >= 0 && i < o.list.length - 1) { o.onSelect(o.list[i + 1]); return; }
-    if (o.page < o.lastPage) { setPending("first"); o.onPage(o.page + 1); }
+    if (o.page < o.lastPage) { pendingBaseRef.current = o.list; setPending("first"); o.onPage(o.page + 1); }
   }, []);
 
-  // Apply the pending selection when the crossed-to page's rows arrive. The
-  // `list` reference only changes when the parent replaces it with new data,
-  // so this fires on the new page — not on intermediate renders.
+  // Apply the pending selection ONLY after the crossed-to page's rows arrive —
+  // i.e. once `list` is a different reference from the one captured when we
+  // crossed, and non-empty. Guards against selecting from the still-loaded old
+  // page on the render immediately after setPage.
   useEffect(() => {
     if (!pending) return;
-    if (list.length === 0) return; // wait for the new page (or nothing to pick)
+    if (list === pendingBaseRef.current) return; // still the old page — wait
+    if (list.length === 0) return;               // new page still loading / empty — wait
     ref.current.onSelect(pending === "first" ? list[0] : list[list.length - 1]);
     setPending(null);
+    pendingBaseRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, pending]);
 

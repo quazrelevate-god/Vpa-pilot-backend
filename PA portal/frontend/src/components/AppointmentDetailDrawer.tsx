@@ -178,16 +178,18 @@ export default function AppointmentDetailDrawer({
                 </div>
               </div>
 
-              {onPrev && onNext && (
-                <DrawerNav
-                  onPrev={onPrev} onNext={onNext}
-                  hasPrev={!!hasPrev} hasNext={!!hasNext}
-                  loading={!!navLoading}
-                />
-              )}
-              <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                <X className="h-5 w-5" />
-              </SheetClose>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {onPrev && onNext && (
+                  <DrawerNav
+                    onPrev={onPrev} onNext={onNext}
+                    hasPrev={!!hasPrev} hasNext={!!hasNext}
+                    loading={!!navLoading}
+                  />
+                )}
+                <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                  <X className="h-5 w-5" />
+                </SheetClose>
+              </div>
             </div>
 
             {/* Action bar — workflow actions per current status. Every
