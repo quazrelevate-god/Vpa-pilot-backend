@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/dialog";
 import { useLang } from "@/lib/lang-context";
 import { useIsDesktop } from "@/lib/use-media-query";
+import { useDrawerNav } from "@/lib/use-drawer-nav";
+import { DrawerNav } from "@/components/ui/drawer-nav";
 import { cn } from "@/lib/utils";
 import { uploadAppointmentAttachment } from "@/lib/api";
 import { MINISTRY_DISPLAY, DISTRICT_DISPLAY, CATEGORY_DISPLAY_EN, CATEGORY_DISPLAY_TA, priorityOptions } from "@/lib/enums";
@@ -908,6 +910,16 @@ function AiReviewPageInner() {
     } catch { /* keep the light preview */ }
   }
 
+  // Prev/next drawer navigation. Rows interleave uploads + petitions whose
+  // ids can collide, so the key is kind+id. Crosses pages at the boundaries.
+  const nav = useDrawerNav({
+    list: pageRows,
+    keyOf: (r) => `${r.kind}:${r.id}`,
+    currentKey: review ? `${review._kind ?? "upload"}:${review.id}` : null,
+    onSelect: (r) => { void openRow(r); },
+    page, lastPage, onPage: setPage,
+  });
+
   async function saveEdits() {
     if (!review) return;
     setBusy(true);
@@ -1698,6 +1710,11 @@ function AiReviewPageInner() {
                         </>
                       : <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Pencil className="mr-1.5 h-3.5 w-3.5" /> {t("petition.editLabel")}</Button>
                   )}
+                  <DrawerNav
+                    onPrev={nav.onPrev} onNext={nav.onNext}
+                    hasPrev={nav.hasPrev} hasNext={nav.hasNext}
+                    loading={nav.navBusy}
+                  />
                   <button onClick={() => !busy && setReview(null)} aria-label={t("petition.cancel")}
                     className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
                 </div>

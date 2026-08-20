@@ -26,6 +26,7 @@ import {
 import { useDepartments, departmentText, type Department } from "@/lib/departments";
 import { useLang } from "@/lib/lang-context";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import { DrawerNav } from "@/components/ui/drawer-nav";
 import AttachmentUploadDialog from "@/components/ui/attachment-upload-dialog";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -123,10 +124,16 @@ function galleryType(mime?: string): GalleryAttachment["type"] {
 
 export default function TicketDetailDrawer({
   ticketId, onClose, onMutated,
+  onPrev, onNext, hasPrev, hasNext, navBusy,
 }: {
   ticketId: number | null;
   onClose: () => void;
   onMutated?: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  navBusy?: boolean;
 }) {
   const [data, setData] = useState<TicketDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -429,6 +436,13 @@ export default function TicketDetailDrawer({
             >
               <Paperclip className="h-4 w-4" /> {tr("attach.cta")}
             </Button>
+          )}
+          {onPrev && onNext && (
+            <DrawerNav
+              onPrev={onPrev} onNext={onNext}
+              hasPrev={!!hasPrev} hasNext={!!hasNext}
+              loading={loading || !!navBusy}
+            />
           )}
           <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
             <X className="h-5 w-5" />

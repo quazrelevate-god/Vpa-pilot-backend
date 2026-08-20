@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import { DrawerNav } from "@/components/ui/drawer-nav";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
@@ -160,6 +161,12 @@ export interface ProposalDrawerProps {
   /** Called with the refreshed row after the desk is reassigned, so the list
    *  behind the drawer can pick up the new category. */
   onCategorySaved?: (updated: ProposalDetail) => void;
+  /** Prev/next drawer navigation (wired by the list page via useDrawerNav). */
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  navLoading?: boolean;
 }
 
 export function ProposalDrawer({
@@ -168,6 +175,7 @@ export function ProposalDrawer({
   deciding = false, onDecide,
   onNoteSave,
   onCategorySaved,
+  onPrev, onNext, hasPrev, hasNext, navLoading,
 }: ProposalDrawerProps) {
   const { lang } = useLang();
 
@@ -340,6 +348,13 @@ export function ProposalDrawer({
               </button>
             )}
           </div>
+          {onPrev && onNext && (
+            <DrawerNav
+              onPrev={onPrev} onNext={onNext}
+              hasPrev={!!hasPrev} hasNext={!!hasNext}
+              loading={!!navLoading}
+            />
+          )}
           <SheetClose
             onClick={onClose}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

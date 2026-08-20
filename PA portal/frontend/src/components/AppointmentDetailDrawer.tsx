@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import { DrawerNav } from "@/components/ui/drawer-nav";
 import { priorityOptions, ministryOptions, categoryOptions, MINISTRY_DISPLAY, CATEGORY_DISPLAY, CATEGORY_DISPLAY_TA } from "@/lib/enums";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
@@ -40,6 +41,12 @@ interface AppointmentDetailDrawerProps {
   row: AppointmentRow | null;
   onClose: () => void;
   onStatusChange?: (row: AppointmentRow, next: AppointmentStatus) => void;
+  /** Prev/next drawer navigation (wired by the list page via useDrawerNav). */
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  navLoading?: boolean;
 }
 
 const STATUS_OPTIONS: AppointmentStatus[] = ["Scheduled", "Awaiting Review", "Reviewed", "Rescheduled"];
@@ -52,6 +59,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function AppointmentDetailDrawer({
   row, onClose, onStatusChange,
+  onPrev, onNext, hasPrev, hasNext, navLoading,
 }: AppointmentDetailDrawerProps) {
   const { lang, t } = useLang();
   const [busy, setBusy] = useState(false);
@@ -170,6 +178,13 @@ export default function AppointmentDetailDrawer({
                 </div>
               </div>
 
+              {onPrev && onNext && (
+                <DrawerNav
+                  onPrev={onPrev} onNext={onNext}
+                  hasPrev={!!hasPrev} hasNext={!!hasNext}
+                  loading={!!navLoading}
+                />
+              )}
               <SheetClose className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                 <X className="h-5 w-5" />
               </SheetClose>

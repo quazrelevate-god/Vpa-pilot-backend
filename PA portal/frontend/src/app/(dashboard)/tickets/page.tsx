@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import TopBar from "@/components/TopBar";
 import { useLang } from "@/lib/lang-context";
 import { useIsDesktop } from "@/lib/use-media-query";
+import { useDrawerNav } from "@/lib/use-drawer-nav";
 import TicketDetailDrawer from "@/components/TicketDetailDrawer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -539,6 +540,20 @@ export default function TicketsPage() {
   const lo = total === 0 ? 0 : Math.min(offset + 1, total);
   const hi = Math.min(offset + PAGE_SIZE, total);
 
+  // Prev/next drawer navigation over the visible rows. Cross-page nav is
+  // disabled while the SLA-breached client filter is on (the next server
+  // page's first row may not be breached, so there's no reliable target) —
+  // it just walks the filtered set on the current page.
+  const nav = useDrawerNav({
+    list: displayRows,
+    keyOf: (r) => String(r.id),
+    currentKey: openId != null ? String(openId) : null,
+    onSelect: (r) => setOpenId(r.id),
+    page,
+    lastPage: clientNarrowed ? page : lastPage,
+    onPage: setPage,
+  });
+
   async function doExport() {
     // Empty-result guard — the button is disabled when total === 0, this
     // just protects against a filter change slipping through.
@@ -963,6 +978,9 @@ export default function TicketsPage() {
 
       <TicketDetailDrawer
         ticketId={openId}
+        onPrev={nav.onPrev} onNext={nav.onNext}
+        hasPrev={nav.hasPrev} hasNext={nav.hasNext}
+        navBusy={nav.navBusy}
         onClose={() => setOpenId(null)}
         onMutated={() => {
           // Triggered by drawer mutations (close / reopen / revert / priority

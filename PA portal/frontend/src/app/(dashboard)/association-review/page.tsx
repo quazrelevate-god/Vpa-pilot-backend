@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { useLang } from "@/lib/lang-context";
 import { useIsDesktop } from "@/lib/use-media-query";
+import { useDrawerNav } from "@/lib/use-drawer-nav";
 import { cn } from "@/lib/utils";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
@@ -291,6 +292,15 @@ export default function AssociationReviewPage() {
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const lo = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const hi = Math.min(page * PAGE_SIZE, total);
+
+  // Prev/next drawer navigation (crosses pages at the boundaries).
+  const nav = useDrawerNav({
+    list: items,
+    keyOf: (a) => String(a.id),
+    currentKey: selectedId != null ? String(selectedId) : null,
+    onSelect: (a) => setSelectedId(a.id),
+    page, lastPage, onPage: setPage,
+  });
 
   const activeFilterCount =
     (recFilter ? 1 : 0) + (categoryFilter ? 1 : 0) + (urgencyFilter ? 1 : 0) +
@@ -659,6 +669,9 @@ export default function AssociationReviewPage() {
               deciding={deciding}
               onDecide={decide}
               onNoteSave={saveNote}
+              onPrev={nav.onPrev} onNext={nav.onNext}
+              hasPrev={nav.hasPrev} hasNext={nav.hasNext}
+              navLoading={detailLoading || nav.navBusy}
               onClose={() => setSelectedId(null)}
             />
           ) : (

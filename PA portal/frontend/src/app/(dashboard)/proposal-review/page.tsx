@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { useIsDesktop } from "@/lib/use-media-query";
+import { useDrawerNav } from "@/lib/use-drawer-nav";
 import { fetchMe, type SessionUser } from "@/app/(dashboard)/settings/_lib/adminApi";
 import {
   listProposals, getProposal, decideProposal, updateProposalNote,
@@ -250,6 +251,15 @@ export default function ProposalReviewPage() {
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const lo = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const hi = Math.min(page * PAGE_SIZE, total);
+
+  // Prev/next drawer navigation (crosses pages at the boundaries).
+  const nav = useDrawerNav({
+    list: items,
+    keyOf: (p) => String(p.id),
+    currentKey: selectedId != null ? String(selectedId) : null,
+    onSelect: (p) => setSelectedId(p.id),
+    page, lastPage, onPage: setPage,
+  });
 
   const activeFilterCount =
     (recFilter ? 1 : 0) + (categoryFilter ? 1 : 0) + (dateFilter ? 1 : 0);
@@ -593,6 +603,9 @@ export default function ProposalReviewPage() {
               deciding={deciding}
               onDecide={decide}
               onNoteSave={saveNote}
+              onPrev={nav.onPrev} onNext={nav.onNext}
+              hasPrev={nav.hasPrev} hasNext={nav.hasNext}
+              navLoading={detailLoading || nav.navBusy}
               onClose={() => setSelectedId(null)}
               onCategorySaved={(updated) => { setDetail(updated); load(); }}
             />

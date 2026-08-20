@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
+import { DrawerNav } from "@/components/ui/drawer-nav";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
@@ -164,6 +165,12 @@ export interface AssociationDrawerProps {
    *  from onDecide because it doesn't re-run the ticket mint or re-stamp
    *  reviewed_by — pure note edit. */
   onNoteSave?: (note: string) => Promise<void> | void;
+  /** Prev/next drawer navigation (wired by the list page via useDrawerNav). */
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  navLoading?: boolean;
 }
 
 export function AssociationDrawer({
@@ -171,6 +178,7 @@ export function AssociationDrawer({
   note = "", setNote,
   deciding = false, onDecide,
   onNoteSave,
+  onPrev, onNext, hasPrev, hasNext, navLoading,
 }: AssociationDrawerProps) {
   const { lang } = useLang();
   const ta = lang === "ta";
@@ -333,6 +341,13 @@ export function AssociationDrawer({
               </button>
             )}
           </div>
+          {onPrev && onNext && (
+            <DrawerNav
+              onPrev={onPrev} onNext={onNext}
+              hasPrev={!!hasPrev} hasNext={!!hasNext}
+              loading={!!navLoading}
+            />
+          )}
           <SheetClose
             onClick={onClose}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

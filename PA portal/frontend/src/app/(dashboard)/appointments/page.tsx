@@ -16,6 +16,7 @@ import TopBar from "@/components/TopBar";
 import PriorityBadge from "@/components/PriorityBadge";
 import { useLang } from "@/lib/lang-context";
 import { useIsDesktop } from "@/lib/use-media-query";
+import { useDrawerNav } from "@/lib/use-drawer-nav";
 import RescheduleModal from "@/components/RescheduleModal";
 import AppointmentDetailDrawer from "@/components/AppointmentDetailDrawer";
 import { Card } from "@/components/ui/card";
@@ -620,6 +621,16 @@ function AppointmentsPageInner() {
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
   const offset = (page - 1) * pageSize;
 
+  // Prev/next drawer navigation (crosses pages at the boundaries). openRow
+  // holds the full row, so onSelect just swaps it — no re-fetch.
+  const nav = useDrawerNav({
+    list: rows,
+    keyOf: (r) => String(r.id),
+    currentKey: openRow ? String(openRow.id) : null,
+    onSelect: (r) => setOpenRow(r),
+    page, lastPage, onPage: setPage,
+  });
+
   function rowsToCsv(items: AppointmentRow[]) {
     const headers = ["Token", "Name", "Mobile", "Category", "Status", "Submitted", "Appt Date", "Slot", "Time"];
     const lines = items.map((r) => [
@@ -1050,6 +1061,9 @@ function AppointmentsPageInner() {
 
       <AppointmentDetailDrawer
         row={openRow}
+        onPrev={nav.onPrev} onNext={nav.onNext}
+        hasPrev={nav.hasPrev} hasNext={nav.hasNext}
+        navLoading={nav.navBusy}
         onClose={() => setOpenRow(null)}
         onStatusChange={(row, next) => {
           setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, status: next } : r)));
