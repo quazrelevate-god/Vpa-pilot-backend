@@ -19,10 +19,21 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
+from src.core.rbac import require_role
 from src.api.v1.dashboard import require_auth
+from src.models.login_models import ROLE_PA, ROLE_PETITION_REVIEWER, ROLE_SUPER_ADMIN
 from src.services.ai_upload_service import ai_upload_service
 
-router = APIRouter(prefix="/dashboard/api/ai-uploads", tags=["AI Uploads"])
+# AI-review mutations create / destroy downstream tickets, so must be gated to
+# the petition-triage roles (super_admin, PA, petition_reviewer). Dept-officers
+# and auditors have no business in this queue. Router-level dependency so every
+# mutation and every list endpoint enforces the same check without per-route
+# repetition — safer than an allowlist maintained inline.
+router = APIRouter(
+    prefix="/dashboard/api/ai-uploads",
+    tags=["AI Uploads"],
+    dependencies=[Depends(require_role(ROLE_SUPER_ADMIN, ROLE_PA, ROLE_PETITION_REVIEWER))],
+)
 
 
 @router.post("/upload")

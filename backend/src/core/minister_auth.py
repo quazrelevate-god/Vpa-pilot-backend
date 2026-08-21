@@ -24,7 +24,7 @@ from itsdangerous import TimestampSigner, BadSignature, SignatureExpired
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import settings
+from src.core.config import check_env_credentials, settings
 from src.core.database import get_db
 from src.models.login_models import (
     Login,
@@ -122,16 +122,17 @@ async def verify_minister_credentials(
     uname = (login_name or "").strip()
 
     # 1) Env bootstrap credential.
-    if uname == settings.MINISTER_USERNAME and password == settings.MINISTER_PASSWORD:
+    if check_env_credentials(uname, password, settings.MINISTER_USERNAME, settings.MINISTER_PASSWORD):
         return await ensure_minister_seeded(db, uname)
 
     # 2) A real role=minister row.
     row = (await db.execute(
         select(Login).where(Login.login_name == uname)
     )).scalar_one_or_none()
-    if row is None or not row.is_active:
-        return None
-    if not verify_password(password, row.password):
+    # Always call verify_password (even with None) so unknown-username and
+    # wrong-password branches take the same time. Only THEN branch on the row.
+    ok = verify_password(password, row.password if row else None)
+    if row is None or not row.is_active or not ok:
         return None
     if needs_rehash(row.password):          # migrate legacy hash → PBKDF2
         row.password = hash_password(password)

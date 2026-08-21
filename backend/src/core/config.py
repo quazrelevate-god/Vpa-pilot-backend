@@ -2,11 +2,25 @@
 Configuration module for the citizen scheduler application.
 Loads environment variables and provides centralized settings management.
 """
+import secrets as _secrets
 from pydantic_settings import BaseSettings
 from pydantic import model_validator, ConfigDict
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+
+
+def check_env_credentials(user_in: str, pass_in: str, user_cfg: str, pass_cfg: str) -> bool:
+    """Constant-time compare for env-configured credentials.
+
+    Always runs both hmac.compare_digest calls (`and` is short-circuit so we
+    intentionally bind them to locals first) — otherwise the response-time
+    delta between a wrong-username and a right-username-wrong-password would
+    leak "the username exists" via timing.
+    """
+    u = _secrets.compare_digest(user_in.encode("utf-8"), user_cfg.encode("utf-8"))
+    p = _secrets.compare_digest(pass_in.encode("utf-8"), pass_cfg.encode("utf-8"))
+    return u and p
 
 # Absolute path to backend/.env (config.py is at backend/src/core/config.py).
 # Resolving by file location rather than cwd means the .env is found no matter
@@ -45,11 +59,13 @@ class Settings(BaseSettings):
     # and never changed (changing it makes existing data unreadable). Falls back to
     # SECRET_KEY in dev. Generate one with: python -c "import secrets;print(secrets.token_urlsafe(48))"
     ENCRYPTION_KEY: Optional[str] = None
-    # Master switch for slowapi rate limiting (login + OTP). OFF by default (per
-    # request) — turn it ON in production by setting RATE_LIMIT_ENABLED=true in
-    # .env. NOTE: the limit decorators on login/OTP are a credential-stuffing /
-    # OTP-enumeration defence, so this SHOULD be true in prod; confirm the real
-    # client IP (X-Forwarded-For) is flowing from nginx, then enable it.
+    # Master switch for slowapi rate limiting (login + OTP). OFF by default so
+    # local dev / QA can hammer the same phone without waiting a minute.
+    # SHOULD be true in production — the limit decorators on login/OTP are the
+    # credential-stuffing / OTP-enumeration defence — but not startup-enforced,
+    # so an operator can defer enabling it until the reverse proxy is confirmed
+    # to forward the real client IP (X-Forwarded-For), avoiding a self-DOS on
+    # shared-egress traffic.
     RATE_LIMIT_ENABLED: bool = False
     # Enforce "one petition per phone per day" on submit. On in prod, off in dev
     # so QA can repeatedly test the same phone number without waiting a day.
@@ -221,6 +237,20 @@ class Settings(BaseSettings):
         raise ValueError("Either DATABASE_URL or all DB_* parameters (DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME) must be provided")
 
 
+def _database_url_looks_remote(url: str | None) -> bool:
+    """True when DATABASE_URL clearly points at a non-local host.
+
+    Used to catch the DEBUG=True + prod DB footgun (`.env` toggled for local
+    debugging while still pointing at the Railway/production database) — that
+    combination was silently bypassing every production safety check.
+    """
+    if not url:
+        return False
+    lowered = url.lower()
+    local_markers = ("@localhost", "@127.0.0.1", "@::1", "@0.0.0.0", "@host.docker.internal")
+    return not any(marker in lowered for marker in local_markers)
+
+
 def assert_production_ready(cfg: "Settings") -> None:
     """Fail-fast production preflight — call at APP STARTUP, not at Settings
     construction.
@@ -232,15 +262,36 @@ def assert_production_ready(cfg: "Settings") -> None:
     Enforcing at app startup instead keeps the running app protected in prod
     while leaving DB tooling free.
 
-    In production (DEBUG=False) this refuses to start when:
+    ALWAYS enforced (irrespective of DEBUG):
+      • DEBUG=True combined with a remote-looking DATABASE_URL — the classic
+        "I flipped debug for local testing but forgot the DB is still prod"
+        footgun that silently disables every check below.
+
+    In production (DEBUG=False) this ALSO refuses to start when:
       • any staff credential is still a shipped default / blank — a missing
         value would otherwise fall back to the world's most-guessable creds;
+      • SECRET_KEY looks like a placeholder / is too short to be a real 32-byte
+        key (session cookies would be trivially forgeable);
       • ENCRYPTION_KEY is unset — crypto would fall back to SECRET_KEY, so a
         future SECRET_KEY rotation would permanently corrupt all encrypted PII
         (set it to the key currently encrypting your data — today's SECRET_KEY);
       • SERVER_BASE_URL is the localhost default — the QR/referral/dashboard
-        link builders would then fall back to the client-controlled Host header.
+        link builders would then fall back to the client-controlled Host header;
+      • COOKIE_SECURE is false — session cookies ship without the Secure flag
+        and can leak over any mixed-content / HTTP-fallback moment;
+      • RATE_LIMIT_ENABLED is false — login + OTP lose their brute-force cap;
+      • CORS_ORIGINS still contains localhost — a workstation opening
+        http://localhost:3000 could drive prod APIs with the operator's cookie.
     """
+    # ── ALWAYS-ON gate (fires even in DEBUG mode) ─────────────────────────────
+    if cfg.DEBUG and _database_url_looks_remote(cfg.DATABASE_URL):
+        raise RuntimeError(
+            "Refusing to start with DEBUG=True while DATABASE_URL points at a "
+            "remote host — this bypasses every production safety check.\n"
+            "  Either flip DEBUG=False in backend/.env, or point DATABASE_URL "
+            "at your local Postgres."
+        )
+
     if cfg.DEBUG:
         return
 
@@ -254,6 +305,12 @@ def assert_production_ready(cfg: "Settings") -> None:
         problems.append(
             "default or unset staff credentials: " + ", ".join(sorted(offenders))
         )
+    if not cfg.SECRET_KEY or "CHANGE_ME" in cfg.SECRET_KEY or len(cfg.SECRET_KEY) < 32:
+        problems.append(
+            "SECRET_KEY is unset, a placeholder, or too short (generate one with "
+            "`python -c \"import secrets; print(secrets.token_hex(32))\"` — this "
+            "signs every session cookie)"
+        )
     if not cfg.ENCRYPTION_KEY:
         problems.append(
             "ENCRYPTION_KEY is unset (set it to the key currently encrypting your "
@@ -263,6 +320,19 @@ def assert_production_ready(cfg: "Settings") -> None:
         problems.append(
             "SERVER_BASE_URL is the localhost default (set it to the public base "
             "URL, e.g. https://namkural.in, to block Host-header link spoofing)"
+        )
+    if not cfg.COOKIE_SECURE:
+        problems.append(
+            "COOKIE_SECURE is false (must be true in prod so session cookies "
+            "carry the Secure flag and HSTS is enabled)"
+        )
+    if cfg.CORS_ORIGINS and any(
+        origin.strip().lower().startswith(("http://localhost", "http://127.0.0.1"))
+        for origin in cfg.CORS_ORIGINS.split(",")
+    ):
+        problems.append(
+            "CORS_ORIGINS still contains a localhost origin (set it to only the "
+            "public prod origin, e.g. https://namkural.in)"
         )
 
     if problems:

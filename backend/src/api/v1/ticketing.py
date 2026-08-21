@@ -24,14 +24,23 @@ from src.core.database import get_db
 from src.core.dash_auth import require_auth
 from src.core.dept_auth import require_department, create_dept_session_cookie, clear_dept_session_cookie
 from src.core.rate_limit import limiter
+from src.core.rbac import require_role
 from src.models.department_account import DepartmentAccount, verify_password, needs_rehash, hash_password
+from src.models.login_models import ROLE_PA, ROLE_SUPER_ADMIN
 from src.models.school_department import SchoolDepartment, department_label, SCHOOL_DEPARTMENT_DISPLAY
 from src.models.registry_models import DepartmentRegistry
 from src.services import department_service
 from src.services.storage_service import save_file
 
 dept_router = APIRouter(prefix="/department", tags=["Department"])
-pa_router = APIRouter(prefix="/dashboard/api/tickets", tags=["Ticketing (PA)"])
+# PA-only ticket actions (route into a department, forward out to a ministry)
+# are terminal state transitions — gate the whole router to super_admin + PA
+# so no auditor / dept_officer / petition_reviewer can trigger them.
+pa_router = APIRouter(
+    prefix="/dashboard/api/tickets",
+    tags=["Ticketing (PA)"],
+    dependencies=[Depends(require_role(ROLE_SUPER_ADMIN, ROLE_PA))],
+)
 
 _ALLOWED_MIMES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 _MAX_BYTES = 15 * 1024 * 1024
@@ -69,13 +78,76 @@ async def list_departments(db: AsyncSession = Depends(get_db)):
 # root drift that would otherwise 404 anything just uploaded).
 
 
+async def _dept_authorize_file(
+    file_path: str,
+    department: str,
+    db: AsyncSession,
+) -> None:
+    """Row-level authorization for the /department/api/files/* endpoint.
+
+    Before: any authenticated dept account could fetch ANY storage key it
+    could name — a full IDOR to appointment PII scans, other departments'
+    resolution proofs, ai_uploads bulk scans, proposal + association PDFs.
+    The route delegated straight to serve_stored_file with no ownership
+    check at all.
+
+    Now: mirrors dashboard._authorize_file_access but scopes strictly to the
+    caller's own department key. Dept users only ever legitimately need:
+      - attachments/… on an Appointment whose Ticket is routed to their dept
+      - ticket_attachments/… on a Ticket routed to their dept
+    Every other namespace (ai_uploads/, proposals/, associations/) 403s —
+    dept accounts don't have a UI surface for them and never should.
+    """
+    from sqlalchemy import func
+    from src.models.appointment_models import AppointmentAttachment
+    from src.models.ticket_models import Ticket, TicketAttachment
+
+    _deny = HTTPException(status_code=403, detail="Not authorized to access this file.")
+
+    if file_path.startswith("attachments/"):
+        appt_id = (await db.execute(
+            select(AppointmentAttachment.appointment_id)
+            .where(AppointmentAttachment.storage_url == file_path)
+            .limit(1)
+        )).scalar_one_or_none()
+        if appt_id is None:
+            raise _deny
+        allowed = await db.scalar(
+            select(func.count(Ticket.id))
+            .where(Ticket.appointment_id == appt_id)
+            .where(Ticket.department == department)
+        )
+        if not allowed:
+            raise _deny
+        return
+
+    if file_path.startswith("ticket_attachments/"):
+        ticket_id = (await db.execute(
+            select(TicketAttachment.ticket_id)
+            .where(TicketAttachment.storage_url == file_path)
+            .limit(1)
+        )).scalar_one_or_none()
+        if ticket_id is None:
+            raise _deny
+        t = await db.get(Ticket, ticket_id)
+        if t is None or t.department != department:
+            raise _deny
+        return
+
+    # Fail-closed on every other namespace — dept has no UI for ai_uploads/
+    # proposals/ associations/ and must never be able to enumerate them.
+    raise _deny
+
+
 @dept_router.get("/api/files/{file_path:path}")
 async def dept_serve_upload(
     file_path: str,
     request: Request,
     department: str = Depends(require_department),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Serve an uploaded file scoped by the dept session cookie.
+    """Serve an uploaded file scoped by the dept session cookie AND
+    row-level-scoped to the caller's own department (see _dept_authorize_file).
 
     Delegates to the shared streamer so the dept workspace gets the same
     behaviour as the PA portal: worker-thread MinIO fetches (no event-loop
@@ -84,6 +156,7 @@ async def dept_serve_upload(
     """
     from src.api.v1.dashboard import serve_stored_file
 
+    await _dept_authorize_file(file_path, department, db)
     return await serve_stored_file(file_path, request)
 
 
@@ -95,7 +168,10 @@ async def dept_login(request: Request, username: str = Form(...), password: str 
     acct = (await db.execute(
         select(DepartmentAccount).where(DepartmentAccount.username == username.strip())
     )).scalar_one_or_none()
-    if acct is None or not verify_password(password, acct.password_hash):
+    # Always call verify_password (even with None) so unknown-username and
+    # wrong-password branches take the same time.
+    ok = verify_password(password, acct.password_hash if acct else None)
+    if acct is None or not ok:
         return JSONResponse({"error": "Invalid username or password."}, status_code=401)
     if needs_rehash(acct.password_hash):        # migrate legacy hash → PBKDF2
         acct.password_hash = hash_password(password)

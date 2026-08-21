@@ -25,11 +25,20 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
+from src.core.rbac import require_role
 from src.services.scheduling_service import scheduling_service
 from src.api.v1.dashboard import require_auth
+from src.models.login_models import ROLE_PA, ROLE_SUPER_ADMIN
 from src.models.scheduling_models import MLA
 
 router = APIRouter(prefix="/api/v1/scheduling", tags=["scheduling"])
+
+# Admin-scheduling routes are lever-pulling actions (open a date, block a slot,
+# cancel every appointment on a day, reschedule a citizen booking) — must be
+# gated to PA / super_admin. Attached via decorator dependencies so the existing
+# `user: str = Depends(require_auth)` parameters (used for audit attribution)
+# stay untouched. FastAPI dedupes the shared require_auth call under the hood.
+_ADMIN_ONLY = [Depends(require_role(ROLE_SUPER_ADMIN, ROLE_PA))]
 
 
 # ── Pydantic request bodies ──────────────────────────────────────────────────
@@ -114,7 +123,7 @@ async def meeting_availability(db: AsyncSession = Depends(get_db)):
 
 # ── Admin: open a date ────────────────────────────────────────────────────────
 
-@router.post("/admin/open-date")
+@router.post("/admin/open-date", dependencies=_ADMIN_ONLY)
 async def open_date(
     data: OpenDateRequest,
     db: AsyncSession = Depends(get_db),
@@ -156,7 +165,7 @@ async def open_date(
 
 # ── Admin: slot grid for a date ───────────────────────────────────────────────
 
-@router.get("/admin/slots")
+@router.get("/admin/slots", dependencies=_ADMIN_ONLY)
 async def get_slots(
     target_date: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
@@ -177,7 +186,7 @@ async def get_slots(
 
 # ── Admin: block / unblock ────────────────────────────────────────────────────
 
-@router.post("/admin/slots/{slot_id}/block")
+@router.post("/admin/slots/{slot_id}/block", dependencies=_ADMIN_ONLY)
 async def block_slot(
     slot_id: int,
     db: AsyncSession = Depends(get_db),
@@ -195,7 +204,7 @@ async def block_slot(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@router.post("/admin/slots/{slot_id}/unblock")
+@router.post("/admin/slots/{slot_id}/unblock", dependencies=_ADMIN_ONLY)
 async def unblock_slot(
     slot_id: int,
     db: AsyncSession = Depends(get_db),
@@ -213,7 +222,7 @@ async def unblock_slot(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@router.post("/admin/slots/{slot_id}/close")
+@router.post("/admin/slots/{slot_id}/close", dependencies=_ADMIN_ONLY)
 async def close_slot(
     slot_id: int,
     db: AsyncSession = Depends(get_db),
@@ -231,7 +240,7 @@ async def close_slot(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@router.post("/admin/slots/{slot_id}/reopen")
+@router.post("/admin/slots/{slot_id}/reopen", dependencies=_ADMIN_ONLY)
 async def reopen_slot(
     slot_id: int,
     db: AsyncSession = Depends(get_db),
@@ -251,7 +260,7 @@ async def reopen_slot(
 
 # ── Admin: list open dates ────────────────────────────────────────────────────
 
-@router.get("/admin/dates")
+@router.get("/admin/dates", dependencies=_ADMIN_ONLY)
 async def get_open_dates(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
@@ -267,7 +276,7 @@ async def get_open_dates(
 
 # ── Admin: reschedule ─────────────────────────────────────────────────────────
 
-@router.patch("/admin/reschedule/{appointment_id}")
+@router.patch("/admin/reschedule/{appointment_id}", dependencies=_ADMIN_ONLY)
 async def reschedule_appointment(
     appointment_id: int,
     data: RescheduleRequest,
@@ -309,7 +318,7 @@ async def reschedule_appointment(
 
 # ── Admin: statistics ─────────────────────────────────────────────────────────
 
-@router.get("/admin/statistics")
+@router.get("/admin/statistics", dependencies=_ADMIN_ONLY)
 async def get_statistics(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
@@ -325,7 +334,7 @@ async def get_statistics(
 
 # ── Admin: list MLAs ──────────────────────────────────────────────────────────
 
-@router.get("/admin/mlas")
+@router.get("/admin/mlas", dependencies=_ADMIN_ONLY)
 async def get_mlas(
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
@@ -346,7 +355,7 @@ async def get_mlas(
 
 # ── Admin: emergency cancel ───────────────────────────────────────────────────
 
-@router.post("/admin/cancel-all-scheduled")
+@router.post("/admin/cancel-all-scheduled", dependencies=_ADMIN_ONLY)
 async def cancel_all_scheduled(
     request: Request,
     target_date: Optional[str] = None,

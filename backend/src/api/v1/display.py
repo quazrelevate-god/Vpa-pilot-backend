@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 from fastapi import Body, UploadFile
 
 from src.core.database import get_db
-from src.core.config import settings
+from src.core.config import check_env_credentials, settings
 from src.core.display_auth import (
     create_display_cookie, clear_display_cookie, get_display_user, require_display_api,
 )
@@ -41,7 +41,7 @@ _FLOOR_LABEL = "Floor Operator"
 @limiter.limit("5/minute")
 async def crowd_login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Validate floor credentials, set the display_session cookie. 200 or 401."""
-    if username == settings.DISPLAY_USERNAME and password == settings.DISPLAY_PASSWORD:
+    if check_env_credentials(username, password, settings.DISPLAY_USERNAME, settings.DISPLAY_PASSWORD):
         response = JSONResponse({"ok": True, "label": _FLOOR_LABEL})
         create_display_cookie(response, username)
         return response

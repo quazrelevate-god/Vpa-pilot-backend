@@ -33,6 +33,14 @@ _ALGO = "pbkdf2_sha256"
 _ITERATIONS = 600_000          # OWASP 2023 floor for PBKDF2-HMAC-SHA256
 _SALT_BYTES = 16
 
+# A fixed dummy hash used to equalize verify_password() timing when the caller
+# passes stored=None (e.g. the username was not found in the login table).
+# Without this, a login handler that short-circuits before the PBKDF2 call for
+# unknown usernames leaks a ~200ms delta that lets an attacker enumerate valid
+# accounts. Generated once at import time with a random salt so its exact bytes
+# never appear in a rainbow table.
+_DUMMY_STORED = f"{_ALGO}${_ITERATIONS}${secrets.token_bytes(_SALT_BYTES).hex()}${'0' * 64}"
+
 
 def hash_password(password: str) -> str:
     """Salted PBKDF2-HMAC-SHA256 → self-describing string (see module docstring)."""
@@ -47,19 +55,34 @@ def _legacy_hash(password: str) -> str:
 
 
 def verify_password(password: str, stored: Optional[str]) -> bool:
-    """Verify against either a new PBKDF2 hash or a legacy HMAC hash."""
-    stored = stored or ""
+    """Verify against either a new PBKDF2 hash or a legacy HMAC hash.
+
+    Constant-time on the "user not found" path: when `stored` is None / empty,
+    we still do the full PBKDF2 work against a dummy hash and return False, so
+    the caller can safely do the classic `if row and verify_password(...)`
+    without leaking username validity via response time.
+    """
+    if not stored:
+        # Do the expensive PBKDF2 work anyway so the "unknown username" branch
+        # takes the same time as a wrong-password branch.
+        _pbkdf2_verify(password, _DUMMY_STORED)
+        return False
     if stored.startswith(_ALGO + "$"):
-        try:
-            _algo, iters, salt_hex, hash_hex = stored.split("$", 3)
-            dk = hashlib.pbkdf2_hmac(
-                "sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(iters)
-            )
-            return hmac.compare_digest(dk.hex(), hash_hex)
-        except (ValueError, TypeError):
-            return False
+        return _pbkdf2_verify(password, stored)
     # Legacy unsalted HMAC row.
     return hmac.compare_digest(_legacy_hash(password), stored)
+
+
+def _pbkdf2_verify(password: str, stored: str) -> bool:
+    """Parse a self-describing PBKDF2 string, recompute, constant-time compare."""
+    try:
+        _algo, iters, salt_hex, hash_hex = stored.split("$", 3)
+        dk = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(iters)
+        )
+        return hmac.compare_digest(dk.hex(), hash_hex)
+    except (ValueError, TypeError):
+        return False
 
 
 def needs_rehash(stored: Optional[str]) -> bool:

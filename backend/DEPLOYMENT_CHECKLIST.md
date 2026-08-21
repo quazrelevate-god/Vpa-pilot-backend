@@ -60,16 +60,41 @@ MSG91_SENDER_ID=
 ```
 
 ### 2. Database Setup
+
 ```bash
 # Install dependencies
 pip install -r requirements.txt
-
-# Create all tables
-alembic upgrade head
-
-# Verify tables were created
-python check_all_tables.py
 ```
+
+**On a FRESH database** (no existing tables): the alembic chain starts at
+migration `001` which references v1 tables that were never actually created
+by alembic itself, so a bare `alembic upgrade head` will error with
+`relation "appointments" does not exist`. Bootstrap first:
+
+```bash
+# 1. Build the base schema via the v2 create_all script (idempotent).
+python scripts/init_v2_schema.py --db <your-db-name>
+
+# 2. Apply the v2 rename SQL (renames slots columns to what the ORM expects).
+psql -d <your-db-name> -f scripts/migrate_v2_final.sql
+
+# 3. Mark alembic as up-to-date so it doesn't try to recreate the tables.
+alembic stamp head
+
+# 4. Any future migrations then apply cleanly.
+alembic upgrade head
+```
+
+**On an existing production database** (already bootstrapped): just apply the
+new migrations in the usual way. The defensive migration `060` idempotently
+ensures the `slots` table has the current column names — safe to run either
+way, no-op if already correct.
+
+```bash
+alembic upgrade head
+```
+
+Verify: `python verify_setup.py`
 
 ### 3. Static Assets
 Ensure these directories exist:
@@ -78,12 +103,39 @@ Ensure these directories exist:
 - `backend/templates/` - Jinja2 templates
 
 ### 4. Security Checklist
-- [ ] Change default `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`
-- [ ] Generate strong `SECRET_KEY` (use: `python -c "import secrets; print(secrets.token_urlsafe(32))"`)
-- [ ] Generate strong `ENCRYPTION_KEY` (use: `python -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())"`)
-- [ ] Set proper CORS origins in production
-- [ ] Enable HTTPS/SSL certificates
-- [ ] Set up firewall rules (allow only necessary ports)
+
+**Enforced at startup** (app refuses to boot in DEBUG=False mode when any of
+these are wrong — see `assert_production_ready` in `src/core/config.py`):
+
+- [ ] `DEBUG=False`  (setting `DEBUG=True` while `DATABASE_URL` points at a
+      remote host is ALSO refused, even in "dev" mode — silent-prod-fallback
+      guard).
+- [ ] Change default `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` (and
+      `DISPLAY_*`, `MINISTER_*`, `EVENTS_*` — every credential still holding
+      its shipped default blocks startup).
+- [ ] `SECRET_KEY` — generate with `python -c "import secrets; print(secrets.token_hex(32))"`.
+      Placeholders (`CHANGE_ME…`) and short values are refused.
+- [ ] `ENCRYPTION_KEY` — generate with
+      `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+      NEVER rotate mid-flight; existing PII becomes unreadable.
+- [ ] `COOKIE_SECURE=true`  (session cookies get the Secure flag + HSTS).
+- [ ] `CORS_ORIGINS` — set to the exact prod origin(s); any localhost entry
+      is refused.
+
+**Recommended (not startup-enforced)**:
+- [ ] `RATE_LIMIT_ENABLED=true`  once the reverse proxy is confirmed to forward
+      X-Forwarded-For. Off would leave login + OTP unthrottled — enable as soon
+      as the proxy IP flow is verified so a shared-egress subnet doesn't
+      self-DOS.
+
+**Additional / out-of-band**:
+- [ ] Enable HTTPS/SSL certificates in front of the app.
+- [ ] Front MinIO with TLS — plaintext `http://` for `FILE_STORAGE_ENDPOINT`
+      leaks every citizen upload over the wire.
+- [ ] Set up firewall rules (allow only necessary ports).
+- [ ] Set `SENTRY_DSN` — otherwise every prod error is silent.
+- [ ] Confirm the GCP service-account JSON is mounted OUTSIDE the repo tree
+      (`/etc/vpa/vertex.json`, ADC, or `GOOGLE_APPLICATION_CREDENTIALS`).
 
 ### 5. Production Server
 ```bash
@@ -135,10 +187,20 @@ gunicorn src.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
 ### Common Issues
 
-1. **Tables not created**
-   - Run `alembic upgrade head` again
+1. **Tables not created / `relation "appointments" does not exist`**
+   - This is a fresh DB. `alembic upgrade head` alone does NOT create the
+     v1 base tables (the chain starts at migration 001 which references
+     them). See the "Database Setup — on a FRESH database" section above:
+     run `scripts/init_v2_schema.py` + `scripts/migrate_v2_final.sql`
+     first, then `alembic stamp head`, then normal upgrades.
    - Check database connection string
    - Verify PostgreSQL is running
+
+1a. **500s on every slot query / `column "max_capacity" does not exist`**
+   - Migration `060` handles this idempotently — run `alembic upgrade head`.
+   - If that isn't an option, apply the rename directly:
+     `ALTER TABLE slots RENAME COLUMN total_slots TO max_capacity;`
+     `ALTER TABLE slots RENAME COLUMN slots_booked TO booked_count;`
 
 2. **SMS not sending**
    - Check `APM_SMS_API_KEY` is set

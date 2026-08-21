@@ -84,9 +84,10 @@ async def verify_events_credentials(
     row = (await db.execute(
         select(Login).where(Login.login_name == login_name)
     )).scalar_one_or_none()
-    if row is None or not row.is_active:
-        return None
-    if not verify_password(password, row.password):
+    # Always call verify_password (even with None) so unknown-username and
+    # wrong-password branches take the same time.
+    ok = verify_password(password, row.password if row else None)
+    if row is None or not row.is_active or not ok:
         return None
     if needs_rehash(row.password):        # migrate legacy hash → PBKDF2
         row.password = hash_password(password)

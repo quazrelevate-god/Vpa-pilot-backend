@@ -29,8 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.core.config import settings
+from src.core.rbac import require_role
 from src.services.referral_service import referral_service
 from src.api.v1.dashboard import require_auth
+from src.models.login_models import ROLE_PA, ROLE_SUPER_ADMIN
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -38,6 +40,10 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # Two routers: one under /api/v1/referral (JSON + scan), one for the /form/referral page
 router = APIRouter(prefix="/api/v1/referral", tags=["Referral"])
 page_router = APIRouter(tags=["Referral"])
+
+# Admin-referral routes are lever-pulling actions (open a date, block a slot,
+# cancel every booking on a day) — must be gated to PA / super_admin.
+_ADMIN_ONLY = [Depends(require_role(ROLE_SUPER_ADMIN, ROLE_PA))]
 
 
 def _base_url(request: Request) -> str:
@@ -170,14 +176,14 @@ async def referral_submit(
 
 # ── Admin: daily QR ───────────────────────────────────────────────────────────
 
-@router.get("/admin/qr")
+@router.get("/admin/qr", dependencies=_ADMIN_ONLY)
 async def admin_qr(request: Request, user: str = Depends(require_auth)):
     return JSONResponse(referral_service.daily_qr_payload(_base_url(request)))
 
 
 # ── Admin: open a date ────────────────────────────────────────────────────────
 
-@router.post("/admin/open-date")
+@router.post("/admin/open-date", dependencies=_ADMIN_ONLY)
 async def admin_open_date(
     data: OpenDateRequest,
     db: AsyncSession = Depends(get_db),
@@ -198,7 +204,7 @@ async def admin_open_date(
 
 # ── Admin: slot grid ──────────────────────────────────────────────────────────
 
-@router.get("/admin/slots")
+@router.get("/admin/slots", dependencies=_ADMIN_ONLY)
 async def admin_slots(
     target_date: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
@@ -214,7 +220,7 @@ async def admin_slots(
 
 # ── Admin: block / unblock / close / reopen ───────────────────────────────────
 
-@router.post("/admin/slots/{slot_id}/{action}")
+@router.post("/admin/slots/{slot_id}/{action}", dependencies=_ADMIN_ONLY)
 async def admin_slot_action(
     slot_id: int,
     action: str,
@@ -241,7 +247,7 @@ async def admin_slot_action(
 
 # ── Admin: open dates ─────────────────────────────────────────────────────────
 
-@router.get("/admin/dates")
+@router.get("/admin/dates", dependencies=_ADMIN_ONLY)
 async def admin_dates(db: AsyncSession = Depends(get_db), user: str = Depends(require_auth)):
     try:
         return JSONResponse(await referral_service.get_open_dates(db))
@@ -252,7 +258,7 @@ async def admin_dates(db: AsyncSession = Depends(get_db), user: str = Depends(re
 
 # ── Admin: cancel every booking on a date ────────────────────────────────────
 
-@router.post("/admin/cancel-all-bookings")
+@router.post("/admin/cancel-all-bookings", dependencies=_ADMIN_ONLY)
 async def admin_cancel_all_bookings(
     target_date: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
@@ -273,7 +279,7 @@ async def admin_cancel_all_bookings(
 
 # ── Admin: bookings table ─────────────────────────────────────────────────────
 
-@router.get("/admin/bookings")
+@router.get("/admin/bookings", dependencies=_ADMIN_ONLY)
 async def admin_bookings(
     target_date: Optional[str] = None,
     db: AsyncSession = Depends(get_db),

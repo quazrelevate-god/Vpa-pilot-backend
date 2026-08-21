@@ -10,7 +10,7 @@ from sqlalchemy import select
 from pathlib import Path
 
 from src.core.database import get_db
-from src.core.config import settings
+from src.core.config import check_env_credentials, settings
 from src.core.dash_auth import create_session_cookie, require_auth
 from src.core.rate_limit import limiter
 from src.core.rbac import get_current_login
@@ -324,7 +324,7 @@ async def login_submit(
     # office team can never get locked out of the platform even if the
     # `login` table gets wiped. On success, upsert the DB row so downstream
     # audit + RBAC see a real user_id.
-    if username == settings.DASHBOARD_USERNAME and password == settings.DASHBOARD_PASSWORD:
+    if check_env_credentials(username, password, settings.DASHBOARD_USERNAME, settings.DASHBOARD_PASSWORD):
         from src.core.rbac import ensure_env_admin_seeded
         await ensure_env_admin_seeded(db, username)
         response = RedirectResponse(url="/appointments", status_code=302)
@@ -336,7 +336,10 @@ async def login_submit(
     row = (await db.execute(
         select(Login).where(Login.login_name == username, Login.is_active == True)  # noqa: E712
     )).scalar_one_or_none()
-    if row and verify_password(password, row.password):
+    # Always call verify_password (even with None) so unknown-username and
+    # wrong-password branches take the same time — see the dummy-hash path
+    # in src/core/passwords.py:verify_password.
+    if verify_password(password, row.password if row else None) and row:
         if needs_rehash(row.password):        # migrate legacy hash → PBKDF2
             row.password = hash_password(password)
             await db.commit()
@@ -373,7 +376,7 @@ async def unified_login(
     )
     staff_ok = False
     staff_role = "pa"
-    if uname == settings.DASHBOARD_USERNAME and password == settings.DASHBOARD_PASSWORD:
+    if check_env_credentials(uname, password, settings.DASHBOARD_USERNAME, settings.DASHBOARD_PASSWORD):
         from src.core.rbac import ensure_env_admin_seeded
         await ensure_env_admin_seeded(db, uname)
         staff_ok = True
@@ -382,7 +385,9 @@ async def unified_login(
         row = (await db.execute(
             select(Login).where(Login.login_name == uname, Login.is_active == True)  # noqa: E712
         )).scalar_one_or_none()
-        if row and verify_staff(password, row.password):
+        # Always call verify_staff (even with None) so the "user not found"
+        # branch takes the same time as "wrong password".
+        if verify_staff(password, row.password if row else None) and row:
             # Isolation: a Minister account (role=minister) must NEVER receive a
             # dash_session. It's a read-only credential for the /minister PWA and
             # has no business on the staff portal. Refuse it here even with the
@@ -415,7 +420,7 @@ async def unified_login(
     acct = (await db.execute(
         select(DepartmentAccount).where(DepartmentAccount.username == uname)
     )).scalar_one_or_none()
-    if acct and verify_dept(password, acct.password_hash):
+    if verify_dept(password, acct.password_hash if acct else None) and acct:
         if dept_needs_rehash(acct.password_hash):   # migrate legacy hash → PBKDF2
             acct.password_hash = dept_hash(password)
             await db.commit()
@@ -635,7 +640,7 @@ async def api_approve_with_signatories(
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
-@router.post("/api/tickets/{ticket_id}/split-signatory")
+@router.post("/api/tickets/{ticket_id}/split-signatory", dependencies=[Depends(_no_dept_officer)])
 async def api_split_signatory(
     ticket_id: int,
     payload: dict = Body(...),
@@ -645,7 +650,11 @@ async def api_split_signatory(
     """Split one signatory off a merged ticket — that petition goes back to
     AWAITING_REVIEW as its own standalone petition. Only allowed while the
     ticket is still OPEN or TRIAGED (once forwarded, the department has already
-    received the roster and pulling one out afterward would desync)."""
+    received the roster and pulling one out afterward would desync).
+
+    Gated with _no_dept_officer: splitting a signatory drops that petition
+    back to AWAITING_REVIEW cross-department, so a dept_officer scoped to
+    a single department can't be trusted to make that call."""
     from src.services.petition_merge_service import split_signatory
     try:
         appt_id = int(payload.get("appointment_id"))
@@ -659,14 +668,18 @@ async def api_split_signatory(
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
 
 
-@router.get("/api/tickets/{ticket_id}/signatories")
+@router.get("/api/tickets/{ticket_id}/signatories", dependencies=[Depends(_no_dept_officer)])
 async def api_ticket_signatories(
     ticket_id: int,
     db: AsyncSession = Depends(get_db),
     user: str = Depends(require_auth),
 ):
     """Return the ticket's roster: the primary + every co-signatory, with
-    name (decrypted), masked mobile, source, token, and per-row is_primary."""
+    name (decrypted), masked mobile, source, token, and per-row is_primary.
+
+    Gated with _no_dept_officer: the roster contains cross-department PII
+    (co-signatory names / mobiles from any petition merged into this ticket),
+    beyond a dept_officer's need-to-know."""
     from src.services.petition_merge_service import roster_for_ticket
     return JSONResponse(await roster_for_ticket(db, ticket_id))
 
