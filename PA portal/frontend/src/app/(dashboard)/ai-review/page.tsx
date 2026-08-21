@@ -559,6 +559,8 @@ function AiReviewPageInner() {
   const [dateTo, setDateTo] = useState("");
   const [dateChip, setDateChip] = useState<DateChip | null>(null);
   const [q, setQ] = useState("");
+  // Controlled search input display value (PORT-02) — see tickets/page.tsx.
+  const [searchInput, setSearchInput] = useState("");
   const [sort, setSort] = useState<"submitted_desc" | "submitted_asc" | "priority_desc">("submitted_desc");
   // Filters rail — default OPEN only on desktop (≥xl). Rail stacks below the
   // list on non-xl (already handled by the existing grid switch).
@@ -717,8 +719,16 @@ function AiReviewPageInner() {
   useEffect(() => {
     const active = (aggregates?.active_jobs ?? 0) > 0;
     if (!active) return;
-    const id = setInterval(() => load(), 4000);
-    return () => clearInterval(id);
+    // Skip polling in a hidden tab (visibility gate) — a parked tab used
+    // to hit list_aggregates every 4s all day.
+    const tick = () => { if (!document.hidden) load(); };
+    const id = setInterval(tick, 4000);
+    const onVis = () => { if (!document.hidden) load(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [aggregates, load]);
 
   useEffect(() => {
@@ -784,6 +794,7 @@ function AiReviewPageInner() {
   }, []);
 
   function onSearchChange(v: string) {
+    setSearchInput(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { setPage(1); setQ(v); }, 300);
   }
@@ -1159,6 +1170,11 @@ function AiReviewPageInner() {
   function clearAllFilters() {
     setFPriority(""); setFSource(""); setFCategory("");
     setDateFrom(""); setDateTo(""); setDateChip(null); setQ(""); setPage(1);
+    // Kill any pending debounce AND reset the controlled input display
+    // (PORT-02) — otherwise a debounce fired 300ms after Clear would
+    // re-apply the just-cleared text.
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    setSearchInput("");
   }
 
   async function doExport() {
@@ -1242,7 +1258,7 @@ function AiReviewPageInner() {
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchRef}
-              defaultValue={q}
+              value={searchInput}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t("petition.searchPlaceholder")}
               className="peer h-10 rounded-full border-transparent bg-muted/70 pl-10 pr-14 text-sm transition-all duration-200 focus-visible:border-border focus-visible:bg-card focus-visible:shadow-[0_0_0_3px_hsl(var(--accent-blue)/0.14),0_2px_8px_rgba(28,30,41,0.06)]"

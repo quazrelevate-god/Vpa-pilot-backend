@@ -9,8 +9,8 @@ import {
 import {
   SectionCard, OverviewGrid, OverviewItem, StatusDot, statusTone, priorityTone,
 } from "@/components/ui/detail-primitives";
-import type { AppointmentRow, AppointmentStatus, AppointmentActivityEvent } from "@/lib/types";
-import { updateAppointmentStatus, updateAppointmentDetails, fetchAppointmentActivity } from "@/lib/api";
+import type { AppointmentRow, AppointmentStatus } from "@/lib/types";
+import { updateAppointmentStatus, updateAppointmentDetails } from "@/lib/api";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -64,7 +64,10 @@ export default function AppointmentDetailDrawer({
   const { lang, t } = useLang();
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("details");
-  const [activity, setActivity] = useState<AppointmentActivityEvent[]>([]);
+  // Activity state removed — the feed was dropped from the UI (see the
+  // "Activity feed removed" comment below); fetching it hit the backend
+  // for every row open + every status/details change with nothing consuming
+  // the response. State + fetches + type + api import all cleaned up.
   // Local overlay so the UI reflects PA admin edits without a refetch.
   const [overrides, setOverrides] = useState<{ priority?: string | null; category?: string | null; ministry?: string | null }>({});
   const [editCategory, setEditCategory] = useState(false);
@@ -80,17 +83,6 @@ export default function AppointmentDetailDrawer({
     setEditCategory(false);
     setEditMinistry(false);
     setTab("details");
-  }, [row?.id]);
-
-  // Fetch activity events when row opens
-  useEffect(() => {
-    if (row?.id == null) return;
-    setActivity([]);   // clear the previous row's events while the new ones load
-    let cancelled = false;
-    fetchAppointmentActivity(row.id)
-      .then((r) => { if (!cancelled) setActivity(r.items); })
-      .catch(() => { if (!cancelled) setActivity([]); });
-    return () => { cancelled = true; };
   }, [row?.id]);
 
   const currentPriority = overrides.priority !== undefined ? overrides.priority : a?.priority ?? null;
@@ -119,7 +111,6 @@ export default function AppointmentDetailDrawer({
       await updateAppointmentStatus(a.id, next);
       onStatusChange?.(a, next);
       toast.success("Status updated", { description: `Marked as “${next}”.` });
-      fetchAppointmentActivity(a.id).then((r) => setActivity(r.items)).catch(() => {});
     } catch (e) {
       toast.error("Update failed", { description: (e as Error).message });
     } finally {
@@ -134,7 +125,6 @@ export default function AppointmentDetailDrawer({
       await updateAppointmentDetails(a.id, patch);
       setOverrides((o) => ({ ...o, ...patch }));
       toast.success("Updated", { description: "Classification overridden." });
-      fetchAppointmentActivity(a.id).then((r) => setActivity(r.items)).catch(() => {});
     } catch (e) {
       toast.error("Update failed", { description: (e as Error).message });
     } finally {

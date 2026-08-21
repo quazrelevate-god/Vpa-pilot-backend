@@ -96,8 +96,17 @@ export default function AiUploadsPage() {
   useEffect(() => {
     const active = batches.some(b => (b.counts.QUEUED || 0) > 0 || (b.counts.PROCESSING || 0) > 0);
     if (!active) return;
-    const id = setInterval(load, 3000);
-    return () => clearInterval(id);
+    // Only poll while the tab is visible — the crowd + events PWAs already
+    // do this gate; the review dashboards used to pound the aggregate
+    // endpoints every 3s all day on a parked tab.
+    const tick = () => { if (!document.hidden) load(); };
+    const id = setInterval(tick, 3000);
+    const onVis = () => { if (!document.hidden) load(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [batches, load]);
 
   // make the folder input pick directories

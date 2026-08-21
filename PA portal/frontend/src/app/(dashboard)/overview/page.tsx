@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users, Megaphone, Flame, Handshake, RefreshCw, Download, X,
   ChevronLeft, ChevronRight, ArrowUpDown, AudioLines, CheckCircle2,
@@ -121,10 +121,19 @@ export default function OverviewPage() {
   // operations (Phase 2): district roll-up for the choropleth
   const [ops, setOps] = useState<Operations | null>(null);
 
+  // Track the LATEST requested id so a slow fetch for row A can't clobber
+  // the newer fetch for row B (rapid click race). ref (not state) so we
+  // don't re-render every click.
+  const openDetailReqRef = useRef(0);
   async function openDetail(id: number) {
+    const reqId = ++openDetailReqRef.current;
     try {
       const r = await fetch(`/api/appointments/${id}`, { credentials: "include" });
-      if (r.ok) setSelected(await r.json());
+      if (!r.ok) return;
+      const data = await r.json();
+      // Bail if a later click has already superseded this request.
+      if (openDetailReqRef.current !== reqId) return;
+      setSelected(data);
     } catch { /* ignore */ }
   }
 

@@ -135,8 +135,16 @@ export default function ProposalDashboardPage() {
     if (gate !== "ok") return;
     const ac = new AbortController();
     load(ac.signal);
-    const iv = setInterval(() => load(ac.signal), 20000);
-    return () => { ac.abort(); clearInterval(iv); };
+    // Visibility-gated poll (PORT-05).
+    const tick = () => { if (!document.hidden) load(ac.signal); };
+    const iv = setInterval(tick, 20000);
+    const onVis = () => { if (!document.hidden) load(ac.signal); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      ac.abort();
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [gate, load]);
 
   const matchQ = useCallback((r: ProposalRow) => {

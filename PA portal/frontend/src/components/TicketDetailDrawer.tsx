@@ -214,9 +214,18 @@ export default function TicketDetailDrawer({
 
   async function refreshRoster() {
     if (ticketId == null) return;
+    // Capture the ticketId this call was for; compare against the LIVE
+    // prev-ticket-id ref (updated every effect run with the current ticketId
+    // — see the fetchTicket effect above). Bail if the drawer has since
+    // navigated to a different ticket, so a slow response for the OLD ticket
+    // can't overwrite the NEW ticket's roster.
+    const requestedFor = ticketId;
     try {
-      const r = await fetch(`/api/tickets/${ticketId}/signatories`, { credentials: "include" });
-      if (r.ok) setRoster(await r.json());
+      const r = await fetch(`/api/tickets/${requestedFor}/signatories`, { credentials: "include" });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (prevTicketIdRef.current !== requestedFor) return;
+      setRoster(data);
     } catch { /* ignore */ }
   }
 

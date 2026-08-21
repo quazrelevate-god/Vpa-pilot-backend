@@ -35,10 +35,25 @@ export default function CrowdQrPage() {
       if (Q) new Q(box, { text: url, width: 240, height: 240, correctLevel: Q.CorrectLevel.M });
     };
     if (QR()) { render(); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
-    s.onload = render;
-    document.body.appendChild(s);
+    // Reuse an existing loader script — orphaned tags used to pile up on
+    // dev navigation / HMR (PORT-08). Bundling qrcodejs via npm (PORT-01)
+    // is the durable fix; this dedupes the CDN loader in the interim.
+    const SCRIPT_ID = "qrcodejs-cdn-loader";
+    let s = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
+    let mine = false;
+    if (!s) {
+      s = document.createElement("script");
+      s.id = SCRIPT_ID;
+      s.src = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
+      s.crossOrigin = "anonymous";
+      document.body.appendChild(s);
+      mine = true;
+    }
+    s.addEventListener("load", render);
+    return () => {
+      s?.removeEventListener("load", render);
+      if (mine && s?.parentNode) s.parentNode.removeChild(s);
+    };
   }, [url]);
 
   function copy() {

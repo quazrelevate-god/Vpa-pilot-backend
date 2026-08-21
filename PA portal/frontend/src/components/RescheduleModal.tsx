@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CalendarDays, Loader2, ExternalLink } from "lucide-react";
 
@@ -44,13 +44,25 @@ export default function RescheduleModal({
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [slot, setSlot] = useState<Slot | null>(null);
   const [busy, setBusy] = useState(false);
+  // Modal-lifetime AbortController — every in-flight fetch (open-dates,
+  // slots, submit + its 409-recovery re-fetch) is bound to this signal so
+  // closing the modal mid-request never lands a setState on an unmounted
+  // component. Renewed whenever the modal opens.
+  const openCtrlRef = useRef<AbortController | null>(null);
 
-  // Reset when the modal opens for a new appointment.
+  // Reset when the modal opens for a new appointment. Renew the modal-
+  // lifetime AbortController so submit() + its 409-recovery re-fetch share
+  // one signal with the effect fetches — closing the modal aborts them all.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      openCtrlRef.current?.abort();
+      openCtrlRef.current = null;
+      return;
+    }
     setDates(null); setDate(null); setSlots(null); setSlot(null); setBusy(false);
 
     const ctrl = new AbortController();
+    openCtrlRef.current = ctrl;
     (async () => {
       try {
         const r = await fetch("/api/v1/scheduling/open-dates", { credentials: "include", signal: ctrl.signal });
@@ -106,9 +118,19 @@ export default function RescheduleModal({
         // any newly-full slots are visible immediately.
         if (resp.status === 409) {
           toast.error((body as { error?: string }).error || t("rsx.slotGone"));
+          // Bind the recovery fetch to the modal-lifetime signal — closing
+          // the modal in the ~ms after 409 used to still land setSlots on
+          // an unmounted component. openCtrlRef always has a live controller
+          // while `open` is true (see the open effect above).
+          const sig = openCtrlRef.current?.signal;
           try {
-            const rr = await fetch(`/api/v1/scheduling/slots/available?target_date=${date}`, { credentials: "include" });
+            const rr = await fetch(
+              `/api/v1/scheduling/slots/available?target_date=${date}`,
+              { credentials: "include", signal: sig },
+            );
+            if (sig?.aborted) return;
             const dd = await rr.json() as { slots?: Slot[] };
+            if (sig?.aborted) return;
             setSlots(dd.slots ?? []);
             setSlot(null);
           } catch {}

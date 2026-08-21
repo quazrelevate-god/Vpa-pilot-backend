@@ -107,8 +107,16 @@ export default function AssociationDashboardPage() {
     if (gate !== "ok") return;
     const ac = new AbortController();
     loadAnalytics(ac.signal);
-    const iv = setInterval(() => loadAnalytics(ac.signal), 20000);
-    return () => { ac.abort(); clearInterval(iv); };
+    // Visibility-gated poll (PORT-05).
+    const tick = () => { if (!document.hidden) loadAnalytics(ac.signal); };
+    const iv = setInterval(tick, 20000);
+    const onVis = () => { if (!document.hidden) loadAnalytics(ac.signal); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      ac.abort();
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [gate, loadAnalytics]);
 
   useEffect(() => {

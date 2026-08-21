@@ -123,6 +123,11 @@ export default function ReferralsPage() {
   useEffect(() => { loadOpenDates(); loadQr(); }, [loadOpenDates, loadQr]);
 
   // ── Render QR client-side via qrcodejs CDN ──────────────────────────────────
+  // Guard: only append the loader ONCE per page life — dev navigation / HMR
+  // used to leak an orphaned <script> tag on every effect run. Also remove
+  // the loader on unmount so a tab that cycles this page many times doesn't
+  // accumulate script nodes. Bundling qrcodejs via npm (PORT-01, In Progress)
+  // will remove the CDN dependency entirely.
   useEffect(() => {
     if (!qr?.qr_url || !qrBoxRef.current) return;
     const box = qrBoxRef.current;
@@ -136,10 +141,26 @@ export default function ReferralsPage() {
     };
     // @ts-expect-error — global
     if (window.QRCode) { render(); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
-    s.onload = render;
-    document.body.appendChild(s);
+    // Reuse an existing script tag if one is already loading / loaded so a
+    // second mount doesn't append a duplicate.
+    const SCRIPT_ID = "qrcodejs-cdn-loader";
+    let s = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
+    let mine = false;
+    if (!s) {
+      s = document.createElement("script");
+      s.id = SCRIPT_ID;
+      s.src = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
+      s.crossOrigin = "anonymous";
+      document.body.appendChild(s);
+      mine = true;
+    }
+    s.addEventListener("load", render);
+    return () => {
+      s?.removeEventListener("load", render);
+      // Only THIS effect removes the tag if it was the one that added it —
+      // avoids yanking the loader out from under another concurrent mount.
+      if (mine && s?.parentNode) s.parentNode.removeChild(s);
+    };
   }, [qr?.qr_url]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────

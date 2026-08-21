@@ -393,6 +393,10 @@ function AppointmentsPageInner() {
   const initialTab = (searchParams.get("tab") as Tab) || DEFAULT_TAB;
   const [tab, setTab] = useState<Tab>((TABS as readonly Tab[]).includes(initialTab) ? initialTab : DEFAULT_TAB);
   const [search, setSearch] = useState("");
+  // Controlled search input display value (PORT-02) — see tickets/page.tsx
+  // for the reasoning; without this, Clear all filters can't clear the
+  // DOM input value and a pending debounce re-applies the just-cleared text.
+  const [searchInput, setSearchInput] = useState("");
   // sort: "" | "priority" | "appt_date_asc" | "appt_date_desc"
   const [sort, setSort] = useState<string>("");
   const [page, setPage] = useState(1);
@@ -572,6 +576,7 @@ function AppointmentsPageInner() {
   }, [router, searchParams]);
 
   function onSearchChange(v: string) {
+    setSearchInput(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { setPage(1); setSearch(v); }, 350);
   }
@@ -611,6 +616,10 @@ function AppointmentsPageInner() {
     setPriority(""); setMinistry(""); setCategory(""); setVenue("");
     setDateFrom(""); setDateTo(""); setApptDateFrom(""); setApptDateTo("");
     setActiveChip(null); setSearch(""); setPage(1);
+    // Kill any pending debounce AND reset the controlled input display
+    // (PORT-02) — a debounce fired 300ms after Clear would re-apply text.
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    setSearchInput("");
   }, []);
 
   const toggleApptSort = useCallback(() => {
@@ -691,7 +700,7 @@ function AppointmentsPageInner() {
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchRef}
-              defaultValue={search}
+              value={searchInput}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t("appts.searchPlaceholder")}
               className="peer h-10 rounded-full border-transparent bg-muted/70 pl-10 pr-14 text-sm transition-all duration-200 focus-visible:border-border focus-visible:bg-card focus-visible:shadow-[0_0_0_3px_hsl(var(--accent-blue)/0.14),0_2px_8px_rgba(28,30,41,0.06)]"

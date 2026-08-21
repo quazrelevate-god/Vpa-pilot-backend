@@ -116,30 +116,52 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
 
   useEffect(() => {
     const loadBadges = () => {
+      // Skip polling in a hidden tab — parked tabs used to hit the unfiltered
+      // count endpoints every 30s all day. Re-run once when the tab becomes
+      // visible again so the badges are current the moment the user looks.
+      if (document.hidden) return;
       fetchTicketsOpenCount().then(setOpenTickets).catch(() => {});
       fetchAppointmentCounts({}).then(setApptCounts).catch(() => {});
     };
     loadBadges();
     const id = setInterval(loadBadges, 30_000);
-    return () => clearInterval(id);
+    const onVisibility = () => { if (!document.hidden) loadBadges(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [pathname]);
 
   // Settings nav — visible only to super_admin when the feature flag is on.
   const [showSettings, setShowSettings] = useState(false);
+  // roleLoaded distinguishes "still loading" from "loaded and null" so the
+  // nav can render an empty skeleton instead of the FULL nav during the
+  // window before /me resolves (PORT-09: dept_officer / petition_reviewer
+  // would briefly see Scheduling / AI Uploads / Referrals before the list
+  // narrowed).
   const [role, setRole] = useState<string | null>(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
   const [me, setMe] = useState<{ full_name?: string; login_name?: string; role?: string } | null>(null);
   useEffect(() => {
+    // AbortController so a slow /me on route A doesn't clobber the fast /me
+    // on route B (rapid nav race — older response used to setRole with a
+    // stale value). Also protects against unmount.
+    const ac = new AbortController();
     (async () => {
       try {
         const [flags, meRes] = await Promise.all([
-          fetch("/api/v1/features", { credentials: "include" }).then((r) => r.ok ? r.json() : null),
-          fetch("/api/v1/me", { credentials: "include" }).then((r) => r.ok ? r.json() : null),
+          fetch("/api/v1/features", { credentials: "include", signal: ac.signal }).then((r) => r.ok ? r.json() : null),
+          fetch("/api/v1/me", { credentials: "include", signal: ac.signal }).then((r) => r.ok ? r.json() : null),
         ]);
+        if (ac.signal.aborted) return;
         setShowSettings(Boolean(flags?.superadmin_ui) && meRes?.role === "super_admin");
         setRole(meRes?.role ?? null);
         setMe(meRes ?? null);
+        setRoleLoaded(true);
       } catch { /* soft-fail — Settings just stays hidden */ }
     })();
+    return () => ac.abort();
   }, [pathname]);
 
   // Signed-in display name for the footer card (falls back gracefully).
@@ -152,14 +174,19 @@ export default function Sidebar({ user = "admin" }: { user?: string }) {
     dept_officer: ["/tickets"],
     petition_reviewer: ["/appointments", "/ai-review", "/tickets"],
   };
-  const allowedHrefs = role ? ROLE_NAV[role] : undefined;
-  const navItems = (allowedHrefs
-    ? NAV_ITEMS.filter((i) => allowedHrefs.includes(i.href))
-    : NAV_ITEMS
-  // Overview + Executive Queue are super_admin-only. `role` is null until /me
-  // resolves, so these stay hidden while loading rather than flashing in for
-  // someone who isn't allowed to see them.
-  ).filter((i) => !SUPER_ADMIN_ONLY.includes(i.href) || role === "super_admin");
+  // Render an empty nav while /me is still resolving — the old default
+  // ("no role → show every item") briefly flashed forbidden items for
+  // dept_officer / petition_reviewer before the list narrowed. Waiting
+  // until roleLoaded=true means the nav is either empty (rare — first
+  // paint) or correct, never wrong-then-correct.
+  const allowedHrefs = roleLoaded && role ? ROLE_NAV[role] : undefined;
+  const navItems = !roleLoaded
+    ? []
+    : (allowedHrefs
+        ? NAV_ITEMS.filter((i) => allowedHrefs.includes(i.href))
+        : NAV_ITEMS
+      // Overview + Executive Queue are super_admin-only.
+      ).filter((i) => !SUPER_ADMIN_ONLY.includes(i.href) || role === "super_admin");
 
   // Alt+1…9 — jump to the Nth room from anywhere in the portal.
   useEffect(() => {

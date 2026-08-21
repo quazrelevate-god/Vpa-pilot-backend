@@ -22,6 +22,7 @@ import { InitialsAvatar } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { fetchTickets, fetchTicketsCounts, fetchTicketBreachCount, type TicketListFilters } from "@/lib/api";
+import { toUserMessage } from "@/lib/errors";
 import type { TicketRow } from "@/lib/types";
 import {
   TICKET_STATUS_DISPLAY, TICKET_STATUS_COLOR, PRIORITY_DISPLAY,
@@ -339,6 +340,12 @@ export default function TicketsPage() {
   const [sourceValue, setSourceValue] = useState("");
   const [category, setCategory] = useState("");   // driven by the distribution chart
   const [search, setSearch] = useState("");
+  // Local display value for the search Input — controlled so `Clear all
+  // filters` can actually clear the DOM value (PORT-02). The `search` state
+  // is what the filter uses (debounced) and stays a separate variable so a
+  // rapid keystroke → clear sequence doesn't let a pending debounce re-apply
+  // the cleared text.
+  const [searchInput, setSearchInput] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [dateChip, setDateChip] = useState<DateChip | null>(null);
@@ -449,7 +456,9 @@ export default function TicketsPage() {
       setRows(d.items); setTotal(d.total);
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      console.error(e);
+      // Route through the friendly-message classifier so 5xx bodies / stack
+      // traces never reach the browser console in prod (PORT-13).
+      toast.error(toUserMessage(e, "Couldn't load tickets."));
     } finally { if (!signal.aborted) setLoading(false); }
     // refreshTick intentionally in deps — see onMutated below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -509,6 +518,7 @@ export default function TicketsPage() {
   }, []);
 
   function onSearchChange(v: string) {
+    setSearchInput(v);   // controlled — reflect the keystroke immediately
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { setPage(1); setSearch(v); }, 300);
   }
@@ -524,6 +534,11 @@ export default function TicketsPage() {
   const clearAll = useCallback(() => {
     setPriority(""); setDeptValue(""); setAssignedDept(""); setSourceValue(""); setCategory("");
     setDateFrom(""); setDateTo(""); setDateChip(null); setSearch("");
+    // Kill any pending debounce AND reset the controlled input display —
+    // otherwise a debounce fired 300ms after Clear would re-apply the
+    // just-cleared text (PORT-02).
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    setSearchInput("");
     setBreachedOnly(false); setPage(1);
   }, []);
 
@@ -603,6 +618,7 @@ export default function TicketsPage() {
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchRef}
+              value={searchInput}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t("tickets.searchPlaceholder")}
               className="peer h-10 rounded-full border-transparent bg-muted/70 pl-10 pr-14 text-sm transition-all duration-200 focus-visible:border-border focus-visible:bg-card focus-visible:shadow-[0_0_0_3px_hsl(var(--accent-blue)/0.14),0_2px_8px_rgba(28,30,41,0.06)]"

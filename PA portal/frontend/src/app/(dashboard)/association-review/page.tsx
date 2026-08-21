@@ -249,8 +249,18 @@ export default function AssociationReviewPage() {
     setLoading(true);
     const ac = new AbortController();
     load(ac.signal);
-    const iv = setInterval(() => load(ac.signal), 10000);
-    return () => { ac.abort(); clearInterval(iv); };
+    // Visibility-gated poll (PORT-05) — a parked tab used to keep hammering
+    // list_aggregates every 10s all day; re-fetch once on wake so the tab
+    // is current the moment the reviewer looks back.
+    const tick = () => { if (!document.hidden) load(ac.signal); };
+    const iv = setInterval(tick, 10000);
+    const onVis = () => { if (!document.hidden) load(ac.signal); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      ac.abort();
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [gate.kind, load]);
 
   // Deep-link: /association-review?id=42. Reads window.location once so we don't
