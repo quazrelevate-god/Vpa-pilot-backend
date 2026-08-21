@@ -13,6 +13,7 @@ from typing import Dict, Any
 
 from src.core.database import get_db
 from src.core.config import settings
+from src.core.intake_cookie import set_intake_cookie
 from src.core.utils import generate_device_fingerprint
 from src.services.qr_service import qr_service
 from src.models.registry_models import VenueRegistry
@@ -225,12 +226,19 @@ async def verify_qr_code(
         )
 
         session_token = session_data["session_token"]
-        # Land on the branded intake fork (petition vs proposal) rather than the
-        # form directly. FRONTEND_FORM_BASE_URL points at ".../form", so its
-        # "/choose" child is same-origin — the token gates both, and "petition"
-        # carries it on to the form.
-        redirect_url = f"{settings.FRONTEND_FORM_BASE_URL}/choose?token={session_token}"
-        return RedirectResponse(url=redirect_url, status_code=307)
+        # Land on the branded intake fork (petition vs proposal) rather than
+        # the form directly. FRONTEND_FORM_BASE_URL points at ".../form", so
+        # its "/choose" child is same-origin — the token gates both, and
+        # "petition" carries it on to the form.
+        #
+        # The token used to travel as ?token=<uuid> in the URL. It now rides
+        # an HttpOnly cookie (see src.core.intake_cookie) so it never appears
+        # in browser history / URL bar / Referer / access logs. The `?t=1`
+        # marker is a cache-buster only — no secret in the URL.
+        redirect_url = f"{settings.FRONTEND_FORM_BASE_URL}/choose?t=1"
+        response = RedirectResponse(url=redirect_url, status_code=307)
+        set_intake_cookie(response, session_token)
+        return response
 
     except ValueError as e:
         msg = str(e)

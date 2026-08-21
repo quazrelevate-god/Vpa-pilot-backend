@@ -225,10 +225,9 @@
                 </div>
                 <div class="fld">
                     <label class="lbl">
-                        <span class="en">Mobile Number</span><span class="ta">அலைபேசி எண்</span>
-                        <span style="color:#94a3b8;font-weight:400;font-size:0.75rem;"> (<span class="en">optional</span><span class="ta">விரும்பினால்</span>)</span>
+                        <span class="en">Mobile Number</span><span class="ta">அலைபேசி எண்</span> <span class="req">*</span>
                     </label>
-                    <input type="tel" id="fMobile" class="inp" maxlength="10" placeholder="10-digit mobile (optional)" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+                    <input type="tel" id="fMobile" class="inp" required maxlength="10" pattern="[6-9][0-9]{9}" inputmode="numeric" placeholder="10-digit mobile" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
                 </div>
                 <div class="fld">
                     <label class="lbl"><span class="en">Number of Persons</span><span class="ta">நபர்களின் எண்ணிக்கை</span> <span class="req">*</span></label>

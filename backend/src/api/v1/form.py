@@ -3,6 +3,7 @@ FastAPI routes for citizen form submission.
 Handles form display and data collection after QR verification.
 """
 from pathlib import Path
+from typing import Optional
 
 from urllib.parse import urlencode
 
@@ -15,6 +16,7 @@ from datetime import datetime
 from src.core.timeutil import now_utc
 
 from src.core.database import get_db
+from src.core.intake_cookie import resolve_intake_token
 from src.core.utils import generate_device_fingerprint
 from src.core.config import settings
 from src.models.qr_models import GatekeeperSession
@@ -70,7 +72,7 @@ async def _validate_session(request: Request, token: str, db: AsyncSession):
 @router.get("/choose", include_in_schema=False)
 async def choose_intake(
     request: Request,
-    token: str = Query(..., description="Session token from QR verification"),
+    token: Optional[str] = Query(None, description="Session token (fallback — prefer the intake_token cookie)"),
     db: AsyncSession = Depends(get_db),
 ) -> HTMLResponse:
     """Branded intake fork shown right after a QR scan.
@@ -79,7 +81,16 @@ async def choose_intake(
     (the /proposal site). The QR verify step redirects here instead of straight
     to the form, so the same verified, device-bound token gates both. Picking
     "petition" carries the token on to ``/form``; "proposal" leaves it to expire.
+
+    Token now travels in an HttpOnly cookie (see src.core.intake_cookie); the
+    ?token= query param is kept as a fallback only, in case a browser refuses
+    cookies. Redirect to the session_not_found error when neither is present.
     """
+    token = resolve_intake_token(request, token)
+    if not token:
+        return RedirectResponse(
+            "/form/error?" + urlencode({"type": "session_not_found"}), status_code=302
+        )
     try:
         _session, err = await _validate_session(request, token, db)
         if err is not None:
@@ -113,9 +124,9 @@ async def choose_intake(
 )
 async def display_form(
     request: Request,
-    token: str = Query(
-        ...,
-        description="Session token from QR verification",
+    token: Optional[str] = Query(
+        None,
+        description="Session token (fallback — prefer the intake_token cookie)",
         example="550e8400-e29b-41d4-a716-446655440000"
     ),
     mode: str = Query(
@@ -156,6 +167,13 @@ async def display_form(
         - Token must not be marked as used (is_used=False)
         - Prevents URL sharing across different browsers/devices
     """
+    # Token now travels in an HttpOnly cookie (see src.core.intake_cookie);
+    # the ?token= query is kept as a fallback only.
+    token = resolve_intake_token(request, token)
+    if not token:
+        return RedirectResponse(
+            "/form/error?" + urlencode({"type": "session_not_found"}), status_code=302
+        )
     try:
         # Validate the QR session (exists · device match · not expired · not used).
         # Shared with the /form/choose gate so both behave identically.

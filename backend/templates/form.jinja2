@@ -1926,6 +1926,15 @@
             }
         }
 
+        // Escape user-supplied strings before inserting into innerHTML so a
+        // malicious filename like  x" onerror=alert(1) x.png  or containing raw
+        // <script> can't break out of the attribute / element context. Used by
+        // renderUploadedFiles for every file.name interpolation below.
+        function escapeHtml(s) {
+            const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return map[c]; });
+        }
+
         function renderUploadedFiles(input) {
             const previewContainer = document.getElementById('filePreviews');
             const newUploadedFiles = Array.from(input.files);
@@ -1940,14 +1949,16 @@
                 fileBadgeNode.className = 'file-badge';
                 fileBadgeNode.id = 'badge-' + itemIndex;
 
+                const safeName = escapeHtml(file.name);
+
                 if (file.type.startsWith('image/')) {
                     const reader = new FileReader();
                     reader.onload = e => {
                         fileBadgeNode.innerHTML =
                             '<div class="file-badge-inner">' +
-                                '<img src="' + e.target.result + '" class="file-thumb" alt="' + file.name + '">' +
+                                '<img src="' + e.target.result + '" class="file-thumb" alt="' + safeName + '">' +
                                 '<div class="file-badge-info">' +
-                                    '<strong>' + file.name + '</strong>' +
+                                    '<strong>' + safeName + '</strong>' +
                                     '<span>' + (file.size/1024).toFixed(1) + ' KB</span>' +
                                 '</div>' +
                             '</div>' +
@@ -1959,7 +1970,7 @@
                         '<div class="file-badge-inner">' +
                             '<i class="fa-solid fa-file-shield" style="font-size:1.5rem; color:#10b981;"></i>' +
                             '<div class="file-badge-info">' +
-                                '<strong>' + file.name + '</strong>' +
+                                '<strong>' + safeName + '</strong>' +
                                 '<span>' + (file.size/1024).toFixed(1) + ' KB</span>' +
                             '</div>' +
                         '</div>' +

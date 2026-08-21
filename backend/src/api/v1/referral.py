@@ -16,6 +16,7 @@ Admin (auth — PA portal):
   GET  /api/v1/referral/admin/bookings?target_date=YYYY-MM-DD
   POST /api/v1/referral/admin/cancel-all-bookings?target_date=YYYY-MM-DD
 """
+import re
 from pathlib import Path
 from datetime import date as date_type, datetime as datetime_type
 from typing import Optional
@@ -29,10 +30,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.core.config import settings
+from src.core.rate_limit import limiter
 from src.core.rbac import require_role
 from src.services.referral_service import referral_service
 from src.api.v1.dashboard import require_auth
 from src.models.login_models import ROLE_PA, ROLE_SUPER_ADMIN
+
+# Same 10-digit Indian mobile shape used by /appointments and /proposal.
+_MOBILE_RE = re.compile(r"^[6-9]\d{9}$")
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -139,16 +144,30 @@ async def referral_slots(
 # ── Public: submit a referral booking ─────────────────────────────────────────
 
 @router.post("/submit")
+@limiter.limit("5/minute")
 async def referral_submit(
+    request: Request,
     d: str            = Form(...),
     name: str         = Form(..., min_length=1, max_length=150),
     referred_by: str  = Form(..., min_length=1, max_length=200),
     reason: str       = Form(..., min_length=1, max_length=500),
     num_persons: int  = Form(1),
     slot_id: int      = Form(...),
-    mobile: str       = Form(default=""),
+    mobile: str       = Form(..., min_length=10, max_length=10),
     db: AsyncSession  = Depends(get_db),
 ):
+    # Rate-limit + mobile-required were both missing before — the daily QR is
+    # a SHARED token every visitor scans, so it was possible for a scripted
+    # client to drain the day's slot capacity in seconds by looping submits.
+    # Mobile is now the required identity anchor (no callback → no dedup path
+    # → no way to help the citizen when they arrive), and matches the 10-digit
+    # shape enforced on /appointments and /proposal.
+    mobile = (mobile or "").strip()
+    if not _MOBILE_RE.fullmatch(mobile):
+        return JSONResponse(
+            {"error": "Please enter a valid 10-digit Indian mobile number."},
+            status_code=400,
+        )
     try:
         referral_service.verify_daily_token(d)
     except ValueError as e:
