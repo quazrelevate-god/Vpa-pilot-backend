@@ -225,6 +225,9 @@
 
 
         function setLang(isTamil) {
+            // Keep <html lang> in sync so screen readers announce the right
+            // script (CITZ-08).
+            document.documentElement.lang = isTamil ? 'ta' : 'en';
             if (isTamil) {
                 document.body.classList.add('tamil-mode');
             } else {

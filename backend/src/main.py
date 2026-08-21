@@ -82,8 +82,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # CFG-06: was allow_methods=* + allow_headers=* which, combined with
+    # allow_credentials=True, removed the browser's defence against
+    # attacker-crafted custom headers on same-origin XHR. Explicit lists now.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type", "Accept", "Accept-Language",
+        "X-Request-ID", "Authorization",
+    ],
 )
 
 # gzip anything ≥1KB — bilingual JSON payloads (/api/tickets, /api/appointments
@@ -219,14 +225,24 @@ async def _verify_crypto():
 @app.on_event("startup")
 async def _ensure_storage_bucket():
     """Ensure the MinIO bucket exists once at boot (T-2) instead of on every
-    write. Logs loudly on failure but does not block startup — read paths that
-    don't touch storage should still serve while MinIO recovers."""
+    write.
+
+    INTG-19: In production (DEBUG=False) a bucket check failure is a hard
+    boot-blocker — an unreachable MinIO or a missing bucket means every
+    upload endpoint would 500 from the first request, and shipping the pod
+    "happy" hides the real problem. In dev we still log-and-continue so a
+    local start without MinIO isn't fatal.
+    """
     import asyncio as _asyncio
     from src.services import storage_service
     try:
         await _asyncio.to_thread(storage_service.ensure_bucket)
     except Exception as e:  # noqa: BLE001
-        logging.getLogger("startup").error("storage bucket check failed at boot: %s", repr(e))
+        msg = f"storage bucket check failed at boot: {e!r}"
+        if settings.DEBUG:
+            logging.getLogger("startup").error(msg)
+        else:
+            raise RuntimeError(msg) from e
 
 
 @app.on_event("startup")

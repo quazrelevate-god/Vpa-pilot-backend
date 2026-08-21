@@ -1,0 +1,5 @@
+# CFG-07: PA portal is a staff-only application. Disallow every crawler
+# from every path so a public-origin misconfiguration doesn't leak
+# citizen PII / case data to search engines.
+User-agent: *
+Disallow: /

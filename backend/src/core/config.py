@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     ONE_PROPOSAL_PER_DAY: bool = True
     # Set true in production (HTTPS) so session cookies get the Secure flag + HSTS.
     COOKIE_SECURE: bool = False
+    # SEC-05: optional Domain= attribute for session cookies. When unset,
+    # cookies default to host-only (safest). Set to '.namkural.in' if you
+    # ever share the session across sub-domains — but be aware host-only is
+    # the safer default (a leaked cookie can't be sent to a compromised
+    # sub-domain that later gets stood up).
+    COOKIE_DOMAIN: Optional[str] = None
     # Comma-separated allowed CORS origins for the PA portal. In prod the portal is
     # served same-origin so this is mainly for split dev (Next on :3000).
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"

@@ -70,6 +70,16 @@ async def notify(kind: str, appointment_id: int, ctx: Optional[Dict[str, Any]] =
             "[CITIZEN NOTIFY placeholder] kind=%s appt=%s token=%s has_mobile=%s ctx=%s",
             kind, appointment_id, appt.token_assigned, has_mobile, ctx,
         )
+        # CORR-24: walk-in citizens with no mobile are silently un-notifiable.
+        # Once SMS is wired, callers will interpret "success" as "sent" for
+        # these too. Emit a distinct marker so ops can grep for the dead-
+        # letter case and — later — surface it in the PA drawer.
+        if not has_mobile:
+            logger.warning(
+                "[CITIZEN NOTIFY dead-letter] appt=%s kind=%s — no mobile, "
+                "notification skipped (walk-in intake with no phone).",
+                appointment_id, kind,
+            )
 
     except Exception as e:
         # Notifications are best-effort. Never fail the parent flow.

@@ -208,15 +208,25 @@ async def get_stats(
         today = date_type.today()
         days  = [today - timedelta(days=i) for i in range(13, -1, -1)]
 
-    day_labels, day_counts = [], []
-    for d in days:
-        cnt = await db.scalar(
-            select(func.count(Appointment.id))
-            .select_from(Appointment)
-            .where(cast(Appointment.created_at, SADate) == d)
-        ) or 0
-        day_labels.append(d.strftime("%d %b"))
-        day_counts.append(cnt)
+    # CORR-19 / PERF-07 (partial): one GROUP BY over the whole window instead
+    # of N sequential COUNT queries. Densifies the empty days in Python so
+    # the chart still has a bar per date.
+    day_labels = [d.strftime("%d %b") for d in days]
+    if days:
+        _range_start, _range_end = min(days), max(days)
+        _daily_rows = (await db.execute(
+            select(
+                cast(Appointment.created_at, SADate).label("d"),
+                func.count(Appointment.id).label("n"),
+            )
+            .where(cast(Appointment.created_at, SADate) >= _range_start)
+            .where(cast(Appointment.created_at, SADate) <= _range_end)
+            .group_by(cast(Appointment.created_at, SADate))
+        )).all()
+        _by_day = {row.d: row.n for row in _daily_rows}
+        day_counts = [_by_day.get(d, 0) for d in days]
+    else:
+        day_counts = []
 
     # AI coverage
     ai_covered = await db.scalar(
@@ -284,15 +294,24 @@ async def get_stats(
         if prior_total:
             growth_pct = round((total - prior_total) / prior_total * 100, 1)
 
-    # Resolved-per-day trend (parallel to day_counts) for the dual-line chart
-    resolved_counts = []
-    for d in days:
-        cnt = await db.scalar(
-            select(func.count(Ticket.id))
-            .where(cast(Ticket.updated_at, SADate) == d,
-                   Ticket.status.in_(closed_statuses))
-        ) or 0
-        resolved_counts.append(cnt)
+    # CORR-19 / PERF-07 (partial): one GROUP BY for resolved-per-day instead
+    # of N sequential COUNTs. Densifies empty days.
+    if days:
+        _range_start, _range_end = min(days), max(days)
+        _resolved_rows = (await db.execute(
+            select(
+                cast(Ticket.updated_at, SADate).label("d"),
+                func.count(Ticket.id).label("n"),
+            )
+            .where(cast(Ticket.updated_at, SADate) >= _range_start)
+            .where(cast(Ticket.updated_at, SADate) <= _range_end)
+            .where(Ticket.status.in_(closed_statuses))
+            .group_by(cast(Ticket.updated_at, SADate))
+        )).all()
+        _by_day_resolved = {row.d: row.n for row in _resolved_rows}
+        resolved_counts = [_by_day_resolved.get(d, 0) for d in days]
+    else:
+        resolved_counts = []
 
     # Forwarded-to-department breakdown — where the Education team is
     # routing cases externally. This replaces the AI "primary department"

@@ -1060,12 +1060,17 @@
                         </div>
                         <div class="otp-row">
                             <div class="otp-boxes" id="otpBoxes">
-                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp0">
-                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp1">
-                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp2">
-                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp3">
-                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp4">
-                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp5">
+                                <!-- CITZ-16: autocomplete="one-time-code" lets iOS Safari surface the
+                                     "From Messages" autofill chip so elderly users don't have to
+                                     type six digits by hand. CITZ-06: each box carries an aria-label
+                                     so screen readers announce position ("Digit 1 of 6") instead of
+                                     just "edit". -->
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp0" autocomplete="one-time-code" aria-label="Digit 1 of 6">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp1" aria-label="Digit 2 of 6">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp2" aria-label="Digit 3 of 6">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp3" aria-label="Digit 4 of 6">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp4" aria-label="Digit 5 of 6">
+                                <input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="otp5" aria-label="Digit 6 of 6">
                             </div>
                             <button type="button" id="btnVerifyOtp" class="base-btn btn-inline-action" onclick="verifyInputOtp()" style="background: rgba(16, 185, 129, 0.85); white-space: nowrap;"><span id="lbl-verify-otp">Verify OTP</span></button>
                         </div>
@@ -1327,6 +1332,7 @@
                 otpSuccess: "OTP verified successfully ✓",
                 submitting: "Submitting...",
                 networkError: "Network error. Please try again.",
+                recordingLimit: "Audio recording exceeds the maximum duration. Please record a shorter clip.",
                 micError: "Microphone access denied. Please allow microphone access to record audio.",
                 alertFillFields: "Please fill in Name and either upload files or record audio before requesting OTP.",
                 alertVerifyFirst: "Please verify your OTP before submitting.",
@@ -1398,6 +1404,7 @@
                 otpSuccess: "OTP சரிபார்க்கப்பட்டது ✓",
                 submitting: "சமர்ப்பிக்கிறோம்...",
                 networkError: "இணைய பிழை. மீண்டும் முயற்சிக்கவும்.",
+                recordingLimit: "ஒலிப்பதிவின் அதிகபட்ச கால அளவை மீறியது. குறுகிய பதிவை உருவாக்கவும்.",
                 micError: "மைக்ரோஃபோன் அனுமதி மறுக்கப்பட்டது. தயவுசெய்து அனுமதியை வழங்கவும்.",
                 alertFillFields: "OTP கோருவதற்கு முன் பெயர் மற்றும் ஆவணம் அல்லது குரல் பதிவு உள்ளிடவும்.",
                 alertVerifyFirst: "சமர்ப்பிக்கும் முன் OTP சரிபார்க்கவும்.",
@@ -1662,6 +1669,10 @@
 
         function switchLocalization(isChecked) {
             runtimeActiveLanguage = isChecked ? 'ta' : 'en';
+            // Keep the <html lang> in sync so screen readers pronounce the
+            // page in the right script (CITZ-08). Was hard-coded to "ta" in
+            // the markup which mispronounced everything when EN was picked.
+            document.documentElement.lang = runtimeActiveLanguage;
             try { localStorage.setItem('vpa_lang', runtimeActiveLanguage); } catch(e) {}
 
             const enBtn = document.getElementById('langBtnEn');
@@ -2037,9 +2048,12 @@
             updateStepper();
         });
 
-        window.addEventListener('pageshow', function(event) {
-            if (event.persisted) window.location.reload();
-        });
+        // CITZ-15: removed the auto-reload on back-nav. It forced a fresh
+        // /form fetch which — after a successful submit — showed
+        // /form/error?type=session_used, hiding the receipt behind an error
+        // page. The bfcache-served page is fine for a back-tap; the server-
+        // side session_used state is surfaced elsewhere (on next submit
+        // attempt) if the citizen tries to re-file.
 
         async function submitForm(scheduleMeeting) {
             const copy = dynamicLocalizationDictionary[runtimeActiveLanguage];
@@ -2311,7 +2325,13 @@
 
             await loadSlots();
             if (slotRefreshInterval) clearInterval(slotRefreshInterval);
-            slotRefreshInterval = setInterval(loadSlots, 5000);
+            // CITZ-12: raised from 5s → 20s and gated on visibility. Citizens
+            // sit on this section on 3G — 5s polls burned data + hammered
+            // the backend; 20s is fine because the reserve-on-click already
+            // fails cleanly with 409 if the slot went full in the meantime.
+            slotRefreshInterval = setInterval(function() {
+                if (!document.hidden) loadSlots();
+            }, 20000);
             document.getElementById('slotPickerSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 

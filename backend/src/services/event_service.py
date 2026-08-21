@@ -540,9 +540,17 @@ async def recover_stale() -> int:
     for 15 minutes AND needed a second restart to get picked up.
     """
     cutoff = now_utc() - timedelta(minutes=_STALE_MINUTES)
+    # CORR-26: age cap on QUEUED recovery. A legacy stuck-QUEUED row from
+    # months ago used to be re-spawned on every deploy, potentially re-
+    # billing Gemini forever. 7 days is the reasonable "if it's this old,
+    # it's staff-attention territory, not automation".
+    queued_max_age = now_utc() - timedelta(days=7)
     async with AsyncSessionLocal() as db:
         queued = await db.execute(
-            select(InvitationEvent.id).where(InvitationEvent.status == STATUS_QUEUED)
+            select(InvitationEvent.id).where(
+                InvitationEvent.status == STATUS_QUEUED,
+                InvitationEvent.created_at >= queued_max_age,
+            )
         )
         stuck = await db.execute(
             select(InvitationEvent.id).where(

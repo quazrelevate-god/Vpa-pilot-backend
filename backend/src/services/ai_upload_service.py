@@ -138,8 +138,18 @@ class AiUploadService:
             # (drag same folder twice, re-uploaded batch, forwarded PDFs).
             # Skipped files never touch storage — no wasted MinIO puts.
             file_hash = _hashlib.sha256(raw).hexdigest()
+            # CORR-22: cap dedup at 90 days so the index working set stays
+            # bounded as history grows. Practical dedup intent is "catch
+            # accidental re-uploads from this week / month", not "reject a
+            # petition someone happened to file 3 years ago".
+            from datetime import datetime as _dt, timedelta as _td
+            from src.core.timeutil import now_utc as _now_utc
+            _dedup_since = _now_utc() - _td(days=90)
             existing = await db.scalar(
-                select(AiUpload).where(AiUpload.file_hash == file_hash).limit(1)
+                select(AiUpload)
+                .where(AiUpload.file_hash == file_hash)
+                .where(AiUpload.created_at >= _dedup_since)
+                .limit(1)
             )
             if existing is not None:
                 logger.info(

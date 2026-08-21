@@ -220,17 +220,17 @@
         <div id="mainForm">
             <div class="card">
                 <div class="fld">
-                    <label class="lbl"><span class="en">Full Name</span><span class="ta">முழு பெயர்</span> <span class="req">*</span></label>
-                    <input type="text" id="fName" class="inp" placeholder="Enter full name / முழு பெயர்" oninput="validate()">
+                    <label class="lbl" for="fName"><span class="en">Full Name</span><span class="ta">முழு பெயர்</span> <span class="req">*</span></label>
+                    <input type="text" id="fName" class="inp" required placeholder="Enter full name / முழு பெயர்" oninput="validate()">
                 </div>
                 <div class="fld">
-                    <label class="lbl">
+                    <label class="lbl" for="fMobile">
                         <span class="en">Mobile Number</span><span class="ta">அலைபேசி எண்</span> <span class="req">*</span>
                     </label>
                     <input type="tel" id="fMobile" class="inp" required maxlength="10" pattern="[6-9][0-9]{9}" inputmode="numeric" placeholder="10-digit mobile" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
                 </div>
                 <div class="fld">
-                    <label class="lbl"><span class="en">Number of Persons</span><span class="ta">நபர்களின் எண்ணிக்கை</span> <span class="req">*</span></label>
+                    <label class="lbl" for="fPersons"><span class="en">Number of Persons</span><span class="ta">நபர்களின் எண்ணிக்கை</span> <span class="req">*</span></label>
                     <select id="fPersons" class="inp" onchange="onPersonsChange()">
                         <option value="1">1 — Just me / நான் மட்டும்</option>
                         <option value="2">2 Persons / 2 நபர்கள்</option>
@@ -238,11 +238,11 @@
                     </select>
                 </div>
                 <div class="fld">
-                    <label class="lbl"><span class="en">Shared By</span><span class="ta">பகிர்ந்தவர்</span> <span class="req">*</span></label>
-                    <input type="text" id="fRefBy" class="inp" placeholder="Name of person who shared this / பகிர்ந்தவரின் பெயர்" oninput="validate()">
+                    <label class="lbl" for="fRefBy"><span class="en">Shared By</span><span class="ta">பகிர்ந்தவர்</span> <span class="req">*</span></label>
+                    <input type="text" id="fRefBy" class="inp" required placeholder="Name of person who shared this / பகிர்ந்தவரின் பெயர்" oninput="validate()">
                 </div>
                 <div class="fld" style="margin-bottom:0;">
-                    <label class="lbl"><span class="en">Reason for Meeting</span><span class="ta">சந்திப்பின் காரணம்</span> <span class="req">*</span></label>
+                    <label class="lbl" for="fReason"><span class="en">Reason for Meeting</span><span class="ta">சந்திப்பின் காரணம்</span> <span class="req">*</span></label>
                     <textarea id="fReason" class="inp" rows="3"
                         placeholder="Please describe the purpose of your visit clearly / உங்கள் வருகையின் நோக்கத்தை தெளிவாக விவரிக்கவும்"
                         style="resize:vertical; min-height:72px;"
@@ -300,6 +300,9 @@
     }
 
     function setLang(ta) {
+        // Keep <html lang> in sync so screen readers announce the right
+        // script (CITZ-08).
+        document.documentElement.lang = ta ? 'ta' : 'en';
         document.body.classList.toggle('ta-mode', ta);
         document.getElementById('langBtnEn').classList.toggle('active', !ta);
         document.getElementById('langBtnTa').classList.toggle('active', ta);
@@ -595,7 +598,11 @@
     }
 
     loadOpenDates();
-    slotRefreshTimer = setInterval(function() { if (selectedDate) loadSlots(); }, 8000);
+    // CITZ-12: raised from 8s → 20s and gated on visibility. Same rationale
+    // as form.jinja2 — reserve-on-click already handles the stale-slot race.
+    slotRefreshTimer = setInterval(function() {
+        if (!document.hidden && selectedDate) loadSlots();
+    }, 20000);
     </script>
 </body>
 </html>

@@ -15,7 +15,7 @@ _signer = TimestampSigner(settings.SECRET_KEY)
 
 def create_session_cookie(response, username: str):
     token = _signer.sign(username).decode()
-    response.set_cookie(
+    kw = dict(
         key=_COOKIE_NAME,
         value=token,
         max_age=_COOKIE_MAX_AGE,
@@ -24,6 +24,12 @@ def create_session_cookie(response, username: str):
         secure=settings.COOKIE_SECURE,
         path="/",
     )
+    # SEC-05: only stamp Domain= when explicitly configured. Host-only is
+    # the safer default — a leaked cookie can't be sent to a compromised
+    # sub-domain that later gets stood up.
+    if settings.COOKIE_DOMAIN:
+        kw["domain"] = settings.COOKIE_DOMAIN
+    response.set_cookie(**kw)
 
 
 def verify_session(request: Request) -> str:

@@ -353,8 +353,11 @@
         }
         var stepsEn = document.getElementById('steps-en');
         var stepsTa = document.getElementById('steps-ta');
-        sd.en.forEach(function(t) { var li = document.createElement('li'); li.innerHTML = t; stepsEn.appendChild(li); });
-        sd.ta.forEach(function(t) { var li = document.createElement('li'); li.innerHTML = t; stepsTa.appendChild(li); });
+        // CITZ-18: textContent instead of innerHTML — stepsData is static
+        // today so no XSS, but if a future integration ever pipes a server-
+        // provided step in here, textContent stops it from being an issue.
+        sd.en.forEach(function(t) { var li = document.createElement('li'); li.textContent = t; stepsEn.appendChild(li); });
+        sd.ta.forEach(function(t) { var li = document.createElement('li'); li.textContent = t; stepsTa.appendChild(li); });
 
         // Title/subtitle per status
         if (status === 'AWAITING_REVIEW') {
@@ -466,6 +469,7 @@
         }
 
         function setLang(isTamil) {
+            document.documentElement.lang = isTamil ? 'ta' : 'en';
             if (isTamil) {
                 document.body.classList.add('tamil-mode');
             } else {
@@ -481,14 +485,12 @@
             try { savedLang = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
             setLang(savedLang === 'ta');
 
-            // Best-effort auto-download — once per token, so a refresh doesn't re-trigger.
-            var autoKey = 'vpa_downloaded_' + tokenDisplay;
-            var alreadyDone = false;
-            try { alreadyDone = sessionStorage.getItem(autoKey) === '1'; } catch(e) {}
-            if (!alreadyDone) {
-                try { sessionStorage.setItem(autoKey, '1'); } catch(e) {}
-                setTimeout(function() { downloadCard(true); }, 800);
-            }
+            // CITZ-13: removed the silent auto-download of the receipt PNG.
+            // Some Android browsers (Samsung Internet, older Chrome) either
+            // prompted for download permission unexpectedly OR silently wrote
+            // a file named with the citizen's cleartext name to /Downloads
+            // without asking. Citizens tap the button (downloadCard(false))
+            // when they actually want a copy.
         });
     </script>
 </body>

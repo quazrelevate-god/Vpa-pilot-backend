@@ -156,18 +156,20 @@ async def referral_submit(
     mobile: str       = Form(..., min_length=10, max_length=10),
     db: AsyncSession  = Depends(get_db),
 ):
-    # Rate-limit + mobile-required were both missing before — the daily QR is
-    # a SHARED token every visitor scans, so it was possible for a scripted
-    # client to drain the day's slot capacity in seconds by looping submits.
-    # Mobile is now the required identity anchor (no callback → no dedup path
-    # → no way to help the citizen when they arrive), and matches the 10-digit
-    # shape enforced on /appointments and /proposal.
-    mobile = (mobile or "").strip()
-    if not _MOBILE_RE.fullmatch(mobile):
-        return JSONResponse(
-            {"error": "Please enter a valid 10-digit Indian mobile number."},
-            status_code=400,
-        )
+    # Rate-limit + mobile-required + name-shape check (CITZ-03, CITZ-04) —
+    # the daily QR is a SHARED token every visitor scans, so an unrated
+    # endpoint let a scripted client drain the day's capacity. Mobile is
+    # now the required identity anchor. Name validated to the same rule
+    # the Jinja forms enforce client-side.
+    from src.core.validators import clean_mobile, clean_name
+    try:
+        mobile = clean_mobile(mobile)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    try:
+        name = clean_name(name)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     try:
         referral_service.verify_daily_token(d)
     except ValueError as e:

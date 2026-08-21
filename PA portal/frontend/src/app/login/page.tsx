@@ -105,7 +105,7 @@ export default function LoginPage() {
           <motion.form variants={item} onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Username</label>
-              <Input name="username" required autoFocus placeholder="Enter your username"
+              <Input name="username" required autoFocus autoComplete="username" placeholder="Enter your username"
                 onChange={() => setError(null)} className="h-11" />
             </div>
             <div className="space-y-1.5">

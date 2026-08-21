@@ -6,6 +6,7 @@ PA office's ops can actually search/filter logs (and so Sentry can hook in).
 Level follows DEBUG in settings; format is consistent across web + worker.
 """
 import logging
+import re as _re
 import sys
 
 from src.core.config import settings
@@ -47,12 +48,24 @@ def setup_logging() -> None:
 
 
 class _HealthCheckFilter(logging.Filter):
-    """Drop GET /health and static asset access-log lines."""
-    _SKIP = ("/health", "/static/", "/favicon")
+    """Drop noisy access-log lines. Static + favicon suppression is safe
+    (substring); /health uses an exact-path regex so /health/ready and
+    /health/deps stay visible — they're LB readiness probes and losing
+    their log lines when the LB is flapping is a real observability hole.
+    OBS-01: was `/health` substring which swallowed those child paths too.
+    """
+    _SKIP_SUBSTRINGS = ("/static/", "/favicon")
+    # Match the classic access log format: `"GET /health HTTP/1.1"` or
+    # `GET /health ` — bounded so /health/ready is NOT matched.
+    _HEALTH_RE = _re.compile(r'\bGET\s+/health(\?[^\s"]*)?(\s|")')
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not any(s in msg for s in self._SKIP)
+        if any(s in msg for s in self._SKIP_SUBSTRINGS):
+            return False
+        if self._HEALTH_RE.search(msg):
+            return False
+        return True
 
 
 def init_sentry() -> bool:

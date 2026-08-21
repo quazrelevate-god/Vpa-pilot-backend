@@ -665,16 +665,14 @@ class SchedulingService:
         )
 
         if not avail:
-            await self.set_mla_availability(
-                db, mla_id=1, target_date=target_date
+            # CORR-21: previous behaviour silently opened a whole day of 20
+            # slots as a side effect. That created phantom open dates the PA
+            # never intended. Reject clearly and make the PA click "open date"
+            # first — an explicit intentional action.
+            raise ValueError(
+                "That date is not open for bookings. Open it from the "
+                "availability page first, then reschedule."
             )
-            avail = await db.scalar(
-                select(MLADailyAvailability)
-                .where(MLADailyAvailability.date    == target_date)
-                .where(MLADailyAvailability.is_open == True)  # noqa: E712
-            )
-            if not avail:
-                raise ValueError("Failed to open target date for booking.")
 
         slot = await db.scalar(
             select(AppointmentSlot)

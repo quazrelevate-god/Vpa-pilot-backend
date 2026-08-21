@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File, R
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from src.core.database import get_db
+from src.core.validators import clean_mobile, clean_name
 from src.services.appointment_service import appointment_service
 
 # Shared rate limiter (registered on the app in main.py so the limits fire)
@@ -392,12 +393,19 @@ async def submit_appointment(
                 detail="OTP code must be 6 digits"
             )
         
-        # Validate mobile number format
-        if not mobile_number.isdigit():
-            raise HTTPException(
-                status_code=400,
-                detail="Mobile number must contain only digits"
-            )
+        # Server-side name + mobile validation (CITZ-04) — the Jinja / Next.js
+        # forms enforce the same shape client-side, but a JS-off browser or a
+        # scripted client used to reach the server with '<img src=x>', 500
+        # spaces, or a mobile in any format. Reject early with the citizen-
+        # facing message so bad data never lands in the encrypted PII columns.
+        try:
+            name = clean_name(name)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        try:
+            mobile_number = clean_mobile(mobile_number)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         
         # Validate description OR files OR audio (at least one required)
         has_description = description and description.strip()
