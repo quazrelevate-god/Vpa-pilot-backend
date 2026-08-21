@@ -262,7 +262,13 @@ async def list_proposals(
         status=status, q=q, category=category, recommendation=recommendation,
         date_from=date_from, date_to=date_to, batch_id=batch_id,
     )
-    stmt = stmt.order_by(ProposalSubmission.created_at.desc()).limit(limit).offset(offset)
+    # id.desc() as final tie-break — bulk uploads share created_at down to
+    # the microsecond and non-deterministic order across pages would let a
+    # reviewer miss / repeat rows while paginating.
+    stmt = (
+        stmt.order_by(ProposalSubmission.created_at.desc(), ProposalSubmission.id.desc())
+            .limit(limit).offset(offset)
+    )
     rows = (await db.execute(stmt)).scalars().all()
 
     # Resolve the tracking_ref of any duplicate_of_id referenced by this page,

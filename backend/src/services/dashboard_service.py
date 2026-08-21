@@ -519,16 +519,21 @@ async def get_appointments(
                 GrievanceSummaryRecord.appointment_id == Appointment.id,
                 GrievanceSummaryRecord.is_latest == True,  # noqa: E712
             ),
-        ).order_by(priority_rank.asc(), Appointment.created_at.desc())
+        # id.desc() as final tie-break — batch approvals share created_at
+        # down to the microsecond and non-deterministic order across pages
+        # would let a PA miss / repeat rows while scrolling.
+        ).order_by(priority_rank.asc(), Appointment.created_at.desc(), Appointment.id.desc())
     elif sort == "appt_date_asc":
         stmt = stmt.order_by(
             Appointment.created_at.asc().nullslast(),
             Appointment.created_at.asc(),
+            Appointment.id.asc(),   # deterministic tie-break for pagination
         )
     elif sort == "appt_date_desc":
         stmt = stmt.order_by(
             Appointment.created_at.desc().nullslast(),
             Appointment.created_at.desc(),
+            Appointment.id.desc(),  # deterministic tie-break for pagination
         )
     else:
         # Default: put today's meetings first, then upcoming days ascending, then
@@ -560,6 +565,7 @@ async def get_appointments(
             past_desc.desc().nullslast(),
             AppointmentSlot.start_time.asc().nullslast(),
             Appointment.created_at.desc(),
+            Appointment.id.desc(),   # deterministic tie-break for pagination
         )
 
     # ── Category distribution (server-side chart data) ────────────────────────

@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 
@@ -84,6 +85,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# gzip anything ≥1KB — bilingual JSON payloads (/api/tickets, /api/appointments
+# with EN+TA summaries + key_details for every row) are 200-500KB uncompressed
+# per page. The 1024-byte floor keeps small responses (login errors, counts,
+# health-checks) uncompressed so gzip framing overhead is skipped where it
+# would cost more than it saves.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 class _SecurityHeadersMiddleware:

@@ -419,6 +419,14 @@ class Ticket(Base):
         Index("ix_tickets_created_at", "created_at"),
         Index("ix_tickets_forwarded_to_dept", "forwarded_to_dept"),
         Index("ix_tickets_due_date", "due_date"),
+        # Composite for the hot PA / dept-officer list query:
+        #   WHERE department = X AND status_id IN (...) ORDER BY created_at DESC LIMIT 25
+        # The old per-column indexes forced a bitmap-and + sort at every page
+        # tick; this covering index lets Postgres walk the tuple in order.
+        Index(
+            "ix_ticket_dept_status_created",
+            "department", "status_id", "created_at",
+        ),
     )
 
 

@@ -248,7 +248,7 @@ async def api_venues(
             VenueRegistry.is_builtin.desc(), VenueRegistry.display_en,
         )
     )).scalars().all()
-    return JSONResponse([
+    payload = [
         {
             "key":        r.key,
             "display_en": r.display_en,
@@ -256,7 +256,16 @@ async def api_venues(
             "is_active":  bool(r.is_active),
         }
         for r in rows
-    ])
+    ]
+    # Venue registry changes rarely (super_admin action); every appointments-
+    # page mount was re-scanning venue_registry because the client sent
+    # cache: 'no-store'. private + short max-age + stale-while-revalidate
+    # keeps the picker snappy without ever showing >5min-stale data, and
+    # `private` blocks any shared cache from serving it cross-user.
+    return JSONResponse(
+        payload,
+        headers={"Cache-Control": "private, max-age=300, stale-while-revalidate=60"},
+    )
 
 
 @router.get("/api/appointments/counts", dependencies=[Depends(_no_dept_officer)])

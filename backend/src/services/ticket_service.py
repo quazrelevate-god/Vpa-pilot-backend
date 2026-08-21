@@ -272,7 +272,10 @@ async def list_tickets(
             selectinload(Ticket.appointment).selectinload(Appointment.attachments),
             selectinload(Ticket.appointment).selectinload(Appointment.grievance_summary),
         )
-        .order_by(Ticket.created_at.desc())
+        # id.desc() as final tie-break — batch operations share created_at
+        # to the microsecond and non-deterministic order across pages would
+        # let a PA / dept-officer miss / repeat rows while paginating.
+        .order_by(Ticket.created_at.desc(), Ticket.id.desc())
     )
 
     clauses = []

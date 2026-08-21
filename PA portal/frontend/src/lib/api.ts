@@ -90,7 +90,10 @@ function _appointmentParams(opts: AppointmentListOpts, includeStatus: boolean): 
 }
 
 export async function fetchVenues(signal?: AbortSignal): Promise<VenueOption[]> {
-  const resp = await fetch("/api/venues", { credentials: "include", cache: "no-store", signal });
+  // Backend serves this with Cache-Control: private, max-age=300, stale-while-
+  // revalidate=60 (venue registry rarely changes). Letting the browser cache
+  // avoids re-scanning venue_registry on every appointments-page mount.
+  const resp = await fetch("/api/venues", { credentials: "include", signal });
   if (!resp.ok) throw await apiError(resp, "Venues");
   return resp.json();
 }

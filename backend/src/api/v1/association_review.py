@@ -338,7 +338,13 @@ async def list_associations(
         select(func.count()).select_from(stmt.subquery())
     )) or 0
 
-    stmt = stmt.order_by(AssociationSubmission.created_at.desc()).limit(limit).offset(offset)
+    # id.desc() as final tie-break — bulk uploads share created_at down to
+    # the microsecond and non-deterministic order across pages would let a
+    # reviewer miss / repeat rows while paginating.
+    stmt = (
+        stmt.order_by(AssociationSubmission.created_at.desc(), AssociationSubmission.id.desc())
+            .limit(limit).offset(offset)
+    )
     rows = (await db.execute(stmt)).scalars().all()
 
     # One extra query to resolve duplicate_of_id -> association_name for the
