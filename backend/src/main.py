@@ -310,8 +310,9 @@ async def _start_auto_reschedule_loop():
     every day at 00:05 local time. Failures never crash the process.
     """
     from src.core.database import AsyncSessionLocal
+    from src.core.timeutil import ist_now
     from src.services.dashboard_service import auto_reschedule_stale_scheduled
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     import asyncio as _asyncio
     global _auto_reschedule_task, _auto_reschedule_stop
     _auto_reschedule_stop = _asyncio.Event()
@@ -331,9 +332,12 @@ async def _start_auto_reschedule_loop():
         # leave yesterday's rows sitting on the Scheduled tab until tomorrow.
         await _sweep_once()
         while not _auto_reschedule_stop.is_set():
-            now = datetime.now()
-            # Next fire: 00:05 tomorrow. Sleep on the stop event so shutdown
-            # wakes us immediately instead of after the (up to 24h) delay.
+            # Fire at 00:05 IST (the office wall-clock), NOT server-local.
+            # The server runs UTC, so datetime.now() → target 00:05 UTC =
+            # 05:35 IST NEXT DAY, which left every day's SCHEDULED rows on
+            # the tab until mid-morning. ist_now() puts the tick on the
+            # right calendar day.
+            now = ist_now()
             target = (now + timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
             delay = max(60, (target - now).total_seconds())
             try:

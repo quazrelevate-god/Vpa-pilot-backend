@@ -10,6 +10,7 @@ import secrets
 import os
 import time
 from datetime import date, datetime, timedelta
+from src.core.bg_tasks import spawn_bg
 from src.core.timeutil import now_utc
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -1105,7 +1106,7 @@ class AppointmentService:
                 # Still transcribe the audio (if any) — the PA needs to see
                 # what the citizen said, just not routed through petition AI.
                 if audio_url:
-                    asyncio.create_task(self.transcribe_courtesy(appointment.id))
+                    spawn_bg(self.transcribe_courtesy(appointment.id))
             else:
                 logger.info(
                     f"[GEMINI DISPATCH] appointment_id={appointment.id} | "
@@ -1114,7 +1115,7 @@ class AppointmentService:
                     f"audio_url={'yes' if audio_url else 'no'} | "
                     f"desc_chars={len(description or '')}"
                 )
-                asyncio.create_task(self.try_summarise_now(appointment.id))
+                spawn_bg(self.try_summarise_now(appointment.id))
 
             if final_status == 'AWAITING_REVIEW':
                 message = f"Petition submitted successfully. Your token number is {token_assigned}."
@@ -1529,9 +1530,10 @@ class AppointmentService:
 
             # ── Durable summarisation ─────────────────────────────────────────
             # Row is already summary_status='PENDING'; optimistic attempt now,
-            # worker is the restart-safe fallback.
-            _task = asyncio.create_task(self.try_summarise_now(appointment.id))
-            _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+            # worker is the restart-safe fallback. spawn_bg pins the task in
+            # a module-level set (bg_tasks._BG_TASKS) so it survives GC AND
+            # logs any raised exception via WARN.
+            spawn_bg(self.try_summarise_now(appointment.id))
 
             logger.info(
                 f"[MANUAL PETITION] appointment_id={appointment.id} | "
@@ -1753,10 +1755,10 @@ class AppointmentService:
             await db.commit()
 
             # ── Summarise only when there is an IMAGE to read ─────────────────
-            # Courtesy items skip AI regardless.
+            # Courtesy items skip AI regardless. spawn_bg pins the task and
+            # logs any raised exception via WARN (see src/core/bg_tasks.py).
             if has_image and not is_courtesy:
-                _task = asyncio.create_task(self.try_summarise_now(appointment.id))
-                _task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                spawn_bg(self.try_summarise_now(appointment.id))
 
             status = appointment.status
             msg = (f"Appointment booked · Token TKN{token_assigned}"  if status == "SCHEDULED"

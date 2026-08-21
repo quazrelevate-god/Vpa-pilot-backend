@@ -4,8 +4,12 @@ DB queries for the staff dashboard — stats aggregates and appointment list.
 from __future__ import annotations
 
 import base64
+import logging
 from datetime import date, datetime, timedelta
+from src.core.bg_tasks import spawn_bg
 from src.core.timeutil import now_utc
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -1232,8 +1236,9 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         appt.status_id = v2.appointment_status_id("RESCHEDULED")
         appt.schedule_meeting = True
         # Notify the citizen the appointment is cancelled — new time TBD.
-        import asyncio as _asyncio
-        _asyncio.create_task(_notify(kind="reschedule_cancel", appointment_id=appointment_id, ctx={"actor": "pa"}))
+        # spawn_bg pins the task in a module-level set so GC can't kill it
+        # mid-flight (bare create_task keeps only a WEAK ref).
+        spawn_bg(_notify(kind="reschedule_cancel", appointment_id=appointment_id, ctx={"actor": "pa"}))
     elif new_status == "Scheduled":
         # PA manually marks as Scheduled — slot assignment handled separately
         # via the scheduling page reschedule flow.
@@ -1349,10 +1354,9 @@ async def update_appointment_status(db: AsyncSession, appointment_id: int, new_s
         # A rescheduled row converting to a petition (citizen agreed to just
         # submit): notify them the petition is now under review.
         if old_status == "RESCHEDULED":
-            import asyncio as _asyncio
-            _asyncio.create_task(_notify(kind="convert_to_petition",
-                                         appointment_id=appointment_id,
-                                         ctx={"actor": "pa"}))
+            spawn_bg(_notify(kind="convert_to_petition",
+                             appointment_id=appointment_id,
+                             ctx={"actor": "pa"}))
     else:
         resolved_status = _DISPLAY_TO_DB_STATUS.get(new_status, new_status.upper())
         appt.status = resolved_status
@@ -1444,6 +1448,14 @@ async def approve_petition(db: AsyncSession, appointment_id: int, actor: str = "
             "of the grievance before approving it into a ticket."
         )
 
+    # NOTE — atomicity: update_appointment_status commits (ticket becomes
+    # durable), then forward_if_non_school commits its own transaction. A
+    # crash / connection loss between the two leaves a non-school ticket
+    # sitting on the school queue with no forwarding record. The try/except
+    # below makes the failure LOUD (WARN log with a MANUAL_FORWARD_NEEDED
+    # marker + ticket_id + intended ministry) so ops can grep and re-forward
+    # via the UI. A follow-up refactor should thread commit=False through
+    # update_appointment_status so both mutations land in one transaction.
     result = await update_appointment_status(db, appointment_id, "Reviewed")
     ticket = await db.scalar(select(Ticket).where(Ticket.appointment_id == appointment_id))
     summary = await db.scalar(
@@ -1455,8 +1467,23 @@ async def approve_petition(db: AsyncSession, appointment_id: int, actor: str = "
     forwarded = False
     if ticket:
         from src.services import department_service
-        forwarded = await department_service.forward_if_non_school(
-            db, ticket.id, summary.ministry if summary else None, actor)
+        intended_ministry = summary.ministry if summary else None
+        try:
+            forwarded = await department_service.forward_if_non_school(
+                db, ticket.id, intended_ministry, actor)
+        except Exception as e:
+            # The ticket is already committed and live on the school queue.
+            # Do NOT re-raise — the approval itself succeeded; only the
+            # follow-up forward failed. Log with a marker string so an
+            # oncall can `grep MANUAL_FORWARD_NEEDED` and reconcile.
+            logger.warning(
+                "MANUAL_FORWARD_NEEDED ticket_id=%s appointment_id=%s "
+                "intended_ministry=%r actor=%s error=%r — non-school ticket "
+                "stayed on the school queue after approve_petition; forward "
+                "it manually from the PA portal.",
+                ticket.id, appointment_id, intended_ministry, actor, e,
+            )
+            forwarded = False
     return {
         "status": result.get("status"),
         "ticket_number": ticket.ticket_number if ticket else None,
@@ -1472,9 +1499,15 @@ async def auto_reschedule_stale_scheduled(db: AsyncSession) -> int:
     Runs at startup and again just after midnight so the Scheduled tab never
     accumulates yesterday's rows the PA forgot to cancel. Returns the row count
     for the log line.
+
+    "Today" is the office's IST calendar day, NOT the server's UTC day. Between
+    UTC 18:30–23:59 (IST 00:00–05:30 the next day) UTC-today is a day BEHIND
+    IST-today, and comparing MLADailyAvailability.date (which stores the IST
+    meeting date) against UTC-today would auto-flip that morning's meetings to
+    RESCHEDULED BEFORE they had a chance to happen.
     """
-    from datetime import date as _date_type
-    today = _date_type.today()
+    from src.core.timeutil import ist_today
+    today = ist_today()
     # v2: meeting date lives on slot → availability.
     stmt = (
         select(Appointment)

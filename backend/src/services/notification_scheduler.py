@@ -120,16 +120,50 @@ async def _dispatch_and_flag(
     kind: str,
     flag_col: str,
 ) -> tuple[int, int]:
-    """Send this event's reminder to every subscription, then flip its
-    notified_* flag. Both in the same tx — a crash between send and flag
-    would replay on the next tick, but the flag is set BEFORE the
-    downstream commit inside send_to_many, so we set it here explicitly
-    and commit once at the end."""
-    payload = _payload_for_event(event, kind)
-    ok, fail = await send_to_many(db, subs, payload)   # commits its own tx
-    # send_to_many already committed; re-fetch and flip the flag in a new tx.
-    setattr(event, flag_col, True)
+    """Flip the notified_* flag BEFORE sending, so a crash mid-send never
+    re-fans-out.
+
+    Previous ordering was send → flip flag. send_to_many commits its own tx;
+    if the process died between that commit and the flag flip, the next
+    60-second tick re-selected the same event and re-blasted the reminder
+    to every subscription. Trade-off flipped: we now risk MISSING a reminder
+    on a crash between flag and send, which is much less bad than firing
+    N duplicates to every subscriber. If send_to_many raises, an outer
+    handler can decide whether to reset the flag.
+    """
+    # Atomic conditional flag flip: only proceed if the flag was still False
+    # (races with a concurrent tick lose here — rowcount 0 → no dispatch).
+    from sqlalchemy import update as _sa_update
+    flip = await db.execute(
+        _sa_update(InvitationEvent)
+        .where(InvitationEvent.id == event.id,
+               getattr(InvitationEvent, flag_col) == False)  # noqa: E712
+        .values({flag_col: True})
+    )
     await db.commit()
+    if (flip.rowcount or 0) == 0:
+        # Another tick beat us to it — skip the send entirely.
+        return 0, 0
+
+    payload = _payload_for_event(event, kind)
+    try:
+        ok, fail = await send_to_many(db, subs, payload)   # commits its own tx
+    except Exception:
+        # Send blew up AFTER we claimed the flag. Reset it so the next tick
+        # can retry (better a duplicate later than a permanently-missed
+        # reminder). If the reset itself fails, log and give up — the flag
+        # stays True and this event's reminder is lost.
+        try:
+            await db.execute(
+                _sa_update(InvitationEvent)
+                .where(InvitationEvent.id == event.id)
+                .values({flag_col: False})
+            )
+            await db.commit()
+        except Exception:
+            logger.exception("reminder: failed to reset %s flag on event %d after send failure",
+                             flag_col, event.id)
+        raise
     logger.info(
         "reminder: event=%d kind=%s recipients=%d ok=%d fail=%d",
         event.id, kind, len(subs), ok, fail,

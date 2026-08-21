@@ -13,6 +13,7 @@ Booking stays concurrency-safe via SELECT ... FOR UPDATE on the slot row.
 """
 import logging
 from datetime import datetime, date, time, timedelta
+from src.core.bg_tasks import spawn_bg
 from src.core.timeutil import now_utc
 from typing import Optional, Dict, List
 
@@ -492,10 +493,10 @@ class SchedulingService:
         # block itself. Every affected citizen learns the meeting was cancelled.
         if _cascade_appointment_ids:
             try:
-                import asyncio as _asyncio
                 from src.services.notification_service import notify as _notify
                 for _aid in _cascade_appointment_ids:
-                    _asyncio.create_task(_notify(
+                    # spawn_bg pins the task so GC can't drop it before it runs.
+                    spawn_bg(_notify(
                         kind="reschedule_cancel",
                         appointment_id=_aid,
                         ctx={"actor": "pa", "reason": "slot_blocked"},
@@ -729,10 +730,10 @@ class SchedulingService:
         await db.commit()
 
         # Notify the citizen of the new time + token (fire-and-forget).
+        # spawn_bg pins the task so GC can't drop it before it runs.
         try:
-            import asyncio as _asyncio
             from src.services.notification_service import notify as _notify
-            _asyncio.create_task(_notify(
+            spawn_bg(_notify(
                 kind="reschedule_rebook",
                 appointment_id=appt.id,
                 ctx={

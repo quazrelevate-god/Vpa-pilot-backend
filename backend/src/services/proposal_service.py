@@ -202,6 +202,11 @@ class ProposalService:
     def __init__(self) -> None:
         self._worker_active = False
         self._worker_lock: Optional[asyncio.Lock] = None
+        # Strong ref to the running worker task — asyncio only holds a WEAK
+        # ref to a bare create_task() result, so without this the loop's
+        # next GC pass could kill the worker mid-run and every future
+        # create_submission would silently no-op (queue never drains).
+        self._worker_task: Optional[asyncio.Task] = None
 
     def _get_worker_lock(self) -> asyncio.Lock:
         if self._worker_lock is None:
@@ -325,7 +330,9 @@ class ProposalService:
             if self._worker_active:
                 return
             self._worker_active = True
-        asyncio.create_task(self._worker())
+        # Assign the task BEFORE it can yield — self._worker_task is the
+        # strong ref that keeps the worker alive across GC cycles.
+        self._worker_task = asyncio.create_task(self._worker())
 
     async def _worker(self) -> None:
         try:

@@ -17,7 +17,7 @@ from sqlalchemy import select, func, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
-from src.core.timeutil import now_utc
+from src.core.timeutil import ist_today, now_utc
 from src.core import crypto
 from src.models.referral_models import (
     ReferralAvailability,
@@ -54,15 +54,21 @@ class ReferralService:
     # ── Daily QR token ───────────────────────────────────────────────────────
 
     def make_daily_token(self, for_date: Optional[date] = None) -> str:
-        """Sign a date string → token. Anyone holding it can open that day's form."""
+        """Sign a date string → token. Anyone holding it can open that day's form.
+
+        `for_date` defaults to IST-today, NOT server-local (UTC). A QR minted
+        after IST midnight but before UTC midnight would otherwise sign the
+        wrong calendar date and immediately fail verification.
+        """
         if for_date is None:
-            for_date = date.today()
+            for_date = ist_today()
         return _signer.sign(for_date.isoformat().encode()).decode()
 
     def verify_daily_token(self, token: str) -> date:
         """
         Verify a daily token and return the date it encodes.
-        Raises ValueError if tampered or not today's token.
+        Raises ValueError if tampered or not today's IST token — the office
+        wall-clock day is authoritative, not the server's UTC day.
         """
         try:
             raw = _signer.unsign(token.encode()).decode()
@@ -70,13 +76,13 @@ class ReferralService:
         except (BadSignature, ValueError):
             raise ValueError("Invalid referral QR. Please ask the office for today's QR code.")
 
-        if token_date != date.today():
+        if token_date != ist_today():
             raise ValueError("This referral QR has expired. Please scan today's QR code.")
         return token_date
 
     def daily_qr_payload(self, base_url: str) -> Dict:
         """Build today's QR url + metadata for the PA portal."""
-        today = date.today()
+        today = ist_today()
         token = self.make_daily_token(today)
         scan_url = f"{base_url.rstrip('/')}/api/v1/referral/scan?d={token}"
         return {
@@ -258,7 +264,7 @@ class ReferralService:
         # Guard: never book a slot whose date has already passed. The citizen
         # picker only shows future/today dates, but a stale slot_id must not be
         # bookable directly.
-        if slot_date < date.today():
+        if slot_date < ist_today():
             raise ValueError("That date has passed. Please pick an available date.")
 
         # Daily sequential token: YYYYMMDD * 100000 + n.
@@ -463,7 +469,7 @@ class ReferralService:
         result = await db.execute(
             select(ReferralAvailability)
             .where(ReferralAvailability.status == "ACTIVE")
-            .where(ReferralAvailability.date   >= date.today())
+            .where(ReferralAvailability.date   >= ist_today())
             .order_by(ReferralAvailability.date)
         )
         dates: List[Dict] = []
@@ -486,7 +492,7 @@ class ReferralService:
         result = await db.execute(
             select(ReferralAvailability)
             .where(ReferralAvailability.status == "ACTIVE")
-            .where(ReferralAvailability.date   >= date.today())
+            .where(ReferralAvailability.date   >= ist_today())
             .order_by(ReferralAvailability.date)
         )
         out = []

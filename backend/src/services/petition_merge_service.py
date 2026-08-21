@@ -336,13 +336,20 @@ async def approve_with_signatories(
         if sid == primary.id:
             skipped.append({"id": sid, "reason": "same_as_primary"})
             continue
-        # Read + re-check status/group_id right before writing. A concurrent
-        # merge on the same signatory is rare and non-catastrophic (worst case:
-        # one campaign counts a signatory that ended up on another campaign);
-        # a proper row-lock is deferred because Appointment.scheduled_slot's
-        # lazy=joined always LEFT-JOINs slots, and Postgres refuses FOR UPDATE
-        # on the nullable side of an outer join.
-        row = await db.get(Appointment, sid)
+        # Row-lock the signatory before re-checking status/group_id so two
+        # concurrent PA merges on the same signatory can't both claim it
+        # (previously "rare and non-catastrophic" but produced silent
+        # signatory_count drift when it did fire). The default lazy=joined
+        # on Appointment.scheduled_slot LEFT-JOINs slots, and Postgres
+        # refuses FOR UPDATE on the nullable side of an outer join — so
+        # we explicitly noload the relationship for the locked read; the
+        # merge doesn't need scheduled_slot anyway.
+        row = (await db.execute(
+            select(Appointment)
+            .where(Appointment.id == sid)
+            .options(noload(Appointment.scheduled_slot))
+            .with_for_update()
+        )).scalar_one_or_none()
         if row is None:
             skipped.append({"id": sid, "reason": "not_found"})
             continue

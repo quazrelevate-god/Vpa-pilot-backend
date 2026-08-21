@@ -68,6 +68,13 @@ class AiUploadService:
         # _worker_active=True and skip spawning, then the worker would
         # exit, orphaning every row created in that gap. See _worker().
         self._worker_lock: Optional[asyncio.Lock] = None
+        # Strong ref to the running worker task. asyncio only holds a WEAK
+        # ref to a bare create_task() result — without this attribute the
+        # loop's next GC pass could kill the worker mid-run, leaving
+        # _worker_active=True forever and no processing task to drain the
+        # queue. Every subsequent create_batch would then appear successful
+        # but nothing would ever process (silent pipeline stall).
+        self._worker_task: Optional[asyncio.Task] = None
 
     def _get_worker_lock(self) -> asyncio.Lock:
         # Lazy so the lock binds to whatever event loop first calls in.
@@ -198,7 +205,9 @@ class AiUploadService:
             if self._worker_active:
                 return
             self._worker_active = True
-        asyncio.create_task(self._worker())
+        # Assign the task BEFORE it can yield — self._worker_task is the
+        # strong ref that keeps the worker alive across GC cycles.
+        self._worker_task = asyncio.create_task(self._worker())
 
     async def _worker(self) -> None:
         # The classic single-worker TOCTOU: if the worker sees "no more
@@ -1079,13 +1088,34 @@ class AiUploadService:
             return await self._build_case(db, upload_id, reviewed_by)
         except Exception:
             # Build failed — release the claim so the row can be approved again.
+            # Race note: the previous version did .get() + in-memory .status =
+            # AWAITING_REVIEW, which lost the race against any concurrent state
+            # change (no FOR UPDATE, no version check) and could revert a row
+            # that a second approver had already correctly moved forward.
+            # Fix: atomic conditional UPDATE — only flip back when the row is
+            # still REVIEWED AND has no ticket attached (i.e. still safe to
+            # revert). rowcount=0 means someone else already handled it; log
+            # so ops can spot pathological cases where the row is stuck.
             await db.rollback()
             try:
                 async with AsyncSessionLocal() as db2:
-                    r = await db2.get(AiUpload, upload_id)
-                    if r and r.status == STATUS_REVIEWED and r.ticket_id is None:
-                        r.status = STATUS_AWAITING_REVIEW
-                        await db2.commit()
+                    revert = await db2.execute(
+                        update(AiUpload)
+                        .where(
+                            AiUpload.id == upload_id,
+                            AiUpload.status == STATUS_REVIEWED,
+                            AiUpload.ticket_id.is_(None),
+                        )
+                        .values(status=STATUS_AWAITING_REVIEW)
+                    )
+                    await db2.commit()
+                    if (revert.rowcount or 0) == 0:
+                        logger.warning(
+                            "ai_upload %s revert-after-build-error was a no-op "
+                            "(row moved on or already has ticket_id). If the "
+                            "row is stuck in REVIEWED with ticket_id=NULL, "
+                            "reconcile it manually.", upload_id,
+                        )
             except Exception:
                 logger.exception("failed to revert upload %s status after build error", upload_id)
             raise
