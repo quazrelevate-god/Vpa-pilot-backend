@@ -64,17 +64,29 @@ def encrypt(plaintext: Optional[str]) -> Optional[str]:
 
 
 def decrypt(token: Optional[str]) -> Optional[str]:
-    """Decrypt a Fernet token; fall back to legacy base64 for un-migrated rows."""
+    """Decrypt a Fernet token.
+
+    The legacy base64-fallback branch (pre-encryption migration) is removed —
+    it silently treated reversible base64 as if it were encrypted, so a DB
+    that never ran encrypt_pii.py had PII effectively plaintext at rest.
+    An InvalidToken now returns the raw value with a WARN so a list view
+    doesn't crash but ops can grep for un-migrated rows and force-run the
+    migration script.
+    """
     if token is None:
         return None
     try:
         return _fernet().decrypt(token.encode("utf-8")).decode("utf-8")
     except (InvalidToken, ValueError):
-        # Legacy base64 value (pre-encryption data) — decode it as before.
-        try:
-            return base64.b64decode(token.encode("utf-8")).decode("utf-8")
-        except Exception:
-            return token  # last resort: return as-is rather than crash a list view
+        # NOT a Fernet token. This should never happen on a properly migrated
+        # DB — log and return as-is so we don't 500 a list view.
+        logger.warning(
+            "crypto.decrypt: value is not a Fernet token (len=%d). "
+            "If this fires often, run backend/encrypt_pii.py — the previous "
+            "base64 fallback used to hide legacy plaintext rows silently.",
+            len(token),
+        )
+        return token
 
 
 def is_encrypted(value: Optional[str]) -> bool:

@@ -36,6 +36,20 @@ from src.models.referral_models import (
     ReferralBooking,
 )
 from src.models.ai_upload_models import AiUpload
+# Autogenerate blind spots — until these are imported here Alembic emits
+# DROP TABLE for each on the next --autogenerate run and can't detect drift
+# on their columns. Never remove without confirming --autogenerate stays clean.
+from src.models.login_models import UserRole  # noqa: F401
+from src.models.petition_group import PetitionGroup  # noqa: F401
+from src.models.event_models import InvitationEvent  # noqa: F401
+from src.models.proposal_models import ProposalSubmission  # noqa: F401
+from src.models.association_models import AssociationSubmission  # noqa: F401
+from src.models.push_models import PushSubscription  # noqa: F401
+from src.models.registry_models import (  # noqa: F401
+    DepartmentRegistry,
+    MinistryRegistry,
+    VenueRegistry,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

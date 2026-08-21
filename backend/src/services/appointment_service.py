@@ -32,6 +32,20 @@ from src.services.v2_helpers import v2
 logger = logging.getLogger(__name__)
 
 
+def _mask_mobile(number: str | None) -> str:
+    """Mask all but the last 4 digits of a mobile for logging.
+
+    'PII' per DPDP includes the mobile number. Log ingestion (Sentry
+    breadcrumbs, syslog, log aggregators) shouldn't carry the full
+    10-digit number in plaintext. Non-string / empty → returned as-is
+    (so `_mask_mobile(None) → 'None'`).
+    """
+    digits = "".join(c for c in str(number or "") if c.isdigit())
+    if len(digits) < 4:
+        return "***"
+    return "*" * (len(digits) - 4) + digits[-4:]
+
+
 # Courtesy categories skip the AI petition pipeline entirely. An invitation card
 # or a Pongal greeting has no grievance to summarise, no department to route to,
 # and no ticket to open — the audio (or optional text) is the whole message.
@@ -207,28 +221,69 @@ class AppointmentService:
         if phone.startswith("91") and len(phone) == 12:
             phone = phone[2:]
 
+        # Small retry: a single upstream 5xx / timeout used to fail the whole
+        # OTP flow with 502, and the citizen just saw "SMS gateway error" at
+        # the OTP screen with no path forward. 3 attempts with 250ms → 500ms
+        # → 1s backoff turns a transient blip into a couple of seconds of
+        # extra latency instead of an abandoned intake.
+        import asyncio as _asyncio
+        _APM_MAX_ATTEMPTS = 3
+        _APM_BACKOFF = (0.25, 0.5, 1.0)
+        last_exc: Optional[Exception] = None
+        resp = None
+        for attempt in range(_APM_MAX_ATTEMPTS):
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.post(
+                        "https://sms.apmtechnologies.in/api/Home/Registration",
+                        params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
+                    )
+                # Retry only on 5xx / 429; 4xx (bad number etc.) is terminal.
+                if resp.status_code >= 500 or resp.status_code == 429:
+                    last_exc = HTTPException(status_code=502, detail=f"SMS gateway {resp.status_code}")
+                    if attempt < _APM_MAX_ATTEMPTS - 1:
+                        await _asyncio.sleep(_APM_BACKOFF[attempt])
+                        continue
+                break
+            except httpx.TransportError as e:
+                last_exc = e
+                if attempt < _APM_MAX_ATTEMPTS - 1:
+                    await _asyncio.sleep(_APM_BACKOFF[attempt])
+                    continue
+                raise HTTPException(status_code=502, detail=f"SMS gateway unreachable: {e}") from e
+        if resp is None:
+            raise last_exc or HTTPException(status_code=502, detail="SMS gateway unavailable")
+
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
-                    "https://sms.apmtechnologies.in/api/Home/Registration",
-                    params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
-                )
             resp.raise_for_status()
 
-            # Response is the OTP as a plain string e.g. "493568"
+            # Response is the OTP as a plain string e.g. "493568".
+            # Tight validation — an APM error page that happens to contain any
+            # all-digit blob would otherwise pass `.isdigit()` and be stored
+            # (hashed) as the citizen's OTP, guaranteeing verify-failure until
+            # they hit the 3-strike lockout. Require exactly 6 digits AND that
+            # the response looked like plain text (an HTML error page would
+            # carry text/html).
+            content_type = (resp.headers.get("content-type") or "").lower()
             otp_from_api = resp.text.strip().strip('"')
-
-            if not otp_from_api or not otp_from_api.isdigit():
-                logger.warning("SMS OTP extract failed for %s: %r", phone, resp.text[:80])
+            if (
+                len(otp_from_api) != 6
+                or not otp_from_api.isdigit()
+                or "html" in content_type
+            ):
+                logger.warning(
+                    "SMS OTP extract failed for %s: ctype=%r body=%r",
+                    _mask_mobile(phone), content_type, resp.text[:80],
+                )
                 raise HTTPException(status_code=502, detail="SMS gateway did not return an OTP.")
 
-            logger.info("SMS OTP sent to %s", phone)
+            logger.info("SMS OTP sent to %s", _mask_mobile(phone))
             return otp_from_api
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.warning("SMS OTP send failed for %s: %s", mobile_number, e)
+            logger.warning("SMS OTP send failed for %s: %s", _mask_mobile(mobile_number), e)
             raise HTTPException(status_code=502, detail=f"SMS gateway error: {e}")
 
     async def _send_confirmation_sms(self, mobile_number: str, token_number: int, citizen_name: str) -> bool:
@@ -247,7 +302,7 @@ class AppointmentService:
             bool: True if sent successfully, False otherwise
         """
         if not settings.APM_SMS_API_KEY:
-            logger.debug("SMS confirmation skipped (no API key) — token %s for %s", token_number, mobile_number)
+            logger.debug("SMS confirmation skipped (no API key) — token %s for %s", token_number, _mask_mobile(mobile_number))
             return False
         
         phone = mobile_number.lstrip("+")
@@ -263,10 +318,10 @@ class AppointmentService:
                     params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
                 )
             resp.raise_for_status()
-            logger.info("SMS confirmation sent — token %s to %s", token_number, phone)
+            logger.info("SMS confirmation sent — token %s to %s", token_number, _mask_mobile(phone))
             return True
         except Exception as e:
-            logger.warning("SMS confirmation failed for %s: %s", mobile_number, e)
+            logger.warning("SMS confirmation failed for %s: %s", _mask_mobile(mobile_number), e)
             return False
     
     async def send_status_update_sms(self, mobile_number: str, token_number: int, citizen_name: str, new_status: str) -> bool:
@@ -286,15 +341,19 @@ class AppointmentService:
             bool: True if sent successfully, False otherwise
         """
         if not settings.APM_SMS_API_KEY:
-            logger.info(f"[SMS STATUS UPDATE DUMMY] Token {token_number} status changed to {new_status} for {citizen_name} ({mobile_number})")
+            # Mask both mobile AND full name — DPDP-sensitive; use token as the correlation key.
+            logger.info(
+                "[SMS STATUS UPDATE DUMMY] Token %s status changed to %s for %s",
+                token_number, new_status, _mask_mobile(mobile_number),
+            )
             return False
-        
+
         phone = mobile_number.lstrip("+")
         if phone.startswith("91") and len(phone) == 12:
             phone = phone[2:]
-        
+
         message = f"Dear {citizen_name}, your appointment status has been updated to {new_status}. Token: {token_number}."
-        
+
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(
@@ -302,10 +361,12 @@ class AppointmentService:
                     params={"ApiKey": settings.APM_SMS_API_KEY, "PhoneNumber": phone},
                 )
             resp.raise_for_status()
-            logger.info(f"[SMS STATUS UPDATE SUCCESS] Token {token_number} status update sent to {phone}")
+            logger.info("[SMS STATUS UPDATE SUCCESS] Token %s status update sent to %s",
+                        token_number, _mask_mobile(phone))
             return True
         except Exception as e:
-            logger.info(f"[SMS STATUS UPDATE ERROR] Failed to send to {mobile_number}: {e}")
+            logger.info("[SMS STATUS UPDATE ERROR] Failed to send to %s: %s",
+                        _mask_mobile(mobile_number), e)
             return False
     
     

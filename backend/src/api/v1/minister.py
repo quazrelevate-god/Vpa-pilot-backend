@@ -366,14 +366,75 @@ async def minister_serve_file(
     file_path: str,
     request: Request,
     login: Login = Depends(require_minister),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Serve a stored file (event photo/audio, or a petition / proposal /
-    association upload) scoped by the minister session. The Minister app is a
-    read-only mirror of the staff desk, so it may view the same documents the
-    desk shows — the only guard is against path traversal. Delegates to the
-    shared streamer for Range/ETag/caching."""
+    """Serve a stored file scoped by the minister session, with row-level
+    authorization.
+
+    Previously the guard was only path-traversal + non-empty, so any minister
+    session could enumerate every storage key by path (attachments/,
+    ticket_attachments/, ai_uploads/, proposals/, associations/) — cross-
+    tenant PII exposure by any minister credential.
+
+    Now: the key must be referenced by a real row in one of the tables the
+    Minister UI actually renders. Unknown-namespace / dangling keys 403 (the
+    error deliberately doesn't distinguish "orphan key" from "not authorised"
+    so ministers can't probe for existence)."""
+    from sqlalchemy import func, select as _select, text as _sa_text
+    from src.models.appointment_models import AppointmentAttachment
+    from src.models.ai_upload_models import AiUpload
+    from src.models.ticket_models import TicketAttachment
+
     normalized = file_path.replace("\\", "/").lstrip("/")
     if ".." in normalized or not normalized:
         raise HTTPException(404, "File not found")
+
+    _deny = HTTPException(status_code=403, detail="Not authorized to access this file.")
+
+    # Namespace → owning-table lookup. Uses .limit(1) equivalent COUNT so
+    # existence check is cheap on the indexed storage_url column.
+    if normalized.startswith("attachments/"):
+        exists = await db.scalar(
+            _select(func.count(AppointmentAttachment.id))
+            .where(AppointmentAttachment.storage_url == normalized)
+        )
+    elif normalized.startswith("ticket_attachments/"):
+        exists = await db.scalar(
+            _select(func.count(TicketAttachment.id))
+            .where(TicketAttachment.storage_url == normalized)
+        )
+    elif normalized.startswith("ai_uploads/"):
+        exists = await db.scalar(
+            _select(func.count(AiUpload.id))
+            .where(AiUpload.storage_url == normalized)
+        )
+    elif normalized.startswith("proposals/"):
+        exists = await db.scalar(_sa_text("""
+            SELECT 1 FROM proposal_submissions
+             WHERE documents IS NOT NULL
+               AND EXISTS (
+                 SELECT 1 FROM jsonb_array_elements(documents) doc
+                  WHERE doc->>'storage_url' = :key
+               )
+             LIMIT 1
+        """).bindparams(key=normalized))
+    elif normalized.startswith("associations/"):
+        exists = await db.scalar(_sa_text("""
+            SELECT 1 FROM association_submissions
+             WHERE documents IS NOT NULL
+               AND EXISTS (
+                 SELECT 1 FROM jsonb_array_elements(documents) doc
+                  WHERE doc->>'storage_url' = :key
+               )
+             LIMIT 1
+        """).bindparams(key=normalized))
+    else:
+        # Unknown namespace — fail closed so new upload paths never
+        # accidentally ship wide open through this endpoint.
+        raise _deny
+
+    if not exists:
+        raise _deny
+
     from src.api.v1.dashboard import serve_stored_file
     return await serve_stored_file(normalized, request)

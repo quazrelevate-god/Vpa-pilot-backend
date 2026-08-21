@@ -434,6 +434,34 @@ async def push_subscribe(
     if not endpoint or not p256dh or not auth:
         raise HTTPException(422, "endpoint + keys.p256dh + keys.auth are required")
 
+    # SSRF guard: the reminder scheduler later calls webpush() against this
+    # URL with a VAPID JWT + encrypted body. Without this check an authed
+    # reviewer could POST endpoint=http://169.254.169.254/... (or any
+    # internal service) and use us as a probe / signed-request tunnel.
+    # Allowlist matches the four browser-push services in the wild.
+    from urllib.parse import urlparse
+    _PUSH_HOSTS = (
+        "fcm.googleapis.com",
+        "updates.push.services.mozilla.com",
+        "web.push.apple.com",
+    )
+    _PUSH_HOST_SUFFIXES = (
+        ".notify.windows.com",  # WNS: wns2-*.notify.windows.com
+    )
+    try:
+        parsed = urlparse(endpoint)
+    except Exception:
+        raise HTTPException(422, "endpoint is not a valid URL")
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not host:
+        raise HTTPException(422, "endpoint must be an https:// URL")
+    if not (host in _PUSH_HOSTS or any(host.endswith(sfx) for sfx in _PUSH_HOST_SUFFIXES)):
+        raise HTTPException(
+            422,
+            "endpoint host is not a recognised browser-push service "
+            "(FCM / Mozilla / Apple / WNS)",
+        )
+
     device_label = (payload.get("device_label") or "")[:200] or None
 
     from sqlalchemy import select as _select

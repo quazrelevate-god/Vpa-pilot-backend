@@ -28,18 +28,11 @@ from src.models.grievance_summary_record import GrievanceSummaryRecord
 from enum import Enum
 
 
-# v2: TicketEventType Enum removed from the model layer — kept here so this
-# service's `_event_type.X.value` call pattern keeps working. Written to the
-# unified `activity` table (Activity.action_type) instead of ticket_events.
-class TicketEventType(str, Enum):
-    ROUTED_TO_DEPARTMENT = "routed_to_department"
-    FORWARDED_TO_DEPT    = "forwarded_to_dept"
-    CLOSED               = "closed"
-    REOPENED             = "reopened"
-    DEPARTMENT_ACCEPTED  = "department_accepted"
-    DEPARTMENT_FORWARDED = "department_forwarded"
-    PROGRESS_UPDATE      = "progress_update"
-    RESOLVED             = "resolved"
+# v2: TicketEventType enum removed from the model layer — action_type strings
+# live on the unified Activity table. Single source of truth is
+# src.models.activity_types.ActivityAction; TicketEventType stays as a local
+# alias so existing call sites (TicketEventType.X.value) keep working.
+from src.models.activity_types import ActivityAction as TicketEventType  # noqa: E402
 from src.models.school_department import SchoolDepartment, department_label
 from src.models.registry_models import DepartmentRegistry
 from src.core.utils import utc_iso

@@ -13,11 +13,24 @@ from src.core.database import get_db
 from src.core.config import check_env_credentials, settings
 from src.core.dash_auth import create_session_cookie, require_auth
 from src.core.rate_limit import limiter
-from src.core.rbac import get_current_login
-from src.models.login_models import Login, ROLE_DEPT_OFFICER
+from src.core.rbac import get_current_login, require_role
+from src.models.login_models import (
+    Login, ROLE_DEPT_OFFICER, ROLE_PA, ROLE_SUPER_ADMIN,
+)
 from src.services import dashboard_service
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+
+# Ticket write endpoints (patch, forward, comment, attachment, resolve, close,
+# revert, reopen) — restrict to the three roles that legitimately need to
+# mutate tickets. Auditor / petition_reviewer were previously untouched by
+# _ticket_in_scope (which only bites dept_officer) and could patch, forward,
+# close, reopen, resolve, or revert ANY ticket. This is the positive
+# allowlist that finally locks them out. Dept-scope enforcement for
+# dept_officer stays where it is (via the existing _ticket_in_scope call
+# inside each handler).
+_TICKET_WRITER = [Depends(require_role(ROLE_SUPER_ADMIN, ROLE_PA, ROLE_DEPT_OFFICER))]
 
 
 async def _no_dept_officer(current: Login = Depends(get_current_login)) -> None:
@@ -976,7 +989,7 @@ async def api_ticket_detail(
     return JSONResponse(data)
 
 
-@router.patch("/api/tickets/{ticket_id}")
+@router.patch("/api/tickets/{ticket_id}", dependencies=_TICKET_WRITER)
 async def api_ticket_patch(
     ticket_id: int,
     request: Request,
@@ -1004,7 +1017,7 @@ async def api_ticket_patch(
     return JSONResponse(data)
 
 
-@router.post("/api/tickets/{ticket_id}/forward")
+@router.post("/api/tickets/{ticket_id}/forward", dependencies=_TICKET_WRITER)
 async def api_ticket_forward(
     ticket_id: int,
     request: Request,
@@ -1025,7 +1038,7 @@ async def api_ticket_forward(
     return JSONResponse(data)
 
 
-@router.post("/api/tickets/{ticket_id}/comment")
+@router.post("/api/tickets/{ticket_id}/comment", dependencies=_TICKET_WRITER)
 async def api_ticket_comment(
     ticket_id: int,
     request: Request,
@@ -1047,7 +1060,7 @@ async def api_ticket_comment(
     return JSONResponse(data)
 
 
-@router.post("/api/tickets/{ticket_id}/attachment")
+@router.post("/api/tickets/{ticket_id}/attachment", dependencies=_TICKET_WRITER)
 async def api_add_ticket_attachment(
     ticket_id: int,
     file: UploadFile = File(...),
@@ -1075,7 +1088,7 @@ async def api_add_ticket_attachment(
     return JSONResponse(result)
 
 
-@router.post("/api/tickets/{ticket_id}/resolve")
+@router.post("/api/tickets/{ticket_id}/resolve", dependencies=_TICKET_WRITER)
 async def api_ticket_resolve(
     ticket_id: int,
     request: Request,
@@ -1098,7 +1111,7 @@ async def api_ticket_resolve(
     return JSONResponse(data)
 
 
-@router.post("/api/tickets/{ticket_id}/close")
+@router.post("/api/tickets/{ticket_id}/close", dependencies=_TICKET_WRITER)
 async def api_ticket_close(
     ticket_id: int,
     request: Request,
@@ -1120,7 +1133,7 @@ async def api_ticket_close(
     return JSONResponse(data)
 
 
-@router.post("/api/tickets/{ticket_id}/revert")
+@router.post("/api/tickets/{ticket_id}/revert", dependencies=_TICKET_WRITER)
 async def api_ticket_revert(
     ticket_id: int,
     request: Request,
@@ -1155,7 +1168,7 @@ async def api_ticket_revert(
     return JSONResponse(data)
 
 
-@router.post("/api/tickets/{ticket_id}/reopen")
+@router.post("/api/tickets/{ticket_id}/reopen", dependencies=_TICKET_WRITER)
 async def api_ticket_reopen(
     ticket_id: int,
     request: Request,

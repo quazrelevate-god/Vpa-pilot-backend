@@ -126,6 +126,33 @@ class _SecurityHeadersMiddleware:
                 headers["X-Content-Type-Options"] = "nosniff"
                 headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
                 headers["X-Request-ID"] = rid
+                # Clickjacking + framing defence. DENY is the strictest — the
+                # PA portal is never embedded in an iframe on purpose.
+                headers["X-Frame-Options"] = "DENY"
+                # Minimum-viable CSP: everything same-origin. Google Fonts +
+                # cdnjs (Font Awesome) still reach the citizen Jinja pages
+                # today (see CITZ-14/20 for the vendoring plan) — keep them
+                # in the allowlist until those are self-hosted, then tighten.
+                # frame-ancestors 'none' complements X-Frame-Options DENY
+                # (modern browsers honour CSP over the header).
+                headers["Content-Security-Policy"] = (
+                    "default-src 'self'; "
+                    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+                    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+                    "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; "
+                    "img-src 'self' data: blob:; "
+                    "connect-src 'self'; "
+                    "frame-ancestors 'none'; "
+                    "base-uri 'self'; "
+                    "form-action 'self'"
+                )
+                # Deny browser features the app doesn't use — reduces the
+                # damage of any future XSS. Camera/mic are used by the
+                # citizen crowd/events wizards on same-origin only.
+                headers["Permissions-Policy"] = (
+                    "camera=(self), microphone=(self), geolocation=(), "
+                    "payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+                )
                 if settings.COOKIE_SECURE:  # only meaningful over HTTPS
                     headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             await send(message)

@@ -43,22 +43,11 @@ from src.models.activity_models import Activity
 from src.services.v2_helpers import v2
 
 
-# v2: TicketEventType enum removed — action_type strings are now free-form
-# on Activity. Keep the constants here so callers keep working.
-class _EventType:
-    STATUS_CHANGED    = "status_changed"
-    PRIORITY_CHANGED  = "priority_changed"
-    DISTRICT_CHANGED  = "district_changed"
-    ASSIGNED          = "assigned"
-    UNASSIGNED        = "unassigned"
-    DUE_DATE_SET      = "due_date_set"
-    COMMENT_ADDED     = "comment_added"
-    FORWARDED_TO_DEPT = "forwarded_to_dept"
-    RESOLVED          = "resolved"
-    CLOSED            = "closed"
-    REOPENED          = "reopened"
-    REVERTED          = "reverted"          # PA sent an OPEN ticket back to review
-    REAPPROVED        = "reapproved"        # PA re-approved a reverted ticket
+# v2: TicketEventType enum removed — action_type strings live on the unified
+# Activity table now. Single source of truth is src.models.activity_types;
+# _EventType stays as a local alias so existing call sites (._EventType.X)
+# keep working without a rename sweep.
+from src.models.activity_types import ActivityAction as _EventType  # noqa: E402
 
 
 def _decode(value: Optional[str]) -> Optional[str]:
