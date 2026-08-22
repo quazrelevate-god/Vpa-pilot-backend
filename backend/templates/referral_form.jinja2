@@ -231,7 +231,12 @@
                     </label>
                     <input type="tel" id="fMobile" class="inp" required maxlength="10" pattern="[6-9][0-9]{9}" inputmode="numeric"
                            data-ph-en="10-digit mobile" data-ph-ta="10 இலக்க அலைபேசி எண்"
-                           placeholder="10-digit mobile" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+                           placeholder="10-digit mobile"
+                           oninput="this.value=this.value.replace(/[^0-9]/g,''); validate();">
+                    <div id="mobileHint" style="font-size:0.78rem;color:#94a3b8;margin-top:0.25rem;">
+                        <span class="en">Enter a valid 10-digit mobile number starting with 6-9.</span>
+                        <span class="ta">6-9 வில் தொடங்கும் சரியான 10 இலக்க அலைபேசி எண்ணை உள்ளிடவும்.</span>
+                    </div>
                 </div>
                 <div class="fld">
                     <label class="lbl" for="fPersons"><span class="en">Number of Persons</span><span class="ta">நபர்களின் எண்ணிக்கை</span> <span class="req">*</span></label>
@@ -373,10 +378,12 @@
             var statusEl = card.querySelector('.slot-card__status');
             if (!statusEl || !card.dataset.slotState) return;
             var state = card.dataset.slotState;
-            var remaining = parseInt(card.dataset.remaining || '0', 10);
             if (state === 'past')        statusEl.textContent = ta ? 'முடிந்தது' : 'Passed';
             else if (state === 'full')   statusEl.textContent = ta ? 'நிரம்பியது' : 'Full';
-            else if (state === 'partial') statusEl.textContent = remaining + ' ' + (ta ? 'மீதம்' : 'left');
+            // Partial + open both show no count — the citizen doesn't need
+            // to see the office's remaining capacity, only whether they can
+            // book. Categorical states (past / full) still show a label
+            // because those explain why the slot is disabled.
             else                         statusEl.textContent = '';
         });
         var msg = document.getElementById('slotMsg');
@@ -495,7 +502,8 @@
                 } else if (isFull) {
                     stateClass = 'slot-card--full'; statusText = ta ? 'நிரம்பியது' : 'Full'; slotState = 'full';
                 } else if (isPartial) {
-                    stateClass = 'slot-card--partial'; statusText = slot.remaining + ' ' + (ta ? 'மீதம்' : 'left'); slotState = 'partial';
+                    // No numeric remaining — see _relabelSlots() comment.
+                    stateClass = 'slot-card--partial'; statusText = ''; slotState = 'partial';
                 } else {
                     stateClass = 'slot-card--open'; statusText = ''; slotState = 'open';
                 }
@@ -548,6 +556,9 @@
     // form. ஀–௿ is the Tamil block (no \p{L}: old webviews reject it).
     var NAME_RE = /^(?=.*[a-zA-Z஀-௿])[a-zA-Z0-9஀-௿ ]+$/;
     function _nameOk(v) { return NAME_RE.test((v || '').trim()); }
+    // Mobile: 10 digits, first digit 6-9 (Indian mobile format).
+    var MOBILE_RE = /^[6-9][0-9]{9}$/;
+    function _mobileOk(v) { return MOBILE_RE.test((v || '').trim()); }
 
     function validate() {
         var reason = document.getElementById('fReason').value;
@@ -562,8 +573,22 @@
                 hint.style.color = '#94a3b8';  // muted grey
             }
         }
+        // Same treatment for the mobile hint — silent until the citizen has
+        // typed at least one digit, red while short/malformed, muted grey once
+        // it satisfies the 10-digit 6-9 pattern.
+        var mobile = document.getElementById('fMobile').value;
+        var mobileOk = _mobileOk(mobile);
+        var mHint = document.getElementById('mobileHint');
+        if (mHint) {
+            if (mobile.trim() && !mobileOk) {
+                mHint.style.color = '#dc2626';
+            } else {
+                mHint.style.color = '#94a3b8';
+            }
+        }
         var ok = _nameOk(document.getElementById('fName').value)
               && _nameOk(document.getElementById('fRefBy').value)
+              && mobileOk
               && reasonOk
               && document.getElementById('selSlotId').value;
         document.getElementById('subBtn').disabled = !ok;
@@ -576,10 +601,20 @@
         var refBy  = document.getElementById('fRefBy').value.trim();
         var reason = document.getElementById('fReason').value.trim();
         var slotId = document.getElementById('selSlotId').value;
-        if (!name || !refBy || !reason || !slotId) return;
+        var mobile = document.getElementById('fMobile').value.trim();
+        if (!name || !refBy || !reason || !slotId || !mobile) return;
         if (!_nameOk(name) || !_nameOk(refBy)) {
             alert(ta ? 'பெயரில் எழுத்துகள் இருக்க வேண்டும் (எண்கள்/இடைவெளி அனுமதிக்கப்படும், சிறப்பு எழுத்துகள் அல்ல).'
                      : 'Name must contain letters (numbers and spaces allowed, but not only numbers or symbols).');
+            return;
+        }
+        if (!_mobileOk(mobile)) {
+            // Also flash the hint red — belt on top of the button-disable
+            // guard so a keyboard-submit or paste-then-Enter still surfaces
+            // the exact field at fault, not just a generic "Booking failed".
+            var mHint = document.getElementById('mobileHint');
+            if (mHint) mHint.style.color = '#dc2626';
+            document.getElementById('fMobile').focus();
             return;
         }
         if (_wordCount(reason) < REASON_MIN_WORDS) return;

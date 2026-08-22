@@ -593,5 +593,19 @@ window.TEST_CASES = [
     steps: "1. Submit any appointment (Tamil or English name)\n2. Wait 10s for background summarisation\n3. Check log for '[GEMINI WARN] ... has no attribute _model_name'\n4. Verify GrievanceSummaryRecord row exists with gemini_model_used populated",
     expected: "NO 'has no attribute _model_name' error in log; DB row exists with gemini_model_used = primary model name (e.g. 'gemini-2.5-flash')",
     status: "pending", actual: "",
-    notes: "Regression for prod appointment 430 after ca5d82a Vertex-first refactor. Fixed by _model_name @property on GrievanceSummarisationService + PetitionExtractionService returning self._bundle.primary_model." }
+    notes: "Regression for prod appointment 430 after ca5d82a Vertex-first refactor. Fixed by _model_name @property on GrievanceSummarisationService + PetitionExtractionService returning self._bundle.primary_model." },
+
+  { id: "CI-85", layer: "P1", category: "Referral form — behavior",
+    name: "Invalid mobile → red inline hint under mobile field (not just top banner)",
+    steps: "1. Open /referral in Tamil mode\n2. Fill valid name + shared-by + 5-word reason + slot\n3. Type '971022517' (9 digits) in mobile\n4. Try to submit",
+    expected: "Hint 'Enter a valid 10-digit mobile...' under the mobile field turns RED, submit is blocked, mobile field is focused. NO generic 'பதிவு தோல்வி' banner without explanation.",
+    status: "pending", actual: "",
+    notes: "USER-REPORTED: only the generic 'Booking failed' banner shown, no inline field-level error. Fixed by adding _mobileOk() + mobileHint div + client-side submit guard mirroring the reasonHint pattern." },
+
+  { id: "CI-86", layer: "P1", category: "Referral form — behavior",
+    name: "Slot chips never leak remaining capacity ('N மீதம்' / 'N left')",
+    steps: "1. Open /referral, pick a date with partially-booked slots\n2. Inspect each open slot chip",
+    expected: "Available slots show ONLY the time range (no 'N மீதம்' / 'N left' text). Past slots still say 'முடிந்தது' / 'Passed', full slots say 'நிரம்பியது' / 'Full'.",
+    status: "pending", actual: "",
+    notes: "USER-REQUESTED: don't reveal office capacity to citizens. Fixed in referral_form.jinja2 partial branch of slot render + _relabelSlots. form.jinja2 already correct." }
 ];
