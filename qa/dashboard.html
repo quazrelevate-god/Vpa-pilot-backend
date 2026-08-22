@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Manu QA — Test Dashboard</title>
+  <style>
+    :root {
+      --bg: #0e1220;
+      --panel: #171c30;
+      --panel-2: #1e2440;
+      --border: #2a3152;
+      --text: #e7ebf7;
+      --muted: #8a93b0;
+      --accent: #6a8dff;
+      --accent-2: #ffd166;
+      --pending: #8a93b0;
+      --running: #f0a800;
+      --pass: #35c37d;
+      --fail: #ef4444;
+      --blocked: #d09a5e;
+      --skipped: #9b6ee0;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .num { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    a { color: var(--accent); text-decoration: none; }
+    header {
+      padding: 20px 28px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%);
+    }
+    header h1 { margin: 0 0 4px 0; font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+    header .sub { color: var(--muted); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+    header .sub span code { background: var(--panel-2); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+
+    main { padding: 24px 28px 60px; max-width: 1400px; margin: 0 auto; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+    .stat .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+    .stat .bar { height: 3px; background: rgba(255,255,255,.05); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+    .stat .bar > i { display: block; height: 100%; border-radius: 2px; }
+    .stat.total .value { color: var(--text); }
+    .stat.pending .value { color: var(--pending); }
+    .stat.pending .bar > i { background: var(--pending); }
+    .stat.running .value { color: var(--running); }
+    .stat.running .bar > i { background: var(--running); }
+    .stat.pass .value { color: var(--pass); }
+    .stat.pass .bar > i { background: var(--pass); }
+    .stat.fail .value { color: var(--fail); }
+    .stat.fail .bar > i { background: var(--fail); }
+    .stat.blocked .value { color: var(--blocked); }
+    .stat.blocked .bar > i { background: var(--blocked); }
+    .stat.skipped .value { color: var(--skipped); }
+    .stat.skipped .bar > i { background: var(--skipped); }
+
+    .progress-wrap {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px 16px; margin-bottom: 20px;
+    }
+    .progress-wrap .label { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+    .progress-wrap .label b { color: var(--text); }
+    .progress {
+      height: 12px; background: rgba(255,255,255,.06); border-radius: 6px; overflow: hidden;
+      display: flex;
+    }
+    .progress > span { display: block; height: 100%; }
+    .progress > .p-pass { background: var(--pass); }
+    .progress > .p-fail { background: var(--fail); }
+    .progress > .p-blocked { background: var(--blocked); }
+    .progress > .p-running { background: var(--running); }
+    .progress > .p-skipped { background: var(--skipped); }
+
+    .controls {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 12px; align-items: center;
+    }
+    .controls .chip {
+      padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--muted); cursor: pointer; font-size: 12px;
+      user-select: none; transition: background .1s, color .1s;
+    }
+    .controls .chip:hover { background: var(--panel-2); }
+    .controls .chip.active { background: var(--accent); color: #0b0e1a; border-color: var(--accent); font-weight: 600; }
+    .controls select {
+      padding: 6px 10px; background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; font-size: 12px;
+    }
+    .controls .spacer { flex: 1; }
+    .controls input[type=search] {
+      padding: 6px 10px; background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; font-size: 12px; width: 240px;
+    }
+
+    .table-wrap {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      text-align: left; padding: 10px 12px; background: var(--panel-2);
+      color: var(--muted); font-weight: 600; font-size: 11px;
+      text-transform: uppercase; letter-spacing: .06em;
+      border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    }
+    tbody td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr.pass  { background: rgba(53,195,125,.04); }
+    tbody tr.fail  { background: rgba(239,68,68,.05); }
+    tbody tr.blocked { background: rgba(208,154,94,.04); }
+    tbody tr.running { background: rgba(240,168,0,.04); }
+    tbody tr:hover { background: rgba(255,255,255,.02); }
+    .id-cell { color: var(--muted); }
+    .name-cell b { display: block; margin-bottom: 3px; }
+    .name-cell .cat { color: var(--muted); font-size: 11px; }
+    .steps-cell, .expected-cell { color: #cfd4e6; white-space: pre-line; max-width: 320px; }
+    .notes-cell { color: var(--muted); font-size: 12px; max-width: 260px; }
+    .actual-cell { color: var(--text); font-size: 12px; max-width: 260px; }
+
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .badge.pending  { background: rgba(138,147,176,.15); color: var(--pending); }
+    .badge.running  { background: rgba(240,168,0,.18); color: var(--running); }
+    .badge.pass     { background: rgba(53,195,125,.18); color: var(--pass); }
+    .badge.fail     { background: rgba(239,68,68,.18); color: var(--fail); }
+    .badge.blocked  { background: rgba(208,154,94,.20); color: var(--blocked); }
+    .badge.skipped  { background: rgba(155,110,224,.18); color: var(--skipped); }
+
+    .meta {
+      color: var(--muted); font-size: 11px; text-align: right; margin-top: 12px;
+    }
+    footer {
+      margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border);
+      color: var(--muted); font-size: 12px; text-align: center;
+    }
+    footer code { background: var(--panel-2); padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1 id="hdr-title">Manu QA — Test Dashboard</h1>
+  <div class="sub">
+    <span>Project: <b id="hdr-project"></b></span>
+    <span>Env: <b id="hdr-env"></b></span>
+    <span>Git: <code id="hdr-sha"></code></span>
+    <span>Updated: <b id="hdr-updated"></b></span>
+    <span>Active: <b id="hdr-layer"></b></span>
+  </div>
+</header>
+
+<main>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="progress-wrap">
+    <div class="label">
+      <span>Progress — <b id="p-done">0</b>/<b id="p-total">0</b> completed (<b id="p-pct">0%</b>)</span>
+      <span class="num" id="p-legend"></span>
+    </div>
+    <div class="progress" id="progress-bar"></div>
+  </div>
+
+  <div class="controls">
+    <span class="chip active" data-filter="all">All</span>
+    <span class="chip" data-filter="pending">Pending</span>
+    <span class="chip" data-filter="running">Running</span>
+    <span class="chip" data-filter="pass">Pass</span>
+    <span class="chip" data-filter="fail">Fail</span>
+    <span class="chip" data-filter="blocked">Blocked</span>
+    <span class="chip" data-filter="skipped">Skipped</span>
+    <span class="spacer"></span>
+    <select id="phase-select"><option value="all">All phases</option></select>
+    <input type="search" id="q" placeholder="Search id / name / category / notes…" />
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 70px;">ID</th>
+          <th style="width: 260px;">Test</th>
+          <th>Steps</th>
+          <th>Expected</th>
+          <th style="width: 90px;">Status</th>
+          <th style="width: 240px;">Actual</th>
+          <th style="width: 200px;">Notes</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="meta">Open <code>qa/tests-data.js</code> to edit statuses, then refresh this page. Run <code>python3 qa/sync-xlsx.py</code> to mirror into <code>test-cases.xlsx</code>.</div>
+
+  <footer>
+    Static file — no server, no API. Refresh after editing <code>tests-data.js</code>. Evidence (screenshots, logs) go in <code>qa/evidence/</code>.
+  </footer>
+</main>
+
+<script>document.write('<script src="./tests-data.js?v=' + Date.now() + '"><\/script>');</script>
+<script>
+  const META = window.META || {};
+  const CASES = window.TEST_CASES || [];
+
+  document.getElementById("hdr-project").textContent = META.project || "—";
+  document.getElementById("hdr-env").textContent = META.environment || "—";
+  document.getElementById("hdr-sha").textContent = META.gitSha || "—";
+  document.getElementById("hdr-updated").textContent = META.updated || "—";
+  document.getElementById("hdr-layer").textContent = META.activeLayer || "—";
+
+  const STATUSES = ["pending", "running", "pass", "fail", "blocked", "skipped"];
+  const STAT_LABELS = { pending: "Pending", running: "Running", pass: "Pass", fail: "Fail", blocked: "Blocked", skipped: "Skipped" };
+
+  function counts(cases) {
+    const c = { total: cases.length };
+    for (const s of STATUSES) c[s] = 0;
+    for (const t of cases) c[t.status] = (c[t.status] || 0) + 1;
+    return c;
+  }
+
+  function renderStats() {
+    const c = counts(CASES);
+    const cards = [
+      { key: "total",   label: "Total" },
+      { key: "pending", label: "Pending" },
+      { key: "running", label: "Running" },
+      { key: "pass",    label: "Pass" },
+      { key: "fail",    label: "Fail" },
+      { key: "blocked", label: "Blocked" },
+      { key: "skipped", label: "Skipped" }
+    ];
+    const el = document.getElementById("stats");
+    el.innerHTML = cards.map(card => {
+      const val = c[card.key] || 0;
+      const pct = c.total ? Math.round((val / c.total) * 100) : 0;
+      const bar = card.key === "total" ? "" : `<div class="bar"><i style="width:${pct}%"></i></div>`;
+      return `
+        <div class="stat ${card.key}">
+          <div class="label">${card.label}</div>
+          <div class="value num">${val}</div>
+          ${bar}
+        </div>`;
+    }).join("");
+
+    const done = c.pass + c.fail + c.blocked + c.skipped;
+    document.getElementById("p-done").textContent = done;
+    document.getElementById("p-total").textContent = c.total;
+    document.getElementById("p-pct").textContent = c.total ? Math.round((done / c.total) * 100) + "%" : "0%";
+
+    const bar = document.getElementById("progress-bar");
+    const seg = (cls, n) => n ? `<span class="${cls}" style="width:${(n / c.total) * 100}%"></span>` : "";
+    bar.innerHTML = seg("p-pass", c.pass) + seg("p-fail", c.fail) + seg("p-blocked", c.blocked) + seg("p-running", c.running) + seg("p-skipped", c.skipped);
+
+    document.getElementById("p-legend").textContent =
+      `pass ${c.pass} · fail ${c.fail} · blocked ${c.blocked} · running ${c.running} · skipped ${c.skipped} · pending ${c.pending}`;
+  }
+
+  function populatePhaseSelect() {
+    const sel = document.getElementById("phase-select");
+    const layers = (window.LAYERS || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    for (const l of layers) {
+      const opt = document.createElement("option");
+      opt.value = l.key;
+      opt.textContent = l.label + (l.active === false ? "  (not yet started)" : "");
+      if (l.active === false) opt.disabled = true;
+      sel.appendChild(opt);
+    }
+    // Auto-select the active phase if only one is active
+    const activeLayers = layers.filter(l => l.active !== false);
+    if (activeLayers.length === 1) {
+      sel.value = activeLayers[0].key;
+      currentPhase = activeLayers[0].key;
+    }
+  }
+
+  let currentFilter = "all";
+  let currentPhase = "all";
+  let currentQ = "";
+
+  function renderRows() {
+    const q = currentQ.trim().toLowerCase();
+    const rows = CASES.filter(t => {
+      if (currentFilter !== "all" && t.status !== currentFilter) return false;
+      if (currentPhase !== "all" && t.layer !== currentPhase) return false;
+      if (q) {
+        const hay = (t.id + " " + t.name + " " + t.notes + " " + t.actual + " " + t.category).toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    const html = rows.map(t => `
+      <tr class="${t.status}">
+        <td class="id-cell num">${escape(t.id)}</td>
+        <td class="name-cell"><b>${escape(t.name)}</b><span class="cat">${escape(t.category)}</span></td>
+        <td class="steps-cell">${escape(t.steps)}</td>
+        <td class="expected-cell">${escape(t.expected)}</td>
+        <td><span class="badge ${t.status}">${STAT_LABELS[t.status] || t.status}</span></td>
+        <td class="actual-cell">${escape(t.actual || "—")}</td>
+        <td class="notes-cell">${escape(t.notes || "")}</td>
+      </tr>
+    `).join("");
+    document.getElementById("rows").innerHTML = html || `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">No matches for current filter.</td></tr>`;
+  }
+
+  function escape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  document.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      currentFilter = chip.dataset.filter;
+      renderRows();
+    });
+  });
+  document.getElementById("phase-select").addEventListener("change", (e) => {
+    currentPhase = e.target.value;
+    renderRows();
+  });
+  document.getElementById("q").addEventListener("input", (e) => {
+    currentQ = e.target.value;
+    renderRows();
+  });
+
+  populatePhaseSelect();
+  renderStats();
+  renderRows();
+</script>
+
+</body>
+</html>
