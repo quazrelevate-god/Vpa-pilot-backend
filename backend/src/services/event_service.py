@@ -377,11 +377,26 @@ async def create_voice_event(
 
     # ── 2) Gemini: transcribe + extract in one call ────────────────────────
     svc = _get_extractor()
+    # Strip non-ASCII from `note` before sending — the google-genai SDK
+    # (>=2.8) has a bug where certain request paths funnel string fields
+    # into an httpx header, and httpx rejects non-Latin-1 header values with
+    # `UnicodeEncodeError: 'ascii' codec can't encode characters in
+    # position N-M: ordinal not in range(128)` → 500 to the citizen-office
+    # UI. This is defensive: audio bytes are unaffected (they're inline
+    # data, not headers), and the SDK still transcribes Tamil audio into
+    # Tamil `transcript_ta`. Only the caller's typed note is sanitised
+    # here, and only for the SDK call — the original `note` still lands
+    # on the InvitationEvent row below.
+    def _ascii_safe(s: str) -> str:
+        return s.encode("ascii", "ignore").decode("ascii") if s else s
+
+    note_clean = (note or "").strip()
+    note_for_prompt = _ascii_safe(note_clean)
     def _do_extract():
         return svc.extract_from_audio(
             audio_bytes=audio_bytes,
             mime_type=mime,
-            note=(note or "").strip(),
+            note=note_for_prompt,
         )
     try:
         result = await asyncio.wait_for(
@@ -389,6 +404,25 @@ async def create_voice_event(
         )
     except asyncio.TimeoutError:
         raise HTTPException(504, "Voice extraction timed out")
+    except UnicodeEncodeError as e:
+        # Belt on top of the note-sanitisation braces above — if the SDK
+        # ever puts a Tamil transcript / audio-derived text back through
+        # its own header path we still return a clean 502 instead of a raw
+        # 500 traceback (the EventPopup then shows the polished "Extraction
+        # failed → Retry" from the errors.ts polish).
+        logger.warning("voice extract: SDK unicode-in-header bug fired: %s", e)
+        raise HTTPException(
+            502,
+            "Voice extraction failed to reach the AI service. Please retry.",
+        )
+    except Exception as e:
+        # Any other extract failure → 502 with a clean message. The upstream
+        # traceback is logged; the caller sees "please retry" not a stack.
+        logger.warning("voice extract failed: %r", e)
+        raise HTTPException(
+            502,
+            "Voice extraction failed. Please retry, or fill the event details manually.",
+        )
 
     transcript_ta = (result.transcript_ta or "").strip()
     transcript_en = (result.transcript_en or "").strip()
