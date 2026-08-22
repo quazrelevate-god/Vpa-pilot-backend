@@ -29,7 +29,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import requests
-from google import genai
 from google.genai import types
 
 logger = logging.getLogger(__name__)
@@ -426,13 +425,17 @@ class SarvamSTTService:
 
 class GeminiSTTService:
     """
-    Wrapper that uses our existing Gemini client to transcribe audio.
+    Wrapper that uses our existing Gemini plumbing to transcribe audio.
 
     Note: per Google's docs, Gemini is "audio understanding", not dedicated STT.
     We push it into transcription duty via a tightly-scoped prompt that asks for
     verbatim output and nothing else. Quality is good for clean speech in major
     languages but is not benchmarked for Tamil specifically — that's exactly
     what this Streamlit tester is for.
+
+    Routes via the shared gemini_client_factory (Vertex-first with direct API
+    fallback) — same behavior as every other AI service in the codebase.
+    Sarvam STT sits in the sibling class above and is unaffected.
     """
 
     # System-style instruction. We pass it as the first text part so the
@@ -449,37 +452,13 @@ class GeminiSTTService:
         "Return ONLY the English translation — no commentary, no preamble."
     )
 
-    def __init__(
-        self,
-        api_key: str,
-        model_name: str = "gemini-2.5-flash",
-        service_tier: Optional[str] = "priority",
-    ) -> None:
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is required to construct the service.")
-        self._client = genai.Client(api_key=api_key)
-        self._model_name = model_name
-        self._service_tier = self._resolve_tier(service_tier)
-
-    @staticmethod
-    def _resolve_tier(value: Optional[str]) -> Optional["types.ServiceTier"]:
-        if not value:
-            return None
-        try:
-            return types.ServiceTier(value.lower())
-        except ValueError:
-            return None
+    def __init__(self, bundle: "GeminiClientBundle") -> None:  # type: ignore[name-defined]
+        self._bundle = bundle
 
     @classmethod
     def from_settings(cls) -> "GeminiSTTService":
-        from src.core.config import settings
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY is not set.")
-        return cls(
-            api_key=settings.GEMINI_API_KEY,
-            model_name=settings.GEMINI_PRIMARY_MODEL,
-            service_tier=settings.GEMINI_SERVICE_TIER,
-        )
+        from src.services.gemini_client_factory import build_from_settings
+        return cls(build_from_settings())
 
     def transcribe(
         self,
@@ -487,7 +466,8 @@ class GeminiSTTService:
         mime_type: str = "audio/wav",
         translate_to_english: bool = False,
     ) -> STTResult:
-        """Single Gemini call. Same contract as SarvamSTTService.transcribe()."""
+        """Single Gemini call, Vertex-first. Same contract as
+        SarvamSTTService.transcribe()."""
         t0 = time.monotonic()
         duration = _get_audio_duration_seconds(audio_bytes, mime_type)
         prompt = (
@@ -498,33 +478,33 @@ class GeminiSTTService:
             config = types.GenerateContentConfig(
                 temperature=0.0,        # deterministic verbatim output
                 top_p=1.0,
-                service_tier=self._service_tier,
+                service_tier=self._bundle.service_tier,
             )
-            response = self._client.models.generate_content(
-                model=self._model_name,
+            response, backend = self._bundle.call_raw_with_fallback(
                 contents=[
                     prompt,
                     types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
                 ],
                 config=config,
+                service_name="gemini_stt",
             )
             elapsed_ms = int((time.monotonic() - t0) * 1000)
             text = (response.text or "").strip()
 
             return STTResult(
                 provider="gemini",
-                model=self._model_name,
+                model=f"{self._bundle.primary_model} ({backend})",
                 transcript=text if not translate_to_english else "",
                 english_translation=text if translate_to_english else None,
                 latency_ms=elapsed_ms,
                 duration_seconds=duration,
-                raw={"text": text},
+                raw={"text": text, "backend": backend},
             )
 
         except Exception as exc:
             return STTResult(
                 provider="gemini",
-                model=self._model_name,
+                model=self._bundle.primary_model,
                 transcript="",
                 latency_ms=int((time.monotonic() - t0) * 1000),
                 duration_seconds=duration,

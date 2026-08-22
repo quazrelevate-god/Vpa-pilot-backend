@@ -102,12 +102,19 @@ class Settings(BaseSettings):
     GEMINI_SERVICE_TIER: str = "priority"
 
     # ── Vertex AI (preferred; falls back to the direct Gemini API on error) ──
-    # When VERTEX_AI_ENABLED=true, PetitionExtractionService routes calls to
-    # Vertex first (data-residency, VPC-SC, IAM audit) and only falls through
-    # to the api_key-backed Gemini path if Vertex fails on every configured
-    # model. Set the JSON path or leave to the ADC/GOOGLE_APPLICATION_CREDENTIALS
-    # env var. Region should be an asia-south1 for TN data residency.
-    VERTEX_AI_ENABLED: bool = False
+    # When VERTEX_AI_ENABLED=true, EVERY AI service (petition, proposal,
+    # association, event, classification, grievance summariser) routes calls to
+    # Vertex first via the shared gemini_client_factory (data residency, VPC-SC,
+    # IAM audit) and only falls through to the api_key-backed Gemini path if
+    # Vertex fails on every configured model. Set the JSON path or leave to the
+    # ADC / GOOGLE_APPLICATION_CREDENTIALS env var. Region should be
+    # asia-south1 for TN data residency.
+    #
+    # Default flipped to True so a properly configured deployment picks Vertex
+    # automatically. If VERTEX_PROJECT_ID is empty (or Vertex init raises),
+    # the shared factory silently keeps the direct Gemini API — no request
+    # ever blocks on a Vertex misconfiguration.
+    VERTEX_AI_ENABLED: bool = True
     VERTEX_PROJECT_ID: Optional[str] = None
     VERTEX_LOCATION: str = "asia-south1"
     VERTEX_SERVICE_ACCOUNT_JSON: Optional[str] = None

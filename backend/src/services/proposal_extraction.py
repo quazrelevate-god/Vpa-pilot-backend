@@ -1,5 +1,5 @@
 """
-Proposal Extraction Service — Gemini, isolated from the petition summariser.
+Proposal Extraction Service — Gemini (Vertex-first via shared factory).
 
 Used ONLY by the /proposal intake pipeline. Reads a proposal DOCUMENT (PDF) and
 distils it into a Minister-ready brief (ProposalExtraction): problem, proposed
@@ -18,17 +18,11 @@ import logging
 import time
 from typing import Optional
 
-from google import genai
 from google.genai import types
 
 from src.models.proposal_extraction import ProposalExtraction
 from src.prompts.proposal_extraction import PROPOSAL_EXTRACTION_PROMPT
-# Reuse the summariser's model chain + retry tuning so behaviour stays consistent.
-from src.services.summarisation import (
-    PRIMARY_MODEL, FALLBACK_MODEL, FALLBACK_MODEL2,
-    SERVICE_TIER, _TRANSIENT_MARKERS,
-    _MAX_RETRIES_PER_MODEL, _BACKOFF_BASE_SECONDS,
-)
+from src.services.gemini_client_factory import GeminiClientBundle, build_from_settings
 
 logger = logging.getLogger(__name__)
 
@@ -36,43 +30,12 @@ logger = logging.getLogger(__name__)
 class ProposalExtractionService:
     """Stateless: call extract() once per uploaded proposal document."""
 
-    def __init__(
-        self,
-        api_key: str,
-        model_name: str = PRIMARY_MODEL,
-        fallback_model: str = FALLBACK_MODEL,
-        fallback_model2: str = FALLBACK_MODEL2,
-        service_tier: str = SERVICE_TIER,
-    ) -> None:
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is required.")
-        self._client = genai.Client(api_key=api_key)
-        self._model_name = model_name
-        self._fallback_model = fallback_model
-        self._fallback_model2 = fallback_model2
-        self._service_tier = self._resolve_tier(service_tier)
-
-    @staticmethod
-    def _resolve_tier(value: Optional[str]):
-        if not value:
-            return None
-        try:
-            return types.ServiceTier(value.lower())
-        except ValueError:
-            return None
+    def __init__(self, bundle: GeminiClientBundle) -> None:
+        self._bundle = bundle
 
     @classmethod
     def from_settings(cls) -> "ProposalExtractionService":
-        from src.core.config import settings
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY is not set in backend/.env")
-        return cls(
-            api_key=settings.GEMINI_API_KEY,
-            model_name=settings.GEMINI_PRIMARY_MODEL,
-            fallback_model=settings.GEMINI_FALLBACK_MODEL,
-            fallback_model2=settings.GEMINI_FALLBACK_MODEL2,
-            service_tier=settings.GEMINI_SERVICE_TIER,
-        )
+        return cls(build_from_settings())
 
     # ── Main entry point ────────────────────────────────────────────────────────
     def extract(self, *, file_bytes: bytes, mime_type: str, filename: Optional[str] = None,
@@ -108,46 +71,16 @@ class ProposalExtractionService:
             top_p=0.9,
             response_mime_type="application/json",
             response_schema=ProposalExtraction,
-            service_tier=self._service_tier,
+            service_tier=self._bundle.service_tier,
         )
-        result = self._call_with_fallback(contents=contents, config=config)
+        result, backend = self._bundle.call_with_fallback(
+            contents=contents, config=config,
+            response_type=ProposalExtraction,
+            service_name="proposal_extraction",
+        )
         logger.info(
-            "Proposal extraction done in %dms | model=%s | title=%r | rec=%s",
-            int((time.monotonic() - t0) * 1000), self._model_name,
+            "Proposal extraction done in %dms | backend=%s | title=%r | rec=%s",
+            int((time.monotonic() - t0) * 1000), backend,
             result.title, result.ai_recommendation.value,
         )
         return result
-
-    # ── Resilience (mirrors petition_extraction._call_with_fallback) ────────────
-    def _generate_once(self, model: str, contents: list, config) -> ProposalExtraction:
-        response = self._client.models.generate_content(model=model, contents=contents, config=config)
-        parsed = response.parsed
-        if isinstance(parsed, ProposalExtraction):
-            return parsed
-        if response.text:
-            return ProposalExtraction.model_validate_json(response.text)
-        raise ValueError("Gemini returned an empty response with no parsed object.")
-
-    def _call_with_fallback(self, *, contents: list, config) -> ProposalExtraction:
-        models_to_try = [self._model_name]
-        for m in (self._fallback_model, self._fallback_model2):
-            if m and m not in models_to_try:
-                models_to_try.append(m)
-
-        last_exc: Optional[Exception] = None
-        for model in models_to_try:
-            for retry in range(_MAX_RETRIES_PER_MODEL):
-                try:
-                    out = self._generate_once(model, contents, config)
-                    self._model_name = model
-                    return out
-                except Exception as exc:
-                    last_exc = exc
-                    transient = any(mk in str(exc) for mk in _TRANSIENT_MARKERS)
-                    logger.warning("Proposal extraction failed model=%s try=%d transient=%s: %s",
-                                   model, retry + 1, transient, exc)
-                    if transient and retry < _MAX_RETRIES_PER_MODEL - 1:
-                        time.sleep(_BACKOFF_BASE_SECONDS * (2 ** retry))
-                        continue
-                    break
-        raise RuntimeError(f"Proposal extraction failed on all models {models_to_try}: {last_exc}") from last_exc

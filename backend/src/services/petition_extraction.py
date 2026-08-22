@@ -1,5 +1,5 @@
 """
-Petition Extraction Service — Gemini, isolated from the summariser.
+Petition Extraction Service — Gemini (Vertex-first via shared client factory).
 
 Used ONLY by the AI Uploads pipeline. Unlike GrievanceSummarisationService (which
 summarises an already-identified citizen's grievance), this reads a *scanned
@@ -10,6 +10,9 @@ same bilingual summary/category/department/urgency.
 Separate prompt, separate schema, separate method — the existing summariser is
 left completely untouched. The careful category/department guidance is reused
 from summarisation.SYSTEM_PROMPT so classification stays consistent system-wide.
+
+Delegates the Vertex-first + direct-API-fallback plumbing to
+gemini_client_factory so every AI service uses the same behavior.
 """
 from __future__ import annotations
 
@@ -17,17 +20,12 @@ import logging
 import time
 from typing import Optional
 
-from google import genai
 from google.genai import types
 from pydantic import Field
 
 from src.models.grievance_summary import GrievanceSummary
-from src.services.summarisation import (
-    SYSTEM_PROMPT as _BASE_PROMPT,
-    PRIMARY_MODEL, FALLBACK_MODEL, FALLBACK_MODEL2,
-    SERVICE_TIER, _TRANSIENT_MARKERS,
-    _MAX_RETRIES_PER_MODEL, _BACKOFF_BASE_SECONDS,
-)
+from src.services.summarisation import SYSTEM_PROMPT as _BASE_PROMPT
+from src.services.gemini_client_factory import GeminiClientBundle, build_from_settings
 
 logger = logging.getLogger(__name__)
 
@@ -153,120 +151,19 @@ JSON object matching the schema — no markdown, no preamble.
 class PetitionExtractionService:
     """Stateless: call extract() once per uploaded petition file.
 
-    Two backends are supported concurrently:
-      * Vertex AI (preferred when configured) — enterprise Gemini via a GCP
-        project + region + service account. Gives data-residency, VPC-SC,
-        IAM-scoped access, and Cloud Audit Logs on every model invocation.
-      * Direct Gemini API — the api_key-based public endpoint. Kept as a
-        fallback so a single Vertex outage or misconfiguration can never
-        stop the petition pipeline.
-
-    Every call runs through Vertex first (if configured). If ALL Vertex
-    models in the fallback chain fail, we quietly retry on the direct
-    Gemini backend using the same fallback chain, and log which backend
-    ultimately produced the answer.
+    Routes via the shared gemini_client_factory: Vertex AI first (data
+    residency, VPC-SC, IAM audit) when VERTEX_AI_ENABLED + VERTEX_PROJECT_ID
+    are set, with an automatic fallthrough to the direct api_key-based
+    Gemini endpoint on any Vertex failure. A single Vertex outage or
+    misconfiguration never stops the petition pipeline.
     """
 
-    def __init__(
-        self,
-        api_key: str,
-        model_name: str = PRIMARY_MODEL,
-        fallback_model: str = FALLBACK_MODEL,
-        fallback_model2: str = FALLBACK_MODEL2,
-        service_tier: str = SERVICE_TIER,
-        # Vertex knobs — all optional. If enabled=True and project is set,
-        # a second client is spun up and preferred at call time.
-        vertex_enabled: bool = False,
-        vertex_project: Optional[str] = None,
-        vertex_location: str = "asia-south1",
-        vertex_credentials_path: Optional[str] = None,
-    ) -> None:
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is required.")
-        self._client = genai.Client(api_key=api_key)
-        self._model_name = model_name
-        self._fallback_model = fallback_model
-        self._fallback_model2 = fallback_model2
-        self._service_tier = self._resolve_tier(service_tier)
-
-        # Vertex client — optional. Built lazily-eager here so a bad config
-        # fails at boot rather than mid-request. If construction fails we
-        # log and continue with Gemini-only; the pipeline never blocks on
-        # a Vertex misconfiguration.
-        self._vertex_client: Optional[genai.Client] = None
-        self._vertex_backend_used: bool = False   # last-call metadata for callers
-        if vertex_enabled and vertex_project:
-            try:
-                creds = None
-                creds_source = "ADC"
-                if vertex_credentials_path:
-                    from google.oauth2 import service_account
-                    # Overloaded field: accepts EITHER a filesystem path (local
-                    # dev / VPS with the JSON on disk) OR the raw JSON content
-                    # itself (Railway / any hosted platform where you can't
-                    # mount a secret file). We detect by peeking at the first
-                    # non-whitespace char — service-account JSON always starts
-                    # with '{'; filesystem paths never do. Never push the
-                    # actual JSON to git — put it in the platform's secrets
-                    # store and inject as an env var.
-                    stripped = vertex_credentials_path.lstrip()
-                    if stripped.startswith("{"):
-                        import json as _json
-                        info = _json.loads(stripped)
-                        creds = service_account.Credentials.from_service_account_info(
-                            info,
-                            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-                        )
-                        creds_source = "env-content"
-                    else:
-                        creds = service_account.Credentials.from_service_account_file(
-                            vertex_credentials_path,
-                            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-                        )
-                        creds_source = "explicit-file"
-                self._vertex_client = genai.Client(
-                    vertexai=True,
-                    project=vertex_project,
-                    location=vertex_location,
-                    credentials=creds,   # None → ADC / GOOGLE_APPLICATION_CREDENTIALS
-                )
-                logger.info(
-                    "PetitionExtractionService: Vertex AI backend ready "
-                    "(project=%s location=%s creds=%s)",
-                    vertex_project, vertex_location, creds_source,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "PetitionExtractionService: Vertex AI setup failed, "
-                    "falling back to Gemini-only. err=%r", exc,
-                )
-                self._vertex_client = None
-
-    @staticmethod
-    def _resolve_tier(value: Optional[str]):
-        if not value:
-            return None
-        try:
-            return types.ServiceTier(value.lower())
-        except ValueError:
-            return None
+    def __init__(self, bundle: GeminiClientBundle) -> None:
+        self._bundle = bundle
 
     @classmethod
     def from_settings(cls) -> "PetitionExtractionService":
-        from src.core.config import settings
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY is not set in backend/.env")
-        return cls(
-            api_key=settings.GEMINI_API_KEY,
-            model_name=settings.GEMINI_PRIMARY_MODEL,
-            fallback_model=settings.GEMINI_FALLBACK_MODEL,
-            fallback_model2=settings.GEMINI_FALLBACK_MODEL2,
-            service_tier=settings.GEMINI_SERVICE_TIER,
-            vertex_enabled=settings.VERTEX_AI_ENABLED,
-            vertex_project=settings.VERTEX_PROJECT_ID,
-            vertex_location=settings.VERTEX_LOCATION,
-            vertex_credentials_path=settings.VERTEX_SERVICE_ACCOUNT_JSON,
-        )
+        return cls(build_from_settings())
 
     # ── Main entry point ────────────────────────────────────────────────────────
     def extract(self, *, file_bytes: bytes, mime_type: str, filename: Optional[str] = None) -> PetitionExtraction:
@@ -285,82 +182,17 @@ class PetitionExtractionService:
             top_p=0.9,
             response_mime_type="application/json",
             response_schema=PetitionExtraction,
-            service_tier=self._service_tier,
+            service_tier=self._bundle.service_tier,
         )
-        result = self._call_with_fallback(contents=contents, config=config)
+        result, backend = self._bundle.call_with_fallback(
+            contents=contents, config=config,
+            response_type=PetitionExtraction,
+            service_name="petition_extraction",
+        )
         logger.info(
-            "Petition extraction done in %dms | backend=%s | model=%s | "
+            "Petition extraction done in %dms | backend=%s | "
             "name=%s | category=%s | urgency=%s",
-            int((time.monotonic() - t0) * 1000),
-            "vertex" if self._vertex_backend_used else "gemini_api",
-            self._model_name,
+            int((time.monotonic() - t0) * 1000), backend,
             result.citizen_name, result.category.value, result.urgency.value,
         )
         return result
-
-    # ── Resilience (mirrors summarisation._call_with_fallback) ──────────────────
-    def _generate_once(self, client, model: str, contents: list, config) -> PetitionExtraction:
-        # Vertex model IDs on the google-genai SDK use the same names as
-        # AI-Studio ("gemini-2.5-flash"), so we can pass the same string
-        # through to either backend.
-        response = client.models.generate_content(model=model, contents=contents, config=config)
-        parsed = response.parsed
-        if isinstance(parsed, PetitionExtraction):
-            return parsed
-        if response.text:
-            return PetitionExtraction.model_validate_json(response.text)
-        raise ValueError("Gemini returned an empty response with no parsed object.")
-
-    def _try_backend(self, client, contents: list, config, *, is_vertex: bool) -> Optional[PetitionExtraction]:
-        """Run the primary+fallback model chain against a single client.
-        Returns the parsed object on success, or None if every model + retry
-        was exhausted. Never raises — lets the caller pick the next backend.
-
-        `service_tier` is a Gemini-API-only field (priority | standard | flex);
-        Vertex rejects it as INVALID_ARGUMENT. Strip it when calling Vertex.
-        """
-        if is_vertex and config is not None and getattr(config, "service_tier", None) is not None:
-            config = config.model_copy(update={"service_tier": None})
-
-        models_to_try = [self._model_name]
-        for m in (self._fallback_model, self._fallback_model2):
-            if m and m not in models_to_try:
-                models_to_try.append(m)
-
-        for model in models_to_try:
-            for retry in range(_MAX_RETRIES_PER_MODEL):
-                try:
-                    out = self._generate_once(client, model, contents, config)
-                    self._model_name = model   # remember what actually worked
-                    return out
-                except Exception as exc:
-                    transient = any(mk in str(exc) for mk in _TRANSIENT_MARKERS)
-                    logger.warning("Extraction failed model=%s try=%d transient=%s: %s",
-                                   model, retry + 1, transient, exc)
-                    if transient and retry < _MAX_RETRIES_PER_MODEL - 1:
-                        time.sleep(_BACKOFF_BASE_SECONDS * (2 ** retry))
-                        continue
-                    break   # non-transient → move to next model
-        return None
-
-    def _call_with_fallback(self, *, contents: list, config) -> PetitionExtraction:
-        # Preferred path: Vertex AI (when configured). Fall through to the
-        # direct Gemini API on total Vertex failure — a single Vertex outage
-        # or misconfig must not stop citizen petitions from being processed.
-        self._vertex_backend_used = False
-        if self._vertex_client is not None:
-            out = self._try_backend(self._vertex_client, contents, config, is_vertex=True)
-            if out is not None:
-                self._vertex_backend_used = True
-                return out
-            logger.warning(
-                "Vertex AI extraction exhausted every model — falling back to "
-                "direct Gemini API for this call."
-            )
-
-        out = self._try_backend(self._client, contents, config, is_vertex=False)
-        if out is not None:
-            return out
-        raise RuntimeError(
-            "Petition extraction failed on all backends (Vertex + Gemini API)."
-        )

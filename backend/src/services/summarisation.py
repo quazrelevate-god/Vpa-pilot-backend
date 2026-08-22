@@ -26,12 +26,14 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from google import genai
 from google.genai import types
 
 from src.models.grievance_summary import GrievanceSummary
+
+if TYPE_CHECKING:
+    from src.services.gemini_client_factory import GeminiClientBundle
 
 logger = logging.getLogger(__name__)
 
@@ -386,60 +388,19 @@ class GrievanceSummarisationService:
       svc = GrievanceSummarisationService(api_key="…", model_name="…")  # override
     """
 
-    def __init__(
-        self,
-        api_key: str,
-        model_name: str = PRIMARY_MODEL,
-        fallback_model: str = FALLBACK_MODEL,
-        fallback_model2: str = FALLBACK_MODEL2,
-        service_tier: str = SERVICE_TIER,
-    ) -> None:
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is required to construct the service.")
-        self._client = genai.Client(api_key=api_key)
-        self._model_name = model_name
-        self._fallback_model = fallback_model
-        self._fallback_model2 = fallback_model2
-        self._service_tier = self._resolve_service_tier(service_tier)
-
-    @staticmethod
-    def _resolve_service_tier(value: Optional[str]) -> Optional["types.ServiceTier"]:
-        """Map a string ('priority'/'standard'/'flex') to a ServiceTier enum."""
-        if not value:
-            return None
-        try:
-            return types.ServiceTier(value.lower())
-        except ValueError:
-            logger.warning(
-                "Unknown GEMINI_SERVICE_TIER %r; ignoring (using API default).",
-                value,
-            )
-            return None
+    def __init__(self, bundle: "GeminiClientBundle") -> None:
+        """Construct with a pre-built bundle. Most callers use `from_settings()`."""
+        self._bundle = bundle
 
     # ── Factory ────────────────────────────────────────────────────────────────
 
     @classmethod
     def from_settings(cls) -> "GrievanceSummarisationService":
-        """
-        Build the service using `src.core.config.settings` as the source of truth.
-        This is the priority path — config first, explicit construction only as
-        an override (e.g. for unit tests).
-        """
-        # Imported lazily so this module stays importable without a full env.
-        from src.core.config import settings
-        if not settings.GEMINI_API_KEY:
-            raise ValueError(
-                "GEMINI_API_KEY is not set. Add it to backend/.env, e.g.\n"
-                "    GEMINI_API_KEY=AIza...\n"
-                "or pass api_key= explicitly to the constructor."
-            )
-        return cls(
-            api_key=settings.GEMINI_API_KEY,
-            model_name=settings.GEMINI_PRIMARY_MODEL,
-            fallback_model=settings.GEMINI_FALLBACK_MODEL,
-            fallback_model2=settings.GEMINI_FALLBACK_MODEL2,
-            service_tier=settings.GEMINI_SERVICE_TIER,
-        )
+        """Build the service via the shared gemini_client_factory. Vertex is
+        preferred when VERTEX_AI_ENABLED + VERTEX_PROJECT_ID are set; direct
+        Gemini API is the automatic fallback. See gemini_client_factory."""
+        from src.services.gemini_client_factory import build_from_settings
+        return cls(build_from_settings())
 
     # ── Main entry point ───────────────────────────────────────────────────────
 
@@ -491,15 +452,19 @@ class GrievanceSummarisationService:
             top_p=0.9,
             response_mime_type="application/json",
             response_schema=GrievanceSummary,
-            service_tier=self._service_tier,
+            service_tier=self._bundle.service_tier,
         )
 
-        summary = self._call_with_fallback(contents=contents, config=config)
+        summary, backend = self._bundle.call_with_fallback(
+            contents=contents, config=config,
+            response_type=GrievanceSummary,
+            service_name="grievance_summary_manual",
+        )
 
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
-            "Manual summarisation complete in %dms | pages=%d | citizen=%s",
-            elapsed_ms, len(attachments), citizen_name,
+            "Manual summarisation complete in %dms | backend=%s | pages=%d | citizen=%s",
+            elapsed_ms, backend, len(attachments), citizen_name,
         )
         return summary
 
@@ -549,16 +514,20 @@ class GrievanceSummarisationService:
             top_p=0.9,
             response_mime_type="application/json",
             response_schema=GrievanceSummary,  # Pydantic class → typed parse
-            service_tier=self._service_tier,   # priority tier for low latency
+            service_tier=self._bundle.service_tier,   # priority tier for low latency
         )
 
-        summary = self._call_with_fallback(contents=contents, config=config)
+        summary, backend = self._bundle.call_with_fallback(
+            contents=contents, config=config,
+            response_type=GrievanceSummary,
+            service_name="grievance_summary",
+        )
 
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
-            "Summarisation complete in %dms | model=%s | citizen=%s | "
+            "Summarisation complete in %dms | backend=%s | citizen=%s | "
             "constituency=%s | urgency=%s | category=%s",
-            elapsed_ms, self._model_name, citizen_name, constituency,
+            elapsed_ms, backend, citizen_name, constituency,
             summary.urgency.value, summary.category.value,
         )
         return summary
@@ -683,125 +652,8 @@ class GrievanceSummarisationService:
 
         return contents
 
-    @staticmethod
-    def _is_transient(exc: Exception) -> bool:
-        """True if the error is a temporary server/rate-limit condition.
-
-        Prefer exception-type / status_code inspection over substring matching
-        so a repackaged / wrapped exception (SDK version bump, ApiError
-        rewrapping) doesn't silently skip retry and burn fallback capacity
-        on a transient blip. Substring fallback covers older SDK layers that
-        only surface the marker as a message.
-        """
-        # Type-based first: google.api_core.exceptions and google.genai errors
-        # both expose a status_code / http_status on transient failures.
-        status = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
-        if status in (429, 500, 502, 503, 504):
-            return True
-        exc_name = type(exc).__name__
-        if exc_name in (
-            "ServiceUnavailable", "ResourceExhausted", "TooManyRequests",
-            "DeadlineExceeded", "InternalServerError", "GatewayTimeout",
-            "APIError",  # generic — err on the side of retry
-        ):
-            return True
-        # Substring fallback for older SDK layers.
-        msg = str(exc)
-        return any(marker in msg for marker in _TRANSIENT_MARKERS)
-
-    def _generate_once(
-        self,
-        model: str,
-        contents: list,
-        config: types.GenerateContentConfig,
-    ) -> GrievanceSummary:
-        """Single Gemini call → validated GrievanceSummary (raises on any error).
-
-        The SDK's default per-request timeout is measured in minutes; under
-        a partial upstream outage that hangs a request thread inside the
-        executor pool for many minutes, starving other extractions. We pin
-        it to 30s here (30_000 ms — google-genai HttpOptions.timeout is in
-        milliseconds). The outer asyncio.wait_for in the caller is a second
-        belt on top of this, and the retry loop above kicks in on
-        DeadlineExceeded / GatewayTimeout via _is_transient.
-        """
-        # Attach the 30s timeout via the config's http_options (google-genai
-        # accepts it there per GenerateContentConfig). Copy so we don't
-        # mutate the caller's config across retries.
-        if config is not None and getattr(config, "http_options", None) is None:
-            config = config.model_copy(
-                update={"http_options": types.HttpOptions(timeout=30_000)}
-            )
-        response = self._client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=config,
-        )
-        # With a Pydantic response_schema the SDK returns the validated object
-        # via `.parsed`. Fall back to manual parsing from `.text` if needed.
-        parsed = response.parsed
-        if isinstance(parsed, GrievanceSummary):
-            return parsed
-        if response.text:
-            return GrievanceSummary.model_validate_json(response.text)
-        raise ValueError("Gemini returned an empty response with no parsed object.")
-
-    def _call_with_fallback(
-        self,
-        *,
-        contents: list,
-        config: types.GenerateContentConfig,
-    ) -> GrievanceSummary:
-        """
-        Call Gemini with resilience:
-          - retry the SAME model up to _MAX_RETRIES_PER_MODEL times on transient
-            errors (503 / 429 / overloaded), with exponential backoff;
-          - on a non-transient error (e.g. 404 model gone), move on immediately;
-          - finally fall through to the fallback model.
-        """
-        models_to_try = [self._model_name]
-        for m in (self._fallback_model, self._fallback_model2):
-            if m and m not in models_to_try:
-                models_to_try.append(m)
-
-        last_exc: Optional[Exception] = None
-        for model_idx, model in enumerate(models_to_try):
-            for retry in range(_MAX_RETRIES_PER_MODEL):
-                try:
-                    summary = self._generate_once(model, contents, config)
-                    # Remember whichever model actually worked for next calls.
-                    self._model_name = model
-                    return summary
-                except UnicodeEncodeError as exc:
-                    # google-genai SDK ascii-in-header bug — every model will
-                    # fail identically since the encode happens client-side
-                    # before the request leaves the process. Short-circuit.
-                    # _sanitize_user_field ascii-strips user fields already;
-                    # this branch only fires on future regressions or fields
-                    # we forgot to route through the sanitiser.
-                    logger.warning(
-                        "Gemini SDK ascii-in-header bug on model=%s — aborting "
-                        "fallback chain (all models would fail identically): %s",
-                        model, exc,
-                    )
-                    last_exc = exc
-                    raise RuntimeError(
-                        "Gemini summarisation failed: SDK unicode-in-header bug — "
-                        f"a caller passed a non-ASCII field past the sanitiser. {exc}"
-                    ) from exc
-                except Exception as exc:  # broad: SDK raises several error types
-                    last_exc = exc
-                    transient = self._is_transient(exc)
-                    logger.warning(
-                        "Gemini call failed on model=%s (try %d/%d, transient=%s): %s",
-                        model, retry + 1, _MAX_RETRIES_PER_MODEL, transient, exc,
-                    )
-                    if transient and retry < _MAX_RETRIES_PER_MODEL - 1:
-                        time.sleep(_BACKOFF_BASE_SECONDS * (2 ** retry))
-                        continue
-                    # Non-transient, or out of retries → next model.
-                    break
-
-        raise RuntimeError(
-            f"Gemini summarisation failed on all models {models_to_try}: {last_exc}"
-        ) from last_exc
+    # Vertex/direct client, per-request timeout, transient-error detection,
+    # the primary→fallback→fallback2 retry ladder, and the google-genai
+    # SDK ascii-in-header short-circuit are all owned by
+    # gemini_client_factory now — this class only builds the contents/config
+    # and delegates via self._bundle.call_with_fallback(...).
