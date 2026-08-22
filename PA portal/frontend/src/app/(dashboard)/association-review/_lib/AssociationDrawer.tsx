@@ -212,6 +212,14 @@ export interface AssociationDrawerProps {
    *  where a Minister just wants to LOOK at the extraction, not decide.
    *  When false, `note`/`setNote`/`deciding`/`onDecide` are required. */
   readOnly?: boolean;
+  /** Embed mode — render only the body sections (identity, ask, summary,
+   *  stakeholders, risks, outcome, AI, duplicate check, documents) in a
+   *  single column, without header chrome (badges, title, close, prev/next)
+   *  or the sticky decision bar. Used by the ticket drawers to embed the
+   *  association source context on association-minted tickets. Implies
+   *  readOnly semantics; onClose is still required by TypeScript but is
+   *  never invoked in this mode. */
+  bodyOnly?: boolean;
   note?: string;
   setNote?: (v: string) => void;
   deciding?: boolean;
@@ -234,12 +242,14 @@ export interface AssociationDrawerProps {
 }
 
 export function AssociationDrawer({
-  d, onClose, readOnly = false,
+  d, onClose, readOnly = false, bodyOnly = false,
   note = "", setNote,
   deciding = false, onDecide,
   onNoteSave, onFieldsUpdate,
   onPrev, onNext, hasPrev, hasNext, navLoading,
 }: AssociationDrawerProps) {
+  // bodyOnly implies readOnly — no decision desk in embedded mode.
+  const effectiveReadOnly = readOnly || bodyOnly;
   const { lang } = useLang();
   const ta = lang === "ta";
   // Defensive: the extraction JSON is typed as strings but at runtime AI
@@ -378,8 +388,10 @@ export function AssociationDrawer({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Header */}
+    <div className={cn("flex min-h-0 flex-col", bodyOnly ? "" : "h-full")}>
+      {/* Header — hidden entirely in embedded (bodyOnly) mode: the host
+          drawer already carries its own title / close / navigation. */}
+      {!bodyOnly && (
       <div className="shrink-0 border-b border-border bg-card px-5 py-4 sm:px-7 sm:py-5">
         <div className="mb-2 flex items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -487,10 +499,19 @@ export function AssociationDrawer({
           <span className="num ml-auto shrink-0 text-[11.5px]">#{d.id}</span>
         </div>
       </div>
+      )}
 
-      {/* Body — 2 panes on lg+: preview LEFT, reading RIGHT */}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,45%)_1fr]">
+      {/* Body — 2 panes on lg+: preview LEFT, reading RIGHT.
+          bodyOnly mode: collapse to single column and drop the left preview
+          pane — the host drawer already has its own layout, and the
+          documents remain visible via the inline "Attached documents"
+          section within the reading column. */}
+      <div className={cn(bodyOnly ? "" : "min-h-0 flex-1 overflow-hidden")}>
+        <div className={cn(
+          "grid min-h-0 grid-cols-1",
+          bodyOnly ? "" : "h-full lg:grid-cols-[minmax(0,45%)_1fr]",
+        )}>
+          {!bodyOnly && (
           <div className="min-h-0 overflow-hidden border-b border-border bg-muted/25 p-3 sm:p-4 lg:border-b-0 lg:border-r">
             {docAtts.length > 0 ? (
               <InlineAttachmentPreview attachments={docAtts} defaultOpenFirst className="h-full" />
@@ -503,8 +524,12 @@ export function AssociationDrawer({
               </div>
             )}
           </div>
+          )}
 
-          <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+          <div className={cn(
+            "min-h-0 space-y-5 px-5 py-5 sm:px-6",
+            bodyOnly ? "" : "overflow-y-auto",
+          )}>
             {/* 1 — Association details (identity + meta).
                  The four AI-derived triage fields (ministry, category, urgency,
                  district) are editable by the PA via the pencil — same pattern
@@ -512,7 +537,7 @@ export function AssociationDrawer({
                  button between Create Ticket ↔ Forward to Ministry once saved. */}
             <SectionShell
               n={1} id="association" title="Association details"
-              right={!readOnly && onFieldsUpdate ? (
+              right={!effectiveReadOnly && onFieldsUpdate ? (
                 editingFields ? (
                   <div className="flex items-center gap-1.5">
                     <Button size="sm" variant="ghost" disabled={savingEdit}
@@ -755,7 +780,7 @@ export function AssociationDrawer({
             · ministry unset     → button disabled with a "set ministry first" hint
           Missclassification is corrected by editing ministry via the Edit
           pencil on Association details — save → button label updates. */}
-      {!readOnly && setNote && onDecide && (() => {
+      {!effectiveReadOnly && setNote && onDecide && (() => {
         const isInternal   = isInternalMinistry(d.ministry);
         const hasMinistry  = !!(d.ministry && d.ministry.trim());
         const ministryName = MINISTRY_DISPLAY[d.ministry ?? ""] ?? titleCase(d.ministry);

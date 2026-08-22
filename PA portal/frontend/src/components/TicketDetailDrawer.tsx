@@ -29,6 +29,7 @@ import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-previ
 import { DrawerNav } from "@/components/ui/drawer-nav";
 import { toUserMessage } from "@/lib/errors";
 import AttachmentUploadDialog from "@/components/ui/attachment-upload-dialog";
+import { AssociationDrawer } from "@/app/(dashboard)/association-review/_lib/AssociationDrawer";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -511,6 +512,36 @@ export default function TicketDetailDrawer({
             {/* ── Details ─────────────────────────────────────────────── */}
             <TabsContent value="details" className="m-0 min-h-0 flex-1 overflow-y-auto">
               <div className="space-y-4 p-6">
+                {/* Source-specific detail: association-minted tickets carry
+                    the full source case (identity, ask, stakeholders, risks,
+                    AI assessment, source documents) so reviewers see WHY the
+                    ticket exists, not just how it's being worked. Rendered
+                    as a labeled panel above the ticket-execution UI. Only
+                    shown when the backend attaches `association` (i.e.
+                    source_kind === 'association'). Petition tickets keep
+                    their existing lean detail layout — this block just
+                    doesn't render for them. */}
+                {t.source_kind === "association" && t.association && (
+                  <SectionCard
+                    icon={Building2}
+                    title="Source: Association submission"
+                    right={
+                      <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-700">
+                        Association
+                      </span>
+                    }
+                  >
+                    <div className="-mx-6 border-t border-border">
+                      <AssociationDrawer
+                        d={t.association}
+                        readOnly
+                        bodyOnly
+                        onClose={() => { /* embedded — host drawer owns close */ }}
+                      />
+                    </div>
+                  </SectionCard>
+                )}
+
                 {/* Assignment & SLA — the only editable fields, pinned to the top;
                     editable only while the ticket is still open. */}
                 <Panel icon={UserCheck} title={tr("tkt.assignmentSla")}>

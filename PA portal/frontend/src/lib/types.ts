@@ -207,6 +207,12 @@ export interface TicketDetail extends TicketRow {
   attachments?: AppointmentAttachment[];
   resolution_attachments?: ResolutionAttachment[];
   events: TicketEvent[];
+  /** Source-specific detail block, present only when source_kind='association'.
+   *  Same shape the AssociationDrawer reads on the Association Review page —
+   *  identity, ask, stakeholders, risks, AI assessment, source documents.
+   *  Rendered above the ticket-execution UI in the PA / Minister drawers so
+   *  reviewers see the full source case, not just the ticket chrome. */
+  association?: import("@/app/(dashboard)/association-review/_lib/associationApi").AssociationDetail | null;
 }
 
 export interface ResolutionAttachment {

@@ -13,6 +13,8 @@ import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-previ
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { cn, formatDateTime } from "@/lib/utils";
 import { useT } from "../_lib/i18n";
+import { AssociationDrawer } from "@/app/(dashboard)/association-review/_lib/AssociationDrawer";
+import type { AssociationDetail } from "@/app/(dashboard)/association-review/_lib/associationApi";
 
 // Loose superset of the ticket detail dict — every field optional so the full
 // TicketDetail returned by the API is assignable, and missing fields render "—".
@@ -39,6 +41,14 @@ export interface TicketDetailLike {
   created_at?: string | null;
   due_date?: string | null;
   events?: TicketEvent[] | null;
+  /** Source discriminator — 'association' when this ticket was minted from
+   *  an association submission. Everything else stays on the current lean
+   *  layout. */
+  source_kind?: string | null;
+  /** Full source-case detail block for association-minted tickets — same
+   *  shape the Association Review page's drawer consumes. Rendered at the
+   *  top of the drawer body when source_kind === 'association'. */
+  association?: AssociationDetail | null;
 }
 
 export interface TicketEvent {
@@ -119,6 +129,23 @@ export function TicketDrawer({ d, onClose }: { d: TicketDetailLike; onClose: () 
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="space-y-4 p-6">
+            {/* Source-specific detail: association-minted tickets show the
+                full source case (identity, ask, stakeholders, risks, AI
+                assessment, source documents) above the standard ticket
+                overview — same block the PA drawer surfaces, read-only. */}
+            {d.source_kind === "association" && d.association && (
+              <SectionCard icon={Building2} title={t("Source: Association submission", "மூலம்: சங்க சமர்ப்பிப்பு")}>
+                <div className="-mx-6 border-t border-border">
+                  <AssociationDrawer
+                    d={d.association}
+                    readOnly
+                    bodyOnly
+                    onClose={() => { /* embedded — host drawer owns close */ }}
+                  />
+                </div>
+              </SectionCard>
+            )}
+
             <SectionCard icon={ClipboardList} title={t("Overview", "மேலோட்டம்")}>
               <OverviewGrid>
                 <OverviewItem icon={User} label={t("Citizen", "குடிமகன்")} value={d.citizen_name} />

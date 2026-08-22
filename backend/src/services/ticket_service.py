@@ -133,11 +133,20 @@ def _serialize_event(e: Activity) -> Dict[str, Any]:
     }
 
 
-def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None) -> Dict[str, Any]:
+def _serialize_ticket_detail(
+    t: Ticket,
+    events: Optional[List[Activity]] = None,
+    association: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Full detail shape for the modal — includes events + summary + attachments.
 
     `events` is the list of Activity rows for this ticket, fetched by the
     caller (v2: no Ticket.events relationship). Falls back to empty.
+
+    `association` is a fully serialized AssociationDetail dict, present only
+    when the source appointment was minted from an association submission.
+    Populated by get_ticket(); optional here so unit tests / callers that
+    build their own detail dicts don't have to hand-fetch it.
     """
     db_events = events or []
     row = _serialize_ticket_row(t)
@@ -231,6 +240,10 @@ def _serialize_ticket_detail(t: Ticket, events: Optional[List[Activity]] = None)
         "resolution_attachments": resolution_attachments,
         "audio_url":          audio_url,
         "events":             events,
+        # Present only when source_kind='association'. Frontend
+        # TicketDetailDrawer conditionally renders the AssociationDrawer
+        # body sections at the top when this block is non-null.
+        "association":        association,
     })
     return row
 
@@ -567,7 +580,14 @@ async def get_ticket_breach_count(
 
 
 async def get_ticket(db: AsyncSession, ticket_id: int) -> Optional[Dict[str, Any]]:
-    """Full ticket detail + events timeline + summary + attachments."""
+    """Full ticket detail + events timeline + summary + attachments.
+
+    When the ticket was minted from an association submission
+    (source_kind='association'), also fetches the linked AssociationSubmission
+    and includes its full detail block under `"association"` so the
+    source-specific drawer can render identity/ask/stakeholders/risks/AI
+    assessment inside the ticket drawer without a second frontend round-trip.
+    """
     result = await db.execute(
         select(Ticket)
         .options(
@@ -588,7 +608,27 @@ async def get_ticket(db: AsyncSession, ticket_id: int) -> Optional[Dict[str, Any
         .order_by(Activity.created_at.desc())
     )
     events = list(events_res.scalars().all())
-    return _serialize_ticket_detail(t, events=events)
+
+    # Association source block — only one AssociationSubmission can point at a
+    # given source_appointment_id (idempotency guard in
+    # mint_ticket_from_association), so a plain `scalar()` is safe.
+    assoc_block: Optional[Dict[str, Any]] = None
+    appt = t.appointment
+    if appt is not None and (appt.source_kind or "").lower() == "association":
+        from src.models.association_models import AssociationSubmission
+        # Lazy import — association_review pulls in the FastAPI router at
+        # module load, importing it eagerly at the top of ticket_service
+        # would tighten the dependency graph unnecessarily.
+        from src.api.v1.association_review import _detail as _assoc_detail
+        assoc_row = await db.scalar(
+            select(AssociationSubmission)
+            .where(AssociationSubmission.source_appointment_id == appt.id)
+            .limit(1)
+        )
+        if assoc_row is not None:
+            assoc_block = _assoc_detail(assoc_row).model_dump(mode="json")
+
+    return _serialize_ticket_detail(t, events=events, association=assoc_block)
 
 
 # ── Mutations (always log an event) ───────────────────────────────────────────
