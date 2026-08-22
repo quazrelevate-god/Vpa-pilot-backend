@@ -157,10 +157,11 @@ const SEGMENTS: { key: "" | StatusKey; tKey: string }[] = [
   // Dismissed rows (courtesy audio, blank scans, duplicates) used to be
   // reachable only via "All"; they get their own tab + count now.
   { key: "DISMISSED",       tKey: "petition.segDismissed" },
-  // Routed rows — scans the classifier sent to the proposal/association
-  // workflow. Kept out of the petition tabs; this is the recovery view where
-  // a PA can move a mis-classified scan back into the petition queue.
-  { key: "ROUTED",          tKey: "petition.segRouted" },
+  // ROUTED rows (scans the classifier sent to the proposal/association
+  // workflow) intentionally have no tab — per UX they clutter the petition
+  // review chrome. They still appear under "All", still carry their status
+  // label, and the drawer's routed-recovery panel still fires when a PA
+  // opens one from All.
 ];
 
 const PRIORITY_CLS: Record<string, string> = {
