@@ -576,5 +576,15 @@ window.TEST_CASES = [
     name: "Print / share confirmation preview",
     steps: "1. On confirmation screen, use browser print preview and share sheet",
     expected: "Print-friendly layout; share (mobile) sheet includes reference token / QR",
-    status: "pending", actual: "", notes: "" }
+    status: "pending", actual: "", notes: "" },
+
+  // ============================================================
+  // R. Summariser resilience — production incident regression
+  // ============================================================
+  { id: "CI-83", layer: "P1", category: "Summariser resilience",
+    name: "Tamil citizen_name → background summarisation completes (SDK ASCII bug)",
+    steps: "1. Submit an appointment where citizen name field contains Tamil (e.g. 'ராம் குமார்')\n2. Wait 10s for the background summariser (spawn_bg → _trigger_summarisation)\n3. Tail Railway logs OR open the appointment's GrievanceSummaryRecord in the portal",
+    expected: "Log shows 'Summarisation complete in Nms | model=gemini-2.5-flash | ...' — NOT '[GEMINI WARN] appointment_id=X: ... ascii codec can't encode characters'. GrievanceSummaryRecord row exists.",
+    status: "pending", actual: "",
+    notes: "Regression for prod appointment 426. Fixed via _sanitize_user_field ascii-strip; UnicodeEncodeError short-circuit in _call_with_fallback." }
 ];

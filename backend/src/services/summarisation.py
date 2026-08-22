@@ -460,15 +460,23 @@ class GrievanceSummarisationService:
         """
         t0 = time.monotonic()
 
+        # Sanitise before f-string interpolation — same reasons as
+        # _build_contents(): prompt-injection defence AND the google-genai
+        # ASCII-in-header SDK bug (see _sanitize_user_field docstring). Raw
+        # Tamil interpolated here would kill the entire fallback chain.
+        safe_name = self._sanitize_user_field(citizen_name)
+        safe_constituency = self._sanitize_user_field(constituency)
+
         # Flat list of strings + Part objects — same pattern as _build_contents()
         contents: list = [
-            f"CITIZEN NAME: {citizen_name}\n"
-            f"CONSTITUENCY: {constituency}\n\n"
+            f"CITIZEN NAME: {safe_name}\n"
+            f"CONSTITUENCY: {safe_constituency}\n\n"
             f"HANDWRITTEN PETITION — {len(attachments)} page(s) scanned by a PA officer.\n"
             f"Read every page carefully before producing the summary."
         ]
         for i, (att_bytes, mime, fname) in enumerate(attachments, 1):
-            label = f"\nPAGE {i}" + (f"  [{fname}]" if fname else "")
+            safe_fname = self._sanitize_user_field(fname or "", max_len=120)
+            label = f"\nPAGE {i}" + (f"  [{safe_fname}]" if safe_fname else "")
             contents.append(label)
             contents.append(types.Part.from_bytes(data=att_bytes, mime_type=mime))
 
@@ -559,7 +567,7 @@ class GrievanceSummarisationService:
 
     @staticmethod
     def _sanitize_user_field(value: str, max_len: int = 200) -> str:
-        """Strip prompt-injection primitives from a citizen-typed string.
+        """Strip prompt-injection primitives + non-ASCII from a citizen-typed string.
 
         Citizen name / constituency / filename are user-controlled and were
         being f-string'd straight into the Gemini user turn. A name like
@@ -569,9 +577,27 @@ class GrievanceSummarisationService:
           - cap length
           - collapse newlines / control chars (breaks multi-line injection)
           - strip common instruction-start markers
+          - drop non-ASCII bytes (see below)
         This is NOT a full prompt-injection defence — the outer
         `_build_contents` also wraps user text in a labelled block so the
         model treats it as data — but it removes the most obvious primitives.
+
+        Non-ASCII strip — google-genai SDK bug workaround
+        -------------------------------------------------
+        google-genai (<=2.8) passes some request-derived text through an
+        ASCII-only codec in its httpx header path, so a Tamil citizen_name
+        / constituency / filename (or a Tamil note in the events flow —
+        see event_service._ascii_safe) makes the whole call fail with
+          'ascii' codec can't encode characters in position N-M
+        and every fallback model fails the same way (same client-side
+        error, never reaches the wire). This flat-out kills summarisation
+        for any Tamil-name petition.
+        Stripping non-ASCII from the prompt HINTS (name/constituency/
+        filename) is a lossless UX call: Gemini still reads the actual
+        Tamil off the attached document/audio and populates name_ta /
+        summary_ta from what's IN the petition — the prompt fields are
+        just hints, not sources of truth. Attachment/audio bytes are
+        unaffected (bytes are inline data, not headers).
         """
         if not value:
             return ""
@@ -588,6 +614,11 @@ class GrievanceSummarisationService:
             if low.startswith(marker):
                 s = s[len(marker):].lstrip(" .:,-")
                 break
+        # Belt on top of the marker strip: drop non-ASCII bytes so a Tamil
+        # name never hits the SDK header path.
+        s = s.encode("ascii", "ignore").decode("ascii")
+        # Re-collapse in case the ascii-strip introduced adjacent spaces.
+        s = " ".join(s.split())
         return s
 
     @staticmethod
@@ -741,6 +772,23 @@ class GrievanceSummarisationService:
                     # Remember whichever model actually worked for next calls.
                     self._model_name = model
                     return summary
+                except UnicodeEncodeError as exc:
+                    # google-genai SDK ascii-in-header bug — every model will
+                    # fail identically since the encode happens client-side
+                    # before the request leaves the process. Short-circuit.
+                    # _sanitize_user_field ascii-strips user fields already;
+                    # this branch only fires on future regressions or fields
+                    # we forgot to route through the sanitiser.
+                    logger.warning(
+                        "Gemini SDK ascii-in-header bug on model=%s — aborting "
+                        "fallback chain (all models would fail identically): %s",
+                        model, exc,
+                    )
+                    last_exc = exc
+                    raise RuntimeError(
+                        "Gemini summarisation failed: SDK unicode-in-header bug — "
+                        f"a caller passed a non-ASCII field past the sanitiser. {exc}"
+                    ) from exc
                 except Exception as exc:  # broad: SDK raises several error types
                     last_exc = exc
                     transient = self._is_transient(exc)
