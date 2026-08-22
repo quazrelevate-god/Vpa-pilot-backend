@@ -292,7 +292,16 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" strokeWidth={1.75} />
                   <div>
                     <div className="font-bold">{t("Extraction failed", "விவரம் எடுக்க முடியவில்லை")}</div>
-                    {event.error_message && <div className="mt-0.5 break-words opacity-80">{event.error_message}</div>}
+                    {/* Only surface backend text when it's a clean business
+                        message ("photo has no invitation content", "unsupported
+                        file type"). Python tracebacks / codec errors / SDK
+                        model strings get hidden by businessMessage() so the UI
+                        just shows the heading + Retry — the raw exception
+                        stays in server logs for ops. */}
+                    {(() => {
+                      const safe = businessMessage(event.error_message);
+                      return safe ? <div className="mt-0.5 break-words opacity-80">{safe}</div> : null;
+                    })()}
                     <Button size="sm" variant="outline" disabled={busy} onClick={doRetry}
                       className="mt-2 h-10 gap-1.5 border-red-300 bg-white text-sm font-bold text-red-700">
                       <RotateCcw className="h-4 w-4" /> {t("Retry", "மீண்டும் முயற்சி")}

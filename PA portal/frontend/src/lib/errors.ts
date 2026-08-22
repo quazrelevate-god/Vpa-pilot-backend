@@ -23,8 +23,11 @@ const FORBIDDEN = "You don't have access to that.";
 const NOT_FOUND = "That item couldn't be found.";
 
 // Fragments that mark a message as technical/internal — never show these.
+// Added Python exception shapes (ordinal not in range, codec, UnicodeEncodeError,
+// ValidationError, "failed on all models") because the events extractor
+// surfaces the raw exception string on the row's error_message column.
 const TECHNICAL =
-  /failed to fetch|load failed|networkerror|network request failed|\bhttp \d{3}\b|\bstatus \d{3}\b|internal server error|bad gateway|service unavailable|gateway timeout|<!?html|<!doctype|traceback|sqlalchemy|psycopg|integrityerror|programmingerror|unexpected token|is not a function|cannot read propert|is not defined|undefined is not|null is not/i;
+  /failed to fetch|load failed|networkerror|network request failed|\bhttp \d{3}\b|\bstatus \d{3}\b|internal server error|bad gateway|service unavailable|gateway timeout|<!?html|<!doctype|traceback|sqlalchemy|psycopg|integrityerror|programmingerror|unexpected token|is not a function|cannot read propert|is not defined|undefined is not|null is not|'ascii' codec|'utf-8' codec|codec can't|ordinal not in range|unicode(?:encode|decode)error|failed on all models|\bgemini-[\d.]+/i;
 
 function isNetwork(err: unknown, raw: string): boolean {
   // fetch() rejects with a TypeError whose message is browser-specific.
