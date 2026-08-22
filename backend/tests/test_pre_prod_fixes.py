@@ -201,7 +201,12 @@ class TestCryptoNoSilentBase64:
 
 class TestGeminiTransientClassification:
     def test_transient_by_type_name(self):
-        from src.services.summarisation import GrievanceSummarisationService as _Svc
+        # ca5d82a moved `_is_transient` from GrievanceSummarisationService
+        # to the shared gemini_client_factory — every AI service now shares
+        # the same transient-classification path.
+        from src.services.gemini_client_factory import _is_transient as _svc_is_transient
+        class _Svc:
+            _is_transient = staticmethod(_svc_is_transient)
         class ServiceUnavailable(Exception): pass
         class ResourceExhausted(Exception): pass
         class TooManyRequests(Exception): pass
@@ -209,7 +214,12 @@ class TestGeminiTransientClassification:
             assert _Svc._is_transient(cls("boom")) is True
 
     def test_transient_by_status_code(self):
-        from src.services.summarisation import GrievanceSummarisationService as _Svc
+        # ca5d82a moved `_is_transient` from GrievanceSummarisationService
+        # to the shared gemini_client_factory — every AI service now shares
+        # the same transient-classification path.
+        from src.services.gemini_client_factory import _is_transient as _svc_is_transient
+        class _Svc:
+            _is_transient = staticmethod(_svc_is_transient)
         class ApiError(Exception):
             status_code = 503
         assert _Svc._is_transient(ApiError()) is True
@@ -218,7 +228,12 @@ class TestGeminiTransientClassification:
         assert _Svc._is_transient(Rate()) is True
 
     def test_non_transient(self):
-        from src.services.summarisation import GrievanceSummarisationService as _Svc
+        # ca5d82a moved `_is_transient` from GrievanceSummarisationService
+        # to the shared gemini_client_factory — every AI service now shares
+        # the same transient-classification path.
+        from src.services.gemini_client_factory import _is_transient as _svc_is_transient
+        class _Svc:
+            _is_transient = staticmethod(_svc_is_transient)
         class NotFound(Exception):
             status_code = 404
         assert _Svc._is_transient(NotFound()) is False
@@ -429,3 +444,50 @@ class TestSummariserSanitiser:
         ):
             out = self._sanitise(probe)
             out.encode("ascii")  # must NOT raise
+
+
+# ─── ca5d82a Vertex-first refactor: preserve `_model_name` for pre-refactor callers ─
+
+class TestModelNameCompatShim:
+    """Regression net for the `svc._model_name` crash after ca5d82a.
+
+    The `ai: unify every Gemini service on Vertex-first shared client factory`
+    refactor moved model selection into `GeminiClientBundle` and dropped the
+    per-service `_model_name` attribute. Five pre-refactor callers still
+    read it (`svc._model_name`) inside the persist path — for a Tamil-name
+    appointment the summary itself succeeded, then persistence crashed with
+      [GEMINI WARN] appointment_id=430: Summarisation failed
+        (appointment unaffected): 'GrievanceSummarisationService' object
+        has no attribute '_model_name'
+    losing the GrievanceSummaryRecord row. Fix: expose `_model_name` as a
+    read-only property returning `self._bundle.primary_model` on both
+    services that pre-refactor callers reach into.
+    """
+
+    def _fake_bundle(self):
+        # Bare stub — we don't need a real client, only the attribute the
+        # compat property reads.
+        class _Bundle:
+            primary_model = "gemini-2.5-flash"
+        return _Bundle()
+
+    def test_summariser_exposes_model_name(self):
+        from src.services.summarisation import GrievanceSummarisationService
+        svc = GrievanceSummarisationService(self._fake_bundle())
+        assert svc._model_name == "gemini-2.5-flash"
+
+    def test_petition_extraction_exposes_model_name(self):
+        from src.services.petition_extraction import PetitionExtractionService
+        svc = PetitionExtractionService(self._fake_bundle())
+        assert svc._model_name == "gemini-2.5-flash"
+
+    def test_model_name_is_read_only_and_reflects_bundle(self):
+        # If the bundle's primary_model changes at runtime (unlikely but
+        # supported since it's a dataclass field), the property tracks it —
+        # no stale caching.
+        from src.services.summarisation import GrievanceSummarisationService
+        bundle = self._fake_bundle()
+        svc = GrievanceSummarisationService(bundle)
+        assert svc._model_name == "gemini-2.5-flash"
+        bundle.primary_model = "gemini-2.5-flash-lite"
+        assert svc._model_name == "gemini-2.5-flash-lite"

@@ -584,7 +584,14 @@ window.TEST_CASES = [
   { id: "CI-83", layer: "P1", category: "Summariser resilience",
     name: "Tamil citizen_name → background summarisation completes (SDK ASCII bug)",
     steps: "1. Submit an appointment where citizen name field contains Tamil (e.g. 'ராம் குமார்')\n2. Wait 10s for the background summariser (spawn_bg → _trigger_summarisation)\n3. Tail Railway logs OR open the appointment's GrievanceSummaryRecord in the portal",
-    expected: "Log shows 'Summarisation complete in Nms | model=gemini-2.5-flash | ...' — NOT '[GEMINI WARN] appointment_id=X: ... ascii codec can't encode characters'. GrievanceSummaryRecord row exists.",
+    expected: "Log shows 'Summarisation complete in Nms | backend=vertex | ...' — NOT '[GEMINI WARN] appointment_id=X: ... ascii codec can't encode characters'. GrievanceSummaryRecord row exists.",
     status: "pending", actual: "",
-    notes: "Regression for prod appointment 426. Fixed via _sanitize_user_field ascii-strip; UnicodeEncodeError short-circuit in _call_with_fallback." }
+    notes: "Regression for prod appointment 426. Fixed via _sanitize_user_field ascii-strip; UnicodeEncodeError short-circuit in factory._try_backend." },
+
+  { id: "CI-84", layer: "P1", category: "Summariser resilience",
+    name: "Persist path survives Vertex-refactor: _model_name compat shim",
+    steps: "1. Submit any appointment (Tamil or English name)\n2. Wait 10s for background summarisation\n3. Check log for '[GEMINI WARN] ... has no attribute _model_name'\n4. Verify GrievanceSummaryRecord row exists with gemini_model_used populated",
+    expected: "NO 'has no attribute _model_name' error in log; DB row exists with gemini_model_used = primary model name (e.g. 'gemini-2.5-flash')",
+    status: "pending", actual: "",
+    notes: "Regression for prod appointment 430 after ca5d82a Vertex-first refactor. Fixed by _model_name @property on GrievanceSummarisationService + PetitionExtractionService returning self._bundle.primary_model." }
 ];

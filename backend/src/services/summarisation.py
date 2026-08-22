@@ -392,6 +392,18 @@ class GrievanceSummarisationService:
         """Construct with a pre-built bundle. Most callers use `from_settings()`."""
         self._bundle = bundle
 
+    # ── Back-compat shim for callers written pre-refactor ─────────────────────
+    # Pre-refactor the service exposed `_model_name` (a mutable string set to
+    # the specific model that served the last request). Callers persist it
+    # into GrievanceSummaryRecord.gemini_model_used and log it. Post-refactor
+    # the bundle owns model selection + fallback; expose the configured
+    # primary here so those callers keep working without a coordinated diff.
+    # A subsequent enhancement can widen this to "actually-used model" once
+    # the factory returns that info too.
+    @property
+    def _model_name(self) -> str:
+        return self._bundle.primary_model
+
     # ── Factory ────────────────────────────────────────────────────────────────
 
     @classmethod

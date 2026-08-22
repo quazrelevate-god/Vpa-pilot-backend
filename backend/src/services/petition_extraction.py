@@ -161,6 +161,15 @@ class PetitionExtractionService:
     def __init__(self, bundle: GeminiClientBundle) -> None:
         self._bundle = bundle
 
+    # Back-compat shim: ai_upload_service reads `svc._model_name` and persists
+    # it as `gemini_model_used` on the DB row. Pre-refactor this was the
+    # actual model that served the request; post-refactor the bundle handles
+    # model selection + Vertex/direct fallback, so we surface the configured
+    # primary here to keep those callers working without a coordinated diff.
+    @property
+    def _model_name(self) -> str:
+        return self._bundle.primary_model
+
     @classmethod
     def from_settings(cls) -> "PetitionExtractionService":
         return cls(build_from_settings())
