@@ -1338,22 +1338,18 @@ function AiReviewPageInner() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {failedCount > 0 && (
-                <div className="flex items-center gap-1.5">
-                  {/* A failed scan needs attention, but sits behind its own tab
-                      out of the default Awaiting queue. This always-on red flag
-                      surfaces the count and jumps straight to the failed rows. */}
-                  <button
-                    onClick={() => { setFStatus("FAILED"); setPage(1); }}
-                    className="inline-flex h-[38px] items-center gap-1.5 rounded-xl border border-red-300 bg-red-50 px-3 text-[13px] font-semibold text-red-700 transition-colors hover:bg-red-100">
-                    <AlertTriangle className="h-3.5 w-3.5" /> {failedCount} {t("petition.segFailed")}
-                  </button>
-                  <Button size="sm" variant="outline" className="h-[38px] rounded-xl border-red-300 text-red-700"
-                    onClick={() => retry(aggregates?.failed_ids ?? [])}>
-                    <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retryAllFailed")}
-                  </Button>
-                </div>
-              )}
+              {/* Retry-all-failed is contextual to the Failed tab only —
+                  rendered on every tab so its position is stable, but disabled
+                  outside FAILED (and when there's nothing to retry) so it can't
+                  fire in the wrong context. */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-[38px] rounded-xl border-red-300 text-red-700 disabled:border-slate-200 disabled:text-muted-foreground disabled:opacity-60"
+                disabled={fStatus !== "FAILED" || failedCount === 0}
+                onClick={() => retry(aggregates?.failed_ids ?? [])}>
+                <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retryAllFailed")}
+              </Button>
               {([
                 ["today", t("petition.dateToday"), CalendarCheck],
                 ["this_week", t("petition.dateThisWeek"), CalendarRange],
