@@ -485,12 +485,18 @@
             try { savedLang = localStorage.getItem('vpa_lang') || 'ta'; } catch(e) {}
             setLang(savedLang === 'ta');
 
-            // CITZ-13: removed the silent auto-download of the receipt PNG.
-            // Some Android browsers (Samsung Internet, older Chrome) either
-            // prompted for download permission unexpectedly OR silently wrote
-            // a file named with the citizen's cleartext name to /Downloads
-            // without asking. Citizens tap the button (downloadCard(false))
-            // when they actually want a copy.
+            // Auto-download the receipt PNG on load. Safe now because the
+            // filename is `grievance-TKN<token>.png` (see downloadCard,
+            // tokenDisplay is TKN + token) — token-only, no citizen name,
+            // so a silent write to /Downloads on a shared kiosk device
+            // leaks a token, not an identity. This addresses the original
+            // CITZ-13 PII concern that killed the previous auto-download.
+            // `isAuto = true` swallows failures silently (library not
+            // ready, sandbox-blocked download); citizens can still tap
+            // the button if the auto attempt lost.
+            // Small delay lets Tamil web fonts settle so the captured
+            // canvas doesn't fall back to a system font mid-frame.
+            setTimeout(function() { downloadCard(true); }, 400);
         });
     </script>
 </body>

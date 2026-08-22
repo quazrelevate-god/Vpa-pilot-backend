@@ -627,6 +627,20 @@ window.TEST_CASES = [
     name: "Citizen document iframe preview renders (not 'blocked:other')",
     steps: "1. Portal → Tickets → open a ticket with a PDF upload (e.g. TKN2026082300006)\n2. Inspect the drawer's document preview + DevTools Network tab",
     expected: "PDF renders inside the drawer's <iframe>. Network row for /dashboard/api/files/... shows 200 (not 'blocked:other'). Response headers on the file: X-Frame-Options: SAMEORIGIN, Content-Security-Policy contains 'frame-ancestors ...'.",
+    status: "pass", actual: "PASS on Railway after cache-disabled reload — user confirmed 'now working'. Immutable cache from the pre-fix response was the initial red herring; hard reload with DevTools cache-disabled surfaced the SAMEORIGIN headers and the drawer PDF preview started rendering.",
+    notes: "USER-REPORTED: 'documents are blocked'. Fixed by scoping the middleware's XFO DENY + frame-ancestors 'none' to skip /dashboard|events|minister|department/api/files/* (see backend/src/main.py _EMBEDDABLE_PREFIXES). frame-ancestors uses CORS_ORIGINS for split-origin deploys." },
+
+  { id: "CI-90", layer: "P1", category: "Cross-cutting UX",
+    name: "QR success page auto-downloads receipt PNG on load",
+    steps: "1. Complete a QR-scan submission end-to-end (any citizen, any language)\n2. Land on /form/success?token=...\n3. Wait ~1s and check the browser's /Downloads folder",
+    expected: "File 'grievance-TKN<token>.png' auto-saves. Filename contains ONLY the token (NEVER the citizen's name). The Download button in the top-right of the card still works for manual re-save.",
     status: "pending", actual: "",
-    notes: "USER-REPORTED: 'documents are blocked'. Fixed by scoping the middleware's XFO DENY + frame-ancestors 'none' to skip /dashboard|events|minister|department/api/files/* (see backend/src/main.py _EMBEDDABLE_PREFIXES). frame-ancestors uses CORS_ORIGINS for split-origin deploys." }
+    notes: "USER-REQUESTED (option 3 of the CITZ-13 revisit): auto-download but with token-only filename so shared/kiosk devices don't leak identity. Enabled via setTimeout(downloadCard(true), 400) in success.jinja2 DOMContentLoaded." },
+
+  { id: "CI-91", layer: "P1", category: "Cross-cutting UX",
+    name: "Referral success page auto-downloads receipt PNG + shows Download button",
+    steps: "1. Complete a valid /referral submission\n2. Wait for the success box to appear\n3. Watch /Downloads (auto) and try the visible 'Download receipt' button",
+    expected: "File 'referral-REF<token>.png' auto-saves. Manual Download button in the success box also produces the same PNG. Both filenames token-only (no cleartext citizen name in the filename).",
+    status: "pending", actual: "",
+    notes: "USER-REQUESTED: parity with QR success. Vendored html2canvas already available at /static/assets/vendor/. New downloadReferralCard() + auto-trigger + button added to referral_form.jinja2." }
 ];
