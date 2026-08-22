@@ -198,12 +198,32 @@ class PetitionExtractionService:
         if vertex_enabled and vertex_project:
             try:
                 creds = None
+                creds_source = "ADC"
                 if vertex_credentials_path:
                     from google.oauth2 import service_account
-                    creds = service_account.Credentials.from_service_account_file(
-                        vertex_credentials_path,
-                        scopes=["https://www.googleapis.com/auth/cloud-platform"],
-                    )
+                    # Overloaded field: accepts EITHER a filesystem path (local
+                    # dev / VPS with the JSON on disk) OR the raw JSON content
+                    # itself (Railway / any hosted platform where you can't
+                    # mount a secret file). We detect by peeking at the first
+                    # non-whitespace char — service-account JSON always starts
+                    # with '{'; filesystem paths never do. Never push the
+                    # actual JSON to git — put it in the platform's secrets
+                    # store and inject as an env var.
+                    stripped = vertex_credentials_path.lstrip()
+                    if stripped.startswith("{"):
+                        import json as _json
+                        info = _json.loads(stripped)
+                        creds = service_account.Credentials.from_service_account_info(
+                            info,
+                            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                        )
+                        creds_source = "env-content"
+                    else:
+                        creds = service_account.Credentials.from_service_account_file(
+                            vertex_credentials_path,
+                            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                        )
+                        creds_source = "explicit-file"
                 self._vertex_client = genai.Client(
                     vertexai=True,
                     project=vertex_project,
@@ -213,8 +233,7 @@ class PetitionExtractionService:
                 logger.info(
                     "PetitionExtractionService: Vertex AI backend ready "
                     "(project=%s location=%s creds=%s)",
-                    vertex_project, vertex_location,
-                    "explicit-file" if vertex_credentials_path else "ADC",
+                    vertex_project, vertex_location, creds_source,
                 )
             except Exception as exc:
                 logger.warning(
