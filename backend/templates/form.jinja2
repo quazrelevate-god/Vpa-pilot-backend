@@ -2204,7 +2204,39 @@
                     window.location.href = '/form/success?' + params.toString();
                 } else {
                     const error = await response.json();
-                    const errMsg = error.detail || copy.submitError;
+                    // FastAPI validation errors come back as {detail: [...]}.
+                    // The pre-fix code did `error.detail || copy.submitError`,
+                    // which stringifies the array to "[object Object]" or
+                    // similar garbage. Parse the array shape into a specific,
+                    // localized reason (e.g. "Field allows at most 500
+                    // characters") so the citizen knows what to fix instead
+                    // of seeing a generic "Submission failed" banner.
+                    const isTa = runtimeActiveLanguage === 'ta';
+                    let errMsg = null;
+                    if (Array.isArray(error.detail) && error.detail.length) {
+                        const e   = error.detail[0];
+                        const ctx = e && e.ctx || {};
+                        if (e && e.type === 'string_too_long') {
+                            errMsg = isTa
+                                ? ('உள்ளீடு அதிகபட்சம் ' + ctx.max_length + ' எழுத்துகள் மட்டுமே அனுமதிக்கப்படும்.')
+                                : ('Field can be at most ' + ctx.max_length + ' characters.');
+                        } else if (e && e.type === 'string_too_short') {
+                            errMsg = isTa
+                                ? ('உள்ளீடு குறைந்தபட்சம் ' + ctx.min_length + ' எழுத்துகள் தேவை.')
+                                : ('Field must be at least ' + ctx.min_length + ' characters.');
+                        } else if (e && e.type === 'missing') {
+                            errMsg = isTa ? 'தேவையான புலம் நிரப்பப்படவில்லை.' : 'A required field is missing.';
+                        } else if (e && (e.type === 'int_parsing' || e.type === 'int_type')) {
+                            errMsg = isTa ? 'சரியான எண்ணை உள்ளிடவும்.' : 'Please enter a valid number.';
+                        } else if (e && e.msg) {
+                            errMsg = e.msg;
+                        }
+                    } else if (typeof error.detail === 'string' && error.detail.trim()) {
+                        errMsg = error.detail;
+                    } else if (typeof error.error === 'string' && error.error.trim()) {
+                        errMsg = error.error;
+                    }
+                    if (!errMsg) errMsg = copy.submitError;
                     showOtpFieldError(errMsg);
                     if (scheduleMeeting && errMsg && errMsg.toLowerCase().includes('slot')) {
                         document.getElementById('selectedSlotId').value = '';

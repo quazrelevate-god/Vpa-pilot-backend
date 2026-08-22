@@ -607,5 +607,19 @@ window.TEST_CASES = [
     steps: "1. Open /referral, pick a date with partially-booked slots\n2. Inspect each open slot chip",
     expected: "Available slots show ONLY the time range (no 'N மீதம்' / 'N left' text). Past slots still say 'முடிந்தது' / 'Passed', full slots say 'நிரம்பியது' / 'Full'.",
     status: "pending", actual: "",
-    notes: "USER-REQUESTED: don't reveal office capacity to citizens. Fixed in referral_form.jinja2 partial branch of slot render + _relabelSlots. form.jinja2 already correct." }
+    notes: "USER-REQUESTED: don't reveal office capacity to citizens. Fixed in referral_form.jinja2 partial branch of slot render + _relabelSlots. form.jinja2 already correct." },
+
+  { id: "CI-87", layer: "P1", category: "Referral form — behavior",
+    name: "Backend validation errors surface the SPECIFIC reason (not generic 'Booking failed')",
+    steps: "1. /referral in Tamil mode\n2. Paste ~5000 chars into 'சந்திப்பின் காரணம்' (server max is 500)\n3. Fill other fields validly, pick slot, submit",
+    expected: "Banner shows 'காரணம் அதிகபட்சம் 500 எழுத்துகள் மட்டுமே அனுமதிக்கப்படும்.' (or English equivalent), reasonHint turns red. NOT a bare 'பதிவு தோல்வி' with no explanation. Live counter under reason shows '5000 / 500' in red before submit.",
+    status: "pending", actual: "",
+    notes: "USER-REPORTED: FastAPI validation returns {detail: [...]} but frontend read {error: ...}. Fixed via _humanErrorFromResponse mapper + maxlength on all text fields + reasonCount live counter." },
+
+  { id: "CI-88", layer: "P1", category: "Upload / AI",
+    name: "QR intake form — backend errors show specific reason (form.jinja2 parity)",
+    steps: "1. Complete QR intake up to submit step\n2. Trigger any backend validation failure (huge description, blank required, etc.)\n3. Observe error surface",
+    expected: "showOtpFieldError shows a specific localized message (e.g. 'Field can be at most N characters.'). NOT '[object Object]' and NOT a bare 'Submission failed.'",
+    status: "pending", actual: "",
+    notes: "form.jinja2 had the same bug — `error.detail || copy.submitError` treated an array as a string. Fixed with same detail[0] type-based mapper as referral form." }
 ];
