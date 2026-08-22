@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import {
-  Users, Clock, CheckCircle2, AlertCircle, CalendarClock, CalendarDays,
+  Users, Clock, AlertCircle, CalendarDays,
   Lock, Unlock, RefreshCw, Plus, ChevronRight, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,11 +36,6 @@ interface OpenDate {
   id: number; date: string; date_label: string; total_slots: number;
   total_capacity: number; booked: number; blocked_slots: number; remaining: number;
 }
-interface Stats {
-  scheduled_today: number;
-  rescheduled_today: number;
-}
-
 const PERSON_OPTIONS = [2, 4, 6, 8, 10, 12, 15, 20];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -79,12 +73,10 @@ function nowTimeIst(): string {
 
 export default function SchedulingPage() {
   const { t } = useLang();
-  const router = useRouter();
 
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [grid,         setGrid]         = useState<SlotGrid | null>(null);
   const [openDates,    setOpenDates]    = useState<OpenDate[]>([]);
-  const [stats,        setStats]        = useState<Stats | null>(null);
   const [loadingGrid,  setLoadingGrid]  = useState(false);
   const [openingDate,  setOpeningDate]  = useState(false);
   const [blockingId,   setBlockingId]   = useState<number | null>(null);
@@ -120,16 +112,7 @@ export default function SchedulingPage() {
     } catch (e) { if ((e as Error).name === "AbortError") return; }
   }, []);
 
-  const loadStats = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res  = await fetch("/api/v1/scheduling/admin/statistics", { signal });
-      if (signal?.aborted) return;
-      const data = await res.json();
-      if (!data.error) setStats(data);
-    } catch (e) { if ((e as Error).name === "AbortError") return; }
-  }, []);
-
-  // One controller per effect run — cancels all three loaders together.
+  // One controller per effect run — cancels both loaders together.
   const ctrlRef = useRef<AbortController | null>(null);
   useEffect(() => {
     ctrlRef.current?.abort();
@@ -137,9 +120,8 @@ export default function SchedulingPage() {
     ctrlRef.current = ctrl;
     loadGrid(selectedDate, ctrl.signal);
     loadOpenDates(ctrl.signal);
-    loadStats(ctrl.signal);
     return () => ctrl.abort();
-  }, [selectedDate, loadGrid, loadOpenDates, loadStats]);
+  }, [selectedDate, loadGrid, loadOpenDates]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -178,7 +160,7 @@ export default function SchedulingPage() {
           reopen:  "Slot reopened for new bookings.",
         };
         toast.success(messages[action] ?? "Done.");
-        loadGrid(selectedDate); loadStats();
+        loadGrid(selectedDate);
       } else toast.error(data.error || `Failed to ${action} slot.`);
     } catch { toast.error("Network error."); }
     finally  { setBlockingId(null); }
@@ -233,20 +215,11 @@ export default function SchedulingPage() {
       const data = await res.json();
       if (res.ok) {
         toast.success("Cancelled", { description: data.message });
-        loadGrid(selectedDate); loadOpenDates(); loadStats();
+        loadGrid(selectedDate); loadOpenDates();
       } else toast.error(data.error || "Failed.");
     } catch { toast.error("Network error."); }
     finally  { setCancelling(false); setShowCancel(false); }
   }
-
-  // ── Derived stats ─────────────────────────────────────────────────────────
-
-  const statCards = stats
-    ? [
-        { icon: CheckCircle2,  value: stats.scheduled_today,     label: t("sched.scheduledToday"),       color: "text-emerald-600", bg: "bg-emerald-100", tab: "Scheduled" as string | null },
-        { icon: CalendarClock, value: stats.rescheduled_today,   label: t("sched.statRescheduledToday"), color: "text-brand",       bg: "bg-accent",      tab: "Rescheduled" as string | null },
-      ]
-    : [];
 
   const cfg = confirmSlot ? getSlotDialog(confirmSlot) : null;
   const dateLabel = grid?.date_label ?? selectedDate;
@@ -291,25 +264,6 @@ export default function SchedulingPage() {
                   <Trash2 className="h-4 w-4" /> {t("sched.cancelAllFor").replace("{date}", dateLabel)}
                 </Button>
               )}
-            </div>
-          )}
-
-          {/* Stats */}
-          {statCards.length > 0 && (
-            <div className="grid shrink-0 grid-cols-2 gap-4 lg:grid-cols-4">
-              {statCards.map((s) => (
-                <Card key={s.label}
-                  className={cn("flex items-center gap-3 p-4 shadow-card", s.tab && "cursor-pointer transition-shadow hover:shadow-card-md")}
-                  onClick={() => s.tab && router.push(`/appointments?tab=${s.tab}`)}>
-                  <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", s.bg)}>
-                    <s.icon className={cn("h-5 w-5", s.color)} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-mono text-[26px] font-bold leading-none tabular-nums text-foreground">{s.value}</div>
-                    <div className="mt-1 text-[13px] text-muted-foreground">{s.label}</div>
-                  </div>
-                </Card>
-              ))}
             </div>
           )}
 
