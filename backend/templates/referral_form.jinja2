@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Referral Booking</title>
+    <title>Book Appointment</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Mukta+Malar:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
@@ -190,8 +190,8 @@
         <div class="header">
             <div>
                 <div class="header-title">
-                    <span class="en"><i class="fa-solid fa-handshake"></i> Referral Booking</span>
-                    <span class="ta"><i class="fa-solid fa-handshake"></i> பரிந்துரை பதிவு</span>
+                    <span class="en"><i class="fa-solid fa-handshake"></i> Book Appointment</span>
+                    <span class="ta"><i class="fa-solid fa-handshake"></i> சந்திப்பு பதிவு</span>
                 </div>
                 <div class="header-sub">
                     <span class="en">Book your meeting slot (11 AM – 1 PM)</span>
@@ -209,42 +209,50 @@
 
         <div class="success-box" id="successBox">
             <div class="success-icon"><i class="fa-solid fa-circle-check"></i></div>
-            <div class="s-title en">Referral Booked!</div>
-            <div class="s-title ta">பரிந்துரை பதிவு செய்யப்பட்டது!</div>
+            <div class="s-title en">Your appointment is submitted.</div>
+            <div class="s-title ta">உங்கள் சந்திப்பு கோரிக்கை சமர்ப்பிக்கப்பட்டது.</div>
             <div class="s-token" id="sToken">REF—</div>
             <div class="s-row" id="sSlot"></div>
-            <div class="s-row en">Please arrive 10 minutes early.</div>
-            <div class="s-row ta">10 நிமிடங்களுக்கு முன் வருகை தரவும்.</div>
+            <div class="s-row en">Once it is confirmed, you will receive a notification on the phone number that was shared. Thank you!</div>
+            <div class="s-row ta">உறுதிசெய்யப்பட்டவுடன், பகிர்ந்த தொலைபேசி எண்ணுக்கு அறிவிப்பு அனுப்பப்படும். நன்றி!</div>
         </div>
 
         <div id="mainForm">
             <div class="card">
                 <div class="fld">
                     <label class="lbl" for="fName"><span class="en">Full Name</span><span class="ta">முழு பெயர்</span> <span class="req">*</span></label>
-                    <input type="text" id="fName" class="inp" required placeholder="Enter full name / முழு பெயர்" oninput="validate()">
+                    <input type="text" id="fName" class="inp" required
+                           data-ph-en="Enter full name" data-ph-ta="முழு பெயரை உள்ளிடவும்"
+                           placeholder="Enter full name" oninput="validate()">
                 </div>
                 <div class="fld">
                     <label class="lbl" for="fMobile">
                         <span class="en">Mobile Number</span><span class="ta">அலைபேசி எண்</span> <span class="req">*</span>
                     </label>
-                    <input type="tel" id="fMobile" class="inp" required maxlength="10" pattern="[6-9][0-9]{9}" inputmode="numeric" placeholder="10-digit mobile" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+                    <input type="tel" id="fMobile" class="inp" required maxlength="10" pattern="[6-9][0-9]{9}" inputmode="numeric"
+                           data-ph-en="10-digit mobile" data-ph-ta="10 இலக்க அலைபேசி எண்"
+                           placeholder="10-digit mobile" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
                 </div>
                 <div class="fld">
                     <label class="lbl" for="fPersons"><span class="en">Number of Persons</span><span class="ta">நபர்களின் எண்ணிக்கை</span> <span class="req">*</span></label>
                     <select id="fPersons" class="inp" onchange="onPersonsChange()">
-                        <option value="1">1 — Just me / நான் மட்டும்</option>
-                        <option value="2">2 Persons / 2 நபர்கள்</option>
-                        <option value="3">3 Persons / 3 நபர்கள்</option>
+                        <option value="1" data-txt-en="1 — Just me"   data-txt-ta="1 — நான் மட்டும்">1 — Just me</option>
+                        <option value="2" data-txt-en="2 Persons"     data-txt-ta="2 நபர்கள்">2 Persons</option>
+                        <option value="3" data-txt-en="3 Persons"     data-txt-ta="3 நபர்கள்">3 Persons</option>
                     </select>
                 </div>
                 <div class="fld">
                     <label class="lbl" for="fRefBy"><span class="en">Shared By</span><span class="ta">பகிர்ந்தவர்</span> <span class="req">*</span></label>
-                    <input type="text" id="fRefBy" class="inp" required placeholder="Name of person who shared this / பகிர்ந்தவரின் பெயர்" oninput="validate()">
+                    <input type="text" id="fRefBy" class="inp" required
+                           data-ph-en="Name of person who shared this" data-ph-ta="பகிர்ந்தவரின் பெயர்"
+                           placeholder="Name of person who shared this" oninput="validate()">
                 </div>
                 <div class="fld" style="margin-bottom:0;">
                     <label class="lbl" for="fReason"><span class="en">Reason for Meeting</span><span class="ta">சந்திப்பின் காரணம்</span> <span class="req">*</span></label>
                     <textarea id="fReason" class="inp" rows="3"
-                        placeholder="Please describe the purpose of your visit clearly / உங்கள் வருகையின் நோக்கத்தை தெளிவாக விவரிக்கவும்"
+                        data-ph-en="Please describe the purpose of your visit clearly"
+                        data-ph-ta="உங்கள் வருகையின் நோக்கத்தை தெளிவாக விவரிக்கவும்"
+                        placeholder="Please describe the purpose of your visit clearly"
                         style="resize:vertical; min-height:72px;"
                         oninput="validate()"></textarea>
                     <div id="reasonHint" style="font-size:0.78rem;color:#94a3b8;margin-top:0.25rem;">
@@ -272,7 +280,7 @@
 
             <button class="submit-btn" id="subBtn" disabled onclick="submitReferral()">
                 <i class="fa-solid fa-paper-plane"></i>
-                <span class="en">Confirm Booking</span><span class="ta">பதிவை உறுதிசெய்யவும்</span>
+                <span class="en">Book</span><span class="ta">பதிவு செய்</span>
             </button>
         </div>
     </div>
@@ -307,6 +315,18 @@
         document.getElementById('langBtnEn').classList.toggle('active', !ta);
         document.getElementById('langBtnTa').classList.toggle('active', ta);
         try { localStorage.setItem('vpa_lang', ta ? 'ta' : 'en'); } catch(e) {}
+
+        // Placeholders and <option> text can't hold child <span class="en/ta">,
+        // so we drive them from data-ph-* / data-txt-* attributes here.
+        var phKey  = ta ? 'phTa'  : 'phEn';
+        var txtKey = ta ? 'txtTa' : 'txtEn';
+        document.querySelectorAll('[data-ph-en]').forEach(function(el) {
+            var v = el.dataset[phKey]; if (v != null) el.placeholder = v;
+        });
+        document.querySelectorAll('[data-txt-en]').forEach(function(el) {
+            var v = el.dataset[txtKey]; if (v != null) el.textContent = v;
+        });
+
         _relabelDateChips();
         _relabelSlots();
     }
