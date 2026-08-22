@@ -491,3 +491,116 @@ class TestModelNameCompatShim:
         assert svc._model_name == "gemini-2.5-flash"
         bundle.primary_model = "gemini-2.5-flash-lite"
         assert svc._model_name == "gemini-2.5-flash-lite"
+
+
+# ─── File-preview iframe: scoped relaxation of X-Frame-Options / CSP ──────────
+
+class TestSecurityHeadersFramePreview:
+    """Regression net for the `blocked:other` iframe issue.
+
+    Global default is X-Frame-Options: DENY + `frame-ancestors 'none'` —
+    the PA portal itself is never framed. The narrow exception is the
+    auth-gated file endpoints (/dashboard|events|minister|department/api/
+    files/*) whose responses (PDFs, images, audio) render inside the
+    portal's <iframe>/<embed>. Those get SAMEORIGIN + a
+    CORS_ORIGINS-derived frame-ancestors so both same-origin AND
+    split-origin (Vercel portal + Railway backend) deploys can preview
+    citizen uploads without opening the bytes to arbitrary sites.
+    """
+
+    def _capture(self, path: str, cors_origins: str):
+        """Exercise _SecurityHeadersMiddleware on a fake ASGI app for `path`
+        and return the header dict it stamped on the response."""
+        import asyncio
+        from src.main import _SecurityHeadersMiddleware
+        from src.core.config import settings
+
+        prev = settings.CORS_ORIGINS
+        settings.CORS_ORIGINS = cors_origins
+        try:
+            captured: dict = {}
+
+            async def _app(scope, receive, send):
+                await send({
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"application/pdf")],
+                })
+                await send({"type": "http.response.body", "body": b"%PDF-fake"})
+
+            async def _send(message):
+                if message["type"] == "http.response.start":
+                    captured.update({
+                        k.decode("latin-1"): v.decode("latin-1")
+                        for k, v in message["headers"]
+                    })
+
+            async def _receive():
+                return {"type": "http.disconnect"}
+
+            mw = _SecurityHeadersMiddleware(_app)
+            scope = {
+                "type": "http", "method": "GET", "path": path,
+                "headers": [], "query_string": b"", "raw_path": path.encode(),
+            }
+            # asyncio.run() spins a fresh loop per call — get_event_loop() would
+            # inherit a previously-closed loop from earlier tests in the suite
+            # (pytest-asyncio auto mode) and blow up on run_until_complete.
+            asyncio.run(mw(scope, _receive, _send))
+            return captured
+        finally:
+            settings.CORS_ORIGINS = prev
+
+    def test_non_file_path_keeps_deny_and_none(self):
+        h = self._capture("/dashboard/api/tickets", "https://portal.example.com")
+        assert h.get("x-frame-options") == "DENY"
+        assert "frame-ancestors 'none'" in h.get("content-security-policy", "")
+
+    def test_dashboard_file_path_gets_sameorigin_and_self(self):
+        h = self._capture("/dashboard/api/files/some/key.pdf", "")
+        assert h.get("x-frame-options") == "SAMEORIGIN"
+        csp = h.get("content-security-policy", "")
+        assert "frame-ancestors 'self'" in csp
+        assert "frame-ancestors 'none'" not in csp
+
+    def test_split_origin_deploy_lists_portal_in_frame_ancestors(self):
+        h = self._capture(
+            "/dashboard/api/files/x.pdf",
+            "https://portal.example.com,http://localhost:3000",
+        )
+        csp = h.get("content-security-policy", "")
+        assert "frame-ancestors 'self' https://portal.example.com http://localhost:3000" in csp
+        assert h.get("x-frame-options") == "SAMEORIGIN"
+
+    def test_all_four_file_prefixes_are_embeddable(self):
+        # PA / dept officer / events UI / minister PWA all serve previewable
+        # bytes through their own auth-gated /api/files/* route.
+        for prefix in (
+            "/dashboard/api/files/",
+            "/department/api/files/",
+            "/events/api/files/",
+            "/minister/api/files/",
+        ):
+            h = self._capture(prefix + "any/key.pdf", "")
+            assert h.get("x-frame-options") == "SAMEORIGIN", f"{prefix} not relaxed"
+            assert "frame-ancestors 'self'" in h.get("content-security-policy", "")
+
+    def test_bogus_origin_stripped_before_use(self):
+        # Anything without a scheme is dropped rather than injected into
+        # frame-ancestors (would corrupt the directive).
+        h = self._capture(
+            "/dashboard/api/files/x.pdf",
+            "https://portal.example.com,malformed-no-scheme,,   ,ftp://ignored",
+        )
+        csp = h.get("content-security-policy", "")
+        assert "frame-ancestors 'self' https://portal.example.com;" in csp
+        assert "malformed" not in csp
+        assert "ftp://" not in csp
+
+    def test_other_security_headers_still_present_on_file_path(self):
+        # Only frame-ancestors + XFO shift for the file endpoints — nosniff /
+        # referrer-policy / permissions-policy stay on every response.
+        h = self._capture("/dashboard/api/files/x.pdf", "")
+        assert h.get("x-content-type-options") == "nosniff"
+        assert "strict-origin-when-cross-origin" in h.get("referrer-policy", "")
+        assert "camera=(self)" in h.get("permissions-policy", "")

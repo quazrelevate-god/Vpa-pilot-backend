@@ -112,8 +112,31 @@ class _SecurityHeadersMiddleware:
     ASGI middleware passes send/receive straight through, so the real response
     reaches the client and disconnects propagate cleanly.
     """
+    # File-serve routes whose payloads are meant to be embedded inside the
+    # portal via <iframe> (PDF preview) or <img>/<audio> tags on the same
+    # host. All others keep the strict frame-ancestors 'none' + XFO DENY.
+    # Keep prefixes narrow — each corresponds to a specific auth-gated route
+    # in dashboard.py / events.py / minister.py / department_service.py.
+    _EMBEDDABLE_PREFIXES = (
+        "/dashboard/api/files/",   # PA staff — dashboard.py
+        "/department/api/files/",  # Dept officer — dashboard.py mirror
+        "/events/api/files/",      # Events UI — events.py
+        "/minister/api/files/",    # Minister PWA — minister.py
+    )
+
     def __init__(self, app):
         self.app = app
+        # Precompute the frame-ancestors source list from CORS_ORIGINS so
+        # split-origin deploys (Vercel portal + Railway backend) still allow
+        # the embed, without opening it to arbitrary sites. Same-origin
+        # deploys just get 'self' and the CORS_ORIGINS entries are a no-op.
+        origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+        # frame-ancestors accepts scheme+host+port; strip any trailing paths.
+        cleaned: list[str] = []
+        for o in origins:
+            if o.startswith(("http://", "https://")):
+                cleaned.append(o.rstrip("/"))
+        self._frame_ancestors = " ".join(["'self'", *cleaned]) if cleaned else "'self'"
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -126,21 +149,37 @@ class _SecurityHeadersMiddleware:
         rid = incoming_request_id(scope) or new_request_id()
         request_id_var.set(rid)
 
+        # Same URL path drives both the frame-ancestors branch and the log
+        # correlation — capture once here.
+        path = scope.get("path") or ""
+        is_embeddable_asset = any(path.startswith(p) for p in self._EMBEDDABLE_PREFIXES)
+
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
                 headers["X-Content-Type-Options"] = "nosniff"
                 headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
                 headers["X-Request-ID"] = rid
-                # Clickjacking + framing defence. DENY is the strictest — the
-                # PA portal is never embedded in an iframe on purpose.
-                headers["X-Frame-Options"] = "DENY"
+                # Clickjacking + framing defence. The default is the strictest
+                # (DENY / frame-ancestors 'none') — the PA portal itself is
+                # never embedded in an iframe on purpose. The narrow exception
+                # is `/dashboard|events|minister|department/api/files/*`, the
+                # auth-gated file endpoints whose responses (PDF / image /
+                # audio) are rendered in <iframe>/<embed> inside the same
+                # portal — SAMEORIGIN + a CORS_ORIGINS-derived frame-ancestors
+                # keeps the same-origin AND split-origin (Vercel portal +
+                # Railway backend) preview paths working without opening the
+                # bytes to arbitrary sites.
+                if is_embeddable_asset:
+                    headers["X-Frame-Options"] = "SAMEORIGIN"
+                    frame_ancestors = self._frame_ancestors
+                else:
+                    headers["X-Frame-Options"] = "DENY"
+                    frame_ancestors = "'none'"
                 # Minimum-viable CSP: everything same-origin. Google Fonts +
                 # cdnjs (Font Awesome) still reach the citizen Jinja pages
                 # today (see CITZ-14/20 for the vendoring plan) — keep them
                 # in the allowlist until those are self-hosted, then tighten.
-                # frame-ancestors 'none' complements X-Frame-Options DENY
-                # (modern browsers honour CSP over the header).
                 headers["Content-Security-Policy"] = (
                     "default-src 'self'; "
                     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
@@ -148,7 +187,7 @@ class _SecurityHeadersMiddleware:
                     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; "
                     "img-src 'self' data: blob:; "
                     "connect-src 'self'; "
-                    "frame-ancestors 'none'; "
+                    f"frame-ancestors {frame_ancestors}; "
                     "base-uri 'self'; "
                     "form-action 'self'"
                 )

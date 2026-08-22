@@ -621,5 +621,12 @@ window.TEST_CASES = [
     steps: "1. Complete QR intake up to submit step\n2. Trigger any backend validation failure (huge description, blank required, etc.)\n3. Observe error surface",
     expected: "showOtpFieldError shows a specific localized message (e.g. 'Field can be at most N characters.'). NOT '[object Object]' and NOT a bare 'Submission failed.'",
     status: "pending", actual: "",
-    notes: "form.jinja2 had the same bug — `error.detail || copy.submitError` treated an array as a string. Fixed with same detail[0] type-based mapper as referral form." }
+    notes: "form.jinja2 had the same bug — `error.detail || copy.submitError` treated an array as a string. Fixed with same detail[0] type-based mapper as referral form." },
+
+  { id: "CI-89", layer: "P1", category: "Upload / AI",
+    name: "Citizen document iframe preview renders (not 'blocked:other')",
+    steps: "1. Portal → Tickets → open a ticket with a PDF upload (e.g. TKN2026082300006)\n2. Inspect the drawer's document preview + DevTools Network tab",
+    expected: "PDF renders inside the drawer's <iframe>. Network row for /dashboard/api/files/... shows 200 (not 'blocked:other'). Response headers on the file: X-Frame-Options: SAMEORIGIN, Content-Security-Policy contains 'frame-ancestors ...'.",
+    status: "pending", actual: "",
+    notes: "USER-REPORTED: 'documents are blocked'. Fixed by scoping the middleware's XFO DENY + frame-ancestors 'none' to skip /dashboard|events|minister|department/api/files/* (see backend/src/main.py _EMBEDDABLE_PREFIXES). frame-ancestors uses CORS_ORIGINS for split-origin deploys." }
 ];
