@@ -16,11 +16,12 @@ import {
   Check, Send, Building2, UserRound, Users, MapPin, CalendarClock,
   Loader2, Sparkles, AlertTriangle, Landmark, Target, Flag,
   ShieldAlert as RiskIcon, ScrollText, FolderOpen, X, Download,
-  Search as SearchIcon, Pencil, RefreshCcw,
+  Search as SearchIcon, Pencil, Ticket as TicketIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { InlineAttachmentPreview } from "@/components/ui/inline-attachment-preview";
 import { DrawerNav } from "@/components/ui/drawer-nav";
@@ -28,11 +29,27 @@ import { toUserMessage } from "@/lib/errors";
 import type { GalleryAttachment } from "@/components/ui/attachment-gallery";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
+import { MINISTRY_DISPLAY, DISTRICT_DISPLAY, CATEGORY_DISPLAY_EN } from "@/lib/enums";
 import {
-  findSimilarAssociations,
+  findSimilarAssociations, updateAssociationClassification,
   type AssociationDetail, type AssociationBrief, type AssociationDoc,
   type AssociationDecision, type SimilarAssociationCandidate,
 } from "./associationApi";
+
+// The one internal ministry — anything else auto-forwards to that ministry
+// when the reviewer commits the decision. Kept in sync with backend's
+// department_service.SCHOOL_MINISTRY constant.
+export const SCHOOL_MINISTRY_KEY = "school_education_tamil_dev_info_publicity";
+export function isInternalMinistry(m: string | null | undefined): boolean {
+  return (m || "") === SCHOOL_MINISTRY_KEY;
+}
+
+const URGENCY_OPTIONS: { value: string; label: string }[] = [
+  { value: "critical", label: "Critical" },
+  { value: "high",     label: "High"     },
+  { value: "medium",   label: "Medium"   },
+  { value: "low",      label: "Low"      },
+];
 
 // ── display maps (kept here so review-page list cards + dashboard-page
 //    table pills can import + stay visually consistent) ────────────────────
@@ -150,6 +167,43 @@ export function SectionShell({
   );
 }
 
+/** Inline <Select> sized to sit in the same 2-col grid as <Tile>. Used only
+ *  in the classification-edit mode of the Association-details section. */
+function EditSelect({ icon, label, value, onChange, options }: {
+  icon?: ReactNode;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  // Sentinel — <Select> forbids the empty string as an <SelectItem> value, so
+  // we route "clear" through a distinct token and translate at the edges.
+  const CLEAR = "__clear__";
+  return (
+    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-dashed border-brand/40 bg-brand/[0.03] px-4 py-3">
+      <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {icon}{label}
+      </div>
+      <Select
+        value={value || CLEAR}
+        onValueChange={(v) => onChange(v === CLEAR ? "" : v)}
+      >
+        <SelectTrigger className="h-8 border-none bg-transparent px-0 text-[14px] font-semibold shadow-none focus:ring-0 focus:ring-offset-0">
+          <SelectValue placeholder="—" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={CLEAR}>
+            <span className="italic text-muted-foreground">— clear —</span>
+          </SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 // ── the drawer itself ─────────────────────────────────────────────────────
 export interface AssociationDrawerProps {
   d: AssociationDetail;
@@ -166,6 +220,11 @@ export interface AssociationDrawerProps {
    *  from onDecide because it doesn't re-run the ticket mint or re-stamp
    *  reviewed_by — pure note edit. */
   onNoteSave?: (note: string) => Promise<void> | void;
+  /** Called after the reviewer edits AI-derived classification fields
+   *  (ministry / category / urgency / district). The parent should refresh
+   *  its list and swap in the returned detail so the drawer + list stay in
+   *  sync. Not required in read-only mode. */
+  onFieldsUpdate?: (updated: AssociationDetail) => void;
   /** Prev/next drawer navigation (wired by the list page via useDrawerNav). */
   onPrev?: () => void;
   onNext?: () => void;
@@ -178,7 +237,7 @@ export function AssociationDrawer({
   d, onClose, readOnly = false,
   note = "", setNote,
   deciding = false, onDecide,
-  onNoteSave,
+  onNoteSave, onFieldsUpdate,
   onPrev, onNext, hasPrev, hasNext, navLoading,
 }: AssociationDrawerProps) {
   const { lang } = useLang();
@@ -201,19 +260,59 @@ export function AssociationDrawer({
   const decided = ["REVIEWED", "FORWARDED"].includes(d.status);
   const days = daysSince(d.created_at);
 
-  // Sticky decision bar: once decided, hide the action buttons behind a
-  // "Change decision" toggle so a stray click can't re-run the ticket mint
-  // + re-stamp reviewed_by / reviewed_at (the endpoint also 409s the
-  // same-status no-op now, but the UI shouldn't offer it in the first
-  // place). Separate `editingNote` mode reveals only a textarea + Save so
-  // the reviewer can amend the note without touching status. Both
-  // auto-reset when the drawer switches rows or the row's status changes.
-  const [changingDecision, setChangingDecision] = useState(false);
+  // Sticky decision bar: on a decided row, the "Edit note" button reveals
+  // only a textarea + Save so the reviewer can amend the note without
+  // touching status. There is no "Change decision" flow — the decision is
+  // now a function of ministry; to change it, edit ministry via the pencil
+  // on the Association-details section. Both edit modes auto-reset when
+  // the drawer switches rows.
   const [editingNote, setEditingNote] = useState(false);
   useEffect(() => {
-    setChangingDecision(false);
     setEditingNote(false);
   }, [d.id, d.status]);
+
+  // Classification edit state — PA override of AI-derived triage fields.
+  // Same pattern as Petition Review's Edit pencil. `savingEdit` gates the
+  // Save button and prevents double-submit on flaky networks.
+  const [editingFields, setEditingFields] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    ministry: string; category: string; urgency: string; district: string;
+  }>({
+    ministry: d.ministry ?? "", category: d.category ?? "",
+    urgency:  d.urgency  ?? "", district: d.district ?? "",
+  });
+  // Reset the form + close the edit UI when the drawer switches rows or the
+  // detail refreshes with new values (post-save).
+  useEffect(() => {
+    setEditingFields(false);
+    setEditForm({
+      ministry: d.ministry ?? "", category: d.category ?? "",
+      urgency:  d.urgency  ?? "", district: d.district ?? "",
+    });
+  }, [d.id, d.ministry, d.category, d.urgency, d.district]);
+
+  const saveClassification = useCallback(async () => {
+    setSavingEdit(true);
+    try {
+      const patch = {
+        ministry: editForm.ministry || null,
+        category: editForm.category || null,
+        urgency:  editForm.urgency  || null,
+        district: editForm.district || null,
+      };
+      const updated = await updateAssociationClassification(d.id, patch);
+      onFieldsUpdate?.(updated);
+      setEditingFields(false);
+    } catch (e) {
+      // Import cost of a full toast import is small but let the parent handle
+      // presentation — surface via the standard toast lib the parent uses.
+      const { toast } = await import("sonner");
+      toast.error(toUserMessage(e, "Couldn't save changes."));
+    } finally {
+      setSavingEdit(false);
+    }
+  }, [editForm, d.id, onFieldsUpdate]);
 
   const ask       = L(ex.association_ask,   ex.association_ask_ta);
   const summary   = L(ex.summary,           ex.summary_ta);
@@ -406,17 +505,86 @@ export function AssociationDrawer({
           </div>
 
           <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-            {/* 1 — Association details (identity + meta) */}
-            <SectionShell n={1} id="association" title="Association details">
+            {/* 1 — Association details (identity + meta).
+                 The four AI-derived triage fields (ministry, category, urgency,
+                 district) are editable by the PA via the pencil — same pattern
+                 as Petition Review. Editing ministry flips the sticky-bar
+                 button between Create Ticket ↔ Forward to Ministry once saved. */}
+            <SectionShell
+              n={1} id="association" title="Association details"
+              right={!readOnly && onFieldsUpdate ? (
+                editingFields ? (
+                  <div className="flex items-center gap-1.5">
+                    <Button size="sm" variant="ghost" disabled={savingEdit}
+                      onClick={() => {
+                        setEditingFields(false);
+                        setEditForm({
+                          ministry: d.ministry ?? "", category: d.category ?? "",
+                          urgency:  d.urgency  ?? "", district: d.district ?? "",
+                        });
+                      }}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" disabled={savingEdit} onClick={saveClassification}
+                      className="bg-brand text-white hover:bg-brand/90 !bg-none">
+                      {savingEdit ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      Save
+                    </Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="outline"
+                    onClick={() => setEditingFields(true)}>
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </Button>
+                )
+              ) : undefined}
+            >
               <div className="grid gap-2.5 sm:grid-cols-2">
+                {/* Identity — not editable; extracted facts. */}
                 <Tile icon={<Building2 className="h-3 w-3" />} label="Association name" value={d.association_name} />
                 <Tile icon={<UserRound className="h-3 w-3" />} label="Representative" value={d.representative_name} />
                 <Tile icon={<UserRound className="h-3 w-3" />} label="Designation" value={d.representative_designation} />
                 <Tile icon={<Users className="h-3 w-3" />} label="Membership" value={d.member_count} />
-                <Tile icon={<Landmark className="h-3 w-3" />} label="Category" value={titleCase(d.category)} />
-                <Tile icon={<Building2 className="h-3 w-3" />} label="Ministry" value={titleCase(d.ministry)} />
-                <Tile icon={<Flag className="h-3 w-3" />} label="Urgency" value={urg?.label ?? titleCase(d.urgency)} />
-                <Tile icon={<MapPin className="h-3 w-3" />} label="District" value={d.district} />
+
+                {/* Editable triage fields — swap to <Select> when editing.
+                    Each Select uses "" (empty string) as the "clear" value
+                    so the server-side normaliser stores NULL for it. */}
+                {editingFields ? (
+                  <>
+                    <EditSelect
+                      icon={<Landmark className="h-3 w-3" />} label="Category"
+                      value={editForm.category}
+                      onChange={(v) => setEditForm((f) => ({ ...f, category: v }))}
+                      options={Object.entries(CATEGORY_DISPLAY_EN).map(([value, label]) => ({ value, label }))}
+                    />
+                    <EditSelect
+                      icon={<Building2 className="h-3 w-3" />} label="Ministry"
+                      value={editForm.ministry}
+                      onChange={(v) => setEditForm((f) => ({ ...f, ministry: v }))}
+                      options={Object.entries(MINISTRY_DISPLAY).map(([value, label]) => ({ value, label }))}
+                    />
+                    <EditSelect
+                      icon={<Flag className="h-3 w-3" />} label="Urgency"
+                      value={editForm.urgency}
+                      onChange={(v) => setEditForm((f) => ({ ...f, urgency: v }))}
+                      options={URGENCY_OPTIONS}
+                    />
+                    <EditSelect
+                      icon={<MapPin className="h-3 w-3" />} label="District"
+                      value={editForm.district}
+                      onChange={(v) => setEditForm((f) => ({ ...f, district: v }))}
+                      options={Object.entries(DISTRICT_DISPLAY).map(([value, label]) => ({ value, label }))}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Tile icon={<Landmark className="h-3 w-3" />} label="Category" value={titleCase(d.category)} />
+                    <Tile icon={<Building2 className="h-3 w-3" />} label="Ministry" value={MINISTRY_DISPLAY[d.ministry ?? ""] ?? titleCase(d.ministry)} />
+                    <Tile icon={<Flag className="h-3 w-3" />} label="Urgency" value={urg?.label ?? titleCase(d.urgency)} />
+                    <Tile icon={<MapPin className="h-3 w-3" />} label="District" value={DISTRICT_DISPLAY[d.district ?? ""] ?? d.district} />
+                  </>
+                )}
+
                 <Tile icon={<CalendarClock className="h-3 w-3" />} label="Document date" value={d.document_date} mono />
                 <Tile icon={<Target className="h-3 w-3" />} label="Source" value={titleCase(d.source)} />
               </div>
@@ -580,138 +748,156 @@ export function AssociationDrawer({
         </div>
       </div>
 
-      {/* Sticky decision bar — hidden entirely in read-only mode. Post-
-          decision, action buttons hide behind a "Change decision" toggle
-          so a stray click can't re-run the ticket mint or re-stamp
-          reviewed_by / reviewed_at (backend also 409s the same-status
-          no-op, but the UI shouldn't offer it in the first place). */}
-      {!readOnly && setNote && onDecide && (
-        <div className="shrink-0 space-y-3 border-t border-border bg-card px-5 py-4 sm:px-7">
-          {/* ─ (a) Decided + idle: prominent status card + two clear actions ─ */}
-          {decided && !changingDecision && !editingNote && (
-            <div className="rounded-lg border-2 border-border bg-muted/30 p-3.5">
-              <div className="flex items-start gap-2.5">
-                <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[14px] font-bold text-foreground">
-                    {st.label}
-                    {d.reviewed_by && (
-                      <span className="ml-1.5 text-[12.5px] font-normal text-muted-foreground">
-                        · by {d.reviewed_by}
-                      </span>
-                    )}
-                  </div>
-                  {d.decision_note ? (
-                    <div className="mt-1 whitespace-pre-wrap rounded-md bg-background/70 px-2.5 py-1.5 text-[13px] leading-snug text-foreground/85">
-                      {d.decision_note}
+      {/* Sticky decision bar — hidden entirely in read-only mode.
+          Single action button, driven by the currently-saved ministry:
+            · internal ministry  → "Create Ticket" (case stays here)
+            · external ministry  → "Forward to <Ministry>" (auto-routes out)
+            · ministry unset     → button disabled with a "set ministry first" hint
+          Missclassification is corrected by editing ministry via the Edit
+          pencil on Association details — save → button label updates. */}
+      {!readOnly && setNote && onDecide && (() => {
+        const isInternal   = isInternalMinistry(d.ministry);
+        const hasMinistry  = !!(d.ministry && d.ministry.trim());
+        const ministryName = MINISTRY_DISPLAY[d.ministry ?? ""] ?? titleCase(d.ministry);
+        // A forward (external ministry) is a strong action — a note is required
+        // so downstream sees WHY the case was routed out. Internal Create Ticket
+        // is optional-note (mirrors the petition approve flow).
+        const actionLabel = hasMinistry
+          ? (isInternal ? "Create Ticket" : `Forward to ${ministryName}`)
+          : "Set a ministry to proceed";
+        const decideKind: AssociationDecision = isInternal ? "reviewed" : "forwarded";
+
+        return (
+          <div className="shrink-0 space-y-3 border-t border-border bg-card px-5 py-4 sm:px-7">
+            {/* ─ (a) Decided + idle: prominent status card + Edit note only ─ */}
+            {decided && !editingNote && (
+              <div className="rounded-lg border-2 border-border bg-muted/30 p-3.5">
+                <div className="flex items-start gap-2.5">
+                  <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[14px] font-bold text-foreground">
+                      {st.label}
+                      {d.reviewed_by && (
+                        <span className="ml-1.5 text-[12.5px] font-normal text-muted-foreground">
+                          · by {d.reviewed_by}
+                        </span>
+                      )}
                     </div>
-                  ) : (
-                    <div className="mt-1 text-[12.5px] italic text-muted-foreground">No note yet.</div>
-                  )}
+                    {d.decision_note ? (
+                      <div className="mt-1 whitespace-pre-wrap rounded-md bg-background/70 px-2.5 py-1.5 text-[13px] leading-snug text-foreground/85">
+                        {d.decision_note}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-[12.5px] italic text-muted-foreground">No note yet.</div>
+                    )}
+                    <div className="mt-2 text-[11.5px] text-muted-foreground">
+                      To change the outcome, edit <strong>Ministry</strong> above and save.
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                 {onNoteSave && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => { setEditingNote(true); setNote(d.decision_note ?? ""); }}
-                    className="border-2 border-brand/40 font-semibold text-brand hover:border-brand hover:bg-brand/5 hover:text-brand"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    {d.decision_note ? "Edit note" : "Add note"}
-                  </Button>
+                  <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { setEditingNote(true); setNote(d.decision_note ?? ""); }}
+                      className="border-2 border-brand/40 font-semibold text-brand hover:border-brand hover:bg-brand/5 hover:text-brand"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      {d.decision_note ? "Edit note" : "Add note"}
+                    </Button>
+                  </div>
                 )}
-                <Button
-                  size="sm"
-                  onClick={() => { setChangingDecision(true); setNote(d.decision_note ?? ""); }}
-                  className="bg-slate-800 font-semibold text-white hover:bg-slate-900 !bg-none"
-                >
-                  <RefreshCcw className="h-3.5 w-3.5" /> Change decision
-                </Button>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ─ (b) Editing note only — no status flip ─ */}
-          {decided && editingNote && (
-            <>
-              <div className="flex items-center justify-between gap-2 text-[12.5px] font-medium text-muted-foreground">
-                <span>Editing note on <strong>{st.label.toLowerCase()}</strong>. Status won't change.</span>
-                <button
-                  type="button"
-                  onClick={() => setEditingNote(false)}
-                  className="text-brand hover:underline"
-                >
-                  Cancel
-                </button>
-              </div>
-              <Textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Follow-up note…"
-                className="min-h-[70px] resize-none text-sm"
-                autoFocus
-              />
-              <div className="flex justify-end">
-                <Button
-                  disabled={deciding || !onNoteSave}
-                  onClick={async () => {
-                    if (!onNoteSave) return;
-                    await onNoteSave(note.trim());
-                    setEditingNote(false);
-                  }}
-                  className="bg-brand font-semibold text-white hover:bg-brand/90 !bg-none"
-                >
-                  {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  Save note
-                </Button>
-              </div>
-            </>
-          )}
-
-          {/* ─ (c) Changing decision (or first-decide on AWAITING_REVIEW) ─ */}
-          {(!decided || changingDecision) && (
-            <>
-              {decided && changingDecision && (
+            {/* ─ (b) Editing note only — no status flip ─ */}
+            {decided && editingNote && (
+              <>
                 <div className="flex items-center justify-between gap-2 text-[12.5px] font-medium text-muted-foreground">
-                  <span>Changing from <strong>{st.label.toLowerCase()}</strong>. Pick a different decision below.</span>
+                  <span>Editing note on <strong>{st.label.toLowerCase()}</strong>. Status won't change.</span>
                   <button
                     type="button"
-                    onClick={() => setChangingDecision(false)}
+                    onClick={() => setEditingNote(false)}
                     className="text-brand hover:underline"
                   >
                     Cancel
                   </button>
                 </div>
-              )}
-              <Textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Decision note (required when forwarding to a department)…"
-                className="min-h-[60px] resize-none text-sm"
-              />
-              {/* Compact right-aligned auto-width row. Each button hidden
-                  if it would be a no-op against the current status —
-                  matches the backend guard so a stray click can't fire. */}
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                {d.status !== "REVIEWED" && (
-                  <Button size="sm" disabled={deciding} onClick={() => onDecide("reviewed")}
-                    className="bg-emerald-600 text-white hover:bg-emerald-700 !bg-none">
-                    {deciding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Mark reviewed
+                <Textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Follow-up note…"
+                  className="min-h-[70px] resize-none text-sm"
+                  autoFocus
+                />
+                <div className="flex justify-end">
+                  <Button
+                    disabled={deciding || !onNoteSave}
+                    onClick={async () => {
+                      if (!onNoteSave) return;
+                      await onNoteSave(note.trim());
+                      setEditingNote(false);
+                    }}
+                    className="bg-brand font-semibold text-white hover:bg-brand/90 !bg-none"
+                  >
+                    {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    Save note
                   </Button>
-                )}
-                {d.status !== "FORWARDED" && (
-                  <Button size="sm" disabled={deciding} variant="outline" onClick={() => onDecide("forwarded")}
-                    className="border-sky-300 text-sky-700 hover:bg-sky-50 hover:text-sky-800">
-                    <Send className="h-3.5 w-3.5" /> Forward to department
+                </div>
+              </>
+            )}
+
+            {/* ─ (c) First-decide on AWAITING_REVIEW: one button, ministry-driven ─ */}
+            {!decided && (
+              <>
+                <Textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={
+                    isInternal
+                      ? "Note for the ticket (optional)…"
+                      : "Reason for forwarding to this ministry (required)…"
+                  }
+                  className="min-h-[60px] resize-none text-sm"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  {/* Left hint reflects what the button will actually do. */}
+                  <div className="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">
+                    {!hasMinistry ? (
+                      <span>Set the <strong>Ministry</strong> on Association details above — the outcome depends on it.</span>
+                    ) : isInternal ? (
+                      <span>Ministry is <strong>School Education (internal)</strong>. Clicking creates a ticket in the office queue.</span>
+                    ) : (
+                      <span>Ministry is <strong>{ministryName}</strong>. Clicking forwards the case out to that ministry.</span>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={deciding || !hasMinistry}
+                    onClick={() => onDecide(decideKind)}
+                    className={cn(
+                      "font-semibold text-white !bg-none",
+                      isInternal
+                        ? "bg-emerald-600 hover:bg-emerald-700"
+                        : "bg-sky-700 hover:bg-sky-800",
+                    )}
+                  >
+                    {deciding ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : isInternal ? (
+                      <TicketIcon className="h-3.5 w-3.5" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    {actionLabel}
                   </Button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

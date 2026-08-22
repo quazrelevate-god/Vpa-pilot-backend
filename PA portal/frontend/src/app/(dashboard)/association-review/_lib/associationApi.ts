@@ -195,6 +195,28 @@ export async function decideAssociation(
   return r.json();
 }
 
+/** PA override of the AI-classified triage on an association. Fields left
+ *  out of the patch are kept as-is server-side. Empty string clears the field.
+ *  Mirrors the petition-side dashboard.api_update_appointment_details endpoint. */
+export interface ClassificationPatch {
+  ministry?: string | null;
+  category?: string | null;
+  urgency?:  string | null;
+  district?: string | null;
+}
+export async function updateAssociationClassification(
+  id: number, patch: ClassificationPatch,
+): Promise<AssociationDetail> {
+  const r = await fetch(`${BASE}/${id}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw await apiError(r);
+  return r.json();
+}
+
 /** Update decision_note WITHOUT flipping status — used to amend the note
  *  on any decided row (REVIEWED / FORWARDED) without the side-effects of
  *  the /decision endpoint (which re-runs the ticket mint and re-stamps

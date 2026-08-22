@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Users2, UserRound, Users, MapPin, CalendarClock,
-  Inbox, ShieldAlert, Search, Download, Sparkles,
+  Inbox, ShieldAlert, Search, Download,
   Landmark, Building2, Flag, X, Layers, SlidersHorizontal,
 } from "lucide-react";
 
@@ -33,11 +33,11 @@ import {
 } from "./_lib/associationApi";
 import {
   AssociationDrawer,
-  STATUS_META, REC_META, URGENCY_META,
+  STATUS_META, URGENCY_META,
   fmtDate, titleCase,
 } from "./_lib/AssociationDrawer";
 
-// Display maps (STATUS_META, REC_META, URGENCY_META), formatters (fmtDate,
+// Display maps (STATUS_META, URGENCY_META), formatters (fmtDate,
 // titleCase, specified, daysSince, toAttachments) and the drawer itself
 // (AssociationDrawer + SectionShell / Tile / Reading) all live in
 // ./_lib/AssociationDrawer so this page + the association-dashboard read-only
@@ -70,13 +70,6 @@ const URGENCY_OPTIONS: { value: string; label: string }[] = [
   { value: "high",     label: "High" },
   { value: "medium",   label: "Medium" },
   { value: "low",      label: "Low" },
-];
-
-const REC_OPTIONS: { value: string; label: string }[] = [
-  { value: "engage_now",      label: "Engage now" },
-  { value: "routine",         label: "Routine" },
-  { value: "refer",           label: "Refer" },
-  { value: "needs_more_info", label: "Needs more info" },
 ];
 
 const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
@@ -173,7 +166,6 @@ export default function AssociationReviewPage() {
 
   // Filter state — null when the chip is at "Any". Filters combine (AND) with
   // each other, with the active tab (status), and with the search text.
-  const [recFilter,      setRecFilter]      = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [urgencyFilter,  setUrgencyFilter]  = useState<string | null>(null);
   const [districtFilter, setDistrictFilter] = useState<string | null>(null);
@@ -227,7 +219,6 @@ export default function AssociationReviewPage() {
         urgency: urgencyFilter || undefined,
         district: districtFilter || undefined,
         ministry: ministryFilter || undefined,
-        recommendation: recFilter || undefined,
         dateFrom: activeDateFrom || undefined,
         dateTo: activeDateTo || undefined,
         batchId: batchFilter || undefined,
@@ -238,11 +229,11 @@ export default function AssociationReviewPage() {
     } catch (e) {
       if (!signal?.aborted) { setLoading(false); toast.error(toUserMessage(e)); }
     }
-  }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo, batchFilter, page]);
+  }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, activeDateFrom, activeDateTo, batchFilter, page]);
 
   // Any filter / search / tab change → reset to page 1 so narrowing from
   // page 5 doesn't leave you on an empty out-of-range page.
-  useEffect(() => { setPage(1); }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, recFilter, activeDateFrom, activeDateTo, batchFilter]);
+  useEffect(() => { setPage(1); }, [tab, debouncedQ, categoryFilter, urgencyFilter, districtFilter, ministryFilter, activeDateFrom, activeDateTo, batchFilter]);
 
   useEffect(() => {
     if (gate.kind !== "ok") return;
@@ -314,11 +305,11 @@ export default function AssociationReviewPage() {
   });
 
   const activeFilterCount =
-    (recFilter ? 1 : 0) + (categoryFilter ? 1 : 0) + (urgencyFilter ? 1 : 0) +
+    (categoryFilter ? 1 : 0) + (urgencyFilter ? 1 : 0) +
     (districtFilter ? 1 : 0) + (ministryFilter ? 1 : 0) + (dateFilter ? 1 : 0);
 
   const clearAllFilters = () => {
-    setRecFilter(null); setCategoryFilter(null); setUrgencyFilter(null);
+    setCategoryFilter(null); setUrgencyFilter(null);
     setDistrictFilter(null); setMinistryFilter(null);
     setDateFilter(null); setDateFrom(""); setDateTo("");
   };
@@ -372,15 +363,17 @@ export default function AssociationReviewPage() {
 
   const decide = async (decision: AssociationDecision) => {
     if (!detail) return;
+    // Forwarding external — require a note so the receiving ministry sees
+    // WHY the case was routed to them, not just that it landed.
     if (decision === "forwarded" && !note.trim()) {
-      toast.error("Please add a short note when forwarding.");
+      toast.error("Please add a short note when forwarding to a ministry.");
       return;
     }
     setDeciding(true);
     try {
       const updated = await decideAssociation(detail.id, decision, note.trim() || undefined);
       setDetail(updated);
-      toast.success(decision === "reviewed" ? "Marked reviewed." : "Forwarded to department.");
+      toast.success(decision === "reviewed" ? "Ticket created." : "Forwarded to ministry.");
       load();
     } catch (e) {
       toast.error(toUserMessage(e));
@@ -412,7 +405,6 @@ export default function AssociationReviewPage() {
           urgency: urgencyFilter || undefined,
           district: districtFilter || undefined,
           ministry: ministryFilter || undefined,
-          recommendation: recFilter || undefined,
           dateFrom: activeDateFrom || undefined,
           dateTo: activeDateTo || undefined,
           limit: EXPORT_PAGE,
@@ -421,13 +413,13 @@ export default function AssociationReviewPage() {
         all.push(...res.items);
         if (res.items.length < EXPORT_PAGE) break;
       }
-      const headers = ["ID", "Association", "Representative", "Category", "Urgency", "Members", "Status", "AI", "Submitted"];
+      const headers = ["ID", "Association", "Representative", "Category", "Urgency", "Members", "Status", "Submitted"];
       const lines = all.map((a) => [
         a.id, a.association_name ?? "", a.representative_name ?? "",
         titleCase(a.category) ?? "", titleCase(a.urgency) ?? "",
         a.member_count ?? "",
         STATUS_META[a.status]?.label ?? a.status,
-        a.ai_recommendation ?? "", a.created_at ?? "",
+        a.created_at ?? "",
       ]);
       const csv = [headers, ...lines].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
       const a = document.createElement("a");
@@ -557,12 +549,6 @@ export default function AssociationReviewPage() {
             {showFilters && (
             <div className="flex flex-wrap items-center gap-2">
               <FilterChip
-                icon={<Sparkles className="h-3.5 w-3.5" />}
-                label="AI hint"
-                value={recFilter} onValue={setRecFilter}
-                options={REC_OPTIONS}
-              />
-              <FilterChip
                 icon={<Landmark className="h-3.5 w-3.5" />}
                 label="Category"
                 value={categoryFilter} onValue={setCategoryFilter}
@@ -680,6 +666,7 @@ export default function AssociationReviewPage() {
               deciding={deciding}
               onDecide={decide}
               onNoteSave={saveNote}
+              onFieldsUpdate={(updated) => { setDetail(updated); load(); }}
               onPrev={nav.onPrev} onNext={nav.onNext}
               hasPrev={nav.hasPrev} hasNext={nav.hasNext}
               navLoading={detailLoading || nav.navBusy}
@@ -698,7 +685,6 @@ export default function AssociationReviewPage() {
 function AssociationCard({ a, lang, selected, onOpen }: {
   a: AssociationListItem; lang: string; selected: boolean; onOpen: () => void;
 }) {
-  const rec = a.ai_recommendation ? REC_META[a.ai_recommendation] : null;
   const st = STATUS_META[a.status] || { label: a.status, cls: "bg-slate-100 text-slate-600" };
   const urg = a.urgency ? URGENCY_META[a.urgency.toLowerCase()] : null;
   const ask = (lang === "ta" && a.association_ask_ta) || a.association_ask || "";
@@ -714,12 +700,7 @@ function AssociationCard({ a, lang, selected, onOpen }: {
           : "border-border",
       )}
     >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        {rec ? (
-          <span className={cn("inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-semibold", rec.cls)} title="AI's triage hint — not the reviewer's decision">
-            <Sparkles className="h-3 w-3" /> {rec.label}
-          </span>
-        ) : <span />}
+      <div className="mb-2 flex items-center justify-end gap-2">
         <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", st.cls)}>{st.label}</span>
       </div>
 

@@ -84,6 +84,20 @@ class NoteBody(BaseModel):
                       description="New decision-note text. Empty string clears the note.")
 
 
+class ClassificationPatchBody(BaseModel):
+    """PA override of the AI-classified triage fields on an association.
+
+    Mirrors dashboard.api_update_appointment_details on the petition side —
+    every field is optional; only fields explicitly present are updated
+    (unset != null). Passing an empty string is treated the same as null
+    (clear the value) so a select's blank option round-trips cleanly.
+    """
+    ministry: Optional[str] = Field(None, max_length=80)
+    category: Optional[str] = Field(None, max_length=50)
+    urgency:  Optional[str] = Field(None, max_length=20)
+    district: Optional[str] = Field(None, max_length=60)
+
+
 def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
@@ -455,6 +469,54 @@ async def decide_association(
         row.decision_note = body.note.strip() or None
     row.reviewed_by = reviewer
     row.reviewed_at = now_utc()
+    await db.commit()
+    await db.refresh(row)
+    return _detail(row)
+
+
+@router.patch("/{assoc_id}", response_model=AssociationDetail, summary="Override AI triage classification")
+async def update_association_classification(
+    assoc_id: int,
+    body: ClassificationPatchBody,
+    db: AsyncSession = Depends(get_db),
+    current: Login = Depends(require_super_admin),
+) -> AssociationDetail:
+    """PA override of the AI-derived triage on an association submission.
+
+    Editable fields: ministry, category, urgency, district. The AI brief
+    (association_ask, member_count, etc.) is intentionally NOT editable
+    here — those are extracted facts, not triage judgments; muddying them
+    hurts the audit trail.
+
+    Only fields explicitly present in the request body are touched (via
+    Pydantic's `model_fields_set`). Empty string is treated as "clear"
+    for parity with a blank <Select> option on the frontend.
+
+    Allowed on any status (AWAITING_REVIEW / REVIEWED / FORWARDED). On a
+    decided row, changing the ministry deliberately does NOT re-mint a
+    ticket or auto-forward retroactively — the freshly-minted ticket
+    keeps its original routing. The change only affects the drawer's
+    decision-button label going forward.
+    """
+    row = await db.get(AssociationSubmission, assoc_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Association submission not found.")
+
+    sent = body.model_fields_set
+    if not sent:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+
+    def _norm(v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
+
+    if "ministry" in sent: row.ministry = _norm(body.ministry)
+    if "category" in sent: row.category = _norm(body.category)
+    if "urgency"  in sent: row.urgency  = _norm(body.urgency)
+    if "district" in sent: row.district = _norm(body.district)
+
     await db.commit()
     await db.refresh(row)
     return _detail(row)
