@@ -406,20 +406,24 @@ export default function TicketsPage() {
     category, search, dateFrom, dateTo,
   }), [priority, deptParams, showAssignedDeptFilter, assignedDept, showSourceFilter, sourceValue, category, search, dateFrom, dateTo]);
 
-  // Scope for the STATUS TAB PILLS. Only the structural filters (search +
-  // date) narrow the universe — refinement filters (priority / ministry /
-  // department / source / category) narrow the LIST but MUST NOT collapse
-  // the pill counts. Otherwise picking "high" priority makes Open jump
-  // from 5 → 1, Closed from 4 → 0, etc., which reads like the tickets
-  // vanished. Tabs are meant to be a stable universe view; the active
-  // refinement filter is already legible via its own badge/pill.
+  // Scope for the STATUS TAB PILLS — the ACTIVE filter set, matching what
+  // the LIST is showing. Same pattern as appointments/page.tsx (line 509
+  // comment) and ai-review/page.tsx buildTabsFacetsQuery: reviewers read
+  // the stable-universe pattern's list-vs-pill mismatch as broken ("list
+  // shows 3 rows, Open pill shows 42, wtf?"). Now the pill is the truth
+  // about the current filter — pick priority=high and pills narrow with
+  // the list.
   //
-  // The SLA-BREACHED CHIP used to share this scope but is now filter-aware
-  // (uses `secondary` + status below) so the count matches the current view
-  // — user asked for WYSIWYG.
-  const pillScope = useMemo<Omit<TicketListFilters, "status" | "page">>(() => ({
-    search, dateFrom, dateTo,
-  }), [search, dateFrom, dateTo]);
+  // Status is still excluded — that IS the axis /counts groups across
+  // (each tab shows what it WOULD have if clicked). Same asymmetry as
+  // the backend documents at dashboard.py:179 for /facets.
+  //
+  // The SLA-BREACHED CHIP was already filter-aware — it uses `secondary`
+  // + status below — so this alignment brings the tab pills into the same
+  // WYSIWYG contract.
+  const pillScope = useMemo<Omit<TicketListFilters, "status" | "page">>(() => (
+    secondary
+  ), [secondary]);
 
   // The distribution chart shows category bars on most tabs, but ministry bars
   // on the Forwarded tab (where it also drives the ministry filter).
