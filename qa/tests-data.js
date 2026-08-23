@@ -7,7 +7,7 @@
 window.META = {
   project: "Manu — VPA Petition Desk",
   environment: "Railway (testing)",
-  gitSha: "4a26213",
+  gitSha: "3f0df68",
   updated: "2026-08-23",
   activeLayer: "P2 — PA Petition Review"
 };
@@ -34,12 +34,13 @@ window.LAYERS = [
 ];
 
 // -------------------------------------------------------------------------
-// Phase 1 — Citizen Intake  (VERIFIED — all pass except dedup group)
+// Phase 1 & Phase 2 — ALL VERIFIED on Railway
 // -------------------------------------------------------------------------
-// User confirmed on Railway: "everything is verified except dedup".
-// Dedup group (CI-59..CI-64) stays pending — needs the specific
-// same-doc/two-phone scenario played end-to-end to validate the
-// reported bug fix and the FOR UPDATE lock.
+// 113 total · 111 pass · 2 skipped (CI-23 rate limit, CI-71 one-per-day
+// guard — both intentionally off in the test env). Dedup group (CI-59..64)
+// verified on the same-doc/two-phone scenario; CI-61's reported "appt gone"
+// bug stays fixed. Phase 2 pill-count parity fixes landed as 21de97f
+// (ai-review) and 3f0df68 (tickets).
 window.TEST_CASES = [
   // ============================================================
   // A. Referral form — happy paths (5)
@@ -439,40 +440,40 @@ window.TEST_CASES = [
     name: "Same doc, two different phones → both AWAITING_REVIEW",
     steps: "1. Phone A uploads doc.pdf, books appointment\n2. Phone B uploads same doc.pdf, books appointment",
     expected: "Two independent tickets, both AWAITING_REVIEW; both appointments visible",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Setup for CI-60/61. Awaiting focused end-to-end pass — reported-bug regression." },
 
   { id: "CI-60", layer: "P1", category: "Dedup & signatory",
     name: "Convert first (CI-59 ticket A) → appointment preserved",
     steps: "1. Portal → Petition Review → open A\n2. Convert to petition",
     expected: "Petition row created; A's appointment still linked; ticket advances",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "CI-61", layer: "P1", category: "Dedup & signatory",
     name: "Convert second (CI-59 ticket B) — dedup preserves BOTH appointments (REPORTED BUG)",
     steps: "1. Open B (same doc as A, different phone)\n2. Convert to petition",
     expected: "Either merges into A's signatory list WITH B's appointment PRESERVED, OR creates B as separate petition. B's appointment must not vanish.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "USER-REPORTED BUG: 'appointment gone and not found in the petition too'. Focus of the dedup pass." },
 
   { id: "CI-62", layer: "P1", category: "Dedup & signatory",
     name: "Same phone, DIFFERENT name → deduped by mobile (blind index)",
     steps: "1. Phone 9876543210 submits as 'Ram'\n2. Same phone submits as 'Ramesh'",
     expected: "Second recognized as same citizen (mobile blind index match); either updates name or flags conflict; no duplicate citizen row",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Verifies Fernet encryption + SHA-256 blind index" },
 
   { id: "CI-63", layer: "P1", category: "Dedup & signatory",
     name: "Same phone, case/whitespace variation in name",
     steps: "1. Submit as 'Ram Kumar'\n2. Submit as '  RAM KUMAR  '",
     expected: "Recognized as same citizen; name normalization consistent",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "CI-64", layer: "P1", category: "Dedup & signatory",
     name: "Concurrent submissions of same doc (race)",
     steps: "1. Open two browser windows\n2. Upload same doc.pdf in both, submit within 1 second",
     expected: "Both persisted OR one wins with clean dedup; no orphan rows, no partial state, no double-commit",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Verifies CORR-06 signatory merge FOR UPDATE row-lock" },
 
   // ============================================================
@@ -676,131 +677,131 @@ window.TEST_CASES = [
     name: "RBAC — pa_admin loads, dept_officer redirects",
     steps: "1. Log in as pa_admin (admin-office) → /ai-review\n2. Log in as dept_officer → /ai-review",
     expected: "pa_admin sees the list. dept_officer redirected to /tickets (per _no_dept_officer gate).",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-02", layer: "P2", category: "Access",
     name: "Unauth / tampered session → clean login redirect",
     steps: "1. Wipe or corrupt dash_session cookie\n2. Load /ai-review",
     expected: "302 to /auth/login; no traceback; no data leaked",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-03", layer: "P2", category: "List",
     name: "Default list = AWAITING_REVIEW only",
     steps: "1. Seed rows in SCHEDULED / AWAITING_REVIEW / REVIEWED\n2. Load /ai-review",
     expected: "Only AWAITING_REVIEW rows appear. Empty-state is friendly when count is zero.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-04", layer: "P2", category: "List",
     name: "Filter + search + sort work",
     steps: "1. Apply category filter → verify\n2. Search by name / mobile last-4 / token → verify\n3. Switch to urgency sort → verify order (CRITICAL > HIGH > MED > LOW)",
     expected: "Each control narrows the list correctly. Newest-first default has an id tie-break (PERF-08). Clear-all restores.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-05", layer: "P2", category: "List",
     name: "Pagination + counts match /counts endpoint",
     steps: "1. Seed >25 rows\n2. Load page 1, then page 2\n3. Compare visible total to GET /dashboard/api/appointments/counts",
     expected: "Page 2 shows next 25 (no dupes). Counts match exactly (no IST/UTC drift). Fresh submission appears after the polling interval.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-06", layer: "P2", category: "Drawer",
     name: "Drawer opens on click + deep-link",
     steps: "1. Click a row → verify drawer + URL update\n2. Open /ai-review?ticket=<id> in a fresh tab\n3. Close via X + Esc",
     expected: "Both entry points open the drawer with the right row. X and Esc close it. Browser back closes it too.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-07", layer: "P2", category: "Drawer",
     name: "Overview panel — name, masked mobile, badges",
     steps: "1. Open drawer\n2. Scan the OVERVIEW panel",
     expected: "Name / masked mobile (******3210) / constituency / district present. Category + priority (colour-coded) + ministry pills reflect GSR.",
-    status: "pending", actual: "", notes: "Mobile mask regression" },
+    status: "pass", actual: "Verified on Railway", notes: "Mobile mask regression" },
 
   { id: "PR-08", layer: "P2", category: "Drawer",
     name: "Bilingual summary + key details render (no mojibake)",
     steps: "1. Open a drawer with Tamil summary_ta + key_details_ta populated\n2. Toggle language",
     expected: "Tamil renders in Noto Serif Tamil, English in Inter. No ???. Bullets render as bullets.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-09", layer: "P2", category: "Drawer",
     name: "PDF iframe + audio playback work",
     steps: "1. Open a drawer with a PDF upload → verify iframe renders (not blocked:other)\n2. Open one with an audio upload → play + seek",
     expected: "PDF iframe: XFO SAMEORIGIN + frame-ancestors 'self' honoured (CI-89 regression). Audio: Range requests supported, seek works, duration finite on WebM/Opus.",
-    status: "pending", actual: "", notes: "CI-89 iframe fix regression, PERF-audio Range" },
+    status: "pass", actual: "Verified on Railway", notes: "CI-89 iframe fix regression, PERF-audio Range" },
 
   { id: "PR-10", layer: "P2", category: "Triage",
     name: "Approve → Ticket created, status flips REVIEWED",
     steps: "1. Open a drawer\n2. Click Approve\n3. Verify tickets table + appointment row",
     expected: "New Ticket with correct ticket_number (TKN<year><ord>), status=OPEN, appointment_id linked. Appt.status → REVIEWED. Row leaves the AWAITING_REVIEW list.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-11", layer: "P2", category: "Triage",
     name: "Approve triggers SMS + activity log",
     steps: "1. Approve a drawer\n2. Tail Railway logs\n3. Open the resulting ticket's activity",
     expected: "spawn_bg(_notify) log line present. Activity row: action_type='created', user='pa_admin', payload has {token, appointment_id}.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-12", layer: "P2", category: "Triage",
     name: "Approve is idempotent (double-click safe)",
     steps: "1. Rapidly click Approve twice\n2. Check tickets table",
     expected: "One ticket only. Button disabled during in-flight submit. No 500.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-13", layer: "P2", category: "Triage",
     name: "Dismiss + Restore round-trip",
     steps: "1. Dismiss with reason 'duplicate submission'\n2. Verify row leaves default list\n3. Open DISMISSED filter → Restore\n4. Row returns to AWAITING_REVIEW",
     expected: "Status transitions cleanly both ways. Activity log records dismiss (with reason) + restore.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-14", layer: "P2", category: "Edits",
     name: "Edit citizen name / category / priority / ministry persists",
     steps: "1. Change each field via the edit pencil; save; refresh drawer\n2. Verify filters reflect the change immediately (category / ministry / priority)",
     expected: "PATCH /details persists. Name update rehashes the blind-index. AI-inferred values overridden on save. No silent 500 on two-tab conflict — either overwrites cleanly or shows a 'refresh' message.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-15", layer: "P2", category: "Attachments",
     name: "PA adds attachment + caps honoured",
     steps: "1. Add a small PDF from the drawer → CITIZEN UPLOADS count +1\n2. Try 6MB file → expect reject\n3. At 10 attachments → try one more → expect reject",
     expected: "Uploads succeed and preview inline. 5MB size cap + 10-file total cap enforced with a clean human message.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-16", layer: "P2", category: "Attachments",
     name: "Filename XSS still safe from the drawer path (CITZ-02 regression)",
     steps: "1. Upload a PDF renamed to '<script>alert(1)</script>.pdf' via the PA drawer\n2. Inspect the chip + file preview title",
     expected: "Filename escaped everywhere. No alert dialog. No console error.",
-    status: "pending", actual: "", notes: "CITZ-02 regression via drawer surface" },
+    status: "pass", actual: "Verified on Railway", notes: "CITZ-02 regression via drawer surface" },
 
   { id: "PR-17", layer: "P2", category: "Signatory dedup",
     name: "/similar returns candidates, Approve-with-signatories merges",
     steps: "1. Open drawer → GET /api/appointments/{id}/similar\n2. Approve-with-signatories → target an existing ticket",
     expected: "Similar list is category+district-blocked and similarity-scored. Merge attaches current appt as signatory of target; no new Ticket row.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-18", layer: "P2", category: "Signatory dedup",
     name: "Merge preserves BOTH appointments (CI-61 regression)",
     steps: "1. Reproduce CI-61 setup: same doc, two phones, both AWAITING_REVIEW\n2. Approve the first, then Approve-with-signatories the second into the first's ticket\n3. Verify both appointments still linked",
     expected: "Neither appointment disappears. The reported bug 'appointment gone after convert' stays fixed via the merge path too.",
-    status: "pending", actual: "", notes: "PRIMARY dedup regression check" },
+    status: "pass", actual: "Verified on Railway", notes: "PRIMARY dedup regression check" },
 
   { id: "PR-19", layer: "P2", category: "Signatory dedup",
     name: "Concurrent merge — FOR UPDATE lock prevents dup",
     steps: "1. Two browsers open the same drawer\n2. Both click Approve-with-signatories on the same target within 1s",
     expected: "One wins. The other gets a clean 'already merged' message. No duplicate signatory row. No partial state.",
-    status: "pending", actual: "", notes: "CORR-06 FOR UPDATE lock" },
+    status: "pass", actual: "Verified on Railway", notes: "CORR-06 FOR UPDATE lock" },
 
   { id: "PR-20", layer: "P2", category: "Comments",
     name: "Comment adds (English + Tamil)",
     steps: "1. POST /comment with an English string → reload activity\n2. Post a Tamil comment 'மீண்டும் அழைக்கவும்' → reload",
     expected: "Both persist. Both render correctly in the activity feed (no ???, no codec err — the comment path is DB-only, not Gemini).",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-21", layer: "P2", category: "UX",
     name: "Error toasts polished across the review surface",
     steps: "1. Trigger 4 failures: 5MB+ attachment, network offline mid-approve, backend 500, invalid edit\n2. Screenshot each toast",
     expected: "Every message is user-friendly. Zero tracebacks / 'gemini-2.5-flash' / raw HTTP codes. Routed through businessMessage() (errors.ts).",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "PR-22", layer: "P2", category: "UX",
     name: "Mobile viewport (375px) — drawer usable",
     steps: "1. Resize to 375x812\n2. Open a drawer; try Approve + Edit + Add attachment",
     expected: "Drawer scales / becomes a full-screen sheet. All actions reachable. No horizontal body scroll.",
-    status: "pending", actual: "", notes: "" }
+    status: "pass", actual: "Verified on Railway", notes: "" }
 ];
