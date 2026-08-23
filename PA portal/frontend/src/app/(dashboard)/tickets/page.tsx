@@ -40,6 +40,7 @@ const SEGMENTS: { key: string; tKey: string }[] = [
   { key: "",                  tKey: "tickets.segAll" },
   { key: "open",              tKey: "tickets.segOpen" },
   { key: "in_progress",       tKey: "tickets.segProgress" },
+  { key: "reopened",          tKey: "tickets.segReopened" },
   { key: "forwarded_to_dept", tKey: "tickets.segFwd" },
   { key: "resolved",          tKey: "tickets.segResolved" },
   { key: "closed",            tKey: "tickets.segClosed" },

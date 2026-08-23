@@ -24,10 +24,11 @@ interface Props {
 
 // Order matches the department workflow: Accept (new arrivals) →
 // In Progress (working on) → Forwarded (audit trail) → Resolved (finished).
-const SEGMENTS = ["assigned", "in_progress", "forwarded_out", "resolved"] as const;
+const SEGMENTS = ["assigned", "in_progress", "reopened", "forwarded_out", "resolved"] as const;
 const SEG_KEY: Record<string, string> = {
   assigned:      "seg.toAccept",
   in_progress:   "seg.inProgress",
+  reopened:      "seg.reopened",
   forwarded_out: "seg.forwarded",
   resolved:      "seg.resolved",
 };

@@ -18,6 +18,7 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     "seg.toAccept":     "To Accept",
     "seg.inProgress":   "In Progress",
+    "seg.reopened":     "Reopened",
     "seg.forwarded":    "Forwarded",
     "seg.resolved":     "Resolved",
 
@@ -126,6 +127,7 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     "seg.toAccept":     "ஏற்க வேண்டியவை",
     "seg.inProgress":   "நடைபெறுகிறது",
+    "seg.reopened":     "மீண்டும் திறந்தவை",
     "seg.forwarded":    "பரிந்துரைத்தவை",
     "seg.resolved":     "தீர்க்கப்பட்டவை",
 

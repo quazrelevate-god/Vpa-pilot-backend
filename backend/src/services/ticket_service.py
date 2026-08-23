@@ -832,53 +832,26 @@ async def reopen(
     *,
     reason: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """PA reopens a closed / resolved ticket.
+    """PA reopens a closed / resolved ticket → status=REOPENED.
 
-    Status semantics: match `department_service.reopen_ticket` — if the
-    ticket still has a dept of record (dept accepted it before it was
-    closed), reopening resumes their work → IN_PROGRESS; otherwise the
-    ticket is un-routed and needs PA triage again → OPEN.
-
-    Prior behaviour set status=REOPENED as a distinct terminal-ish
-    state, but neither the PA dashboard nor the dept portal has a
-    REOPENED status tab (SEGMENTS is [All, Open, In Progress, Fwd,
-    Resolved, Closed, Assigned] on the PA side and [assigned,
-    in_progress, forwarded_out, resolved] on the dept side). Reopened
-    tickets fell into "All" only and looked lost — dept officers
-    couldn't find their re-assigned work at all.
-
-    `reopened_at` + `reopen_count` + the REOPENED activity event
-    preserve the "this was reopened" audit trail; only the persistent
-    STATUS moves into an active bucket so the row actually surfaces
-    in day-to-day filters.
-
-    Legacy rows still carrying status="reopened" (from before this
-    fix) can be migrated with:
-        UPDATE ticket
-           SET status = CASE WHEN department IS NOT NULL
-                             THEN 'in_progress' ELSE 'open' END,
-               status_id = (SELECT id FROM ticket_statuses
-                             WHERE key = CASE WHEN department IS NOT NULL
-                                              THEN 'in_progress' ELSE 'open' END)
-         WHERE status = 'reopened';
+    Distinct status so both the PA dashboard and the dept portal can
+    show reopens as their own bucket (quality signal — how many
+    tickets are back for another round?). Both surfaces have a
+    "Reopened" tab in their SEGMENTS; without a dedicated status the
+    row would fall into "All" only.
     """
     t = await _load(db, ticket_id)
     if t is None:
         return None
     now = now_utc()
-    new_status = (TicketStatus.IN_PROGRESS.value if t.department
-                  else TicketStatus.OPEN.value)
-    t.status = new_status
-    t.status_id = v2.ticket_status_id(new_status)
+    t.status = TicketStatus.REOPENED.value
+    t.status_id = v2.ticket_status_id(TicketStatus.REOPENED.value)
     t.reopened_at = now
     t.reopen_count = (t.reopen_count or 0) + 1
     t.closed_at = None
     t.closure_reason = None
     _log(db, t.id, _EventType.REOPENED, actor,
-         note=reason, payload={
-             "reopen_count": t.reopen_count,
-             "new_status": new_status,
-         })
+         note=reason, payload={"reopen_count": t.reopen_count})
     await db.commit()
     return await get_ticket(db, ticket_id)
 
