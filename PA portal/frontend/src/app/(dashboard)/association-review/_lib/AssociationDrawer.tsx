@@ -250,7 +250,7 @@ export function AssociationDrawer({
 }: AssociationDrawerProps) {
   // bodyOnly implies readOnly — no decision desk in embedded mode.
   const effectiveReadOnly = readOnly || bodyOnly;
-  const { lang } = useLang();
+  const { lang, t: tr } = useLang();
   const ta = lang === "ta";
   // Defensive: the extraction JSON is typed as strings but at runtime AI
   // sometimes returns an array or object (partial extraction, prompt drift).
@@ -566,10 +566,10 @@ export function AssociationDrawer({
             >
               <div className="grid gap-2.5 sm:grid-cols-2">
                 {/* Identity — not editable; extracted facts. */}
-                <Tile icon={<Building2 className="h-3 w-3" />} label="Association name" value={d.association_name} />
-                <Tile icon={<UserRound className="h-3 w-3" />} label="Representative" value={d.representative_name} />
-                <Tile icon={<UserRound className="h-3 w-3" />} label="Designation" value={d.representative_designation} />
-                <Tile icon={<Users className="h-3 w-3" />} label="Membership" value={d.member_count} />
+                <Tile icon={<Building2 className="h-3 w-3" />} label={tr("assoc.tileAssociationName")} value={d.association_name} />
+                <Tile icon={<UserRound className="h-3 w-3" />} label={tr("assoc.tileRepresentative")} value={d.representative_name} />
+                <Tile icon={<UserRound className="h-3 w-3" />} label={tr("assoc.tileDesignation")} value={d.representative_designation} />
+                <Tile icon={<Users className="h-3 w-3" />} label={tr("assoc.tileMembership")} value={d.member_count} />
 
                 {/* Editable triage fields — swap to <Select> when editing.
                     Each Select uses "" (empty string) as the "clear" value
@@ -577,25 +577,25 @@ export function AssociationDrawer({
                 {editingFields ? (
                   <>
                     <EditSelect
-                      icon={<Landmark className="h-3 w-3" />} label="Category"
+                      icon={<Landmark className="h-3 w-3" />} label={tr("assoc.tileCategory")}
                       value={editForm.category}
                       onChange={(v) => setEditForm((f) => ({ ...f, category: v }))}
                       options={Object.entries(CATEGORY_DISPLAY_EN).map(([value, label]) => ({ value, label }))}
                     />
                     <EditSelect
-                      icon={<Building2 className="h-3 w-3" />} label="Ministry"
+                      icon={<Building2 className="h-3 w-3" />} label={tr("assoc.tileMinistry")}
                       value={editForm.ministry}
                       onChange={(v) => setEditForm((f) => ({ ...f, ministry: v }))}
                       options={Object.entries(MINISTRY_DISPLAY).map(([value, label]) => ({ value, label }))}
                     />
                     <EditSelect
-                      icon={<Flag className="h-3 w-3" />} label="Urgency"
+                      icon={<Flag className="h-3 w-3" />} label={tr("assoc.tileUrgency")}
                       value={editForm.urgency}
                       onChange={(v) => setEditForm((f) => ({ ...f, urgency: v }))}
                       options={URGENCY_OPTIONS}
                     />
                     <EditSelect
-                      icon={<MapPin className="h-3 w-3" />} label="District"
+                      icon={<MapPin className="h-3 w-3" />} label={tr("assoc.tileDistrict")}
                       value={editForm.district}
                       onChange={(v) => setEditForm((f) => ({ ...f, district: v }))}
                       options={Object.entries(DISTRICT_DISPLAY).map(([value, label]) => ({ value, label }))}
@@ -603,15 +603,15 @@ export function AssociationDrawer({
                   </>
                 ) : (
                   <>
-                    <Tile icon={<Landmark className="h-3 w-3" />} label="Category" value={titleCase(d.category)} />
-                    <Tile icon={<Building2 className="h-3 w-3" />} label="Ministry" value={MINISTRY_DISPLAY[d.ministry ?? ""] ?? titleCase(d.ministry)} />
-                    <Tile icon={<Flag className="h-3 w-3" />} label="Urgency" value={urg?.label ?? titleCase(d.urgency)} />
-                    <Tile icon={<MapPin className="h-3 w-3" />} label="District" value={DISTRICT_DISPLAY[d.district ?? ""] ?? d.district} />
+                    <Tile icon={<Landmark className="h-3 w-3" />} label={tr("assoc.tileCategory")} value={titleCase(d.category)} />
+                    <Tile icon={<Building2 className="h-3 w-3" />} label={tr("assoc.tileMinistry")} value={MINISTRY_DISPLAY[d.ministry ?? ""] ?? titleCase(d.ministry)} />
+                    <Tile icon={<Flag className="h-3 w-3" />} label={tr("assoc.tileUrgency")} value={urg?.label ?? titleCase(d.urgency)} />
+                    <Tile icon={<MapPin className="h-3 w-3" />} label={tr("assoc.tileDistrict")} value={DISTRICT_DISPLAY[d.district ?? ""] ?? d.district} />
                   </>
                 )}
 
-                <Tile icon={<CalendarClock className="h-3 w-3" />} label="Document date" value={d.document_date} mono />
-                <Tile icon={<Target className="h-3 w-3" />} label="Source" value={titleCase(d.source)} />
+                <Tile icon={<CalendarClock className="h-3 w-3" />} label={tr("assoc.tileDocumentDate")} value={d.document_date} mono />
+                <Tile icon={<Target className="h-3 w-3" />} label={tr("assoc.tileSource")} value={titleCase(d.source)} />
               </div>
             </SectionShell>
 
@@ -621,11 +621,11 @@ export function AssociationDrawer({
             <SectionShell n={2} id="ask" title="The collective ask">
               <div className="space-y-3">
                 <Reading
-                  label="Ask"
+                  label={tr("assoc.readAsk")}
                   text={specified(ask) ? ask : "No clear collective ask stated in the document"}
                   muted={!specified(ask)}
                 />
-                <Reading label="Why now" text={demand} />
+                <Reading label={tr("assoc.readWhyNow")} text={demand} />
               </div>
             </SectionShell>
 
@@ -636,7 +636,7 @@ export function AssociationDrawer({
             <SectionShell n={3} id="summary" title="Summary">
               <div className="space-y-3">
                 <Reading
-                  label="Overview"
+                  label={tr("assoc.readOverview")}
                   text={specified(summary) ? summary : "No summary extracted — the source document may be thin or unreadable"}
                   muted={!specified(summary)}
                 />
@@ -700,11 +700,11 @@ export function AssociationDrawer({
             <SectionShell n={5} id="outcome" title="Outcome & precedent">
               <div className="space-y-3">
                 <Reading
-                  label="Expected outcome (as stated)"
+                  label={tr("assoc.readOutcome")}
                   text={specified(outcome) ? outcome : "No concrete expected outcome stated in the document"}
                   muted={!specified(outcome)}
                 />
-                <Reading label="Precedent / prior actions" text={precedent} />
+                <Reading label={tr("assoc.readPrecedent")} text={precedent} />
               </div>
             </SectionShell>
 
@@ -829,7 +829,7 @@ export function AssociationDrawer({
                       className="border-2 border-brand/40 font-semibold text-brand hover:border-brand hover:bg-brand/5 hover:text-brand"
                     >
                       <Pencil className="h-3.5 w-3.5" />
-                      {d.decision_note ? "Edit note" : "Add note"}
+                      {d.decision_note ? tr("assoc.btnEditNote") : tr("assoc.btnAddNote")}
                     </Button>
                   </div>
                 )}
@@ -852,7 +852,7 @@ export function AssociationDrawer({
                 <Textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="Follow-up note…"
+                  placeholder={tr("assoc.phFollowUpNote")}
                   className="min-h-[70px] resize-none text-sm"
                   autoFocus
                 />
@@ -867,7 +867,7 @@ export function AssociationDrawer({
                     className="bg-brand font-semibold text-white hover:bg-brand/90 !bg-none"
                   >
                     {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    Save note
+                    {tr("assoc.btnSaveNote")}
                   </Button>
                 </div>
               </>
@@ -881,8 +881,8 @@ export function AssociationDrawer({
                   onChange={(e) => setNote(e.target.value)}
                   placeholder={
                     isInternal
-                      ? "Note for the ticket (optional)…"
-                      : "Reason for forwarding to this ministry (required)…"
+                      ? tr("assoc.phTicketNote")
+                      : tr("assoc.phForwardReason")
                   }
                   className="min-h-[60px] resize-none text-sm"
                 />

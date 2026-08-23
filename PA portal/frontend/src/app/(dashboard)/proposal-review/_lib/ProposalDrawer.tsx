@@ -178,7 +178,7 @@ export function ProposalDrawer({
   onCategorySaved,
   onPrev, onNext, hasPrev, hasNext, navLoading,
 }: ProposalDrawerProps) {
-  const { lang } = useLang();
+  const { lang, t: tr } = useLang();
 
   // Category reassignment (section 10). Draft lives here until Save, so an
   // accidental change to the picker never writes anything.
@@ -699,7 +699,7 @@ export function ProposalDrawer({
                     className="border-2 border-brand/40 font-semibold text-brand hover:border-brand hover:bg-brand/5 hover:text-brand"
                   >
                     <Pencil className="h-3.5 w-3.5" />
-                    {d.decision_note ? "Edit note" : "Add note"}
+                    {d.decision_note ? tr("prop.drawerEditNote") : tr("prop.drawerAddNote")}
                   </Button>
                 )}
                 <Button
@@ -723,7 +723,7 @@ export function ProposalDrawer({
                   onClick={() => setEditingNote(false)}
                   className="text-brand hover:underline"
                 >
-                  Cancel
+                  {tr("prop.drawerCancel")}
                 </button>
               </div>
               <Textarea
@@ -744,7 +744,7 @@ export function ProposalDrawer({
                   className="bg-brand font-semibold text-white hover:bg-brand/90 !bg-none"
                 >
                   {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  Save note
+                  {tr("prop.drawerSaveNote")}
                 </Button>
               </div>
             </>
