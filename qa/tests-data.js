@@ -9,7 +9,7 @@ window.META = {
   environment: "Railway (testing)",
   gitSha: "daa51f8",
   updated: "2026-08-23",
-  activeLayer: "P4 — Events (voice + photo)"
+  activeLayer: "P5 — Executive / Dept / Minister"
 };
 
 window.LAYERS = [
@@ -41,7 +41,13 @@ window.LAYERS = [
     order: 4,
     active: true
   },
-  { key: "P5", label: "Phase 5 — Executive / Dept / Minister",  order: 5, active: false },
+  {
+    key: "P5",
+    label: "Phase 5 — Executive / Dept / Minister",
+    surface: "Escalation ladder — Executive Queue, Department portal, Minister PWA",
+    order: 5,
+    active: true
+  },
   { key: "P6", label: "Phase 6 — Cross-cutting sanity",         order: 6, active: false }
 ];
 
@@ -970,105 +976,251 @@ window.TEST_CASES = [
     name: "Events login works with seeded events_reviewer credentials",
     steps: "1. Log in to /dashboard/login as admin-office (seeds event_reviewer role)\n2. Then log in to /events/login with the same credentials",
     expected: "Both logins succeed. events_session cookie set. No 401 / no 'unauthorized' with legitimate creds.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Verifies events_auth.py real-user path (env-credential path was removed — see prior incident)" },
 
   { id: "EV-02", layer: "P4", category: "Events — Access",
     name: "Direct URL without events_session → clean redirect",
     steps: "1. Wipe events_session cookie\n2. Navigate to /events directly",
     expected: "Redirect to /events/login. No 500 / no blank page.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-03", layer: "P4", category: "Events — Add",
     name: "Manual event add (title / venue / date / note) → appears in list",
     steps: "1. Open events UI, click Add Event\n2. Fill title, venue, date, optional note\n3. Save",
     expected: "New row in list. All fields populated. No AI extraction path fired for manual entry.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-04", layer: "P4", category: "Events — Voice",
     name: "Tamil voice add → 200 OK, extraction runs (SDK ASCII fix regression)",
     steps: "1. Record a 20s Tamil voice describing an event\n2. Upload via voice add flow",
     expected: "200 OK. Extraction populates title_en / title_ta / venue / date. NO UnicodeEncodeError. NO 500 from the google-genai httpx header path.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Regression for event_service.py _ascii_safe fix (voice-note ASCII scrub before Gemini call)" },
 
   { id: "EV-05", layer: "P4", category: "Events — Voice",
     name: "Tamil voice + Tamil note field → 200 OK",
     steps: "1. Same as EV-04\n2. Type Tamil text into the note field before upload",
     expected: "200 OK. Note preserved on the event row. No header-encoding crash.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-06", layer: "P4", category: "Events — Voice",
     name: "English voice add → extraction runs",
     steps: "1. Record 20s English voice describing an event\n2. Upload",
     expected: "Extraction returns English title / venue. Row created.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-07", layer: "P4", category: "Events — Photo",
     name: "Photo add — invitation card image → OCR extraction",
     steps: "1. Upload a photo of an invitation card\n2. Wait for extraction",
     expected: "title / venue / date extracted; row appears in list with source doc viewable inline.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-08", layer: "P4", category: "Events — Photo",
     name: "Blurry / non-invitation image → polished error (businessMessage)",
     steps: "1. Upload a random selfie / blurry image\n2. Watch EventPopup / error toast",
     expected: "User-friendly message ('could not read'). NO Python traceback. NO 'gemini-2.5-flash' / 'codec' strings.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Regression for TECHNICAL regex + businessMessage() in EventPopup" },
 
   { id: "EV-09", layer: "P4", category: "Events — List",
     name: "Default list shows upcoming events",
     steps: "1. Load /events\n2. Verify default view",
     expected: "Upcoming events (date >= today) sorted by date ascending. Past events hidden or in a separate section.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-10", layer: "P4", category: "Events — List",
     name: "Date range filter + search by title/venue",
     steps: "1. Apply a date range → verify rows narrow\n2. Search by partial title / venue name",
     expected: "Both narrow the visible set correctly. Clear-all restores.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-11", layer: "P4", category: "Events — Detail",
     name: "EventPopup opens on row click with bilingual content",
     steps: "1. Click a Tamil-added event (has title_ta populated)\n2. Toggle language",
     expected: "Popup shows title / venue / note in the selected language via title_ta / venue_ta fields. No mojibake.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-12", layer: "P4", category: "Events — Detail",
     name: "Error field renders polished text (businessMessage regression)",
     steps: "1. Force an event to be in the error_message state (upload a bad file OR find a historically-failed event)\n2. Open EventPopup",
     expected: "error_message rendered via businessMessage() — user-friendly text, not raw 'UnicodeEncodeError: ascii codec can't encode...' or 'gemini-2.5-flash failed on all models'.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Regression for 5bbbc1c EventPopup businessMessage() wiring + TECHNICAL regex" },
 
   { id: "EV-13", layer: "P4", category: "Events — Edit",
     name: "Edit event fields → persists",
     steps: "1. Open an existing event\n2. Edit title / venue / date\n3. Save; reload",
     expected: "Changes persist across reload. Activity log or last-updated stamp reflects the edit.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-14", layer: "P4", category: "Events — Edit",
     name: "Delete event → gone from list",
     steps: "1. Delete an event (with confirmation)\n2. Verify list",
     expected: "Row removed. No orphan attachments left in storage (soft delete OK if that's the design).",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EV-15", layer: "P4", category: "Events — Edit",
     name: "Concurrent edit (two tabs) — clean last-write-wins",
     steps: "1. Open same event in two tabs\n2. Edit + save in tab A\n3. Edit + save in tab B without refresh",
     expected: "Second save overwrites cleanly OR clean 'this event was updated elsewhere' message. No silent 500 / no lost data.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "T4-01", layer: "P4", category: "UX",
     name: "All error toasts polished across the events surface",
     steps: "1. Trigger failures: 5MB+ audio, 5MB+ image, network offline mid-upload, backend 500, invalid extract\n2. Screenshot each toast",
     expected: "Every message user-friendly. Zero tracebacks / raw HTTP codes / 'gemini-*' / 'codec'. Routed through the businessMessage() polish path.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "T4-02", layer: "P4", category: "UX",
     name: "Mobile viewport (375px) — record voice + view event usable",
     steps: "1. Resize to 375x812\n2. Try the voice-add recorder\n3. Open EventPopup",
     expected: "Recorder buttons reachable. Popup scales / goes full-screen. No horizontal body scroll.",
+    status: "pass", actual: "Verified on Railway", notes: "" },
+
+  // -------------------------------------------------------------------------
+  // Phase 5 — Executive / Dept / Minister  (escalation ladder)
+  // -------------------------------------------------------------------------
+  // EX-* Executive Queue (aggregated triage view)
+  // DP-* Department portal (dept_officer workflow — deeper than TK cases)
+  // MN-* Minister PWA (read-only, ministry-scoped)
+  // T5-* cross-cutting
+
+  // ============================================================
+  // Executive Queue — /executive-queue (or wherever it's mounted)
+  // ============================================================
+  { id: "EX-01", layer: "P5", category: "Exec Queue — Access",
+    name: "RBAC — office admin sees the queue, dept_officer redirected",
+    steps: "1. Log in as pa_admin → navigate to Executive Queue\n2. Log in as dept_officer → try Executive Queue directly",
+    expected: "pa_admin loads. dept_officer redirected to /tickets. No cross-role leak.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EX-02", layer: "P5", category: "Exec Queue — List",
+    name: "List + filters + pill counts match current view",
+    steps: "1. Load queue → verify aggregated tickets across depts\n2. Apply priority / dept / status filters\n3. Check pill counts follow current filter (WYSIWYG)",
+    expected: "Every filter narrows the visible set. Pill counts = list count for the same tab. SLA-breached chip also narrows.",
+    status: "pending", actual: "",
+    notes: "Regression for 3f0df68 pill-count parity (was fixed on tickets, exec queue may share the pattern)" },
+
+  { id: "EX-03", layer: "P5", category: "Exec Queue — Actions",
+    name: "Escalate action creates activity + notifies stakeholders",
+    steps: "1. Open an SLA-breached ticket\n2. Click Escalate; add reason\n3. Check activity log + notification dispatch",
+    expected: "Activity row: action_type='escalated', actor=admin, reason preserved. Notification fires (log line visible).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EX-04", layer: "P5", category: "Exec Queue — Actions",
+    name: "SLA-breached chip filter — WYSIWYG count",
+    steps: "1. Note the breached chip count\n2. Apply a filter that narrows the queue\n3. Verify chip count updates to match the filtered view",
+    expected: "Breached chip counts current filter set (0cde4ed reversal — chip is filter-aware, not office-wide).",
+    status: "pending", actual: "", notes: "Regression for 0cde4ed" },
+
+  // ============================================================
+  // Department portal — /department/*
+  // ============================================================
+  { id: "DP-01", layer: "P5", category: "Dept — Access",
+    name: "dept_officer login → sees only own dept's tickets",
+    steps: "1. Log in as a dept_officer (dept_a)\n2. Try to open a ticket from dept_b directly via URL",
+    expected: "dept_a's tickets visible. dept_b's ticket → 403 with clean 'not authorized' message (not 500).",
+    status: "pending", actual: "",
+    notes: "Regression for f40c2f6 HTTPException import fix (clean 403 not 500)" },
+
+  { id: "DP-02", layer: "P5", category: "Dept — Lifecycle",
+    name: "Accept flow — status → IN_PROGRESS, accepted_at + accepted_by set",
+    steps: "1. Open a ticket routed to caller's dept in ASSIGNED state\n2. Click Accept\n3. Verify state + activity log",
+    expected: "Ticket.status = IN_PROGRESS. accepted_at / accepted_by populated. Activity row action_type='department_accepted'.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "DP-03", layer: "P5", category: "Dept — Lifecycle",
+    name: "Progress update — note + optional pct",
+    steps: "1. On an IN_PROGRESS ticket, post a progress update with a note + 40% pct\n2. Verify activity log + ticket state",
+    expected: "Activity row: action_type='progress_update', note preserved, payload.progress_pct=40. Ticket.progress_pct=40.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "DP-04", layer: "P5", category: "Dept — Lifecycle",
+    name: "Forward to another dept — reason required, cannot self-forward",
+    steps: "1. On an owned ticket, click Forward → target = own dept → expect reject\n2. Forward without reason → expect reject\n3. Forward to dept_b with reason 'requires their expertise'",
+    expected: "Self-forward returns 400 'Cannot forward to the same department'. No reason returns 400 'A reason is required'. Valid forward: status=ASSIGNED, department=dept_b, accepted_at cleared, activity 'department_forwarded' with reason in payload.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "DP-05", layer: "P5", category: "Dept — Lifecycle",
+    name: "Resolve — mandatory remarks + at least one proof attachment",
+    steps: "1. On IN_PROGRESS, click Resolve without remarks → reject\n2. Add remarks, no attachment → reject\n3. Add remarks + one proof file → succeed",
+    expected: "Both empty cases return 400 with clean message. Valid resolve: status=RESOLVED, remarks stored, attachment linked, activity 'resolved'.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "DP-06", layer: "P5", category: "Dept — Attachments",
+    name: "All three attachment namespaces resolve correctly for dept",
+    steps: "1. Open a ticket derived from an AI upload → click the citizen's original PDF (ai_uploads/…)\n2. Open an appointment attachment (attachments/…)\n3. Open a ticket attachment uploaded by PA (ticket_attachments/…)\n4. Try a proposals/ URL — expect 403",
+    expected: "First three render inline (200). proposals/ → 403 (no UI for it). Dept activity trail includes upload if they added one — regression for 7fd0118.",
+    status: "pending", actual: "",
+    notes: "Combines cbc9c8c (ai_uploads/ branch) + 7fd0118 (dept-add-attachment threads ticket_id + actor) + fail-closed defaults" },
+
+  { id: "DP-07", layer: "P5", category: "Dept — Lifecycle",
+    name: "Reopen from PA side → ticket comes back to dept",
+    steps: "1. Dept resolves a ticket\n2. PA reopens it via ticket drawer\n3. Verify state on dept portal",
+    expected: "Ticket.status=REOPENED, visible again in dept's active list. Activity log has both 'resolved' and 'reopened' rows.",
+    status: "pending", actual: "", notes: "" },
+
+  // ============================================================
+  // Minister PWA — /minister/*
+  // ============================================================
+  { id: "MN-01", layer: "P5", category: "Minister — Access",
+    name: "Minister login → PWA loads with service worker",
+    steps: "1. Log in via /minister/login\n2. Verify /minister/sw.js registers cleanly\n3. Check service worker scope",
+    expected: "Login sets minister_session. /minister/sw.js served with Content-Type application/javascript + Service-Worker-Allowed: /minister/ (next.config.mjs headers). PWA installable.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "MN-02", layer: "P5", category: "Minister — Read-only",
+    name: "No mutation controls visible — read-only surface",
+    steps: "1. Open a ticket / association / proposal on the minister PWA\n2. Scan for edit / assign / approve / reject buttons",
+    expected: "Zero mutation controls. Only view + navigation. Attempting a mutation API call via devtools → 403.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "MN-03", layer: "P5", category: "Minister — File access",
+    name: "/api/files → /minister/api/files URL rewrite works",
+    steps: "1. Open a ticket with an attachment\n2. Inspect the attachment URL in devtools",
+    expected: "URLs in the payload rewritten from /api/files/… to /minister/api/files/… (minister.py:208). Fetch succeeds via minister_session cookie.",
+    status: "pending", actual: "",
+    notes: "Regression for the deep-rewrite pattern in minister.py" },
+
+  { id: "MN-04", layer: "P5", category: "Minister — File access",
+    name: "Attachment preview iframe renders (CI-89 regression from minister surface)",
+    steps: "1. Open a ticket / association with a PDF attachment on the minister PWA\n2. Verify the iframe renders",
+    expected: "PDF renders inline (not 'blocked:other'). /minister/api/files/… is in the middleware's embeddable-prefix list (see main.py _EMBEDDABLE_PREFIXES).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "MN-05", layer: "P5", category: "Minister — Scoping",
+    name: "Ministry-scoped view — sees only assigned-ministry rows",
+    steps: "1. Log in as a minister assigned to ministry X\n2. Load list — verify all rows are ministry-X\n3. Try to open a ticket from ministry Y directly",
+    expected: "List filtered to ministry X only. Direct-URL to another ministry's ticket → 403 / redirect, not silent view.",
+    status: "pending", actual: "", notes: "" },
+
+  // ============================================================
+  // Cross-cutting
+  // ============================================================
+  { id: "T5-01", layer: "P5", category: "Cross-cutting",
+    name: "RBAC gates on all escalation endpoints (Group 3 audit)",
+    steps: "1. For each of the 6 escalation endpoints (accept / forward / progress / resolve / reopen / escalate), try calling as an unauthorized role\n2. Expect 403 on every one",
+    expected: "Every endpoint gates by role. dept_officer can't hit exec-only routes. minister can't mutate. Cross-dept dept_officer gets 403 on other-dept tickets.",
+    status: "pending", actual: "",
+    notes: "Regression for Group 3 RBAC hardening (audit fix batch)" },
+
+  { id: "T5-02", layer: "P5", category: "Cross-cutting",
+    name: "i18n copy — no 'referral' vocabulary drift in exec/dept surfaces",
+    steps: "1. Scan the Executive Queue + Dept portal UI\n2. Look for stray 'referral' / 'refer' terms",
+    expected: "Zero 'referral' vocabulary — replaced with 'petition' / 'case' / 'ticket' terminology per 2599564. Consistent with citizen-facing form.",
+    status: "pending", actual: "",
+    notes: "Regression for 2599564 i18n(exec-queue) cleanup" },
+
+  { id: "T5-03", layer: "P5", category: "Cross-cutting",
+    name: "Polished error toasts across all three surfaces",
+    steps: "1. Trigger failures on Exec Queue, Dept portal, Minister PWA\n2. Screenshot each toast",
+    expected: "Every message user-friendly. Zero tracebacks / raw HTTP codes / 'gemini-*'. Routed through businessMessage() (errors.ts).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "T5-04", layer: "P5", category: "Cross-cutting",
+    name: "Mobile viewport (375px) — Minister PWA usable",
+    steps: "1. Resize to 375x812\n2. Log in as minister → open a ticket\n3. Verify layout + interaction",
+    expected: "PWA scales to mobile. Nav + drawers usable with thumbs. No horizontal body scroll. Service worker still registered.",
     status: "pending", actual: "", notes: "" }
 ];
