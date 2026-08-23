@@ -558,7 +558,13 @@ export default function TicketDetailDrawer({
                     const effDept = pendingDept ?? t.assigned_department ?? "";
                     const effDue  = pendingDue  ?? (t.due_date ?? "");
                     const dirty   = (effDept !== (t.assigned_department ?? "")) || (effDue !== (t.due_date ?? ""));
-                    const ready   = !!effDept && !!effDue;
+                    // Assign is a routing action — only dept is required.
+                    // Due-date is a separate SLA field that lives on its own
+                    // (live-saves through canEditSla for non-OPEN tickets,
+                    // stages here for OPEN so PA can save both at once).
+                    // Requiring due-date here blocked "just route to dept"
+                    // whenever the ticket had no due-date yet.
+                    const ready   = !!effDept;
                     const showBtn = canEdit && !t.accepted_at;
                     return (
                       <>

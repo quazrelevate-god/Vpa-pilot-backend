@@ -1339,18 +1339,22 @@ function AiReviewPageInner() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Retry-all-failed is contextual to the Failed tab only —
-                  rendered on every tab so its position is stable, but disabled
-                  outside FAILED (and when there's nothing to retry) so it can't
-                  fire in the wrong context. */}
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-[38px] rounded-xl border-red-300 text-red-700 disabled:border-slate-200 disabled:text-muted-foreground disabled:opacity-60"
-                disabled={fStatus !== "FAILED" || failedCount === 0}
-                onClick={() => retry(aggregates?.failed_ids ?? [])}>
-                <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retryAllFailed")}
-              </Button>
+              {/* Retry-all-failed is contextual to the Failed tab only.
+                  Prior UX rendered it on every tab (disabled outside
+                  FAILED) for a stable slot in the row — but users read
+                  the greyed button as "something's wrong" and asked for
+                  it to disappear until it actually applies. Hide unless
+                  the Failed filter is active AND there's something to
+                  retry. */}
+              {fStatus === "FAILED" && failedCount > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-[38px] rounded-xl border-red-300 text-red-700"
+                  onClick={() => retry(aggregates?.failed_ids ?? [])}>
+                  <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t("petition.retryAllFailed")}
+                </Button>
+              )}
               {([
                 ["today", t("petition.dateToday"), CalendarCheck],
                 ["this_week", t("petition.dateThisWeek"), CalendarRange],
