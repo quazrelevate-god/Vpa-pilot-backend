@@ -93,14 +93,22 @@ async def _dept_authorize_file(
 
     Now: mirrors dashboard._authorize_file_access but scopes strictly to the
     caller's own department key. Dept users only ever legitimately need:
-      - attachments/… on an Appointment whose Ticket is routed to their dept
+      - attachments/…      on an Appointment whose Ticket is routed to
+                           their dept
       - ticket_attachments/… on a Ticket routed to their dept
-    Every other namespace (ai_uploads/, proposals/, associations/) 403s —
-    dept accounts don't have a UI surface for them and never should.
+      - ai_uploads/…       on an AiUpload approved into a Ticket routed
+                           to their dept (the citizen's original PDF /
+                           image / audio — AiUpload.storage_url doesn't
+                           get relocated on approve, so the drawer's
+                           preview URL still points at the ai_uploads/
+                           key even after routing to a department)
+    Every other namespace (proposals/, associations/) 403s — dept
+    accounts don't have a UI surface for them and never should.
     """
     from sqlalchemy import func
     from src.models.appointment_models import AppointmentAttachment
     from src.models.ticket_models import Ticket, TicketAttachment
+    from src.models.ai_upload_models import AiUpload
 
     _deny = HTTPException(status_code=403, detail="Not authorized to access this file.")
 
@@ -134,8 +142,27 @@ async def _dept_authorize_file(
             raise _deny
         return
 
-    # Fail-closed on every other namespace — dept has no UI for ai_uploads/
-    # proposals/ associations/ and must never be able to enumerate them.
+    if file_path.startswith("ai_uploads/"):
+        # AiUpload gets a ticket_id set only when a PA approves it into a
+        # Ticket (see ai_upload_service.move_to_petition / dashboard_service
+        # approval path). Rows still at AWAITING_REVIEW / DISMISSED have
+        # ticket_id = NULL — those are PA-only and must remain a 403 for
+        # dept accounts. scalar_one_or_none() collapses "no such row" and
+        # "row exists with ticket_id NULL" to None — both correctly deny.
+        ticket_id = (await db.execute(
+            select(AiUpload.ticket_id)
+            .where(AiUpload.storage_url == file_path)
+            .limit(1)
+        )).scalar_one_or_none()
+        if ticket_id is None:
+            raise _deny
+        t = await db.get(Ticket, ticket_id)
+        if t is None or t.department != department:
+            raise _deny
+        return
+
+    # Fail-closed on every other namespace — dept has no UI for proposals/
+    # associations/ and must never be able to enumerate them.
     raise _deny
 
 

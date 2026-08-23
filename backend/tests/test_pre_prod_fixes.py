@@ -637,3 +637,84 @@ class TestTicketingHttpExceptionImport:
         # not a shadowed local from somewhere else.
         from fastapi import HTTPException as _FastAPIHTTPException
         assert ticketing.HTTPException is _FastAPIHTTPException
+
+
+# ─── Dept file-serve: ai_uploads/ allowed when routed to caller's dept ────────
+
+class TestDeptAiUploadsAccess:
+    """USER-REPORTED: dept officer can open ticket #79 (200) but its citizen-
+    uploaded PDF returns 403. Root: `_dept_authorize_file` had `attachments/`
+    and `ticket_attachments/` branches but every ai_uploads/… key (which is
+    where the citizen's original PDF lives even after the AI upload is
+    approved into a ticket) fell through to the fail-closed `raise _deny`.
+
+    Fix: add an ai_uploads/ branch that gates on `AiUpload.ticket_id →
+    Ticket.department == caller's department`. Approved-but-cross-dept
+    AND unapproved (ticket_id=NULL) both still deny.
+
+    Uses a stub DB so the branch logic is exercised without a live
+    Postgres — one execute-then-scalar and one get-Ticket-by-pk.
+    """
+
+    def _make_stub_db(self, ticket_id, ticket_dept):
+        """Fake AsyncSession: db.execute returns an object with
+        scalar_one_or_none() -> ticket_id; db.get(Ticket, id) -> Ticket-like
+        with .department = ticket_dept (or None if ticket_id is None)."""
+        class _ExecResult:
+            def scalar_one_or_none(_self):
+                return ticket_id
+        class _Ticket:
+            department = ticket_dept
+        class _StubDB:
+            async def execute(_self, *args, **kwargs):
+                return _ExecResult()
+            async def get(_self, model, pk):
+                if ticket_id is None or pk != ticket_id:
+                    return None
+                return _Ticket()
+        return _StubDB()
+
+    def _run(self, file_path, caller_dept, ticket_id, ticket_dept):
+        import asyncio
+        from src.api.v1.ticketing import _dept_authorize_file
+        db = self._make_stub_db(ticket_id, ticket_dept)
+        return asyncio.run(_dept_authorize_file(file_path, caller_dept, db))
+
+    def test_ai_uploads_approved_into_callers_dept_allowed(self):
+        # AiUpload row exists, ticket_id=42, Ticket.department == "dept_a",
+        # caller is dept_a → allowed (returns None, no raise).
+        assert self._run("ai_uploads/batch-x/y.pdf", "dept_a", 42, "dept_a") is None
+
+    def test_ai_uploads_approved_into_different_dept_denied(self):
+        # Same file, but the ticket routed to dept_b → dept_a must 403.
+        from fastapi import HTTPException
+        try:
+            self._run("ai_uploads/batch-x/y.pdf", "dept_a", 42, "dept_b")
+        except HTTPException as e:
+            assert e.status_code == 403
+        else:
+            raise AssertionError("expected HTTPException(403), got clean return")
+
+    def test_ai_uploads_unapproved_still_denied_for_dept(self):
+        # AiUpload row present but ticket_id=None (still under PA review) →
+        # scalar_one_or_none returns None → deny. Dept must never enumerate
+        # unapproved bulk-uploaded PDFs.
+        from fastapi import HTTPException
+        try:
+            self._run("ai_uploads/batch-x/y.pdf", "dept_a", None, None)
+        except HTTPException as e:
+            assert e.status_code == 403
+        else:
+            raise AssertionError("expected HTTPException(403)")
+
+    def test_unknown_namespace_still_denied(self):
+        # proposals/… and associations/… must remain 403 for dept — no UI
+        # surface exists and enumeration would be an IDOR.
+        from fastapi import HTTPException
+        for path in ("proposals/x.pdf", "associations/y.pdf", "random/z.pdf"):
+            try:
+                self._run(path, "dept_a", 42, "dept_a")
+            except HTTPException as e:
+                assert e.status_code == 403
+            else:
+                raise AssertionError(f"{path!r} should have 403'd")
