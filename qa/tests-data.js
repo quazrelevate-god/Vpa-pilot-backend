@@ -9,7 +9,7 @@ window.META = {
   environment: "Railway (testing)",
   gitSha: "daa51f8",
   updated: "2026-08-23",
-  activeLayer: "P5 — Executive / Dept / Minister"
+  activeLayer: "P6 — Cross-cutting sanity"
 };
 
 window.LAYERS = [
@@ -48,7 +48,13 @@ window.LAYERS = [
     order: 5,
     active: true
   },
-  { key: "P6", label: "Phase 6 — Cross-cutting sanity",         order: 6, active: false }
+  {
+    key: "P6",
+    label: "Phase 6 — Cross-cutting sanity",
+    surface: "System-wide concerns — auth boundaries, perf, security headers, PII, prod gates",
+    order: 6,
+    active: true
+  }
 ];
 
 // -------------------------------------------------------------------------
@@ -1093,26 +1099,26 @@ window.TEST_CASES = [
     name: "RBAC — office admin sees the queue, dept_officer redirected",
     steps: "1. Log in as pa_admin → navigate to Executive Queue\n2. Log in as dept_officer → try Executive Queue directly",
     expected: "pa_admin loads. dept_officer redirected to /tickets. No cross-role leak.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EX-02", layer: "P5", category: "Exec Queue — List",
     name: "List + filters + pill counts match current view",
     steps: "1. Load queue → verify aggregated tickets across depts\n2. Apply priority / dept / status filters\n3. Check pill counts follow current filter (WYSIWYG)",
     expected: "Every filter narrows the visible set. Pill counts = list count for the same tab. SLA-breached chip also narrows.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Regression for 3f0df68 pill-count parity (was fixed on tickets, exec queue may share the pattern)" },
 
   { id: "EX-03", layer: "P5", category: "Exec Queue — Actions",
     name: "Escalate action creates activity + notifies stakeholders",
     steps: "1. Open an SLA-breached ticket\n2. Click Escalate; add reason\n3. Check activity log + notification dispatch",
     expected: "Activity row: action_type='escalated', actor=admin, reason preserved. Notification fires (log line visible).",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "EX-04", layer: "P5", category: "Exec Queue — Actions",
     name: "SLA-breached chip filter — WYSIWYG count",
     steps: "1. Note the breached chip count\n2. Apply a filter that narrows the queue\n3. Verify chip count updates to match the filtered view",
     expected: "Breached chip counts current filter set (0cde4ed reversal — chip is filter-aware, not office-wide).",
-    status: "pending", actual: "", notes: "Regression for 0cde4ed" },
+    status: "pass", actual: "Verified on Railway", notes: "Regression for 0cde4ed" },
 
   // ============================================================
   // Department portal — /department/*
@@ -1121,45 +1127,45 @@ window.TEST_CASES = [
     name: "dept_officer login → sees only own dept's tickets",
     steps: "1. Log in as a dept_officer (dept_a)\n2. Try to open a ticket from dept_b directly via URL",
     expected: "dept_a's tickets visible. dept_b's ticket → 403 with clean 'not authorized' message (not 500).",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Regression for f40c2f6 HTTPException import fix (clean 403 not 500)" },
 
   { id: "DP-02", layer: "P5", category: "Dept — Lifecycle",
     name: "Accept flow — status → IN_PROGRESS, accepted_at + accepted_by set",
     steps: "1. Open a ticket routed to caller's dept in ASSIGNED state\n2. Click Accept\n3. Verify state + activity log",
     expected: "Ticket.status = IN_PROGRESS. accepted_at / accepted_by populated. Activity row action_type='department_accepted'.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "DP-03", layer: "P5", category: "Dept — Lifecycle",
     name: "Progress update — note + optional pct",
     steps: "1. On an IN_PROGRESS ticket, post a progress update with a note + 40% pct\n2. Verify activity log + ticket state",
     expected: "Activity row: action_type='progress_update', note preserved, payload.progress_pct=40. Ticket.progress_pct=40.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "DP-04", layer: "P5", category: "Dept — Lifecycle",
     name: "Forward to another dept — reason required, cannot self-forward",
     steps: "1. On an owned ticket, click Forward → target = own dept → expect reject\n2. Forward without reason → expect reject\n3. Forward to dept_b with reason 'requires their expertise'",
     expected: "Self-forward returns 400 'Cannot forward to the same department'. No reason returns 400 'A reason is required'. Valid forward: status=ASSIGNED, department=dept_b, accepted_at cleared, activity 'department_forwarded' with reason in payload.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "DP-05", layer: "P5", category: "Dept — Lifecycle",
     name: "Resolve — mandatory remarks + at least one proof attachment",
     steps: "1. On IN_PROGRESS, click Resolve without remarks → reject\n2. Add remarks, no attachment → reject\n3. Add remarks + one proof file → succeed",
     expected: "Both empty cases return 400 with clean message. Valid resolve: status=RESOLVED, remarks stored, attachment linked, activity 'resolved'.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "DP-06", layer: "P5", category: "Dept — Attachments",
     name: "All three attachment namespaces resolve correctly for dept",
     steps: "1. Open a ticket derived from an AI upload → click the citizen's original PDF (ai_uploads/…)\n2. Open an appointment attachment (attachments/…)\n3. Open a ticket attachment uploaded by PA (ticket_attachments/…)\n4. Try a proposals/ URL — expect 403",
     expected: "First three render inline (200). proposals/ → 403 (no UI for it). Dept activity trail includes upload if they added one — regression for 7fd0118.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Combines cbc9c8c (ai_uploads/ branch) + 7fd0118 (dept-add-attachment threads ticket_id + actor) + fail-closed defaults" },
 
   { id: "DP-07", layer: "P5", category: "Dept — Lifecycle",
     name: "Reopen from PA side → ticket comes back to dept",
     steps: "1. Dept resolves a ticket\n2. PA reopens it via ticket drawer\n3. Verify state on dept portal",
     expected: "Ticket.status=REOPENED, visible again in dept's active list. Activity log has both 'resolved' and 'reopened' rows.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   // ============================================================
   // Minister PWA — /minister/*
@@ -1168,32 +1174,32 @@ window.TEST_CASES = [
     name: "Minister login → PWA loads with service worker",
     steps: "1. Log in via /minister/login\n2. Verify /minister/sw.js registers cleanly\n3. Check service worker scope",
     expected: "Login sets minister_session. /minister/sw.js served with Content-Type application/javascript + Service-Worker-Allowed: /minister/ (next.config.mjs headers). PWA installable.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "MN-02", layer: "P5", category: "Minister — Read-only",
     name: "No mutation controls visible — read-only surface",
     steps: "1. Open a ticket / association / proposal on the minister PWA\n2. Scan for edit / assign / approve / reject buttons",
     expected: "Zero mutation controls. Only view + navigation. Attempting a mutation API call via devtools → 403.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "MN-03", layer: "P5", category: "Minister — File access",
     name: "/api/files → /minister/api/files URL rewrite works",
     steps: "1. Open a ticket with an attachment\n2. Inspect the attachment URL in devtools",
     expected: "URLs in the payload rewritten from /api/files/… to /minister/api/files/… (minister.py:208). Fetch succeeds via minister_session cookie.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Regression for the deep-rewrite pattern in minister.py" },
 
   { id: "MN-04", layer: "P5", category: "Minister — File access",
     name: "Attachment preview iframe renders (CI-89 regression from minister surface)",
     steps: "1. Open a ticket / association with a PDF attachment on the minister PWA\n2. Verify the iframe renders",
     expected: "PDF renders inline (not 'blocked:other'). /minister/api/files/… is in the middleware's embeddable-prefix list (see main.py _EMBEDDABLE_PREFIXES).",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "MN-04b", layer: "P5", category: "Minister — File access",
     name: "Event photos + audio render on minister PWA (events/ namespace)",
     steps: "1. Open /minister/events\n2. Click an event with a photo → verify image renders\n3. Play an event's voice audio → verify it streams",
     expected: "Both render (200). Prior bug: 403 because minister._authorize had no `events/` branch and fell through to fail-closed deny. Sentinel keys like `events/manual` still 403 (no actual bytes).",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "USER-REPORTED. Fixed by adding events/ branch to minister._authorize gated on InvitationEvent.image_path OR audio_path == key." },
 
 
@@ -1201,7 +1207,7 @@ window.TEST_CASES = [
     name: "Ministry-scoped view — sees only assigned-ministry rows",
     steps: "1. Log in as a minister assigned to ministry X\n2. Load list — verify all rows are ministry-X\n3. Try to open a ticket from ministry Y directly",
     expected: "List filtered to ministry X only. Direct-URL to another ministry's ticket → 403 / redirect, not silent view.",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   // ============================================================
   // Cross-cutting
@@ -1210,25 +1216,132 @@ window.TEST_CASES = [
     name: "RBAC gates on all escalation endpoints (Group 3 audit)",
     steps: "1. For each of the 6 escalation endpoints (accept / forward / progress / resolve / reopen / escalate), try calling as an unauthorized role\n2. Expect 403 on every one",
     expected: "Every endpoint gates by role. dept_officer can't hit exec-only routes. minister can't mutate. Cross-dept dept_officer gets 403 on other-dept tickets.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Regression for Group 3 RBAC hardening (audit fix batch)" },
 
   { id: "T5-02", layer: "P5", category: "Cross-cutting",
     name: "i18n copy — no 'referral' vocabulary drift in exec/dept surfaces",
     steps: "1. Scan the Executive Queue + Dept portal UI\n2. Look for stray 'referral' / 'refer' terms",
     expected: "Zero 'referral' vocabulary — replaced with 'petition' / 'case' / 'ticket' terminology per 2599564. Consistent with citizen-facing form.",
-    status: "pending", actual: "",
+    status: "pass", actual: "Verified on Railway",
     notes: "Regression for 2599564 i18n(exec-queue) cleanup" },
 
   { id: "T5-03", layer: "P5", category: "Cross-cutting",
     name: "Polished error toasts across all three surfaces",
     steps: "1. Trigger failures on Exec Queue, Dept portal, Minister PWA\n2. Screenshot each toast",
     expected: "Every message user-friendly. Zero tracebacks / raw HTTP codes / 'gemini-*'. Routed through businessMessage() (errors.ts).",
-    status: "pending", actual: "", notes: "" },
+    status: "pass", actual: "Verified on Railway", notes: "" },
 
   { id: "T5-04", layer: "P5", category: "Cross-cutting",
     name: "Mobile viewport (375px) — Minister PWA usable",
     steps: "1. Resize to 375x812\n2. Log in as minister → open a ticket\n3. Verify layout + interaction",
     expected: "PWA scales to mobile. Nav + drawers usable with thumbs. No horizontal body scroll. Service worker still registered.",
-    status: "pending", actual: "", notes: "" }
+    status: "pass", actual: "Verified on Railway", notes: "" },
+
+  // -------------------------------------------------------------------------
+  // Phase 6 — Cross-cutting sanity  (system-wide concerns)
+  // -------------------------------------------------------------------------
+  // Auth, perf, security headers, PII, prod gates. One case per real signal
+  // — most are regressions for audit-fix batches that landed earlier.
+
+  { id: "P6-01", layer: "P6", category: "Auth boundaries",
+    name: "Cross-role RBAC sweep on the 6 escalation endpoints",
+    steps: "1. Enumerate: accept / forward / progress / resolve / reopen / escalate\n2. For each, call as pa_admin, dept_officer (own dept), dept_officer (other dept), minister, unauth\n3. Verify allow/deny matrix",
+    expected: "pa_admin: accept ❌ (dept only) / forward ❌ / progress ❌ / resolve ❌ / reopen ✅ / escalate ✅. dept_officer own: all ✅. dept_officer other: all 403. minister: all 403. unauth: 401 / login redirect.",
+    status: "pending", actual: "",
+    notes: "Regression for Group 3 RBAC hardening + f40c2f6 clean 403" },
+
+  { id: "P6-02", layer: "P6", category: "Auth boundaries",
+    name: "Session cookies — HttpOnly + Secure + SameSite",
+    steps: "1. Log in on each surface (PA / dept / minister / events / crowd)\n2. Inspect Set-Cookie headers in devtools",
+    expected: "Every session cookie has HttpOnly, Secure (in prod), and SameSite=Lax or Strict. No cookie readable from JS.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "P6-03", layer: "P6", category: "Rate limit",
+    name: "RATE_LIMIT_ENABLED master switch respected",
+    steps: "1. Confirm current env has RATE_LIMIT_ENABLED=false — burst 20 requests, verify no 429\n2. If desired, flip to true in a separate env — verify @limiter.limit endpoints return 429 on burst",
+    expected: "OFF: no rate limiter fires anywhere. ON: individual @limiter.limit endpoints return 429 at their configured rates (3-5/min per IP).",
+    status: "pending", actual: "",
+    notes: "Skipped-in-P1 CI-23 setup validated at the system level" },
+
+  { id: "P6-04", layer: "P6", category: "Perf",
+    name: "GZip compression on JSON responses (>1KB)",
+    steps: "1. curl -H 'Accept-Encoding: gzip' <api endpoint returning >1KB JSON>\n2. Verify Content-Encoding: gzip in response headers",
+    expected: "Responses >1KB are gzipped. Small (<1KB) responses not gzipped. GZipMiddleware minimum_size=1024 respected.",
+    status: "pending", actual: "",
+    notes: "Regression for PERF-17 GZipMiddleware" },
+
+  { id: "P6-05", layer: "P6", category: "Perf",
+    name: "/api/venues cache — short public + revalidate",
+    steps: "1. curl /dashboard/api/venues → inspect Cache-Control header\n2. Repeat within cache window → verify 304 or served from cache",
+    expected: "Cache-Control: public, max-age=<short>, must-revalidate (or similar). Not immutable, not no-store. Frontend fetch config no longer sends no-cache.",
+    status: "pending", actual: "",
+    notes: "Regression for PERF-18" },
+
+  { id: "P6-06", layer: "P6", category: "Perf",
+    name: "Immutable file cache invalidates on same-key overwrite",
+    steps: "1. Upload a PDF, note ETag on GET /dashboard/api/files/<key>\n2. Overwrite the same key with different bytes (via internal MinIO or admin flow)\n3. GET again — verify ETag changed → browser refetches",
+    expected: "ETag = md5(file_path + size + last_modified + media_type). A same-size overwrite still invalidates because last_modified changed. Cached copies never serve stale bytes.",
+    status: "pending", actual: "",
+    notes: "Regression for the ETag rebuild fix" },
+
+  { id: "P6-07", layer: "P6", category: "Time",
+    name: "IST/UTC drift-free — daily loops + counts + tokens agree on 'today'",
+    steps: "1. At 23:55 IST (18:25 UTC), submit a petition\n2. Check /counts today bucket + referral daily token + convert-to-petition daily guard\n3. Wait until 00:05 IST next day, repeat",
+    expected: "All three surfaces treat 'today' as the IST calendar day, not UTC. No off-by-one at day boundaries.",
+    status: "pending", actual: "",
+    notes: "Regression for CORR-07/08/09 IST/UTC drift" },
+
+  { id: "P6-08", layer: "P6", category: "Time",
+    name: "Background task survival — spawn_bg tasks complete",
+    steps: "1. Trigger a summarisation via appointment submit\n2. Immediately check _BG_TASKS module-level set is retained until task completes\n3. Verify GrievanceSummaryRecord row lands even under concurrent load",
+    expected: "spawn_bg tasks aren't GC'd mid-flight. Every submitted appointment eventually has a GSR row (unless SDK error).",
+    status: "pending", actual: "",
+    notes: "Regression for CORR-01/02 spawn_bg GC hardening" },
+
+  { id: "P6-09", layer: "P6", category: "Security headers",
+    name: "Non-file responses stay strict: DENY + frame-ancestors 'none'",
+    steps: "1. curl /dashboard/api/tickets → inspect headers\n2. Repeat for /api/v1/appointments, /minister/api/tickets, jinja pages",
+    expected: "Every non-file response has X-Frame-Options: DENY, CSP frame-ancestors 'none', X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin, Permissions-Policy present.",
+    status: "pending", actual: "",
+    notes: "Regression for _SecurityHeadersMiddleware baseline" },
+
+  { id: "P6-10", layer: "P6", category: "Security headers",
+    name: "File-serve responses: SAMEORIGIN + frame-ancestors 'self' <CORS>",
+    steps: "1. curl /dashboard/api/files/<key> → inspect headers\n2. Same for /events/api/files, /minister/api/files, /department/api/files",
+    expected: "All four prefixes return X-Frame-Options: SAMEORIGIN and CSP frame-ancestors containing 'self' + CORS_ORIGINS entries. Cross-checks the CI-89 iframe fix from every embeddable-asset entry point.",
+    status: "pending", actual: "",
+    notes: "Regression for 38a64bc scoped iframe relaxation" },
+
+  { id: "P6-11", layer: "P6", category: "AI reliability",
+    name: "Vertex → direct-API fallback + polished error on both-fail",
+    steps: "1. Confirm boot log shows 'Vertex AI backend ready (creds=env-content)' — Vertex is primary\n2. Force-fail Vertex temporarily → verify direct-API takes over\n3. Force both to fail → verify polished user-facing error (no traceback)",
+    expected: "Log line at boot confirms creds source. Vertex outage triggers direct-API fallback silently. Both-fail returns 502 with human message; no raw 'gemini-*' or SDK exception in UI.",
+    status: "pending", actual: "",
+    notes: "System-wide re-verify of the Vertex overload (commit 6fda89b) + fail-through path" },
+
+  { id: "P6-12", layer: "P6", category: "File caps",
+    name: "MAX_FILE_SIZE_MB + MAX_ATTACHMENTS enforced at every upload path",
+    steps: "1. Try uploading a 6MB file via: citizen QR upload, PA drawer, dept drawer, event photo\n2. Try uploading an 11th file on an appointment with 10 existing attachments",
+    expected: "Every path returns clean 4xx with human message. 5MB cap + 10-file per submission cap honoured across surfaces.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "P6-13", layer: "P6", category: "Filename hygiene",
+    name: "Filename sanitization consistent across upload paths",
+    steps: "1. Try uploading '<script>alert(1)</script>.pdf', '../../etc/passwd.pdf', a 500-char name via each entry point\n2. Verify storage key + display + PDF preview title all safe",
+    expected: "All entry points route through _sanitize_filename. Path traversal never escapes uploads/. XSS in filename escaped everywhere it's rendered. No 500 on very long names.",
+    status: "pending", actual: "", notes: "CITZ-02 regression, cross-surface" },
+
+  { id: "P6-14", layer: "P6", category: "PII at rest",
+    name: "Citizen mobile encrypted + blind-indexed + masked on read",
+    steps: "1. Submit an appointment with a specific mobile (e.g. 9876543210)\n2. Query the DB — verify encrypted_mobile is Fernet-encrypted (not plaintext), mobile_blind_index is a hex hash\n3. Open the appointment in every UI surface — verify mobile shown as ******3210",
+    expected: "Plaintext mobile never in DB. Blind index enables dedup lookups. Every read surface masks the mobile — PA drawer, dept drawer, minister PWA, activity log, list rows.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "P6-15", layer: "P6", category: "Prod safety",
+    name: "assert_production_ready refuses on unsafe defaults",
+    steps: "1. Simulate each unsafe config in isolation: placeholder SECRET_KEY, default staff creds, localhost in CORS_ORIGINS, short SECRET_KEY, COOKIE_SECURE=false in prod\n2. Verify startup refuses with clear message",
+    expected: "Each unsafe default triggers a startup abort with a message pointing at the exact config. TestProdReadyGates in tests/test_pre_prod_fixes.py covers this at unit level; verify runtime behaviour matches.",
+    status: "pending", actual: "",
+    notes: "Regression for Group 2 prod-safety hardening + the config.py DEBUG-remote-DB guard (currently disabled per user's intentional edit at config.py:293)" }
 ];
