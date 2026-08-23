@@ -419,7 +419,7 @@ async def get_ticket_counts(
             stmt = stmt.where(and_(*clauses))
         tickets = (await db.execute(stmt)).scalars().all()
         out: Dict[str, int] = {
-            "": 0, "open": 0, "in_progress": 0,
+            "": 0, "open": 0, "in_progress": 0, "reopened": 0,
             "forwarded_to_dept": 0, "resolved": 0, "closed": 0,
         }
         for t in tickets:
@@ -442,6 +442,7 @@ async def get_ticket_counts(
         func.count().label("all_count"),
         func.count().filter(sub.c.status == "open").label("open"),
         func.count().filter(sub.c.status == "in_progress").label("in_progress"),
+        func.count().filter(sub.c.status == "reopened").label("reopened"),
         func.count().filter(sub.c.status == "forwarded_to_dept").label("forwarded_to_dept"),
         func.count().filter(sub.c.status == "resolved").label("resolved"),
         func.count().filter(sub.c.status == "closed").label("closed"),
@@ -451,6 +452,7 @@ async def get_ticket_counts(
         "": row.all_count or 0,
         "open": row.open or 0,
         "in_progress": row.in_progress or 0,
+        "reopened": row.reopened or 0,
         "forwarded_to_dept": row.forwarded_to_dept or 0,
         "resolved": row.resolved or 0,
         "closed": row.closed or 0,
