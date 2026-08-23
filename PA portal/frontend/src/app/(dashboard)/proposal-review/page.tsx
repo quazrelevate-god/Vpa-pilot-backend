@@ -36,12 +36,14 @@ import {
   fmtDate,
 } from "./_lib/ProposalDrawer";
 
-const TABS: { key: string; label: string }[] = [
-  { key: "AWAITING_REVIEW", label: "Awaiting" },
-  { key: "APPROVED", label: "Approved" },
-  { key: "REJECTED", label: "Rejected" },
-  { key: "NEEDS_CLARIFICATION", label: "Needs info" },
-  { key: "", label: "All" },
+// Static keys — label is resolved via t() at render time so language switches
+// live. Was hardcoded English; hurt every Tamil reviewer's read.
+const TABS: { key: string; tKey: string }[] = [
+  { key: "AWAITING_REVIEW", tKey: "prop.tabAwaiting" },
+  { key: "APPROVED",        tKey: "prop.tabApproved" },
+  { key: "REJECTED",        tKey: "prop.tabRejected" },
+  { key: "NEEDS_CLARIFICATION", tKey: "prop.tabNeedsInfo" },
+  { key: "",                tKey: "prop.tabAll" },
 ];
 
 // The 4 desks a proposal can target — matches CATEGORY_LABEL keys above.
@@ -400,7 +402,7 @@ export default function ProposalReviewPage() {
     <div className="flex h-full flex-1 flex-col overflow-hidden">
       <TopBar
         title={t("nav.proposalReview")}
-        subtitle="Proposals to the Hon'ble Minister — read the pitch, look at the document, decide."
+        subtitle={t("prop.subtitleReview")}
         icon={<Lightbulb className="h-4 w-4" />}
       />
 
@@ -421,9 +423,9 @@ export default function ProposalReviewPage() {
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3.5 py-2.5">
                 <Layers className="h-4 w-4 shrink-0 text-brand" />
                 <span className="text-[13px] text-foreground">
-                  Showing routed proposals from batch{" "}
+                  {t("prop.batchShowingRouted")}{" "}
                   <span className="font-mono text-[12.5px] font-bold text-brand">{batchFilter.slice(0, 8)}</span>
-                  {data && <span className="ml-2 text-muted-foreground">· {data.total} {data.total === 1 ? "row" : "rows"}</span>}
+                  {data && <span className="ml-2 text-muted-foreground">· {data.total} {data.total === 1 ? t("prop.row") : t("prop.rows")}</span>}
                 </span>
                 <button
                   onClick={() => {
@@ -436,7 +438,7 @@ export default function ProposalReviewPage() {
                   }}
                   className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-muted"
                 >
-                  <X className="h-3.5 w-3.5" /> Clear
+                  <X className="h-3.5 w-3.5" /> {t("common.clear")}
                 </button>
               </div>
             )}
@@ -453,7 +455,7 @@ export default function ProposalReviewPage() {
                         active ? "bg-brand text-white shadow-sm" : "text-muted-foreground hover:bg-accent"
                       )}
                     >
-                      {tb.label}
+                      {t(tb.tKey)}
                       <span className={cn(
                         "num rounded-full px-1.5 py-0.5 text-[11px]",
                         active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
@@ -468,7 +470,7 @@ export default function ProposalReviewPage() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search title, submitter, or tracking ref…"
+                  placeholder={t("prop.searchPlaceholderReview")}
                   className="h-9 pl-9"
                 />
               </div>
@@ -484,7 +486,7 @@ export default function ProposalReviewPage() {
                   )}
                 >
                   <SlidersHorizontal className="h-4 w-4" />
-                  Filters
+                  {t("common.filters")}
                   {activeFilterCount > 0 && (
                     <span className="ml-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand px-1 text-[10.5px] font-bold text-white tabular-nums">
                       {activeFilterCount}
@@ -498,7 +500,7 @@ export default function ProposalReviewPage() {
                   disabled={exporting || total === 0}
                   title={total === 0 ? t("appts.exportNothing") : undefined}
                 >
-                  <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export"}
+                  <Download className="h-4 w-4" /> {exporting ? t("common.exporting") : t("common.export")}
                 </Button>
               </div>
             </div>
@@ -510,19 +512,19 @@ export default function ProposalReviewPage() {
             <div className="flex flex-wrap items-center gap-2">
               <FilterChip
                 icon={<Sparkles className="h-3.5 w-3.5" />}
-                label="AI hint"
+                label={t("common.aiHint")}
                 value={recFilter} onValue={setRecFilter}
                 options={REC_OPTIONS}
               />
               <FilterChip
                 icon={<Building2 className="h-3.5 w-3.5" />}
-                label="Category"
+                label={t("label.category")}
                 value={categoryFilter} onValue={setCategoryFilter}
                 options={CATEGORY_OPTIONS}
               />
               <FilterChip
                 icon={<CalendarClock className="h-3.5 w-3.5" />}
-                label="Submitted"
+                label={t("common.submitted")}
                 value={dateFilter} onValue={setDateFilter}
                 options={DATE_RANGE_OPTIONS}
               />

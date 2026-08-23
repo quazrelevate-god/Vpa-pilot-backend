@@ -43,11 +43,12 @@ import {
 // ./_lib/AssociationDrawer so this page + the association-dashboard read-only
 // drawer share one source of truth.
 
-const TABS: { key: string; label: string }[] = [
-  { key: "AWAITING_REVIEW", label: "Awaiting" },
-  { key: "REVIEWED", label: "Reviewed" },
-  { key: "FORWARDED", label: "Forwarded" },
-  { key: "", label: "All" },
+// tKey resolved at render time so the language toggle applies live.
+const TABS: { key: string; tKey: string }[] = [
+  { key: "AWAITING_REVIEW", tKey: "assoc.tabAwaiting" },
+  { key: "REVIEWED",        tKey: "assoc.tabReviewed" },
+  { key: "FORWARDED",       tKey: "assoc.tabForwarded" },
+  { key: "",                tKey: "assoc.tabAll" },
 ];
 
 // The 9 grievance categories AssociationExtraction is constrained to (matches
@@ -438,7 +439,7 @@ export default function AssociationReviewPage() {
     <div className="flex h-full flex-1 flex-col overflow-hidden">
       <TopBar
         title={t("nav.associationReview")}
-        subtitle="Collective petitions from unions and organised bodies — read the ask, look at the document, decide."
+        subtitle={t("assoc.subtitle")}
         icon={<Users2 className="h-4 w-4" />}
       />
 
@@ -459,9 +460,9 @@ export default function AssociationReviewPage() {
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3.5 py-2.5">
                 <Layers className="h-4 w-4 shrink-0 text-brand" />
                 <span className="text-[13px] text-foreground">
-                  Showing routed associations from batch{" "}
+                  {t("prop.batchShowingRouted")}{" "}
                   <span className="font-mono text-[12.5px] font-bold text-brand">{batchFilter.slice(0, 8)}</span>
-                  {data && <span className="ml-2 text-muted-foreground">· {data.total} {data.total === 1 ? "row" : "rows"}</span>}
+                  {data && <span className="ml-2 text-muted-foreground">· {data.total} {data.total === 1 ? t("prop.row") : t("prop.rows")}</span>}
                 </span>
                 <button
                   onClick={() => {
@@ -474,7 +475,7 @@ export default function AssociationReviewPage() {
                   }}
                   className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-muted"
                 >
-                  <X className="h-3.5 w-3.5" /> Clear
+                  <X className="h-3.5 w-3.5" /> {t("common.clear")}
                 </button>
               </div>
             )}
@@ -492,7 +493,7 @@ export default function AssociationReviewPage() {
                         active ? "bg-brand text-white shadow-sm" : "text-muted-foreground hover:bg-accent"
                       )}
                     >
-                      {tb.label}
+                      {t(tb.tKey)}
                       <span className={cn(
                         "num rounded-full px-1.5 py-0.5 text-[11px]",
                         active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
@@ -507,7 +508,7 @@ export default function AssociationReviewPage() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search association, representative, ask, or category…"
+                  placeholder={t("assoc.searchPlaceholder")}
                   className="h-9 pl-9"
                 />
               </div>
@@ -523,7 +524,7 @@ export default function AssociationReviewPage() {
                   )}
                 >
                   <SlidersHorizontal className="h-4 w-4" />
-                  Filters
+                  {t("common.filters")}
                   {activeFilterCount > 0 && (
                     <span className="ml-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand px-1 text-[10.5px] font-bold text-white tabular-nums">
                       {activeFilterCount}
@@ -537,7 +538,7 @@ export default function AssociationReviewPage() {
                   disabled={exporting || total === 0}
                   title={total === 0 ? t("appts.exportNothing") : undefined}
                 >
-                  <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export"}
+                  <Download className="h-4 w-4" /> {exporting ? t("common.exporting") : t("common.export")}
                 </Button>
               </div>
             </div>
@@ -550,20 +551,20 @@ export default function AssociationReviewPage() {
             <div className="flex flex-wrap items-center gap-2">
               <FilterChip
                 icon={<Landmark className="h-3.5 w-3.5" />}
-                label="Category"
+                label={t("assoc.filterCategory")}
                 value={categoryFilter} onValue={setCategoryFilter}
                 options={CATEGORY_OPTIONS}
               />
               <FilterChip
                 icon={<Flag className="h-3.5 w-3.5" />}
-                label="Urgency"
+                label={t("assoc.filterUrgency")}
                 value={urgencyFilter} onValue={setUrgencyFilter}
                 options={URGENCY_OPTIONS}
               />
               {districtOptions.length > 0 && (
                 <FilterChip
                   icon={<MapPin className="h-3.5 w-3.5" />}
-                  label="District"
+                  label={t("assoc.filterDistrict")}
                   value={districtFilter} onValue={setDistrictFilter}
                   options={districtOptions}
                 />
@@ -571,14 +572,14 @@ export default function AssociationReviewPage() {
               {ministryOptions.length > 0 && (
                 <FilterChip
                   icon={<Building2 className="h-3.5 w-3.5" />}
-                  label="Ministry"
+                  label={t("assoc.filterMinistry")}
                   value={ministryFilter} onValue={setMinistryFilter}
                   options={ministryOptions}
                 />
               )}
               <FilterChip
                 icon={<CalendarClock className="h-3.5 w-3.5" />}
-                label="Submitted"
+                label={t("common.submitted")}
                 value={dateFilter} onValue={setDateFilter}
                 options={DATE_RANGE_OPTIONS}
               />
