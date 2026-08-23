@@ -718,3 +718,64 @@ class TestDeptAiUploadsAccess:
                 assert e.status_code == 403
             else:
                 raise AssertionError(f"{path!r} should have 403'd")
+
+
+# ─── dept_add_attachment threads ticket_id + actor into the Activity row ──────
+
+class TestDeptAttachmentActivity:
+    """USER-REPORTED: "in dept login before accept if i add attach it is not
+    recorded in the activity check that too."
+
+    dept_add_attachment called add_case_attachment(db, appointment_id,
+    filename, raw, mime) — dropped ticket_id and actor. The Activity row
+    was created but landed only on the appointment (ticket_id NULL), so
+    the ticket drawer's timeline (queries Activity by ticket_id) never
+    saw it. Actor also defaulted to "pa_admin" — audit couldn't tell who
+    uploaded.
+
+    Fix threads both. Test asserts the call signature stays right by
+    monkeypatching add_case_attachment and capturing its kwargs.
+    """
+
+    def test_ticket_id_and_actor_forwarded(self):
+        import asyncio
+        from src.services import department_service, dashboard_service
+
+        captured: dict = {}
+
+        async def _fake_add_case_attachment(db, appointment_id, filename,
+                                            raw, mime, **kwargs):
+            captured.update({
+                "appointment_id": appointment_id,
+                "filename": filename,
+                **kwargs,
+            })
+            return {"ok": True}
+
+        class _Ticket:
+            id = 79
+            appointment_id = 1234
+            department = "dept_a"
+
+        async def _fake_get_owned(db, ticket_id, department):
+            return _Ticket()
+
+        orig_add = dashboard_service.add_case_attachment
+        orig_get = department_service._get_owned
+        dashboard_service.add_case_attachment = _fake_add_case_attachment
+        department_service._get_owned = _fake_get_owned
+        try:
+            asyncio.run(department_service.dept_add_attachment(
+                db=None, ticket_id=79, department="dept_a",
+                filename="proof.pdf", raw=b"%PDF-", mime="application/pdf",
+            ))
+        finally:
+            dashboard_service.add_case_attachment = orig_add
+            department_service._get_owned = orig_get
+
+        # Both threaded through — that's what makes the Activity row show
+        # on the ticket's timeline (via ticket_id) and audit trail (via actor).
+        assert captured.get("ticket_id") == 79, "ticket_id must be threaded"
+        assert captured.get("actor") == "dept_a", "actor must be the dept, not default pa_admin"
+        assert captured.get("appointment_id") == 1234
+        assert captured.get("filename") == "proof.pdf"

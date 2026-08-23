@@ -189,10 +189,21 @@ async def dept_add_attachment(db: AsyncSession, ticket_id: int, department: str,
 
     Scoped to the acting department (403 if the ticket isn't theirs); reuses the
     shared appointment-attachment logic so it surfaces everywhere the case does.
+
+    Threads ticket_id + actor into add_case_attachment so the Activity row
+    that helper emits carries BOTH FKs (appointment + ticket) and the acting
+    dept as the actor. Prior version dropped both — the activity landed only
+    on the appointment and defaulted actor to "pa_admin", so the ticket
+    drawer's timeline (which queries Activity by ticket_id) never showed
+    dept-uploaded attachments and audit couldn't tell who uploaded.
     """
     t = await _get_owned(db, ticket_id, department)
     from src.services.dashboard_service import add_case_attachment
-    return await add_case_attachment(db, t.appointment_id, filename, raw, mime)
+    return await add_case_attachment(
+        db, t.appointment_id, filename, raw, mime,
+        ticket_id=ticket_id,
+        actor=department,
+    )
 
 
 async def dept_accept(db: AsyncSession, ticket_id: int, department: str) -> dict:
