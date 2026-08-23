@@ -9,7 +9,7 @@ window.META = {
   environment: "Railway (testing)",
   gitSha: "3f0df68",
   updated: "2026-08-23",
-  activeLayer: "P3 — Tickets / Association Review"
+  activeLayer: "P4 — Events (voice + photo)"
 };
 
 window.LAYERS = [
@@ -34,7 +34,13 @@ window.LAYERS = [
     order: 3,
     active: true
   },
-  { key: "P4", label: "Phase 4 — Events (voice + photo)",       order: 4, active: false },
+  {
+    key: "P4",
+    label: "Phase 4 — Events (voice + photo)",
+    surface: "Events UI — invitation calendar, voice + photo extraction, EventPopup",
+    order: 4,
+    active: true
+  },
   { key: "P5", label: "Phase 5 — Executive / Dept / Minister",  order: 5, active: false },
   { key: "P6", label: "Phase 6 — Cross-cutting sanity",         order: 6, active: false }
 ];
@@ -950,5 +956,119 @@ window.TEST_CASES = [
     name: "Mobile viewport (375px) — both drawers usable",
     steps: "1. Resize to 375x812\n2. Open ticket drawer → try Assign / Comment / Add attachment\n3. Open association drawer → try Approve / Ministry override",
     expected: "Both drawers scale / go full-screen. All actions reachable with thumbs. No horizontal body scroll.",
+    status: "pending", actual: "", notes: "" },
+
+  // -------------------------------------------------------------------------
+  // Phase 4 — Events (voice + photo)
+  // -------------------------------------------------------------------------
+  // Covers the invitation-calendar surface: events_session auth, manual +
+  // voice + photo add flows, EventPopup detail, list/filter/edit, and the
+  // cross-cutting error polish that came out of the summariser incidents.
+  // EV-* main flow, T4-* cross-cutting.
+
+  { id: "EV-01", layer: "P4", category: "Events — Access",
+    name: "Events login works with seeded events_reviewer credentials",
+    steps: "1. Log in to /dashboard/login as admin-office (seeds event_reviewer role)\n2. Then log in to /events/login with the same credentials",
+    expected: "Both logins succeed. events_session cookie set. No 401 / no 'unauthorized' with legitimate creds.",
+    status: "pending", actual: "",
+    notes: "Verifies events_auth.py real-user path (env-credential path was removed — see prior incident)" },
+
+  { id: "EV-02", layer: "P4", category: "Events — Access",
+    name: "Direct URL without events_session → clean redirect",
+    steps: "1. Wipe events_session cookie\n2. Navigate to /events directly",
+    expected: "Redirect to /events/login. No 500 / no blank page.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-03", layer: "P4", category: "Events — Add",
+    name: "Manual event add (title / venue / date / note) → appears in list",
+    steps: "1. Open events UI, click Add Event\n2. Fill title, venue, date, optional note\n3. Save",
+    expected: "New row in list. All fields populated. No AI extraction path fired for manual entry.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-04", layer: "P4", category: "Events — Voice",
+    name: "Tamil voice add → 200 OK, extraction runs (SDK ASCII fix regression)",
+    steps: "1. Record a 20s Tamil voice describing an event\n2. Upload via voice add flow",
+    expected: "200 OK. Extraction populates title_en / title_ta / venue / date. NO UnicodeEncodeError. NO 500 from the google-genai httpx header path.",
+    status: "pending", actual: "",
+    notes: "Regression for event_service.py _ascii_safe fix (voice-note ASCII scrub before Gemini call)" },
+
+  { id: "EV-05", layer: "P4", category: "Events — Voice",
+    name: "Tamil voice + Tamil note field → 200 OK",
+    steps: "1. Same as EV-04\n2. Type Tamil text into the note field before upload",
+    expected: "200 OK. Note preserved on the event row. No header-encoding crash.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-06", layer: "P4", category: "Events — Voice",
+    name: "English voice add → extraction runs",
+    steps: "1. Record 20s English voice describing an event\n2. Upload",
+    expected: "Extraction returns English title / venue. Row created.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-07", layer: "P4", category: "Events — Photo",
+    name: "Photo add — invitation card image → OCR extraction",
+    steps: "1. Upload a photo of an invitation card\n2. Wait for extraction",
+    expected: "title / venue / date extracted; row appears in list with source doc viewable inline.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-08", layer: "P4", category: "Events — Photo",
+    name: "Blurry / non-invitation image → polished error (businessMessage)",
+    steps: "1. Upload a random selfie / blurry image\n2. Watch EventPopup / error toast",
+    expected: "User-friendly message ('could not read'). NO Python traceback. NO 'gemini-2.5-flash' / 'codec' strings.",
+    status: "pending", actual: "",
+    notes: "Regression for TECHNICAL regex + businessMessage() in EventPopup" },
+
+  { id: "EV-09", layer: "P4", category: "Events — List",
+    name: "Default list shows upcoming events",
+    steps: "1. Load /events\n2. Verify default view",
+    expected: "Upcoming events (date >= today) sorted by date ascending. Past events hidden or in a separate section.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-10", layer: "P4", category: "Events — List",
+    name: "Date range filter + search by title/venue",
+    steps: "1. Apply a date range → verify rows narrow\n2. Search by partial title / venue name",
+    expected: "Both narrow the visible set correctly. Clear-all restores.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-11", layer: "P4", category: "Events — Detail",
+    name: "EventPopup opens on row click with bilingual content",
+    steps: "1. Click a Tamil-added event (has title_ta populated)\n2. Toggle language",
+    expected: "Popup shows title / venue / note in the selected language via title_ta / venue_ta fields. No mojibake.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-12", layer: "P4", category: "Events — Detail",
+    name: "Error field renders polished text (businessMessage regression)",
+    steps: "1. Force an event to be in the error_message state (upload a bad file OR find a historically-failed event)\n2. Open EventPopup",
+    expected: "error_message rendered via businessMessage() — user-friendly text, not raw 'UnicodeEncodeError: ascii codec can't encode...' or 'gemini-2.5-flash failed on all models'.",
+    status: "pending", actual: "",
+    notes: "Regression for 5bbbc1c EventPopup businessMessage() wiring + TECHNICAL regex" },
+
+  { id: "EV-13", layer: "P4", category: "Events — Edit",
+    name: "Edit event fields → persists",
+    steps: "1. Open an existing event\n2. Edit title / venue / date\n3. Save; reload",
+    expected: "Changes persist across reload. Activity log or last-updated stamp reflects the edit.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-14", layer: "P4", category: "Events — Edit",
+    name: "Delete event → gone from list",
+    steps: "1. Delete an event (with confirmation)\n2. Verify list",
+    expected: "Row removed. No orphan attachments left in storage (soft delete OK if that's the design).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "EV-15", layer: "P4", category: "Events — Edit",
+    name: "Concurrent edit (two tabs) — clean last-write-wins",
+    steps: "1. Open same event in two tabs\n2. Edit + save in tab A\n3. Edit + save in tab B without refresh",
+    expected: "Second save overwrites cleanly OR clean 'this event was updated elsewhere' message. No silent 500 / no lost data.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "T4-01", layer: "P4", category: "UX",
+    name: "All error toasts polished across the events surface",
+    steps: "1. Trigger failures: 5MB+ audio, 5MB+ image, network offline mid-upload, backend 500, invalid extract\n2. Screenshot each toast",
+    expected: "Every message user-friendly. Zero tracebacks / raw HTTP codes / 'gemini-*' / 'codec'. Routed through the businessMessage() polish path.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "T4-02", layer: "P4", category: "UX",
+    name: "Mobile viewport (375px) — record voice + view event usable",
+    steps: "1. Resize to 375x812\n2. Try the voice-add recorder\n3. Open EventPopup",
+    expected: "Recorder buttons reachable. Popup scales / goes full-screen. No horizontal body scroll.",
     status: "pending", actual: "", notes: "" }
 ];
