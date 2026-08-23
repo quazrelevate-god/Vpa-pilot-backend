@@ -267,7 +267,12 @@ export default function TicketDetailDrawer({
     if (ticketId == null || !t) return;
     const dept = pendingDept ?? t.assigned_department ?? "";
     const due  = pendingDue  ?? (t.due_date ?? "");
-    if (!dept || !due) return; // guarded by disabled state; belt-and-braces
+    // Belt-and-braces on the enable gate — only dept is required (2d1ee54).
+    // Due-date is now an independent SLA field: staged here on OPEN so the
+    // Assign click saves dept+due together when both changed, but a caller
+    // who only picked a dept must not silently bail (that was the bug —
+    // button enabled but click did nothing when no due-date was set).
+    if (!dept) return;
 
     setAssigning(true);
     try {
@@ -279,8 +284,11 @@ export default function TicketDetailDrawer({
         });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Routing failed");
       }
-      // Then persist the SLA if it changed.
-      if (due !== (t.due_date ?? "")) {
+      // Then persist the SLA if it changed AND is non-empty. Empty due
+      // means the PA hasn't set one yet — don't overwrite existing t.due_date
+      // with "" (that would clear a real SLA the PA set earlier). The
+      // due-date input has its own live-save path on non-OPEN tickets.
+      if (due && due !== (t.due_date ?? "")) {
         await patchTicket(ticketId, { due_date: due });
       }
       toast.success(tr("tkt.assignedToast"));
