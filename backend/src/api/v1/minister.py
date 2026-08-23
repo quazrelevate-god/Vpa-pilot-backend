@@ -380,10 +380,11 @@ async def minister_serve_file(
     Minister UI actually renders. Unknown-namespace / dangling keys 403 (the
     error deliberately doesn't distinguish "orphan key" from "not authorised"
     so ministers can't probe for existence)."""
-    from sqlalchemy import func, select as _select, text as _sa_text
+    from sqlalchemy import func, or_, select as _select, text as _sa_text
     from src.models.appointment_models import AppointmentAttachment
     from src.models.ai_upload_models import AiUpload
     from src.models.ticket_models import TicketAttachment
+    from src.models.event_models import InvitationEvent
 
     normalized = file_path.replace("\\", "/").lstrip("/")
     if ".." in normalized or not normalized:
@@ -428,6 +429,19 @@ async def minister_serve_file(
                )
              LIMIT 1
         """).bindparams(key=normalized))
+    elif normalized.startswith("events/"):
+        # Event photos + audio (image_path / audio_path on InvitationEvent).
+        # Minister list at /minister/events rewrites `/events/api/files/<key>`
+        # → `/minister/api/files/<key>` (see line 208), so those requests land
+        # here. Match either column; sentinel keys like `events/manual` never
+        # resolve because no photo bytes were saved for them.
+        exists = await db.scalar(
+            _select(func.count(InvitationEvent.id))
+            .where(or_(
+                InvitationEvent.image_path == normalized,
+                InvitationEvent.audio_path == normalized,
+            ))
+        )
     else:
         # Unknown namespace — fail closed so new upload paths never
         # accidentally ship wide open through this endpoint.

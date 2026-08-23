@@ -1189,6 +1189,14 @@ window.TEST_CASES = [
     expected: "PDF renders inline (not 'blocked:other'). /minister/api/files/… is in the middleware's embeddable-prefix list (see main.py _EMBEDDABLE_PREFIXES).",
     status: "pending", actual: "", notes: "" },
 
+  { id: "MN-04b", layer: "P5", category: "Minister — File access",
+    name: "Event photos + audio render on minister PWA (events/ namespace)",
+    steps: "1. Open /minister/events\n2. Click an event with a photo → verify image renders\n3. Play an event's voice audio → verify it streams",
+    expected: "Both render (200). Prior bug: 403 because minister._authorize had no `events/` branch and fell through to fail-closed deny. Sentinel keys like `events/manual` still 403 (no actual bytes).",
+    status: "pending", actual: "",
+    notes: "USER-REPORTED. Fixed by adding events/ branch to minister._authorize gated on InvitationEvent.image_path OR audio_path == key." },
+
+
   { id: "MN-05", layer: "P5", category: "Minister — Scoping",
     name: "Ministry-scoped view — sees only assigned-ministry rows",
     steps: "1. Log in as a minister assigned to ministry X\n2. Load list — verify all rows are ministry-X\n3. Try to open a ticket from ministry Y directly",
