@@ -604,3 +604,36 @@ class TestSecurityHeadersFramePreview:
         assert h.get("x-content-type-options") == "nosniff"
         assert "strict-origin-when-cross-origin" in h.get("referrer-policy", "")
         assert "camera=(self)" in h.get("permissions-policy", "")
+
+
+# ─── ticketing.py: HTTPException imported (dept file-serve 500 → 403) ─────────
+
+class TestTicketingHttpExceptionImport:
+    """Regression net for the department file-serve NameError.
+
+    ticketing.py uses `HTTPException` at `_dept_authorize_file` to raise
+    403s on cross-department / cross-namespace file access, but the symbol
+    was missing from the module's `from fastapi import ...`. Every deny
+    path — legitimate or not — raised NameError instead of HTTPException,
+    which Starlette then wrapped as a 500 (masking what should have been
+    a clean 403 and giving dept_officers a raw traceback in prod logs
+    when they tried to open a file they weren't authorised for).
+
+    Reported by user: "in the department login it shows 500 internal
+    server". Traceback pointed at
+      File "/app/src/api/v1/ticketing.py", line 105, in _dept_authorize_file
+        _deny = HTTPException(status_code=403, ...)
+      NameError: name 'HTTPException' is not defined
+    """
+
+    def test_httpexception_resolvable_in_module_namespace(self):
+        # The module has to expose HTTPException in its own namespace —
+        # `_dept_authorize_file` builds `_deny = HTTPException(...)` and
+        # `dept_serve_upload` awaits into it. If the import ever
+        # regresses, this test catches it before the endpoint 500s.
+        from src.api.v1 import ticketing
+        assert ticketing.HTTPException is not None
+        # A quick smoke that the symbol is actually the FastAPI class,
+        # not a shadowed local from somewhere else.
+        from fastapi import HTTPException as _FastAPIHTTPException
+        assert ticketing.HTTPException is _FastAPIHTTPException

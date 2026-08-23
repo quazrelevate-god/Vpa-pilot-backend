@@ -12,7 +12,7 @@ import asyncio
 import mimetypes
 from pathlib import Path, PurePosixPath
 
-from fastapi import APIRouter, Depends, Form, File, UploadFile, Request, Body
+from fastapi import APIRouter, Depends, Form, File, UploadFile, Request, Body, HTTPException
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
