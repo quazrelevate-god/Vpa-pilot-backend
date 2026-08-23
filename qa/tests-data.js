@@ -7,7 +7,7 @@
 window.META = {
   project: "Manu — VPA Petition Desk",
   environment: "Railway (testing)",
-  gitSha: "f742c13",
+  gitSha: "4a26213",
   updated: "2026-08-23",
   activeLayer: "P2 — PA Petition Review"
 };
@@ -667,428 +667,140 @@ window.TEST_CASES = [
   // -------------------------------------------------------------------------
   // Phase 2 — PA Petition Review  (portal /ai-review)
   // -------------------------------------------------------------------------
-  // Covers everything a PA does with an AWAITING_REVIEW appointment: the
-  // list + filters, the drawer content, triage (approve → ticket, dismiss,
-  // restore), manual edits (name/constituency/category/priority/ministry),
-  // attachments, signatory merge / dedup, comments, and cross-cutting UX
-  // (loading, mobile, polling, RBAC). Prefix "PR-".
-  //
-  // Route: /ai-review (legacy URL — the portal code / PR label refers to
-  // it as "Petition Review" throughout).
+  // One case per meaningful signal, no per-variant micro-cases. Regressions
+  // from Phase 1 (iframe preview, filename XSS, dedup appointment loss,
+  // FOR UPDATE lock) are pulled forward as focused checks. Route:
+  // /ai-review (legacy URL — the portal code labels it "Petition Review").
 
-  // ============================================================
-  // A. Access / RBAC (4)
-  // ============================================================
-  { id: "PR-01", layer: "P2", category: "Access / RBAC",
-    name: "pa_admin can load /ai-review",
-    steps: "1. Log in as admin-office (pa_admin role)\n2. Navigate to /ai-review",
-    expected: "Page loads; AWAITING_REVIEW list visible; no 403 / login redirect",
+  { id: "PR-01", layer: "P2", category: "Access",
+    name: "RBAC — pa_admin loads, dept_officer redirects",
+    steps: "1. Log in as pa_admin (admin-office) → /ai-review\n2. Log in as dept_officer → /ai-review",
+    expected: "pa_admin sees the list. dept_officer redirected to /tickets (per _no_dept_officer gate).",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-02", layer: "P2", category: "Access / RBAC",
-    name: "dept_officer redirected AWAY from /ai-review",
-    steps: "1. Log in as a dept_officer account\n2. Try /ai-review directly",
-    expected: "Redirect to /tickets (or 403); no AWAITING_REVIEW list visible; _no_dept_officer gate honoured",
-    status: "pending", actual: "",
-    notes: "Verifies dashboard.py _no_dept_officer dependency" },
-
-  { id: "PR-03", layer: "P2", category: "Access / RBAC",
-    name: "Unauthenticated → redirect to /auth/login",
-    steps: "1. Wipe dash_session cookie\n2. Navigate to /ai-review",
-    expected: "Clean 302 to /auth/login; no traceback; no data leaked",
+  { id: "PR-02", layer: "P2", category: "Access",
+    name: "Unauth / tampered session → clean login redirect",
+    steps: "1. Wipe or corrupt dash_session cookie\n2. Load /ai-review",
+    expected: "302 to /auth/login; no traceback; no data leaked",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-04", layer: "P2", category: "Access / RBAC",
-    name: "Tampered dash_session cookie → 401 / login",
-    steps: "1. Log in\n2. In devtools, change one char of the session cookie\n3. Reload /ai-review",
-    expected: "Session invalidated; polite redirect / message; no server 500",
+  { id: "PR-03", layer: "P2", category: "List",
+    name: "Default list = AWAITING_REVIEW only",
+    steps: "1. Seed rows in SCHEDULED / AWAITING_REVIEW / REVIEWED\n2. Load /ai-review",
+    expected: "Only AWAITING_REVIEW rows appear. Empty-state is friendly when count is zero.",
     status: "pending", actual: "", notes: "" },
 
-  // ============================================================
-  // B. List defaults & counts (4)
-  // ============================================================
-  { id: "PR-05", layer: "P2", category: "List & counts",
-    name: "Empty state when no AWAITING_REVIEW rows",
-    steps: "1. Fresh test env with zero AWAITING_REVIEW appointments\n2. Load /ai-review",
-    expected: "Friendly empty-state ('All caught up' or similar); no undefined / broken layout; no error toast",
+  { id: "PR-04", layer: "P2", category: "List",
+    name: "Filter + search + sort work",
+    steps: "1. Apply category filter → verify\n2. Search by name / mobile last-4 / token → verify\n3. Switch to urgency sort → verify order (CRITICAL > HIGH > MED > LOW)",
+    expected: "Each control narrows the list correctly. Newest-first default has an id tie-break (PERF-08). Clear-all restores.",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-06", layer: "P2", category: "List & counts",
-    name: "Default list shows AWAITING_REVIEW only (not SCHEDULED / REVIEWED)",
-    steps: "1. Seed appointments in SCHEDULED / AWAITING_REVIEW / REVIEWED\n2. Load /ai-review with default filter",
-    expected: "Only AWAITING_REVIEW rows appear. SCHEDULED lives in /appointments; REVIEWED lives in Tickets.",
+  { id: "PR-05", layer: "P2", category: "List",
+    name: "Pagination + counts match /counts endpoint",
+    steps: "1. Seed >25 rows\n2. Load page 1, then page 2\n3. Compare visible total to GET /dashboard/api/appointments/counts",
+    expected: "Page 2 shows next 25 (no dupes). Counts match exactly (no IST/UTC drift). Fresh submission appears after the polling interval.",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-07", layer: "P2", category: "List & counts",
-    name: "Counts bar matches /api/appointments/counts",
-    steps: "1. Note the count pills at the top (Total / Today / This week / whatever the header shows)\n2. Compare to a direct GET /dashboard/api/appointments/counts response",
-    expected: "Numbers match exactly. No off-by-one from timezone (IST vs UTC).",
-    status: "pending", actual: "",
-    notes: "Verifies IST/UTC drift fix (CORR-07/08/09)" },
-
-  { id: "PR-08", layer: "P2", category: "List & counts",
-    name: "Fresh submission appears after refresh/poll",
-    steps: "1. Load /ai-review (note current count N)\n2. In another tab, submit a citizen petition\n3. Return to /ai-review; wait for the polling interval",
-    expected: "New row appears without a full page reload; count → N+1",
+  { id: "PR-06", layer: "P2", category: "Drawer",
+    name: "Drawer opens on click + deep-link",
+    steps: "1. Click a row → verify drawer + URL update\n2. Open /ai-review?ticket=<id> in a fresh tab\n3. Close via X + Esc",
+    expected: "Both entry points open the drawer with the right row. X and Esc close it. Browser back closes it too.",
     status: "pending", actual: "", notes: "" },
 
-  // ============================================================
-  // C. Filters (10)
-  // ============================================================
-  { id: "PR-09", layer: "P2", category: "Filters",
-    name: "Category filter narrows list",
-    steps: "1. Pick 'action_required' from Category filter\n2. Verify row set",
-    expected: "Only action_required rows visible; count pill updates; URL reflects the filter",
+  { id: "PR-07", layer: "P2", category: "Drawer",
+    name: "Overview panel — name, masked mobile, badges",
+    steps: "1. Open drawer\n2. Scan the OVERVIEW panel",
+    expected: "Name / masked mobile (******3210) / constituency / district present. Category + priority (colour-coded) + ministry pills reflect GSR.",
+    status: "pending", actual: "", notes: "Mobile mask regression" },
+
+  { id: "PR-08", layer: "P2", category: "Drawer",
+    name: "Bilingual summary + key details render (no mojibake)",
+    steps: "1. Open a drawer with Tamil summary_ta + key_details_ta populated\n2. Toggle language",
+    expected: "Tamil renders in Noto Serif Tamil, English in Inter. No ???. Bullets render as bullets.",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-10", layer: "P2", category: "Filters",
-    name: "Priority filter narrows list",
-    steps: "1. Pick 'high' priority\n2. Verify",
-    expected: "Only high-priority rows visible; empty-state if none",
+  { id: "PR-09", layer: "P2", category: "Drawer",
+    name: "PDF iframe + audio playback work",
+    steps: "1. Open a drawer with a PDF upload → verify iframe renders (not blocked:other)\n2. Open one with an audio upload → play + seek",
+    expected: "PDF iframe: XFO SAMEORIGIN + frame-ancestors 'self' honoured (CI-89 regression). Audio: Range requests supported, seek works, duration finite on WebM/Opus.",
+    status: "pending", actual: "", notes: "CI-89 iframe fix regression, PERF-audio Range" },
+
+  { id: "PR-10", layer: "P2", category: "Triage",
+    name: "Approve → Ticket created, status flips REVIEWED",
+    steps: "1. Open a drawer\n2. Click Approve\n3. Verify tickets table + appointment row",
+    expected: "New Ticket with correct ticket_number (TKN<year><ord>), status=OPEN, appointment_id linked. Appt.status → REVIEWED. Row leaves the AWAITING_REVIEW list.",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-11", layer: "P2", category: "Filters",
-    name: "Ministry filter narrows list",
-    steps: "1. Pick a ministry\n2. Verify row set",
-    expected: "Only rows for that ministry (from GrievanceSummaryRecord); rows without a GSR are excluded cleanly",
+  { id: "PR-11", layer: "P2", category: "Triage",
+    name: "Approve triggers SMS + activity log",
+    steps: "1. Approve a drawer\n2. Tail Railway logs\n3. Open the resulting ticket's activity",
+    expected: "spawn_bg(_notify) log line present. Activity row: action_type='created', user='pa_admin', payload has {token, appointment_id}.",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-12", layer: "P2", category: "Filters",
-    name: "Submission date range filter",
-    steps: "1. Set date_from = today, date_to = today\n2. Verify",
-    expected: "Only appointments submitted today (IST) shown",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-13", layer: "P2", category: "Filters",
-    name: "Appointment (meeting) date filter",
-    steps: "1. Set appt_date_from / appt_date_to to tomorrow\n2. Verify",
-    expected: "Only appointments with a scheduled slot tomorrow — filters on MLADailyAvailability.date, not created_at",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-14", layer: "P2", category: "Filters",
-    name: "Venue filter (exact match on VenueRegistry.key)",
-    steps: "1. Pick a venue\n2. Verify",
-    expected: "Only rows whose Appointment.venue_id equals that key; historical rows for deactivated venues still match by key",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-15", layer: "P2", category: "Filters",
-    name: "Search by citizen name (substring)",
-    steps: "1. Type a citizen's name in search\n2. Verify",
-    expected: "Rows whose decrypted citizen name contains the substring (case-insensitive)",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-16", layer: "P2", category: "Filters",
-    name: "Search by mobile (last-4 or full number)",
-    steps: "1. Search '3210' (last 4 of citizen mobile)\n2. Search full 10-digit mobile",
-    expected: "Both find the citizen. Uses blind-index for full mobile; last-N substring against masked format for last-4.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-17", layer: "P2", category: "Filters",
-    name: "Search by token number",
-    steps: "1. Search 'TKN2026...' or bare digits\n2. Verify",
-    expected: "Row with that token appears at top; other rows filtered out",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-18", layer: "P2", category: "Filters",
-    name: "Clear-all filters resets to default",
-    steps: "1. Apply 3+ filters\n2. Click Reset / Clear all",
-    expected: "All filters removed; list returns to full AWAITING_REVIEW view; URL cleaned",
-    status: "pending", actual: "", notes: "" },
-
-  // ============================================================
-  // D. Sort & pagination (3)
-  // ============================================================
-  { id: "PR-19", layer: "P2", category: "Sort & pagination",
-    name: "Default sort (newest submissions first)",
-    steps: "1. Load /ai-review (no sort override)\n2. Compare row order to created_at DESC",
-    expected: "Newest at top; deterministic tie-break by id (PERF-08 fix)",
-    status: "pending", actual: "",
-    notes: "Verifies PERF-08 id tie-break on paginated ORDER BY" },
-
-  { id: "PR-20", layer: "P2", category: "Sort & pagination",
-    name: "Sort by urgency (CRITICAL > HIGH > MEDIUM > LOW)",
-    steps: "1. Choose urgency sort\n2. Verify order",
-    expected: "CRITICAL rows first, then HIGH, MEDIUM, LOW. Ties broken by created_at DESC + id.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-21", layer: "P2", category: "Sort & pagination",
-    name: "Pagination — page 2 loads next set",
-    steps: "1. Seed >25 AWAITING_REVIEW rows\n2. Load /ai-review; verify page 1\n3. Go to page 2",
-    expected: "Page 2 has correct next-25; no duplicates; count / total consistent with counts endpoint",
-    status: "pending", actual: "", notes: "" },
-
-  // ============================================================
-  // E. Drawer content (10)
-  // ============================================================
-  { id: "PR-22", layer: "P2", category: "Drawer content",
-    name: "Drawer opens on row click; URL updates with token",
-    steps: "1. Click any row\n2. Verify drawer + URL",
-    expected: "Drawer slides in; URL updates with ?ticket=<id> or similar; browser back closes it",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-23", layer: "P2", category: "Drawer content",
-    name: "Deep-link to a specific ticket opens the drawer",
-    steps: "1. Open /ai-review?ticket=<id> directly in a fresh tab",
-    expected: "Page loads with drawer already open on the specified row",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-24", layer: "P2", category: "Drawer content",
-    name: "Citizen name / mobile (masked) / constituency / district all shown",
-    steps: "1. Open a drawer\n2. Scan the OVERVIEW panel",
-    expected: "All four fields present. Mobile shown as ******3210 (mask), not raw. Constituency / district reflect what was extracted / entered.",
-    status: "pending", actual: "",
-    notes: "Verifies mask_mobile helper — must never show raw mobile in drawer" },
-
-  { id: "PR-25", layer: "P2", category: "Drawer content",
-    name: "Category / priority / ministry badges render with correct colours",
-    steps: "1. Open a drawer\n2. Screenshot the badge row",
-    expected: "Category pill, priority pill (colour-coded LOW/MEDIUM/HIGH/CRITICAL), ministry pill. Values match GrievanceSummaryRecord.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-26", layer: "P2", category: "Drawer content",
-    name: "AI summary text renders (English + Tamil, no mojibake)",
-    steps: "1. Open a drawer where GrievanceSummaryRecord.summary_ta is populated\n2. Toggle language\n3. Verify Tamil renders in Noto Serif Tamil, English in Inter",
-    expected: "Bilingual summary. No ??? or garbled bytes. Bullets render as bullets.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-27", layer: "P2", category: "Drawer content",
-    name: "Key details bullets render",
-    steps: "1. Open a drawer with key_details populated\n2. Scan the section",
-    expected: "Bullet list of concrete evidence (dates, amounts, section citations, prior escalation)",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-28", layer: "P2", category: "Drawer content",
-    name: "Citizen uploads section count matches attachments",
-    steps: "1. Open a drawer\n2. Compare the 'CITIZEN UPLOADS N' chip to actual attachment count",
-    expected: "N equals AppointmentAttachment row count; DOC / IMG / AUDIO badges reflect actual mime types",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-29", layer: "P2", category: "Drawer content",
-    name: "PDF renders inline in iframe (regression for CI-89)",
-    steps: "1. Open a drawer for a ticket with a PDF upload\n2. Verify the PDF renders inside the preview",
-    expected: "Not 'blocked:other'. XFO SAMEORIGIN + frame-ancestors 'self' honoured. Same behaviour as CI-89 but exercised from Petition Review, not Tickets.",
-    status: "pending", actual: "", notes: "Regression for iframe preview fix (commit 38a64bc)" },
-
-  { id: "PR-30", layer: "P2", category: "Drawer content",
-    name: "Audio playback works (native <audio> controls + seek)",
-    steps: "1. Open a drawer for a ticket with a voice recording\n2. Play the audio; drag the seek bar",
-    expected: "Native <audio> renders duration correctly (Range requests supported); seek jumps to arbitrary position; no infinite duration on WebM/Opus",
-    status: "pending", actual: "",
-    notes: "Verifies Range request handling in serve_stored_file" },
-
-  { id: "PR-31", layer: "P2", category: "Drawer content",
-    name: "Drawer closes via X button + Esc key",
-    steps: "1. Open drawer\n2. Press Escape\n3. Reopen; click the X",
-    expected: "Both close the drawer; URL cleaned; row loses selected state",
-    status: "pending", actual: "", notes: "" },
-
-  // ============================================================
-  // F. Triage — Approve → Ticket (7)
-  // ============================================================
-  { id: "PR-32", layer: "P2", category: "Triage — Approve",
-    name: "Approve creates a Ticket row",
-    steps: "1. Open a drawer\n2. Click Approve\n3. Verify DB / Tickets tab",
-    expected: "New row in tickets table; ticket.appointment_id = appt.id; ticket.status = OPEN",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-33", layer: "P2", category: "Triage — Approve",
-    name: "Ticket number generated correctly (year-count)",
-    steps: "1. Approve N appointments in a row\n2. Check ticket_number pattern",
-    expected: "TKN<year><ordinal> format (e.g. TKN2026082300007). Monotonically increasing within the year; no gaps from failed inserts.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-34", layer: "P2", category: "Triage — Approve",
-    name: "Appointment.status flips to REVIEWED",
-    steps: "1. Approve a drawer\n2. Refetch the appointment",
-    expected: "appt.status = 'REVIEWED'; visible in /appointments 'Reviewed' filter",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-35", layer: "P2", category: "Triage — Approve",
-    name: "Drawer transitions to a 'Ticket created' success state",
-    steps: "1. Approve\n2. Watch the drawer",
-    expected: "Approve button becomes success chip / link to new ticket. Row disappears from AWAITING_REVIEW list (either optimistically or after refresh).",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-36", layer: "P2", category: "Triage — Approve",
-    name: "SMS notification triggered on approve (visible in logs)",
-    steps: "1. Approve a drawer with a citizen mobile\n2. Tail Railway logs for the SMS dispatch line",
-    expected: "spawn_bg(_notify(kind='convert_to_petition', ...)) fires; log line 'SMS dispatched' or MSG91 stub log (no real send in test env)",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-37", layer: "P2", category: "Triage — Approve",
-    name: "Activity log records 'created' event with actor + payload",
-    steps: "1. Approve a drawer\n2. Open the activity log on the resulting ticket",
-    expected: "Activity row: action_type='created', user='pa_admin', message references the token, payload has {token, appointment_id}",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-38", layer: "P2", category: "Triage — Approve",
-    name: "Approve is idempotent — double-click doesn't create two tickets",
+  { id: "PR-12", layer: "P2", category: "Triage",
+    name: "Approve is idempotent (double-click safe)",
     steps: "1. Rapidly click Approve twice\n2. Check tickets table",
-    expected: "One ticket only. Button disabled during in-flight submit. No 500. No orphan appointment status.",
+    expected: "One ticket only. Button disabled during in-flight submit. No 500.",
     status: "pending", actual: "", notes: "" },
 
-  // ============================================================
-  // G. Triage — Dismiss (4)
-  // ============================================================
-  { id: "PR-39", layer: "P2", category: "Triage — Dismiss",
-    name: "Dismiss requires a reason (or explicit confirmation)",
-    steps: "1. Open a drawer\n2. Click Dismiss without a reason",
-    expected: "Prompted for a reason OR confirmation modal. Cancel returns to drawer without change.",
+  { id: "PR-13", layer: "P2", category: "Triage",
+    name: "Dismiss + Restore round-trip",
+    steps: "1. Dismiss with reason 'duplicate submission'\n2. Verify row leaves default list\n3. Open DISMISSED filter → Restore\n4. Row returns to AWAITING_REVIEW",
+    expected: "Status transitions cleanly both ways. Activity log records dismiss (with reason) + restore.",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-40", layer: "P2", category: "Triage — Dismiss",
-    name: "Dismissed appointment removed from default list, added to DISMISSED bucket",
-    steps: "1. Dismiss a row\n2. Verify default list + DISMISSED filter",
-    expected: "Row leaves the default (AWAITING_REVIEW) view; visible under a DISMISSED filter / status; appt.status = 'DISMISSED'",
+  { id: "PR-14", layer: "P2", category: "Edits",
+    name: "Edit citizen name / category / priority / ministry persists",
+    steps: "1. Change each field via the edit pencil; save; refresh drawer\n2. Verify filters reflect the change immediately (category / ministry / priority)",
+    expected: "PATCH /details persists. Name update rehashes the blind-index. AI-inferred values overridden on save. No silent 500 on two-tab conflict — either overwrites cleanly or shows a 'refresh' message.",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-41", layer: "P2", category: "Triage — Dismiss",
-    name: "Restore endpoint sends back to AWAITING_REVIEW",
-    steps: "1. Open a DISMISSED row\n2. Click Restore",
-    expected: "appt.status → 'AWAITING_REVIEW'; row reappears in default list; activity log records 'restored'",
-    status: "pending", actual: "",
-    notes: "Verifies /api/appointments/{id}/restore endpoint" },
-
-  { id: "PR-42", layer: "P2", category: "Triage — Dismiss",
-    name: "Activity log records dismiss + reason",
-    steps: "1. Dismiss with reason 'duplicate submission'\n2. Open activity log",
-    expected: "Activity row with action_type='dismissed', reason preserved in payload",
+  { id: "PR-15", layer: "P2", category: "Attachments",
+    name: "PA adds attachment + caps honoured",
+    steps: "1. Add a small PDF from the drawer → CITIZEN UPLOADS count +1\n2. Try 6MB file → expect reject\n3. At 10 attachments → try one more → expect reject",
+    expected: "Uploads succeed and preview inline. 5MB size cap + 10-file total cap enforced with a clean human message.",
     status: "pending", actual: "", notes: "" },
 
-  // ============================================================
-  // H. Manual edits (6)
-  // ============================================================
-  { id: "PR-43", layer: "P2", category: "Manual edits",
-    name: "Edit citizen name (PATCH /details) persists",
-    steps: "1. Click edit pencil on citizen name\n2. Change name; save\n3. Refresh drawer",
-    expected: "Name updated on citizen row (encrypted + blind-index rehashed). Drawer shows the new value.",
+  { id: "PR-16", layer: "P2", category: "Attachments",
+    name: "Filename XSS still safe from the drawer path (CITZ-02 regression)",
+    steps: "1. Upload a PDF renamed to '<script>alert(1)</script>.pdf' via the PA drawer\n2. Inspect the chip + file preview title",
+    expected: "Filename escaped everywhere. No alert dialog. No console error.",
+    status: "pending", actual: "", notes: "CITZ-02 regression via drawer surface" },
+
+  { id: "PR-17", layer: "P2", category: "Signatory dedup",
+    name: "/similar returns candidates, Approve-with-signatories merges",
+    steps: "1. Open drawer → GET /api/appointments/{id}/similar\n2. Approve-with-signatories → target an existing ticket",
+    expected: "Similar list is category+district-blocked and similarity-scored. Merge attaches current appt as signatory of target; no new Ticket row.",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-44", layer: "P2", category: "Manual edits",
-    name: "Edit constituency persists",
-    steps: "1. Edit constituency; save\n2. Refresh drawer",
-    expected: "New value persisted on Appointment row",
+  { id: "PR-18", layer: "P2", category: "Signatory dedup",
+    name: "Merge preserves BOTH appointments (CI-61 regression)",
+    steps: "1. Reproduce CI-61 setup: same doc, two phones, both AWAITING_REVIEW\n2. Approve the first, then Approve-with-signatories the second into the first's ticket\n3. Verify both appointments still linked",
+    expected: "Neither appointment disappears. The reported bug 'appointment gone after convert' stays fixed via the merge path too.",
+    status: "pending", actual: "", notes: "PRIMARY dedup regression check" },
+
+  { id: "PR-19", layer: "P2", category: "Signatory dedup",
+    name: "Concurrent merge — FOR UPDATE lock prevents dup",
+    steps: "1. Two browsers open the same drawer\n2. Both click Approve-with-signatories on the same target within 1s",
+    expected: "One wins. The other gets a clean 'already merged' message. No duplicate signatory row. No partial state.",
+    status: "pending", actual: "", notes: "CORR-06 FOR UPDATE lock" },
+
+  { id: "PR-20", layer: "P2", category: "Comments",
+    name: "Comment adds (English + Tamil)",
+    steps: "1. POST /comment with an English string → reload activity\n2. Post a Tamil comment 'மீண்டும் அழைக்கவும்' → reload",
+    expected: "Both persist. Both render correctly in the activity feed (no ???, no codec err — the comment path is DB-only, not Gemini).",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-45", layer: "P2", category: "Manual edits",
-    name: "Edit category persists + reflects in filter immediately",
-    steps: "1. Change category from 'other' to 'action_required'\n2. Apply category=action_required filter",
-    expected: "Row now included in the filtered list; category badge updated in the drawer",
+  { id: "PR-21", layer: "P2", category: "UX",
+    name: "Error toasts polished across the review surface",
+    steps: "1. Trigger 4 failures: 5MB+ attachment, network offline mid-approve, backend 500, invalid edit\n2. Screenshot each toast",
+    expected: "Every message is user-friendly. Zero tracebacks / 'gemini-2.5-flash' / raw HTTP codes. Routed through businessMessage() (errors.ts).",
     status: "pending", actual: "", notes: "" },
 
-  { id: "PR-46", layer: "P2", category: "Manual edits",
-    name: "Edit priority overrides AI-inferred value",
-    steps: "1. AI set priority=MEDIUM; PA changes to HIGH\n2. Save; refresh",
-    expected: "GrievanceSummaryRecord (or appt override field) shows HIGH; badge colour updated; sort-by-urgency respects the override",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-47", layer: "P2", category: "Manual edits",
-    name: "Edit ministry persists + reflects in ministry filter",
-    steps: "1. Change ministry to a different one; save\n2. Apply filter for the new ministry",
-    expected: "Row appears in the new bucket, disappears from the old",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-48", layer: "P2", category: "Manual edits",
-    name: "Edit conflict — two tabs — last-write-wins with clean UI",
-    steps: "1. Open the same drawer in two tabs\n2. Edit + save in Tab A\n3. Edit + save in Tab B (without refreshing)",
-    expected: "Second save either succeeds (overwrites) with a clear indicator, OR is rejected with a polite 'this ticket was updated elsewhere — refresh' message. No silent 500 / no lost data.",
-    status: "pending", actual: "", notes: "" },
-
-  // ============================================================
-  // I. Attachments (3)
-  // ============================================================
-  { id: "PR-49", layer: "P2", category: "Attachments",
-    name: "PA adds an attachment from drawer — uploads OK + count increments",
-    steps: "1. Open a drawer\n2. Use the Add attachment control; upload a small PDF",
-    expected: "POST /api/appointments/{id}/attachment succeeds; CITIZEN UPLOADS count +1; new chip visible; file preview works",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-50", layer: "P2", category: "Attachments",
-    name: "Attachment respects 5MB size cap + 10-file total cap",
-    steps: "1. Try uploading a 6MB file → expect reject\n2. When appt already has 10 attachments → try one more → expect reject",
-    expected: "Clean 413 or client-side block with human message; server-side cap honoured; count never exceeds 10",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-51", layer: "P2", category: "Attachments",
-    name: "Filename XSS (regression for CITZ-02) in Petition Review drawer",
-    steps: "1. Upload a PDF renamed to '<script>alert(1)</script>.pdf' via PA drawer\n2. Inspect chip render",
-    expected: "Filename escaped in drawer chip AND in file preview title. No alert dialog. No console error.",
-    status: "pending", actual: "", notes: "CITZ-02 regression from the drawer surface" },
-
-  // ============================================================
-  // J. Dedup — signatory merge (5)
-  // ============================================================
-  { id: "PR-52", layer: "P2", category: "Signatory dedup",
-    name: "Similar-cases endpoint returns close matches",
-    steps: "1. Open a drawer\n2. GET /api/appointments/{id}/similar",
-    expected: "Returns candidate AWAITING_REVIEW rows blocked by category + district, scored by normalized similarity",
-    status: "pending", actual: "",
-    notes: "Verifies /similar endpoint added for merge suggestions" },
-
-  { id: "PR-53", layer: "P2", category: "Signatory dedup",
-    name: "Approve-with-signatories merges into an existing petition",
-    steps: "1. Open a drawer with a similar case\n2. Approve-with-signatories → target an existing ticket",
-    expected: "Current appt merged as a signatory of the target ticket. No new Ticket row. Both citizens visible on the merged ticket's signatory list.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-54", layer: "P2", category: "Signatory dedup",
-    name: "Merge preserves original citizen's appointment (Phase 1 CI-61 regression)",
-    steps: "1. Follow the CI-61 scenario end-to-end via the merge flow\n2. Verify both appointments after merge",
-    expected: "Both citizens' appointments remain linked. Neither disappears. USER-REPORTED bug from Phase 1 stays fixed via the Petition Review path too.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-55", layer: "P2", category: "Signatory dedup",
-    name: "Concurrent merge (two PAs) — FOR UPDATE lock prevents ghost rows",
-    steps: "1. Two PAs open the same drawer\n2. Both click Approve-with-signatories on the same target within 1s",
-    expected: "One wins; the other gets a clean 'already merged / target updated' message. No duplicate signatory row. No partial state.",
-    status: "pending", actual: "",
-    notes: "Verifies CORR-06 FOR UPDATE row-lock on signatory merge" },
-
-  { id: "PR-56", layer: "P2", category: "Signatory dedup",
-    name: "Cross-department merge respects RBAC gate",
-    steps: "1. As pa_admin scoped to Dept A, try to merge into a target that lives in Dept B\n2. Verify behavior",
-    expected: "Either allowed with a warning, OR blocked with a clean 'target belongs to another department' message. Never a silent cross-department mutation.",
-    status: "pending", actual: "", notes: "" },
-
-  // ============================================================
-  // K. Comments (2)
-  // ============================================================
-  { id: "PR-57", layer: "P2", category: "Comments",
-    name: "PA can add a comment via drawer — persists + shows in activity log",
-    steps: "1. Add a comment via /api/appointments/{id}/comment\n2. Reload the drawer / activity log",
-    expected: "Comment stored; visible in the activity feed with author + timestamp",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-58", layer: "P2", category: "Comments",
-    name: "Comment supports Tamil characters (no ??? or codec error)",
-    steps: "1. Add a Tamil comment: 'மீண்டும் அழைக்கவும்'\n2. Reload",
-    expected: "Tamil preserved end-to-end. No mojibake. No SDK ascii-in-header error (comment path is DB only, not Gemini — so no expected failure).",
-    status: "pending", actual: "", notes: "" },
-
-  // ============================================================
-  // L. Cross-cutting UX (4)
-  // ============================================================
-  { id: "PR-59", layer: "P2", category: "Cross-cutting UX",
-    name: "All error toasts polished across Petition Review",
-    steps: "1. Trigger errors: 5MB+ attachment, network offline mid-approve, backend 500, invalid edit\n2. Screenshot each toast",
-    expected: "Zero tracebacks. Zero 'gemini-2.5-flash'. Zero raw HTTP codes. All messages routed through businessMessage() (frontend errors.ts).",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-60", layer: "P2", category: "Cross-cutting UX",
-    name: "Loading skeleton on drawer open (>200ms fetch)",
-    steps: "1. Throttle network to 'Slow 3G' in devtools\n2. Open a drawer",
-    expected: "Skeleton / spinner visible while fetching. No content flash. No blank white area.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-61", layer: "P2", category: "Cross-cutting UX",
-    name: "Mobile viewport (375px) — drawer usable, no horizontal scroll",
-    steps: "1. Resize to 375x812\n2. Open a drawer",
-    expected: "Drawer either becomes a full-screen sheet or scales down. All actions reachable with thumbs. No horizontal scroll on body.",
-    status: "pending", actual: "", notes: "" },
-
-  { id: "PR-62", layer: "P2", category: "Cross-cutting UX",
-    name: "Polling refresh — new petitions appear without full page reload",
-    steps: "1. Load /ai-review; note current count\n2. In another tab / device, submit a new petition\n3. Wait for the polling interval",
-    expected: "New row appears in the list; count updates. No full-page refresh needed. Drawer content preserved if open on a different row.",
+  { id: "PR-22", layer: "P2", category: "UX",
+    name: "Mobile viewport (375px) — drawer usable",
+    steps: "1. Resize to 375x812\n2. Open a drawer; try Approve + Edit + Add attachment",
+    expected: "Drawer scales / becomes a full-screen sheet. All actions reachable. No horizontal body scroll.",
     status: "pending", actual: "", notes: "" }
 ];
