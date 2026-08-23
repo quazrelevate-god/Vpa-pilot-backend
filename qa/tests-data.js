@@ -9,7 +9,7 @@ window.META = {
   environment: "Railway (testing)",
   gitSha: "3f0df68",
   updated: "2026-08-23",
-  activeLayer: "P2 — PA Petition Review"
+  activeLayer: "P3 — Tickets / Association Review"
 };
 
 window.LAYERS = [
@@ -27,7 +27,13 @@ window.LAYERS = [
     order: 2,
     active: true
   },
-  { key: "P3", label: "Phase 3 — Tickets / Association Review", order: 3, active: false },
+  {
+    key: "P3",
+    label: "Phase 3 — Tickets / Association Review",
+    surface: "PA portal /tickets + /association-review — post-approval lifecycle",
+    order: 3,
+    active: true
+  },
   { key: "P4", label: "Phase 4 — Events (voice + photo)",       order: 4, active: false },
   { key: "P5", label: "Phase 5 — Executive / Dept / Minister",  order: 5, active: false },
   { key: "P6", label: "Phase 6 — Cross-cutting sanity",         order: 6, active: false }
@@ -803,5 +809,146 @@ window.TEST_CASES = [
     name: "Mobile viewport (375px) — drawer usable",
     steps: "1. Resize to 375x812\n2. Open a drawer; try Approve + Edit + Add attachment",
     expected: "Drawer scales / becomes a full-screen sheet. All actions reachable. No horizontal body scroll.",
-    status: "pass", actual: "Verified on Railway", notes: "" }
+    status: "pass", actual: "Verified on Railway", notes: "" },
+
+  // -------------------------------------------------------------------------
+  // Phase 3 — Tickets + Association Review  (post-approval lifecycle)
+  // -------------------------------------------------------------------------
+  // TK-* covers /tickets (approved petitions in their working state).
+  // AR-* covers /association-review (parallel review flow for association
+  // submissions, mints tickets via mint_ticket_from_association).
+  // T3-* covers cross-cutting UX shared by both surfaces.
+
+  // ============================================================
+  // Tickets — /tickets
+  // ============================================================
+  { id: "TK-01", layer: "P3", category: "Tickets — Access",
+    name: "RBAC — pa_admin sees all, dept_officer sees only their dept",
+    steps: "1. Log in as pa_admin → /tickets\n2. Log in as dept_officer → /tickets",
+    expected: "pa_admin: full ticket list across every dept. dept_officer: only tickets routed to their department; other rows never surface.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "TK-02", layer: "P3", category: "Tickets — List",
+    name: "Status tabs partition correctly (Open / Assigned / Forwarded / Resolved / Closed)",
+    steps: "1. Click each status tab in turn\n2. Verify row set + counts",
+    expected: "Each tab shows only its status. Rows never appear on the wrong tab. Terminal tabs (Resolved/Closed) don't show OPEN or FORWARDED rows.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "TK-03", layer: "P3", category: "Tickets — List",
+    name: "Filter + search + sort — pill counts follow the current filter (3f0df68 regression)",
+    steps: "1. Apply priority=high → verify Open pill narrows with list\n2. Search by ticket number / citizen name → verify\n3. Sort by created / due-date / priority → verify order",
+    expected: "Pill counts = visible list count for the same tab (no stable-universe mismatch). SLA-breached chip also narrows with the filter (already WYSIWYG per 0cde4ed).",
+    status: "pending", actual: "",
+    notes: "Regression for 3f0df68 pill-count parity (aligns tickets with appointments + ai-review)" },
+
+  { id: "TK-04", layer: "P3", category: "Tickets — Drawer",
+    name: "Drawer overview: badges + source-specific detail block",
+    steps: "1. Open a citizen-petition ticket → verify priority/dept/status badges + AI summary\n2. Open an association-minted ticket → verify AssociationDetail block appears (rep name, ministry, docs)",
+    expected: "Citizen tickets show petition summary + key details. Association tickets additionally show source_kind='association' detail card (a4bacc9).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "TK-05", layer: "P3", category: "Tickets — Triage",
+    name: "Assign requires only dept (no due-date coupling) — 2d1ee54 regression",
+    steps: "1. Open an OPEN ticket with no due-date set\n2. Pick a dept, DON'T touch due-date\n3. Click Assign",
+    expected: "Assign button enables as soon as a dept is picked. Save routes to dept + logs 'routed'. Previous bug: button stayed disabled without a due-date.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "TK-06", layer: "P3", category: "Tickets — Triage",
+    name: "Due-date + priority live-save on non-OPEN tickets (decc4f4 regression)",
+    steps: "1. Open an association-auto-forwarded ticket (status=FORWARDED_TO_DEPT)\n2. Change priority\n3. Pick a due-date",
+    expected: "Both fields save immediately (canEditSla path). Prior bug: everything was disabled because canEdit gated on status===open.",
+    status: "pending", actual: "",
+    notes: "Also implicitly verifies AR-06 auto-forward chain" },
+
+  { id: "TK-07", layer: "P3", category: "Tickets — Lifecycle",
+    name: "Dept accept → assign locks; Resolve → Reopen round-trip",
+    steps: "1. As dept_officer, accept a forwarded ticket → accepted_at set\n2. Verify PA drawer shows accepted chip, assign dropdown gone\n3. Dept resolves → status=RESOLVED\n4. PA reopens → status=REOPENED",
+    expected: "accepted_at persists. Status transitions cleanly both ways. Activity log records accept / resolve / reopen with actor + payload.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "TK-08", layer: "P3", category: "Tickets — Attachments",
+    name: "Attachment upload from drawer + filename XSS safe",
+    steps: "1. Upload a small PDF via ticket drawer → count +1\n2. Upload '<script>alert(1)</script>.pdf' → escaped in chip + preview title",
+    expected: "Upload succeeds. Filename rendered as text everywhere. 5MB cap honoured.",
+    status: "pending", actual: "", notes: "CITZ-02 regression on ticket surface" },
+
+  { id: "TK-09", layer: "P3", category: "Tickets — Attachments",
+    name: "Dept can view ai_uploads/ PDFs for their tickets (cbc9c8c regression)",
+    steps: "1. Log in as dept_officer, open a ticket derived from an AI upload\n2. Click the citizen's original PDF\n3. Verify iframe renders",
+    expected: "PDF renders inline (200 OK). Cross-dept access still 403. Prior bug: /department/api/files/ai_uploads/… → 403 for legitimate access.",
+    status: "pending", actual: "",
+    notes: "Regression for cbc9c8c (ai_uploads/ branch in _dept_authorize_file) + f40c2f6 (HTTPException import — 500→403 for legit denies)" },
+
+  { id: "TK-10", layer: "P3", category: "Tickets — Comments",
+    name: "PA + dept can comment; Tamil supported",
+    steps: "1. PA adds English comment → visible in activity\n2. Dept adds Tamil comment 'மீண்டும் அழைக்கவும்' → renders correctly",
+    expected: "Both comments persist with author + timestamp. Tamil no ??? no codec err.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "TK-11", layer: "P3", category: "Tickets — Drawer",
+    name: "Drawer prev/next navigation (5c3bc5b regression)",
+    steps: "1. Open a ticket drawer\n2. Use prev/next arrows (or keyboard)",
+    expected: "Drawer swaps to sibling row without full-page reload. URL updates. Selection state moves.",
+    status: "pending", actual: "", notes: "" },
+
+  // ============================================================
+  // Association Review — /association-review
+  // ============================================================
+  { id: "AR-01", layer: "P3", category: "Assoc Review — Access",
+    name: "RBAC — pa_admin only",
+    steps: "1. Log in as pa_admin → /association-review\n2. Log in as dept_officer → /association-review",
+    expected: "pa_admin loads normally. dept_officer redirected or 403 (dept has no association-review UI).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "AR-02", layer: "P3", category: "Assoc Review — List",
+    name: "Default list + status filter partition",
+    steps: "1. Load /association-review (default = AWAITING_REVIEW)\n2. Switch tabs — Awaiting / Approved / Rejected",
+    expected: "Each tab shows only its status. Empty-state is friendly. Counts match visible rows.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "AR-03", layer: "P3", category: "Assoc Review — Drawer",
+    name: "Drawer content — rep, ministry, extraction, uploaded documents",
+    steps: "1. Open a submission with 2+ documents\n2. Scan the drawer",
+    expected: "Representative name + phone + org, chosen ministry, AssociationExtraction summary + key details, document previews render inline (iframe).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "AR-04", layer: "P3", category: "Assoc Review — Triage",
+    name: "Ministry-driven decision — override + approve",
+    steps: "1. Open a submission where AI ministry = 'other'\n2. Override to a real ministry via inline edit\n3. Approve → verify Ticket minted",
+    expected: "Ministry edit persists on the row. Approve calls mint_ticket_from_association → Appointment + Ticket + GSR created. Redirect / drawer transitions to 'submitted' state.",
+    status: "pending", actual: "",
+    notes: "Regression for 40a6f55 ministry-driven decision refactor" },
+
+  { id: "AR-05", layer: "P3", category: "Assoc Review — Triage",
+    name: "Non-school ministry → auto-forward chain (feeds TK-06)",
+    steps: "1. Approve an association with ministry=health_medical_education\n2. Open the resulting Ticket in /tickets",
+    expected: "Ticket exists with status=FORWARDED_TO_DEPT (auto-forwarded via forward_if_non_school). Dept officer can accept from their workspace. SLA fields still editable (see TK-06).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "AR-06", layer: "P3", category: "Assoc Review — Triage",
+    name: "School ministry → stays OPEN for PA to assign",
+    steps: "1. Approve an association with ministry=school_education_tamil_dev_info_publicity\n2. Open the resulting Ticket",
+    expected: "Ticket exists with status=OPEN. Assign panel visible so PA can route to one of the 10 school departments. Contrast with AR-05.",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "AR-07", layer: "P3", category: "Assoc Review — Dismiss",
+    name: "Reject with reason + restore",
+    steps: "1. Reject a submission with reason 'incomplete documentation'\n2. Verify status=REJECTED\n3. Restore back to AWAITING_REVIEW",
+    expected: "Reason preserved on the row. Restore reverses cleanly. Activity log records both actions.",
+    status: "pending", actual: "", notes: "" },
+
+  // ============================================================
+  // Cross-cutting (both surfaces)
+  // ============================================================
+  { id: "T3-01", layer: "P3", category: "UX",
+    name: "Polished error toasts across tickets + association review",
+    steps: "1. Trigger 4 failures: 5MB+ attachment, network offline mid-approve, backend 500, invalid edit\n2. Screenshot each toast on both surfaces",
+    expected: "Every message user-friendly. Zero tracebacks / raw HTTP codes / 'gemini-2.5-flash'. Routed through businessMessage() (errors.ts).",
+    status: "pending", actual: "", notes: "" },
+
+  { id: "T3-02", layer: "P3", category: "UX",
+    name: "Mobile viewport (375px) — both drawers usable",
+    steps: "1. Resize to 375x812\n2. Open ticket drawer → try Assign / Comment / Add attachment\n3. Open association drawer → try Approve / Ministry override",
+    expected: "Both drawers scale / go full-screen. All actions reachable with thumbs. No horizontal body scroll.",
+    status: "pending", actual: "", notes: "" }
 ];
