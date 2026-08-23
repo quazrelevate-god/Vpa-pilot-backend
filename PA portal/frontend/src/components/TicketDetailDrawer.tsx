@@ -375,9 +375,17 @@ export default function TicketDetailDrawer({
   const t = data;
   const isClosed = t?.status === "closed";
   const isResolved = t?.status === "resolved";
-  // Assign + SLA are editable only while the ticket is still open.
+  // Routing (Assign + District) is editable only while the ticket is still
+  // OPEN — once forwarded / accepted, those decisions belong to the dept.
   const isOpen = t?.status === "open";
   const canEdit = Boolean(isOpen) && !busy;
+  // SLA (Priority + Due date) is a PA-office commitment and stays editable
+  // through every non-terminal status. Association tickets (non-school
+  // ministry) auto-forward to a dept workspace inside the mint transaction,
+  // so by the time the drawer opens the ticket is already FORWARDED — using
+  // `canEdit` here would silently lock due-date on every such ticket.
+  const isTerminal = isClosed || isResolved;
+  const canEditSla = Boolean(t) && !isTerminal && !busy;
 
   // Localized value helpers (respect the global language).
   const statusText = (s?: string | null) => { if (!s) return ""; const k = STATUS_TKEY[s]; return k ? tr(k) : (TICKET_STATUS_DISPLAY[s] ?? s); };
@@ -554,16 +562,16 @@ export default function TicketDetailDrawer({
                     const showBtn = canEdit && !t.accepted_at;
                     return (
                       <>
-                        {/* Priority — live-save Select. Editable while the ticket
-                            is Open; kept separate from the staged Assign flow
-                            because PA may correct priority independently of
-                            routing (e.g. after seeing the citizen's uploads). */}
+                        {/* Priority — live-save Select. Editable through every
+                            non-terminal status (SLA field, not routing), so
+                            an auto-forwarded association ticket can still be
+                            re-prioritised. */}
                         <div className="mb-4 space-y-1.5">
                           <Label>{tr("petition.colUrgency")}</Label>
                           <Select
                             value={t.priority ?? undefined}
                             onValueChange={(v) => patch({ priority: v })}
-                            disabled={!canEdit || assigning}
+                            disabled={!canEditSla || assigning}
                           >
                             <SelectTrigger className="h-10">
                               <SelectValue placeholder={tr("tkt.priorityPlaceholder")} />
@@ -618,7 +626,7 @@ export default function TicketDetailDrawer({
                                 el.focus();
                                 try { (el as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* ignore */ }
                               }}
-                              disabled={!canEdit || assigning}
+                              disabled={!canEditSla || assigning}
                               className={cn(
                                 "flex h-10 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm transition-colors",
                                 "hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-ring",
@@ -633,7 +641,17 @@ export default function TicketDetailDrawer({
                                 ref={dueDateRef}
                                 type="datetime-local"
                                 value={toLocalDateTimeInput(effDue) || ""}
-                                onChange={(e) => setPendingDue(fromLocalDateTimeInput(e.target.value) || "")}
+                                onChange={(e) => {
+                                  // OPEN: stage as part of the Assign flow so
+                                  // dept + due-date save together. Non-OPEN
+                                  // (auto-forwarded association, reopened
+                                  // ticket): live-save — the Assign button
+                                  // isn't visible here and staging would leave
+                                  // the change unsaved.
+                                  const iso = fromLocalDateTimeInput(e.target.value) || "";
+                                  if (isOpen) setPendingDue(iso);
+                                  else patch({ due_date: iso });
+                                }}
                                 className="pointer-events-none absolute h-0 w-0 border-0 p-0 opacity-0"
                                 tabIndex={-1} aria-hidden="true"
                               />
