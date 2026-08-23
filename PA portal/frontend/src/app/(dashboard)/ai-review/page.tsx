@@ -594,20 +594,27 @@ function AiReviewPageInner() {
     return p.toString();
   }, [page, pageSize, fStatus, fCategory, fPriority, fSource, batchFilter, dateFrom, dateTo, q, sort]);
 
-  // TAB PILL counts scope — ONLY the structural filters (search + date +
-  // batch). Refinement filters (priority / source / category) must not
-  // collapse the tab pill counts; otherwise selecting "priority=high" makes
-  // Awaiting jump from 128 → 3 and Reviewed → 0, reading as if the queue
-  // vanished. Same fix as the tickets page. Status is also omitted here —
-  // that's the axis /facets counts across.
+  // TAB PILL counts scope — the ACTIVE filter set (search + date + batch
+  // + priority + source + category), matching what the LIST is showing.
+  // Status itself is omitted — that's the axis /facets counts across (each
+  // tab shows the count it WOULD have if clicked).
+  //
+  // Prior version excluded priority / source / category so pills read as
+  // a "stable universe" ("Awaiting 167 always"). That produced list-vs-pill
+  // disagreement — pick a category and the list narrowed to 4 rows but the
+  // Awaiting pill still said 167, which reviewers read as broken. Same
+  // reversal as appointments/page.tsx line 509 comment.
   const buildTabsFacetsQuery = useCallback((): string => {
     const p = new URLSearchParams();
+    if (fPriority)   p.set("priority",  fPriority);
+    if (fSource)     p.set("source",    fSource);
+    if (fCategory)   p.set("category",  fCategory);
     if (batchFilter) p.set("batch_id",  batchFilter);
     if (dateFrom)    p.set("from_date", dateFrom);
     if (dateTo)      p.set("to_date",   dateTo);
     if (q.trim())    p.set("q",         q.trim());
     return p.toString();
-  }, [batchFilter, dateFrom, dateTo, q]);
+  }, [fPriority, fSource, fCategory, batchFilter, dateFrom, dateTo, q]);
 
   // DISTRIBUTION chart scope — the full current slice (status + refinements)
   // MINUS the axis the chart itself drives (category). Same rule as the
