@@ -1,6 +1,7 @@
 """
 Main FastAPI application entry point.
 Configures middleware, CORS, and routes for the citizen scheduler API.
+Stable Build - 3
 """
 import sys
 import asyncio
