@@ -25,14 +25,20 @@ export default function EventsApp() {
   // Bumped after any mutation (upload/edit/delete/retry) so screens refetch.
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const canReview = roles.includes("event_reviewer");
+  // canApprove gates the reviewer-only Approve action (banner in the popup,
+  // pill button on each Needs Review row). Uploader-only accounts still see
+  // the queue and can edit/delete/retry — the backend enforces the same rule.
+  const canApprove = roles.includes("event_reviewer");
+  // Any events role can see the queue; only a real events login reaches this
+  // component at all, so hasEventsAccess === (uploader OR reviewer).
+  const hasEventsAccess = roles.length > 0;
 
   // Reminders are a reviewer-role feature: the hook silently subscribes
   // when permission is already granted, and surfaces the state so the
   // banner below can prompt the user for a click-driven grant when it's
   // still `default`. Guard on `ready` so we don't POST /session in a race.
   const { permission: reminderPermission, enable: enableReminders, busy: reminderBusy } =
-    useEventReminders(ready && canReview);
+    useEventReminders(ready && canApprove);
 
   // Session gate: the middleware already redirects logged-out page loads, but
   // an expired cookie mid-session surfaces here as a 401 → back to login.
@@ -45,18 +51,18 @@ export default function EventsApp() {
       .catch(() => router.replace("/events/login"));
   }, [router]);
 
-  // If the user landed on the review tab but no longer has the reviewer role
-  // (or the initial view state is review for a non-reviewer), send them home.
+  // If someone landed on the review tab without any events access at all
+  // (impossible in practice, but keeps the state machine honest), send them
+  // home. Both uploader and reviewer roles are welcome on this tab now.
   useEffect(() => {
-    if (ready && view === "review" && !canReview) setView("overview");
-  }, [ready, view, canReview]);
+    if (ready && view === "review" && !hasEventsAccess) setView("overview");
+  }, [ready, view, hasEventsAccess]);
 
   const refreshBadge = useCallback(() => {
-    // Only reviewers can see the review queue, so only they need the badge —
-    // needs-review is 403 for uploaders anyway, so calling it would 403-loop.
-    if (!canReview) { setReviewCount(0); return; }
+    // Both roles can now read the queue; the badge should follow suit.
+    if (!hasEventsAccess) { setReviewCount(0); return; }
     api.needsReview().then((d) => setReviewCount(d.count)).catch(() => {});
-  }, [canReview]);
+  }, [hasEventsAccess]);
 
   useEffect(() => {
     if (!ready) return;
@@ -84,7 +90,7 @@ export default function EventsApp() {
     <div className="flex min-h-screen flex-col">
       <TopBar onLogout={logout} />
 
-      {canReview && (
+      {canApprove && (
         <RemindersBanner
           permission={reminderPermission}
           busy={reminderBusy}
@@ -93,19 +99,20 @@ export default function EventsApp() {
       )}
 
       <main className="flex-1 pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+8px)]">
-        {view === "overview" && <OverviewScreen />}
+        {view === "overview" && <OverviewScreen canApprove={canApprove} />}
         {view === "calendar" && (
           <CalendarScreen refreshKey={refreshKey} onOpen={setSelected} onSent={bumpRefresh} />
         )}
-        {view === "review" && canReview && (
-          <NeedsReviewScreen refreshKey={refreshKey} onOpen={setSelected} />
+        {view === "review" && hasEventsAccess && (
+          <NeedsReviewScreen refreshKey={refreshKey} onOpen={setSelected} canApprove={canApprove} />
         )}
       </main>
 
-      <BottomNav view={view} reviewCount={reviewCount} canReview={canReview} onChange={setView} />
+      <BottomNav view={view} reviewCount={reviewCount} showReviewTab={hasEventsAccess} onChange={setView} />
 
       <EventPopup
         event={selected}
+        canApprove={canApprove}
         onClose={() => setSelected(null)}
         onChanged={(updated) => { setSelected(updated); bumpRefresh(); }}
         onDeleted={() => { setSelected(null); bumpRefresh(); }}

@@ -4,7 +4,7 @@
 // extractions, uploads still processing, and readable cards with no
 // detected date. Nothing captured is ever silently lost.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { api } from "../_lib/api";
@@ -70,9 +70,13 @@ function statusChip(e: EventItem, t: (en: string, ta: string) => string) {
   return { cls: "bg-blue-50 text-blue-700 border-blue-200", label: t("Awaiting confirmation", "உறுதிசெய்ய காத்திருக்கிறது") };
 }
 
-export default function NeedsReviewScreen({ refreshKey, onOpen }: {
+export default function NeedsReviewScreen({ refreshKey, onOpen, canApprove }: {
   refreshKey: number;
   onOpen: (e: EventItem) => void;
+  // Uploader-only accounts see the queue and can edit/delete/retry, but the
+  // Approve pill is hidden — approving requires event_reviewer (also enforced
+  // server-side in POST /approve).
+  canApprove: boolean;
 }) {
   const { t, lang } = useT();
   const [items, setItems] = useState<EventItem[] | null>(null);
@@ -135,9 +139,10 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
     return out;
   }, [items]);
 
-  // Per-date collapse. Empty set = all expanded (default — the attention
-  // queue shouldn't hide rows on load); tapping a date header folds it so a
-  // long list is easy to scan.
+  // Per-date collapse. Past-date sections with no approvable rows collapse
+  // by default — the reviewer can't act on them here, so they're pure noise
+  // above the actionable dates. Everything else stays expanded on first
+  // sight, and every section respects a manual toggle afterwards.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {
@@ -145,14 +150,45 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
-  // Prune collapse-keys for date sections that no longer exist. Otherwise a
-  // date the reviewer collapsed and then cleared leaves a stale key behind —
-  // and if a new event later arrives for that same date, its section would
-  // render collapsed (hidden) and could be missed.
+  // Seed defaults once per section key. Tracked in a ref so a user
+  // expand-then-collapse cycle isn't re-collapsed the next time sections
+  // recompute (poll refetch, mutation, etc.).
+  const seededRef = useRef<Set<string>>(new Set());
   useEffect(() => {
+    const today = new Date();
+    const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const toCollapse: string[] = [];
+    for (const s of sections) {
+      if (seededRef.current.has(s.key)) continue;
+      seededRef.current.add(s.key);
+      // Past-dated section AND nothing on it is approvable → default collapsed.
+      // Undated ("No date") sections stay expanded — those need the reviewer's
+      // eye first (data hole to fix).
+      if (s.date && s.date < todayISO && !s.rows.some(isApprovable)) {
+        toCollapse.push(s.key);
+      }
+    }
+    if (toCollapse.length) {
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        for (const k of toCollapse) next.add(k);
+        return next;
+      });
+    }
+  }, [sections]);
+  // Prune collapse-keys AND seeded-keys for date sections that no longer
+  // exist. Without the seeded prune, a date that reappears (deleted then
+  // re-created for the same day) would silently skip its collapse-default
+  // pass. Without the collapsed prune, a stale collapsed key would sit
+  // around and re-collapse a section that returns for other reasons.
+  useEffect(() => {
+    const valid = new Set(sections.map((s) => s.key));
+    // Prune seeded ref in place — refs don't trigger re-render, safe here.
+    for (const k of Array.from(seededRef.current)) {
+      if (!valid.has(k)) seededRef.current.delete(k);
+    }
     setCollapsed((prev) => {
       if (prev.size === 0) return prev;
-      const valid = new Set(sections.map((s) => s.key));
       let changed = false;
       const next = new Set<string>();
       for (const k of prev) { if (valid.has(k)) next.add(k); else changed = true; }
@@ -246,6 +282,7 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
                 lang={lang}
                 t={t}
                 busy={approving.has(e.id)}
+                canApprove={canApprove}
                 onOpen={onOpen}
                 onApprove={onApprove}
               />
@@ -263,18 +300,22 @@ export default function NeedsReviewScreen({ refreshKey, onOpen }: {
 // unchanged from the previous flat list — same chip, same Approve button
 // gating, same open-on-tap semantics.
 function NeedsReviewRow({
-  e, lang, t, busy, onOpen, onApprove,
+  e, lang, t, busy, canApprove, onOpen, onApprove,
 }: {
   e: EventItem;
   lang: "en" | "ta";
   t: (en: string, ta: string) => string;
   busy: boolean;
+  // Role gate — uploaders don't get the Approve pill, only reviewers do.
+  canApprove: boolean;
   onOpen: (e: EventItem) => void;
   onApprove: (e: EventItem) => void;
 }) {
   const chip = statusChip(e, t);
   const meta = typeMeta(e.event_type);
-  const canApprove = isApprovable(e);
+  // Row-level pill also requires the row itself to be in an approvable state
+  // (READY + has date/time + not past + not already approved).
+  const showApproveButton = canApprove && isApprovable(e);
   return (
     // Row-as-div (not button) because we have a nested Approve button and
     // nested <button> is invalid HTML.
@@ -312,7 +353,7 @@ function NeedsReviewRow({
           )}
         </div>
       </div>
-      {canApprove ? (
+      {showApproveButton ? (
         <button
           type="button"
           disabled={busy}

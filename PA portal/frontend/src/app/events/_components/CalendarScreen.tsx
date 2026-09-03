@@ -92,8 +92,10 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
 
   return (
     <div className="flex flex-col">
-      {/* Controls */}
-      <div className="flex items-center gap-2 px-4 pb-2 pt-3">
+      {/* Controls — single flex row that wraps to a second line on narrow
+          screens rather than causing horizontal scroll. Order left→right:
+          mode selector, Today, prev/next arrows. */}
+      <div className="flex flex-wrap items-center gap-2 px-4 pb-2 pt-3">
         <div className="inline-flex items-center rounded-lg border border-[#E1E5EB] bg-[#EAEEF3] p-0.5">
           {(["week", "glance", "month"] as const).map((m) => (
             <button key={m} type="button"
@@ -105,14 +107,15 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
           ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <button onClick={() => navigate(0)}
+          className="h-11 rounded-lg border border-slate-200 bg-white px-4 text-base font-bold text-[#21395B] active:bg-slate-50">
+          {t("Today", "இன்று")}
+        </button>
+
+        <div className="flex items-center gap-1.5">
           <button onClick={() => navigate(-1)} aria-label={t("Previous", "முந்தைய")}
             className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
             <ChevronLeft className="h-6 w-6" strokeWidth={1.75} />
-          </button>
-          <button onClick={() => navigate(0)}
-            className="h-11 rounded-lg border border-slate-200 bg-white px-4 text-base font-bold text-[#21395B] active:bg-slate-50">
-            {t("Today", "இன்று")}
           </button>
           <button onClick={() => navigate(1)} aria-label={t("Next", "அடுத்த")}
             className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">

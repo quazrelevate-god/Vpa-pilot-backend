@@ -61,8 +61,12 @@ function Row({ icon, label, children }: {
   );
 }
 
-export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
+export default function EventPopup({ event, canApprove, onClose, onChanged, onDeleted }: {
   event: EventItem | null;
+  // Reviewer-only capability. When false (uploader-only account) the
+  // "Awaiting confirmation" banner + Approve button are hidden — edit,
+  // delete, and retry remain available to both roles.
+  canApprove: boolean;
   onClose: () => void;
   onChanged: (updated: EventItem) => void;
   onDeleted: () => void;
@@ -313,8 +317,11 @@ export default function EventPopup({ event, onClose, onChanged, onDeleted }: {
               {/* Approve-to-mark-attended banner. Only shown when the row is
                   fully-formed AND today or later — approval is forward-looking
                   under the new semantics; past events can't be marked
-                  attended from the UI (server 409s too). */}
+                  attended from the UI (server 409s too). Hidden entirely for
+                  uploader-only accounts — they never take the Minister-facing
+                  approval action. */}
               {(() => {
+                if (!canApprove) return null;
                 if (event.is_approved) return null;
                 if (event.status !== "READY") return null;
                 // end_time is optional — start alone is enough to approve.

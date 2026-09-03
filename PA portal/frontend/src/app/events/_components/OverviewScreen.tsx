@@ -103,7 +103,7 @@ function prettyName(raw: string): string {
   return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default function OverviewScreen() {
+export default function OverviewScreen({ canApprove }: { canApprove: boolean }) {
   const { t, lang } = useT();
   const [data, setData] = useState<OverviewData | null>(null);
   const [openEvent, setOpenEvent] = useState<EventItem | null>(null);
@@ -249,6 +249,7 @@ export default function OverviewScreen() {
 
       <EventPopup
         event={openEvent}
+        canApprove={canApprove}
         onClose={() => setOpenEvent(null)}
         onChanged={(u) => setOpenEvent(u)}
         onDeleted={() => setOpenEvent(null)}

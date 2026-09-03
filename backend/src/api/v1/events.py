@@ -70,8 +70,10 @@ async def events_logout():
 @router.get("/api/session")
 async def events_session(login: Optional[Login] = Depends(get_events_login)):
     """Return {user, label, roles} for an authenticated events session, else
-    401 (JSON). `roles` drives the PWA nav gating (hide the Needs Review tab
-    for users without event_reviewer)."""
+    401 (JSON). `roles` drives the PWA UI gating — the Needs Review tab is
+    visible to any events role now, but the Approve action inside it is
+    hidden for uploader-only accounts (still enforced server-side in
+    approve_event)."""
     if login is None:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
     return JSONResponse({
@@ -198,11 +200,13 @@ async def list_events(
 @router.get("/api/events/needs-review")
 async def needs_review(
     db: AsyncSession = Depends(get_db),
-    login: Login = Depends(require_events_review),
+    login: Login = Depends(require_events_upload),
 ):
-    """Failed / still-processing / undated events, newest first. Reviewer-only:
-    uploaders never see this list — they can only create rows, not act on the
-    extracted output."""
+    """Failed / still-processing / undated events, newest first. Any events
+    role may read the queue — an uploader who captured a bad photo needs to
+    see the failed row to fix or delete it. Approving is still reviewer-only
+    (see approve_event below); uploaders only see the list and the
+    edit/delete/retry surface around each row."""
     items = await event_service.list_needs_review(db)
     return {"items": [event_service.serialize(e) for e in items], "count": len(items)}
 
@@ -318,10 +322,10 @@ async def update_event(
     event_id: int,
     payload: dict = Body(...),
     db: AsyncSession = Depends(get_db),
-    login: Login = Depends(require_events_review),
+    login: Login = Depends(require_events_upload),
 ):
-    """Reviewer-only: only they can edit the extracted fields (title, venue,
-    date, etc.). Uploaders create rows, reviewers curate them."""
+    """Any events role may edit the extracted fields (title, venue, date,
+    etc.). Approving is the only review-gated action — see approve_event."""
     event = await event_service.update_event(db, event_id, payload, updated_by=login.login_name)
     return event_service.serialize(event)
 
@@ -330,10 +334,10 @@ async def update_event(
 async def retry_event(
     event_id: int,
     db: AsyncSession = Depends(get_db),
-    login: Login = Depends(require_events_review),
+    login: Login = Depends(require_events_upload),
 ):
-    """Reviewer-only: retriggering extraction on a failed row is a review
-    action, not an upload — the row already exists."""
+    """Any events role may retrigger extraction on a failed row — an uploader
+    who captured a blurry photo needs to recover from their own mistake."""
     event = await event_service.retry_event(db, event_id)
     return event_service.serialize(event)
 
@@ -355,11 +359,11 @@ async def approve_event(
 async def delete_event(
     event_id: int,
     db: AsyncSession = Depends(get_db),
-    login: Login = Depends(require_events_review),
+    login: Login = Depends(require_events_upload),
 ):
-    """Reviewer-only: destructive. Uploaders cannot delete anything, not even
-    their own uploads — that stops accidental purge of data the reviewer
-    hasn't triaged yet."""
+    """Any events role may delete an event — an uploader who captured a bad
+    photo needs to remove their own noise from the queue. Approving stays
+    reviewer-gated (see approve_event)."""
     await event_service.delete_event(db, event_id)
     return {"ok": True}
 

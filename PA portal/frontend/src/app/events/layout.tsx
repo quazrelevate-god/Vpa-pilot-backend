@@ -28,7 +28,13 @@ export const viewport: Viewport = {
 export default function EventsLayout({ children }: { children: React.ReactNode }) {
   return (
     <EventsI18nProvider>
-      <div className="relative mx-auto min-h-screen max-w-[560px] bg-[#F3F5F8] text-[17px] text-slate-900 [--nav-h:76px]">
+      {/* Kill the iOS/Android rubber-band on the events segment only.
+          Scoped to /events routes because this style tag lives inside the
+          layout — it mounts when a /events page renders and unmounts when
+          you navigate away. Timelines that need their own scroll (WeekView)
+          already carry `overscroll-contain` on their inner container. */}
+      <style dangerouslySetInnerHTML={{ __html: "html,body{overscroll-behavior:none;}" }} />
+      <div className="relative mx-auto min-h-screen max-w-[560px] overscroll-none bg-[#F3F5F8] text-[17px] text-slate-900 [--nav-h:76px]">
         {children}
       </div>
       <SwRegister />

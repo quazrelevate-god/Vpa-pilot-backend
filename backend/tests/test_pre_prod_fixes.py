@@ -779,3 +779,63 @@ class TestDeptAttachmentActivity:
         assert captured.get("actor") == "dept_a", "actor must be the dept, not default pa_admin"
         assert captured.get("appointment_id") == 1234
         assert captured.get("filename") == "proof.pdf"
+
+
+class TestEventsRoleGates:
+    """USER-REPORTED (events PWA): "show the review area too for the uploader,
+    but hide the review button and that div for the uploader. now uploader
+    can edit and delete the data from review tab too."
+
+    The old gates were reviewer-only across every action on a Needs-Review
+    row (list, edit, retry, delete) — which meant the uploader who took the
+    bad photo couldn't even see their own failed row to fix or delete it,
+    and the PWA silently hid the whole tab. Only Approve stays reviewer-only
+    (that's the confirm-with-Minister action).
+
+    Pins the FastAPI route wiring so a future revert to require_events_review
+    on the list/edit/retry/delete routes stands out immediately.
+    """
+
+    def _deps_of(self, path: str, method: str):
+        # Walk the route table, find (path, method), return the dependency
+        # callables bound to that handler. The role factory returns a nested
+        # _dep(), so identity comparison (not name matching) is what pins the
+        # wiring — the upload dep and the review dep are two different
+        # objects.
+        from src.main import app
+        for route in app.routes:
+            if getattr(route, "path", None) == path and method.upper() in getattr(route, "methods", set()):
+                return [d.call for d in route.dependant.dependencies]
+        raise AssertionError(f"route not found: {method} {path}")
+
+    def test_needs_review_accepts_uploader(self):
+        from src.core.events_auth import require_events_upload, require_events_review
+        deps = self._deps_of("/events/api/events/needs-review", "GET")
+        assert require_events_upload in deps, "needs-review must accept uploader"
+        assert require_events_review not in deps, "needs-review must not be reviewer-only"
+
+    def test_patch_event_accepts_uploader(self):
+        from src.core.events_auth import require_events_upload, require_events_review
+        deps = self._deps_of("/events/api/events/{event_id}", "PATCH")
+        assert require_events_upload in deps, "PATCH /events/{id} must accept uploader"
+        assert require_events_review not in deps, "PATCH /events/{id} must not be reviewer-only"
+
+    def test_delete_event_accepts_uploader(self):
+        from src.core.events_auth import require_events_upload, require_events_review
+        deps = self._deps_of("/events/api/events/{event_id}", "DELETE")
+        assert require_events_upload in deps, "DELETE /events/{id} must accept uploader"
+        assert require_events_review not in deps, "DELETE /events/{id} must not be reviewer-only"
+
+    def test_retry_event_accepts_uploader(self):
+        from src.core.events_auth import require_events_upload, require_events_review
+        deps = self._deps_of("/events/api/events/{event_id}/retry", "POST")
+        assert require_events_upload in deps, "POST retry must accept uploader"
+        assert require_events_review not in deps, "POST retry must not be reviewer-only"
+
+    def test_approve_stays_reviewer_only(self):
+        # The one exception: Approve remains the Minister-facing action, so
+        # POST /approve must NOT relax to uploader.
+        from src.core.events_auth import require_events_review, require_events_upload
+        deps = self._deps_of("/events/api/events/{event_id}/approve", "POST")
+        assert require_events_review in deps, "approve must stay reviewer-only"
+        assert require_events_upload not in deps, "approve must NOT be widened to uploader"

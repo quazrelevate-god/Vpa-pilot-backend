@@ -31,13 +31,14 @@ function Item({ active, icon, label, badge, onClick }: {
   );
 }
 
-export default function BottomNav({ view, reviewCount, canReview, onChange }: {
+export default function BottomNav({ view, reviewCount, showReviewTab, onChange }: {
   view: View;
   reviewCount: number;
-  // Only event_reviewer sees the Needs Review tab. Uploader-only accounts
-  // never see it — the endpoint 403s them anyway, so hiding it also stops a
-  // pointless failing background poll.
-  canReview: boolean;
+  // Both event_uploader and event_reviewer see the Needs Review tab now —
+  // uploaders can fix/delete their own captured rows even though only
+  // reviewers can Approve. The endpoint accepts either role, so the badge
+  // poll is safe for both.
+  showReviewTab: boolean;
   onChange: (v: View) => void;
 }) {
   const { t } = useT();
@@ -48,7 +49,7 @@ export default function BottomNav({ view, reviewCount, canReview, onChange }: {
         label={t("Overview", "மேலோட்டம்")} onClick={() => onChange("overview")} />
       <Item active={view === "calendar"} icon={<CalendarDays strokeWidth={1.75} />}
         label={t("Calendar", "நாட்காட்டி")} onClick={() => onChange("calendar")} />
-      {canReview && (
+      {showReviewTab && (
         <Item active={view === "review"} icon={<Inbox strokeWidth={1.75} />} badge={reviewCount}
           label={t("Needs Review", "சரிபார்க்க")} onClick={() => onChange("review")} />
       )}
