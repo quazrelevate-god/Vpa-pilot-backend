@@ -193,9 +193,16 @@ export default function EventPopup({ event, canApprove, onClose, onChanged, onDe
   return (
     <>
       <Dialog open={!!event} onOpenChange={(o) => { if (!o) onClose(); }}>
-        <DialogContent className="max-h-[88vh] w-[calc(100vw-2rem)] max-w-[520px] overflow-y-auto rounded-2xl p-0">
-          {/* Header */}
-          <div className="border-b border-slate-100 px-4 pb-3 pt-4">
+        {/* Overrides on the shadcn/ui Dialog's built-in close button
+            (rendered as a direct <button> child of DialogContent): make it
+            red, fully opaque, sit above the title in z-order, and use a
+            slightly larger 20px icon. Without these the muted grey X sits
+            underneath long event titles and reads as invisible.  */}
+        <DialogContent className="max-h-[88vh] w-[calc(100vw-2rem)] max-w-[520px] overflow-y-auto rounded-2xl p-0 [&>button]:z-10 [&>button]:!text-red-500 [&>button]:!opacity-100 [&>button>svg]:h-5 [&>button>svg]:w-5">
+          {/* Header — pr-12 reserves the top-right corner for the close X so
+              a long title (multi-line Tamil names, long English event names)
+              can't wrap into the X's tap area and hide it. */}
+          <div className="border-b border-slate-100 pb-3 pl-4 pr-12 pt-4">
             <div className="flex items-start gap-2.5">
               <span className="mt-1.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
               <div className="min-w-0 flex-1">
