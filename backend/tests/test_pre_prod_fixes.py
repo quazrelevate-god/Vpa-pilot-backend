@@ -839,3 +839,109 @@ class TestEventsRoleGates:
         deps = self._deps_of("/events/api/events/{event_id}/approve", "POST")
         assert require_events_review in deps, "approve must stay reviewer-only"
         assert require_events_upload not in deps, "approve must NOT be widened to uploader"
+
+
+class TestGeminiDirectFallbackGate:
+    """USER-REPORTED: production logs showed ~5% of Gemini calls falling from
+    Vertex to the direct api-key path (because fallback models weren't in
+    asia-south1). User asked to force everything onto Vertex until the model
+    list is fixed. The kill-switch is settings.GEMINI_ALLOW_DIRECT_FALLBACK
+    — pin it here so a well-meaning refactor can't quietly remove the guard.
+
+    Uses stub clients (no network) — checks only the branch selection in the
+    bundle's fallback plumbing.
+    """
+
+    def _make_bundle(self, *, vertex_present: bool, allow_direct: bool):
+        from src.services.gemini_client_factory import GeminiClientBundle
+
+        class _StubClient:
+            class _Models:
+                @staticmethod
+                def generate_content(**_):
+                    raise RuntimeError("stub: this test must not reach the network")
+            models = _Models()
+
+        return GeminiClientBundle(
+            direct=_StubClient(),
+            vertex=_StubClient() if vertex_present else None,
+            primary_model="stub",
+            fallback_model="stub",
+            fallback_model2="stub",
+            allow_direct_fallback=allow_direct,
+        )
+
+    def test_strict_mode_refuses_when_no_vertex(self):
+        # Vertex init failed AND fallback disabled → no backend. Refuse loudly
+        # at the first call so ops see the issue instead of silently billing
+        # the direct API (or, if the code ever regresses, hanging).
+        import pytest
+        from google.genai import types
+        bundle = self._make_bundle(vertex_present=False, allow_direct=False)
+        cfg = types.GenerateContentConfig()
+        with pytest.raises(RuntimeError, match="No backend available"):
+            bundle.call_with_fallback(
+                contents=[], config=cfg, response_type=type("R", (), {}),
+                service_name="test",
+            )
+        with pytest.raises(RuntimeError, match="No backend available"):
+            bundle.call_raw_with_fallback(contents=[], config=cfg, service_name="test")
+
+    def test_strict_mode_still_bills_direct_when_vertex_is_the_only_backend(self):
+        # Sanity-check: with fallback ENABLED, vertex=None means direct is
+        # the intended backend (VERTEX_AI_ENABLED=false or Vertex init raised).
+        # The strict guard must NOT trip in that case — it only guards the
+        # combination "no vertex + no direct fallback".
+        from google.genai import types
+        bundle = self._make_bundle(vertex_present=False, allow_direct=True)
+        cfg = types.GenerateContentConfig()
+        # The stub raises when generate_content is actually called; the fact
+        # that we reach that RuntimeError (with 'stub' in the chain) instead
+        # of the "No backend available" refusal is the assertion.
+        try:
+            bundle.call_with_fallback(
+                contents=[], config=cfg, response_type=type("R", (), {}),
+                service_name="test",
+            )
+        except RuntimeError as exc:
+            assert "No backend available" not in str(exc), \
+                "strict guard should NOT trip when direct-fallback is enabled"
+
+
+class TestGeminiFallbackLadder:
+    """USER-REPORTED: the production fallback chain was carrying models that
+    aren't published in asia-south1 (`gemini-2.5-flash-lite`, `gemini-2.0-
+    flash`) — those slots exhausted with 404s on every call and every primary
+    timeout fell through to the direct api-key path.
+
+    Two behavioural contracts pinned here:
+      1. Empty fallback slots must be SKIPPED by the ladder — otherwise a
+         caller would attempt an empty-string model name, which reads bogus
+         in logs and burns a retry budget on nothing.
+      2. Fallback models must not duplicate the primary in `models_to_try`.
+    """
+
+    def test_empty_fallbacks_yield_primary_only(self):
+        from src.services.gemini_client_factory import GeminiClientBundle
+        bundle = GeminiClientBundle(
+            direct=None,  # not called by this test
+            vertex=None,
+            primary_model="gemini-2.5-flash",
+            fallback_model="",
+            fallback_model2="",
+        )
+        # Only the primary should appear — no "" entries, no None entries.
+        assert bundle.models_to_try == ["gemini-2.5-flash"]
+
+    def test_duplicate_fallback_deduped(self):
+        # If a caller accidentally sets fallback == primary, the ladder must
+        # NOT try the same model twice on that pass (the retry loop already
+        # handles same-model retries via _MAX_RETRIES_PER_MODEL).
+        from src.services.gemini_client_factory import GeminiClientBundle
+        bundle = GeminiClientBundle(
+            direct=None, vertex=None,
+            primary_model="gemini-2.5-flash",
+            fallback_model="gemini-2.5-flash",  # dup — must be dropped
+            fallback_model2="gemini-2.5-pro",
+        )
+        assert bundle.models_to_try == ["gemini-2.5-flash", "gemini-2.5-pro"]

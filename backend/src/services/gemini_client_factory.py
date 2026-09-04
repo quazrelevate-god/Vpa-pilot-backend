@@ -8,16 +8,20 @@ the same retry ladder. This module centralises that so each service just
 declares its prompt / schema / model list and delegates the plumbing.
 
 Vertex is preferred (data residency, VPC-SC, IAM audit); the direct Gemini API
-is the automatic fallback so a Vertex outage never blocks citizen work. When
-`VERTEX_AI_ENABLED` is False, or when Vertex init raises (bad creds, wrong
-project, no ADC available), the bundle falls back to direct-only silently
-without ever aborting a request.
+is the fallback so a Vertex outage never blocks citizen work — UNLESS
+`GEMINI_ALLOW_DIRECT_FALLBACK` is False in settings, in which case an
+exhausted Vertex chain raises straight to the caller (used to force all
+requests through Vertex for billing / audit reasons). When `VERTEX_AI_ENABLED`
+is False, or when Vertex init raises (bad creds, wrong project, no ADC
+available), the bundle falls back to direct-only silently without ever
+aborting a request — even with direct-fallback disabled, since the direct
+client is the ONLY backend in that case.
 
 Behavioural parity with the pre-refactor code:
   · Transient markers + retry ladder mirror `summarisation.py`
   · `service_tier` is stripped before calling Vertex (Vertex rejects it)
   · Response is read from `.parsed` first, `.text` fallback second
-  · Per-request `http_options` timeout of 30s injected if caller didn't set one
+  · Per-request `http_options` timeout of 90s injected if caller didn't set one
 """
 from __future__ import annotations
 
@@ -40,13 +44,16 @@ _TRANSIENT_EXC_NAMES = frozenset({
     "ServiceUnavailable", "ResourceExhausted", "TooManyRequests",
     "DeadlineExceeded", "InternalServerError", "GatewayTimeout", "APIError",
 })
-_MAX_RETRIES_PER_MODEL = 2
+_MAX_RETRIES_PER_MODEL = 3
 _BACKOFF_BASE_SECONDS = 0.6
-# 30s per-request cap. The SDK's default is minutes, which under a partial
+# 90s per-request cap. The SDK's default is minutes, which under a partial
 # upstream outage hangs request threads inside the executor pool for so long
-# that other extractions can't get a slot. Callers can override by passing a
-# `config` with their own http_options.
-_DEFAULT_HTTP_TIMEOUT_MS = 30_000
+# that other extractions can't get a slot. Was 30s — bumped to 90s after
+# production logs showed association/petition extractions legitimately
+# taking 20-30s under load and hitting 504 DEADLINE_EXCEEDED on the
+# primary Vertex model. Callers can still override by passing a `config`
+# with their own `http_options`.
+_DEFAULT_HTTP_TIMEOUT_MS = 90_000
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -82,6 +89,12 @@ class GeminiClientBundle:
     fallback_model: Optional[str] = None
     fallback_model2: Optional[str] = None
     service_tier: Optional[types.ServiceTier] = None
+    # When False, the fallback ladder stops at Vertex — an exhausted Vertex
+    # chain raises RuntimeError instead of routing to the direct api-key
+    # backend. Set via settings.GEMINI_ALLOW_DIRECT_FALLBACK. The direct
+    # client is still constructed (and kept for logging / diagnostics), just
+    # never called.
+    allow_direct_fallback: bool = True
     _models_cache: list = field(default_factory=list, repr=False)
 
     @property
@@ -106,11 +119,21 @@ class GeminiClientBundle:
         retries the primary → fallback1 → fallback2 chain with transient-error
         backoff. Raises RuntimeError only when every backend + model + retry
         has been exhausted."""
-        # Inject a 30s per-request timeout if the caller didn't set one. Copy
-        # so retries and cross-backend fallback don't share a mutated config.
+        # Inject the default per-request timeout if the caller didn't set one.
+        # Copy so retries and cross-backend fallback don't share a mutated config.
         if config is not None and getattr(config, "http_options", None) is None:
             config = config.model_copy(
                 update={"http_options": types.HttpOptions(timeout=_DEFAULT_HTTP_TIMEOUT_MS)}
+            )
+
+        # Strict mode: Vertex isn't available AND direct-API fallback is
+        # disabled → no backend to call. Refuse loudly instead of silently
+        # billing the direct API or hanging on a nonexistent backend.
+        if self.vertex is None and not self.allow_direct_fallback:
+            raise RuntimeError(
+                f"{service_name}: Vertex is not initialised and direct-API "
+                f"fallback is disabled (GEMINI_ALLOW_DIRECT_FALLBACK=false). "
+                f"No backend available — fix Vertex creds or re-enable direct."
             )
 
         last_exc: Optional[Exception] = None
@@ -121,6 +144,17 @@ class GeminiClientBundle:
             )
             if result is not None:
                 return (result, "vertex")
+            # Direct-fallback is opt-out via settings.GEMINI_ALLOW_DIRECT_FALLBACK.
+            # When disabled we surface the Vertex failure straight to the caller
+            # instead of quietly burning a direct-API call (data-residency /
+            # billing guarantee). Kept the direct code below intact so flipping
+            # the flag back to True restores fallback without a redeploy.
+            if not self.allow_direct_fallback:
+                raise RuntimeError(
+                    f"{service_name}: every Vertex model exhausted and direct-API "
+                    f"fallback is disabled (GEMINI_ALLOW_DIRECT_FALLBACK=false). "
+                    f"Last error: {last_exc}"
+                ) from last_exc
             logger.warning(
                 "%s: every Vertex model exhausted — falling through to direct Gemini API",
                 service_name,
@@ -221,6 +255,14 @@ class GeminiClientBundle:
             config = config.model_copy(
                 update={"http_options": types.HttpOptions(timeout=_DEFAULT_HTTP_TIMEOUT_MS)}
             )
+        # Strict mode: no Vertex + no direct fallback = no backend at all.
+        # Same rule as call_with_fallback above.
+        if self.vertex is None and not self.allow_direct_fallback:
+            raise RuntimeError(
+                f"{service_name}: Vertex is not initialised and direct-API "
+                f"fallback is disabled (GEMINI_ALLOW_DIRECT_FALLBACK=false). "
+                f"No backend available — fix Vertex creds or re-enable direct."
+            )
         last_exc: Optional[Exception] = None
         if self.vertex is not None:
             resp, last_exc = self._try_backend_raw(
@@ -228,6 +270,16 @@ class GeminiClientBundle:
             )
             if resp is not None:
                 return (resp, "vertex")
+            # Mirror the structured-call path (see call_with_fallback): stop at
+            # Vertex when direct-fallback is disabled instead of billing the
+            # direct API. The raw branch is used by STT — the same guarantee
+            # applies.
+            if not self.allow_direct_fallback:
+                raise RuntimeError(
+                    f"{service_name}: every Vertex model exhausted and direct-API "
+                    f"fallback is disabled (GEMINI_ALLOW_DIRECT_FALLBACK=false). "
+                    f"Last error: {last_exc}"
+                ) from last_exc
             logger.warning(
                 "%s: every Vertex model exhausted — falling through to direct Gemini API",
                 service_name,
@@ -370,4 +422,5 @@ def build_from_settings(
         fallback_model=fallback_model or settings.GEMINI_FALLBACK_MODEL,
         fallback_model2=fallback_model2 or settings.GEMINI_FALLBACK_MODEL2,
         service_tier=tier,
+        allow_direct_fallback=settings.GEMINI_ALLOW_DIRECT_FALLBACK,
     )

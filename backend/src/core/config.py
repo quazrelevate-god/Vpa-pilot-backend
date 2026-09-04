@@ -94,12 +94,26 @@ class Settings(BaseSettings):
     # Loaded from backend/.env; required for any grievance summarisation work.
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_PRIMARY_MODEL: str = "gemini-2.5-flash"
-    GEMINI_FALLBACK_MODEL: str = "gemini-2.5-flash-lite"
-    GEMINI_FALLBACK_MODEL2: str = "gemini-2.0-flash"
+    # Distinct-lineage fallback: `gemini-2.5-pro` IS published in `asia-south1`
+    # and picks up when the flash primary hits a transient 504 / model-not-
+    # found / quota event. Slower + pricier per call, but only invoked as a
+    # spillover so the extra cost is bounded by the flash failure rate.
+    # Fallback2 left empty — a second distinct fallback is overkill given
+    # `_MAX_RETRIES_PER_MODEL=3` already retries each model. Set it here if
+    # ever a third genuinely-distinct model becomes worth carrying.
+    GEMINI_FALLBACK_MODEL: str = "gemini-2.5-pro"
+    GEMINI_FALLBACK_MODEL2: str = ""
     # Service tier for Gemini requests: "priority" | "standard" | "flex".
     # Grievances are time-sensitive, so we default to the priority tier for the
     # fastest, most reliable latency (requires a paid/billed project).
     GEMINI_SERVICE_TIER: str = "priority"
+    # Emergency escape hatch: when False, an exhausted Vertex ladder raises
+    # instead of falling through to the direct api-key path. Used to force
+    # every request onto Vertex (data residency / billing / audit) even at the
+    # cost of failing requests during a Vertex outage. The direct-API code is
+    # kept intact — flip this back to True and the fallback resumes without a
+    # redeploy.
+    GEMINI_ALLOW_DIRECT_FALLBACK: bool = True
 
     # ── Vertex AI (preferred; falls back to the direct Gemini API on error) ──
     # When VERTEX_AI_ENABLED=true, EVERY AI service (petition, proposal,
