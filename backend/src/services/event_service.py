@@ -130,13 +130,14 @@ def _ist_today() -> date:
 def serialize(e: InvitationEvent) -> dict:
     """Wire format for the /events frontend.
 
-    Ships both language variants (title_en/title_ta, venue_en/venue_ta,
-    raw_summary_en/raw_summary_ta) so the EN/TA toggle can render either
-    side without a re-fetch. `note` — PA's manual annotation — takes display
-    priority over the extracted title (same rule as before).
+    Ships both language variants (title_en/title_ta, venue_en/venue_ta)
+    so the EN/TA toggle can render either side without a re-fetch. `note`
+    — PA's manual annotation — takes display priority over the extracted
+    title (same rule as before). The AI-extracted "extra context" field
+    was removed from the UI; the extraction_json blob may still carry it
+    on older rows but nothing surfaces it any more.
     """
     has_photo = e.image_path != _SENTINEL_IMAGE
-    ej = e.extraction_json or {}
     title_en = e.title_en or (e.title if _looks_ascii(e.title) else "") or ""
     title_ta = e.title_ta or (e.title if not _looks_ascii(e.title) else "") or ""
     venue_en = e.venue_en or (e.venue if _looks_ascii(e.venue) else "") or ""
@@ -150,8 +151,6 @@ def serialize(e: InvitationEvent) -> dict:
         "title_ta": title_ta,
         "venue_en": venue_en,
         "venue_ta": venue_ta,
-        "raw_summary_en": ej.get("raw_summary_en") or ej.get("raw_summary") or "",
-        "raw_summary_ta": ej.get("raw_summary_ta") or "",
         # Legacy single-language mirrors — kept so any existing consumer still
         # sees a value. Newer callers should use the _en/_ta pairs above.
         "title": e.title or title_en or title_ta,

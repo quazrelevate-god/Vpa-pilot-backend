@@ -6,7 +6,7 @@ export type {
   EventItem, EventsOverview, EventStatus,
 } from "@/app/events/_lib/types";
 export {
-  EVENT_TYPE_META, typeMeta, pickTitle, pickVenue, displayTitle, pickRawSummary,
+  EVENT_TYPE_META, typeMeta, pickTitle, pickVenue, displayTitle,
 } from "@/app/events/_lib/types";
 
 export type {

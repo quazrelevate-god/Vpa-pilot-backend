@@ -19,7 +19,7 @@ import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { businessMessage } from "@/lib/errors";
 import { api } from "../_lib/api";
 import type { EventItem } from "../_lib/types";
-import { EVENT_TYPE_META, displayTitle, pickRawSummary, pickTitle, pickVenue, typeMeta } from "../_lib/types";
+import { EVENT_TYPE_META, displayTitle, pickTitle, pickVenue, typeMeta } from "../_lib/types";
 import { fmtLongDate, fmtTime } from "../_lib/dates";
 import { useT } from "../_lib/i18n";
 import {
@@ -405,11 +405,6 @@ export default function EventPopup({ event, canApprove, onClose, onChanged, onDe
                     <Row icon={<Pencil strokeWidth={1.75} />} label={t("Extracted title", "எடுக்கப்பட்ட தலைப்பு")}>
                       {pickTitle(event, lang) || <span className="text-slate-400">—</span>}
                     </Row>
-                    {pickRawSummary(event, lang) && (
-                      <Row icon={<StickyNote strokeWidth={1.75} />} label={t("More context", "மேலும் விவரம்")}>
-                        <span className="text-sm leading-relaxed text-slate-600">{pickRawSummary(event, lang)}</span>
-                      </Row>
-                    )}
                     <Row icon={<StickyNote strokeWidth={1.75} />} label={t("Your note (shown on calendar)", "உங்கள் குறிப்பு (நாட்காட்டியில்)")}>
                       {event.note || <span className="text-slate-400">—</span>}
                     </Row>

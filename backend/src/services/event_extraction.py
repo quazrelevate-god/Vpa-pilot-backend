@@ -112,10 +112,10 @@ class InvitationExtraction(BaseModel):
             "    with no school angle). Do not use `other` just because the "
             "    card is unusual — pick the closest bucket by primary act.\n"
             "\n"
-            "The specific event kind (e.g. 'school science exhibition', "
-            "'kumbabhishekam', 'book launch') always goes into "
-            "`raw_summary_en` / `raw_summary_ta` — the enum is only for "
-            "filtering / analytics, not for naming."
+            "The enum is only for filtering / analytics, not for naming — the "
+            "specific event kind (e.g. 'school science exhibition', "
+            "'kumbabhishekam', 'book launch') can be captured in the title "
+            "fields if needed."
         ),
     )
     venue_en: str = Field(
@@ -148,9 +148,8 @@ class InvitationExtraction(BaseModel):
             "புரட்டாசி, ஐப்பசி, கார்த்திகை, மார்கழி, தை, மாசி, பங்குனி), or a "
             "weekday + day. If the year is missing, choose the year that puts "
             "the date closest in the FUTURE relative to today's date given in "
-            "the message. Multi-day functions: return the FIRST day and mention "
-            "the range in raw_summary. EMPTY STRING '' if no date is readable. "
-            "Never invent a date."
+            "the message. Multi-day functions: return the FIRST day. EMPTY "
+            "STRING '' if no date is readable. Never invent a date."
         ),
         max_length=10,
     )
@@ -173,24 +172,12 @@ class InvitationExtraction(BaseModel):
         ),
         max_length=5,
     )
-    raw_summary_en: str = Field(
-        default="",
-        description=(
-            "1-2 plain ENGLISH sentences of anything else useful on the card: "
-            "hosts' names, multi-day schedule, chief guests, reception vs "
-            "muhurtham timings, RSVP contact. Empty string if nothing extra."
-        ),
-        max_length=600,
-    )
-    raw_summary_ta: str = Field(
-        default="",
-        description=(
-            "The same extra context in TAMIL (தமிழ்). Translation of "
-            "raw_summary_en into natural Tamil, keeping personal names in "
-            "Tamil script. Empty string if raw_summary_en is empty."
-        ),
-        max_length=600,
-    )
+    # Note: the earlier `raw_summary_en` / `raw_summary_ta` pair (the AI's
+    # "extra context" summary — hosts, chief guests, multi-day schedule) was
+    # removed from this schema after the UI stopped surfacing it. Downstream
+    # code no longer reads it; the DB's extraction_json blob on pre-removal
+    # rows may still carry the field but nothing displays it.
+
     # ── Populated ONLY for audio (voice-memo) extraction ────────────────────────
     # The photo path leaves these empty — there's nothing to transcribe. For
     # audio inputs the model transcribes the recording verbatim in Tamil AND
@@ -233,7 +220,7 @@ normal — do your best, but never let decoration push you into guessing.
 BILINGUAL OUTPUT — ALWAYS FILL BOTH SCRIPTS
 The calendar has an English/Tamil toggle, so every visible text field
 must exist in BOTH scripts. For each pair (title_en/title_ta,
-venue_en/venue_ta, raw_summary_en/raw_summary_ta):
+venue_en/venue_ta):
   - If the card is printed in Tamil, echo Tamil verbatim into the *_ta
     field AND produce a natural English translation into the *_en field.
   - If the card is printed in English, echo it into *_en AND produce a
@@ -253,8 +240,7 @@ NOT return Tamil calendar month names. If only day and month are printed,
 resolve the year to the nearest future occurrence relative to the "Today's
 date" line provided in the message. If several dates are printed (multiple
 functions — reception, muhurtham, valaikaappu), return the MAIN function's
-date (muhurtham for weddings) and describe the rest in raw_summary_en /
-raw_summary_ta.
+date (muhurtham for weddings).
 
 TIMES: convert Tamil daypart words — காலை (morning), முற்பகல் (forenoon),
 மதியம்/நண்பகல் (noon), பிற்பகல் (afternoon), மாலை (evening), இரவு (night) —
@@ -337,7 +323,7 @@ class InvitationExtractionService:
             "AND provide an English translation into `transcript_en`. Then "
             "extract the same structured event details you would from a "
             "photographed card (title_en/ta, venue_en/ta, event_type, "
-            "event_date, start_time, end_time, raw_summary_en/ta). "
+            "event_date, start_time, end_time). "
             f"Today's date is {date.today().isoformat()}."
         )
         if note:

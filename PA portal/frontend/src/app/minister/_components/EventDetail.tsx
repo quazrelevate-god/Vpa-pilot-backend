@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useT } from "../_lib/i18n";
 import {
-  type EventItem, displayTitle, pickVenue, pickRawSummary, typeMeta,
+  type EventItem, displayTitle, pickVenue, typeMeta,
 } from "../_lib/types";
 
 function fmtDate(iso: string | null, lang: "en" | "ta"): string {
@@ -45,7 +45,6 @@ export default function EventDetail({ e, onClose }: { e: EventItem; onClose: () 
   const tm = typeMeta(e.event_type);
   const title = displayTitle(e, lang);
   const venue = pickVenue(e, lang);
-  const summary = pickRawSummary(e, lang);
   const transcript = lang === "ta" ? (e.transcript_ta || e.transcript_en) : (e.transcript_en || e.transcript_ta);
   const timeLabel = e.start_time ? `${e.start_time}${e.end_time ? ` – ${e.end_time}` : ""}` : null;
 
@@ -136,15 +135,6 @@ export default function EventDetail({ e, onClose }: { e: EventItem; onClose: () 
                 : t("Not marked attending", "குறிக்கப்படவில்லை")}
             />
           </div>
-
-          {summary && (
-            <div className="mt-4 rounded-xl border border-border bg-card p-4">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
-                <FileText className="h-3.5 w-3.5" /> {t("Details", "விவரங்கள்")}
-              </div>
-              <p className="whitespace-pre-line text-[14.5px] leading-relaxed text-foreground/90">{summary}</p>
-            </div>
-          )}
 
           {e.has_audio && transcript && (
             <div className="mt-3 rounded-xl border border-border bg-card p-4">

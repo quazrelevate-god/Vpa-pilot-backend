@@ -20,9 +20,6 @@ export type EventItem = {
   venue: string | null;
   venue_en: string | null;
   venue_ta: string | null;
-  /** Extra context — hosts, RSVP, multi-day schedule. Both scripts populated. */
-  raw_summary_en: string | null;
-  raw_summary_ta: string | null;
   event_type: string | null;
   /** YYYY-MM-DD, or null when no date was detected (needs review). */
   date: string | null;
@@ -79,11 +76,6 @@ export function pickVenue(e: Pick<EventItem, "venue_en" | "venue_ta" | "venue">,
 export function displayTitle(e: Pick<EventItem, "note" | "title_en" | "title_ta" | "title">, lang: "en" | "ta"): string {
   if (e.note) return e.note;
   return pickTitle(e, lang) || "Untitled";
-}
-
-export function pickRawSummary(e: Pick<EventItem, "raw_summary_en" | "raw_summary_ta">, lang: "en" | "ta"): string {
-  if (lang === "ta") return e.raw_summary_ta || e.raw_summary_en || "";
-  return e.raw_summary_en || e.raw_summary_ta || "";
 }
 
 export type EventsFeed = { items: EventItem[] };
