@@ -198,7 +198,7 @@ export default function NeedsReviewScreen({ refreshKey, onOpen, canApprove }: {
 
   if (items === null) {
     return (
-      <div className="grid min-h-[40vh] place-items-center">
+      <div className="grid h-full place-items-center">
         <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
       </div>
     );
@@ -206,7 +206,7 @@ export default function NeedsReviewScreen({ refreshKey, onOpen, canApprove }: {
 
   if (items.length === 0) {
     return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
         <span className="grid h-14 w-14 place-items-center rounded-full bg-[#4F8A5B]/10 text-[#4F8A5B]">
           <Inbox className="h-6 w-6" strokeWidth={1.75} />
         </span>
@@ -219,8 +219,10 @@ export default function NeedsReviewScreen({ refreshKey, onOpen, canApprove }: {
   }
 
   return (
+    // `h-full overflow-y-auto` — the review list scrolls INSIDE the shell.
+    // Header + nav stay pinned; only the list of date-grouped rows moves.
     <div
-      className="pb-4"
+      className="h-full overflow-y-auto overscroll-none pb-4"
       style={{
         paddingLeft:  "clamp(0.75rem, 3.5vw, 1rem)",
         paddingRight: "clamp(0.75rem, 3.5vw, 1rem)",

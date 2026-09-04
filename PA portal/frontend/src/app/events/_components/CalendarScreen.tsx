@@ -104,7 +104,12 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
   }, [events]);
 
   return (
-    <div className="flex flex-col">
+    // Full height of <main>; the two control rows sit at the top as their
+    // natural height, and the active view (WeekView / GlanceView / MonthView)
+    // takes the remaining space via `flex-1 min-h-0` on its own container.
+    // Only the WeekView timeline actually scrolls inside that space — the
+    // shell doesn't scroll at all.
+    <div className="flex h-full min-h-0 flex-col">
       {/* Row 1 — mode selector on the left, Today anchored to the right.
           `ml-auto` on Today keeps it flush right on any width; both items
           wrap to a second line only when there's truly no room. */}
@@ -147,13 +152,19 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
         </div>
       </div>
 
-      {mode === "week" ? (
-        <WeekView anchor={anchor} byDay={byDay} onOpen={onOpen} focusISO={focusISO} todayJumpNonce={todayJumpNonce} />
-      ) : mode === "glance" ? (
-        <GlanceView anchor={anchor} byDay={byDay} onOpen={onOpen} />
-      ) : (
-        <MonthView anchor={anchor} byDay={byDay} onOpen={onOpen} onOpenDay={jumpToDate} />
-      )}
+      {/* Active view fills the remaining space. `min-h-0` is the flex-child
+          escape hatch that lets WeekView's inner `overflow-auto` actually
+          bound against this container's height instead of the content's
+          natural height. */}
+      <div className="min-h-0 flex-1">
+        {mode === "week" ? (
+          <WeekView anchor={anchor} byDay={byDay} onOpen={onOpen} focusISO={focusISO} todayJumpNonce={todayJumpNonce} />
+        ) : mode === "glance" ? (
+          <GlanceView anchor={anchor} byDay={byDay} onOpen={onOpen} />
+        ) : (
+          <MonthView anchor={anchor} byDay={byDay} onOpen={onOpen} onOpenDay={jumpToDate} />
+        )}
+      </div>
 
       <CaptureFab onSent={onSent} />
     </div>

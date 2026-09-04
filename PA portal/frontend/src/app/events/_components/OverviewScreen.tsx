@@ -122,6 +122,7 @@ export default function OverviewScreen({ canApprove }: { canApprove: boolean }) 
   if (!data) {
     return (
       <div
+        className="h-full overflow-y-auto"
         style={{
           padding: "clamp(0.65rem, 3vw, 1rem)",
           display: "flex",
@@ -150,8 +151,11 @@ export default function OverviewScreen({ canApprove }: { canApprove: boolean }) 
   return (
     // Fluid outer padding + section gap — smoothly scales between phone and
     // the 560px cap the events layout wraps around. No breakpoint jumps.
+    // `h-full overflow-y-auto` gives the Overview its own internal scroll
+    // region so the shell (header + nav) stays fixed while long content
+    // (KPI grid + agenda + charts + office totals) scrolls internally.
     <div
-      className="pb-6"
+      className="h-full overflow-y-auto overscroll-none pb-6"
       style={{
         paddingLeft:  "clamp(0.65rem, 3vw, 1rem)",
         paddingRight: "clamp(0.65rem, 3vw, 1rem)",

@@ -44,7 +44,11 @@ export default function BottomNav({ view, reviewCount, showReviewTab, onChange }
   const { t } = useT();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-[calc(var(--nav-h)+env(safe-area-inset-bottom))] max-w-[560px] border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+    // Normal flex-column child (was `fixed`). Sits below <main> and reserves
+    // its own space in the layout, so <main>'s height math = viewport −
+    // header − nav automatically. `shrink-0` so it never gets squeezed
+    // when the timeline pushes for more room.
+    <nav className="flex h-[calc(var(--nav-h)+env(safe-area-inset-bottom))] shrink-0 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
       <Item active={view === "overview"} icon={<LayoutDashboard strokeWidth={1.75} />}
         label={t("Overview", "மேலோட்டம்")} onClick={() => onChange("overview")} />
       <Item active={view === "calendar"} icon={<CalendarDays strokeWidth={1.75} />}

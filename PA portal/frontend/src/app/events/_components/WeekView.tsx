@@ -221,8 +221,14 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO, todayJumpNon
   // the (now non-scrolling) page. Horizontal scroll remains free-form —
   // seven day columns render at their natural COL_W and the container
   // scrolls smoothly through them (no snap paging).
+  //
+  // `h-full` binds the scroll region to the CalendarScreen slot, which is
+  // itself bounded by <main> (viewport − header − nav). Was a hard
+  // `maxHeight: 72vh` — on tall screens that left dead space below the
+  // timeline; on short screens it overflowed the shell and the whole page
+  // scrolled.
   return (
-    <div ref={scrollRef} className="overflow-auto overscroll-none" style={{ maxHeight: "72vh" }}>
+    <div ref={scrollRef} className="h-full overflow-auto overscroll-none">
       <div style={{ minWidth: GUTTER_W + 7 * COL_W }}>
 
         {/* ── Day headers (sticky top; corner cell also sticky left) ────────── */}

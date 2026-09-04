@@ -104,7 +104,13 @@ export default function EventsApp() {
         />
       )}
 
-      <main className="min-h-0 flex-1 overflow-y-auto overscroll-none pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+8px)]">
+      {/* <main> is a fixed-height column between the header and the nav —
+          neither of which can be covered any more. It doesn't scroll itself;
+          each active screen owns its own internal scroll region (the week
+          timeline in CalendarScreen, the list in NeedsReviewScreen, the
+          agenda in OverviewScreen), so only the part that actually needs to
+          move actually moves. */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {view === "overview" && <OverviewScreen canApprove={canApprove} />}
         {view === "calendar" && (
           <CalendarScreen refreshKey={refreshKey} onOpen={setSelected} onSent={bumpRefresh} />
