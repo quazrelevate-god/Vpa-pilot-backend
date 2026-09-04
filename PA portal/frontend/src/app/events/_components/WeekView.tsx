@@ -116,11 +116,16 @@ function EventBlock({ placed, onOpen, lang }: {
   );
 }
 
-export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
+export default function WeekView({ anchor, byDay, onOpen, focusISO, todayJumpNonce }: {
   anchor: Date;
   byDay: Map<string, EventItem[]>;
   onOpen: (e: EventItem) => void;
   focusISO?: string | null;
+  // Bumped by CalendarScreen every time the Today button is pressed.
+  // Distinct from `anchor` so it also fires when the anchor is already on
+  // today's week (today = Sat/Sun and scrolled off-screen — pressing Today
+  // should still yank the view onto today's column).
+  todayJumpNonce?: number;
 }) {
   const { t, lang } = useT();
   const days  = useMemo(() => weekDays(anchor), [anchor]);
@@ -160,9 +165,42 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
       });
     } else if (idx < 0 && !didInitScroll.current) {
       didInitScroll.current = true;
-      scrollRef.current?.scrollTo({ top: (8 * 60 - DAY_START) / 60 * HOUR_H }); // default to 08:00
+      // Default first-open landing: today's column at 08:00. Seven columns
+      // don't all fit in the viewport width, so without a horizontal nudge
+      // the reviewer opens Sunday and has to swipe to reach today. Center
+      // today by nudging its left edge in by half a column so a bit of the
+      // adjacent day peeks through.
+      const todayIdx = days.map(toISO).indexOf(toISO(today));
+      scrollRef.current?.scrollTo({
+        left: todayIdx >= 0 ? Math.max(0, todayIdx * COL_W - COL_W / 2) : 0,
+        top: (8 * 60 - DAY_START) / 60 * HOUR_H,
+      });
     }
+    // `today` intentionally omitted — a `new Date()` on every render would
+    // re-fire this effect endlessly. Today's column is a startup concern only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusISO, days, byDay]);
+
+  // Today-button jump: always yanks the view onto today's column, both axes.
+  // Keyed on the nonce (not on `days`/`anchor`) so weekly prev/next doesn't
+  // trigger it, and so it still fires when today's week is already the
+  // anchor — today = Sat/Sun scrolled off-screen would otherwise leave the
+  // Today button feeling dead.
+  useEffect(() => {
+    if (!todayJumpNonce) return; // 0 = initial mount, handled by the effect above
+    const dayISOs = days.map(toISO);
+    const todayIdx = dayISOs.indexOf(toISO(new Date()));
+    if (todayIdx < 0) return;
+    scrollRef.current?.scrollTo({
+      left: Math.max(0, todayIdx * COL_W - COL_W / 2),
+      top: (8 * 60 - DAY_START) / 60 * HOUR_H,
+    });
+    // Only the nonce should re-fire this — CalendarScreen bumps it exactly
+    // when the Today button is pressed, and the parent's setAnchor(new Date())
+    // that fires alongside guarantees `days` already contains today's ISO by
+    // the time this effect runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayJumpNonce]);
 
   const hours = useMemo(
     () => Array.from({ length: (DAY_END - DAY_START) / 60 }, (_, i) => DAY_START / 60 + i),
@@ -178,8 +216,13 @@ export default function WeekView({ anchor, byDay, onOpen, focusISO }: {
   // in Needs Review so a reviewer can fix them.
   const gutterCell = "sticky left-0 z-20 shrink-0 bg-[#F3F5F8]";
 
+  // `overscroll-none` (was `overscroll-contain`) kills iOS/Android
+  // rubber-band on this scroll container as well as chain-scroll into
+  // the (now non-scrolling) page. Horizontal scroll remains free-form —
+  // seven day columns render at their natural COL_W and the container
+  // scrolls smoothly through them (no snap paging).
   return (
-    <div ref={scrollRef} className="overflow-auto overscroll-contain" style={{ maxHeight: "72vh" }}>
+    <div ref={scrollRef} className="overflow-auto overscroll-none" style={{ maxHeight: "72vh" }}>
       <div style={{ minWidth: GUTTER_W + 7 * COL_W }}>
 
         {/* ── Day headers (sticky top; corner cell also sticky left) ────────── */}

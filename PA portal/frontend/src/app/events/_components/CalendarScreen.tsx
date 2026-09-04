@@ -28,6 +28,11 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
   const [loading, setLoading] = useState(true);
   // Day the week view should scroll into view (set by tapping a month cell).
   const [focusISO, setFocusISO] = useState<string | null>(null);
+  // Bumped every time the Today button is pressed. WeekView listens on this
+  // (not on `anchor`) so pressing Today still snaps to today's column even
+  // when the anchor is already on today's week — the Sat/Sun-scrolled-off
+  // case where the button would otherwise feel dead.
+  const [todayJumpNonce, setTodayJumpNonce] = useState(0);
 
   // Visible span (inclusive) for the current mode + anchor.
   const span = useMemo(() => {
@@ -66,7 +71,15 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
 
   function navigate(dir: -1 | 0 | 1) {
     setFocusISO(null);
-    if (dir === 0) { setAnchor(new Date()); return; }
+    if (dir === 0) {
+      setAnchor(new Date());
+      // Bump nonce so WeekView re-runs its scroll-to-today effect even when
+      // the anchor is already on today's week (React skips the anchor state
+      // update when the two Date values are ===, but pressing Today should
+      // still yank the view onto today's column regardless).
+      setTodayJumpNonce((n) => n + 1);
+      return;
+    }
     setAnchor((a) => mode === "month"
       ? new Date(a.getFullYear(), a.getMonth() + dir, 1)
       : addDays(a, dir * 7));
@@ -92,10 +105,10 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
 
   return (
     <div className="flex flex-col">
-      {/* Controls — single flex row that wraps to a second line on narrow
-          screens rather than causing horizontal scroll. Order left→right:
-          mode selector, Today, prev/next arrows. */}
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-2 pt-3">
+      {/* Row 1 — mode selector on the left, Today anchored to the right.
+          `ml-auto` on Today keeps it flush right on any width; both items
+          wrap to a second line only when there's truly no room. */}
+      <div className="flex flex-wrap items-center gap-3 px-4 pb-2 pt-3">
         <div className="inline-flex items-center rounded-lg border border-[#E1E5EB] bg-[#EAEEF3] p-0.5">
           {(["week", "glance", "month"] as const).map((m) => (
             <button key={m} type="button"
@@ -108,30 +121,34 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
         </div>
 
         <button onClick={() => navigate(0)}
-          className="h-11 rounded-lg border border-slate-200 bg-white px-4 text-base font-bold text-[#21395B] active:bg-slate-50">
+          className="ml-auto h-11 rounded-lg border border-slate-200 bg-white px-4 text-base font-bold text-[#21395B] active:bg-slate-50">
           {t("Today", "இன்று")}
         </button>
+      </div>
 
-        <div className="flex items-center gap-1.5">
+      {/* Row 2 — range label on the left, prev/next arrows anchored to the
+          right. Arrows sit as a right-side group (like Today above) so the
+          two rows read as a consistent "context on the left, action on the
+          right" pair on any screen width. */}
+      <div className="flex flex-wrap items-center gap-3 px-4 pb-2">
+        <div className="font-mono text-base font-semibold tabular-nums text-slate-600">
+          {mode === "month" ? monthLabel(anchor, lang) : weekRangeLabel(anchor, lang)}
+          {loading && <span className="ml-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#21395B] border-t-transparent align-middle" />}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
           <button onClick={() => navigate(-1)} aria-label={t("Previous", "முந்தைய")}
-            className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
-            <ChevronLeft className="h-6 w-6" strokeWidth={1.75} />
+            className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
+            <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
           </button>
           <button onClick={() => navigate(1)} aria-label={t("Next", "அடுத்த")}
-            className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
-            <ChevronRight className="h-6 w-6" strokeWidth={1.75} />
+            className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 active:bg-slate-50">
+            <ChevronRight className="h-5 w-5" strokeWidth={1.75} />
           </button>
         </div>
       </div>
 
-      {/* Range label */}
-      <div className="px-4 pb-2 font-mono text-base font-semibold tabular-nums text-slate-600">
-        {mode === "month" ? monthLabel(anchor, lang) : weekRangeLabel(anchor, lang)}
-        {loading && <span className="ml-2 inline-block h-3 w-3 animate-spin rounded-full border border-slate-300 border-t-transparent align-middle" />}
-      </div>
-
       {mode === "week" ? (
-        <WeekView anchor={anchor} byDay={byDay} onOpen={onOpen} focusISO={focusISO} />
+        <WeekView anchor={anchor} byDay={byDay} onOpen={onOpen} focusISO={focusISO} todayJumpNonce={todayJumpNonce} />
       ) : mode === "glance" ? (
         <GlanceView anchor={anchor} byDay={byDay} onOpen={onOpen} />
       ) : (

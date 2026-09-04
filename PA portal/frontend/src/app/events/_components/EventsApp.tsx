@@ -80,14 +80,20 @@ export default function EventsApp() {
 
   if (!ready) {
     return (
-      <div className="grid min-h-screen place-items-center">
+      <div className="grid min-h-0 flex-1 place-items-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#21395B] border-t-transparent" />
       </div>
     );
   }
 
+  // The wrapper is a flex column sized by its fixed-height parent (see
+  // events/layout.tsx). TopBar + RemindersBanner sit at the top as
+  // non-scrolling blocks; <main> takes the remaining space and scrolls
+  // internally; BottomNav is fixed to the viewport bottom, so it stays out
+  // of the flex flow and out of the scroll region. Result: no page-level
+  // scroll, no elastic bounce, chrome always visible.
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <TopBar onLogout={logout} />
 
       {canApprove && (
@@ -98,7 +104,7 @@ export default function EventsApp() {
         />
       )}
 
-      <main className="flex-1 pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+8px)]">
+      <main className="min-h-0 flex-1 overflow-y-auto overscroll-none pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+8px)]">
         {view === "overview" && <OverviewScreen canApprove={canApprove} />}
         {view === "calendar" && (
           <CalendarScreen refreshKey={refreshKey} onOpen={setSelected} onSent={bumpRefresh} />
