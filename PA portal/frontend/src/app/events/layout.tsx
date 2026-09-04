@@ -28,26 +28,37 @@ export const viewport: Viewport = {
 export default function EventsLayout({ children }: { children: React.ReactNode }) {
   return (
     <EventsI18nProvider>
-      {/* Kill the iOS/Android rubber-band on the events segment only.
-          Scoped to /events routes because this style tag lives inside the
-          layout — it mounts when a /events page renders and unmounts when
-          you navigate away. Defence-in-depth for html/body edge cases. */}
-      <style dangerouslySetInnerHTML={{ __html: "html,body{overscroll-behavior:none;overflow:hidden;}" }} />
-      {/* Anchored to the visual viewport with `fixed inset-0` so the wrapper
-          always fills the actual visible area — including under the iOS
-          home-indicator strip and the notch. `h-[100dvh]` was falling short
-          of the physical viewport on some iOS Safari builds, leaving a gray
-          strip below the bottom nav; `fixed inset-0` is the reliable fix
-          that never leaves that gap. `mx-auto max-w-[560px]` still centers
-          on wide screens because `left:0 right:0` (from inset-0) gives full
-          width, and `mx-auto` recomputes once max-width kicks in. */}
+      {/* iOS Safari's "100vh doesn't match the visible viewport" quirk is
+          the reason the gray strip kept coming back at the bottom of the
+          nav. The reliable fix is to pin html + body to the actual visible
+          height and let the wrapper `h-full` inherit that — every unit down
+          the chain then matches the physical viewport regardless of URL-bar
+          state. Multiple height values give a graceful fallback ladder:
+            · `100%`                  — desktop / older browsers
+            · `-webkit-fill-available` — iOS Safari legacy (pre-dvh)
+            · `100dvh`                 — modern spec, tracks URL bar
+          `overflow:hidden` on html + body kills page-level scroll (only
+          the internal <main> region scrolls). `overscroll-behavior:none`
+          kills iOS/Android rubber-band.  */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            html,body{
+              height:100%;
+              height:-webkit-fill-available;
+              height:100dvh;
+              margin:0;
+              overflow:hidden;
+              overscroll-behavior:none;
+            }
+          `,
+        }}
+      />
       {/* --nav-h drives BottomNav's content height (safe-area padding for
           the iOS home-indicator strip is added on top of this by BottomNav
-          itself). Trimmed from 76 → 60 so the nav no longer looks bottom-
-          heavy on iOS Safari where the safe-area buffer already adds ~34px.
-          60 gives ~5px of breathing room above/below the active pill + label
-          without letting the icons crash into the border. */}
-      <div className="fixed inset-0 mx-auto flex max-w-[560px] flex-col overflow-hidden bg-[#F3F5F8] text-[17px] text-slate-900 [--nav-h:60px]">
+          itself). 60 gives ~5px breathing room above/below the active pill
+          + label without letting the icons crash into the border. */}
+      <div className="mx-auto flex h-full max-w-[560px] flex-col overflow-hidden bg-[#F3F5F8] text-[17px] text-slate-900 [--nav-h:60px]">
         {children}
       </div>
       <SwRegister />

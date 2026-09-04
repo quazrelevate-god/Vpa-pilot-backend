@@ -122,7 +122,7 @@ export default function OverviewScreen({ canApprove }: { canApprove: boolean }) 
   if (!data) {
     return (
       <div
-        className="h-full overflow-y-auto"
+        className="min-h-0 flex-1 overflow-y-auto"
         style={{
           padding: "clamp(0.65rem, 3vw, 1rem)",
           display: "flex",
@@ -151,11 +151,14 @@ export default function OverviewScreen({ canApprove }: { canApprove: boolean }) 
   return (
     // Fluid outer padding + section gap — smoothly scales between phone and
     // the 560px cap the events layout wraps around. No breakpoint jumps.
-    // `h-full overflow-y-auto` gives the Overview its own internal scroll
-    // region so the shell (header + nav) stays fixed while long content
-    // (KPI grid + agenda + charts + office totals) scrolls internally.
+    // `flex-1 min-h-0 overflow-y-auto` — the Overview is a flex child of
+    // <main> (which is `flex flex-col`), so `flex-1 min-h-0` is the safe
+    // way to fill the remaining space and scroll internally. `h-full`
+    // (previous try) can silently collapse to 0 in a flex column chain
+    // when any ancestor's height isn't fully deterministic, which HID the
+    // Hero card + everything below it on some layouts.
     <div
-      className="h-full overflow-y-auto overscroll-none pb-6"
+      className="min-h-0 flex-1 overflow-y-auto overscroll-none pb-6"
       style={{
         paddingLeft:  "clamp(0.65rem, 3vw, 1rem)",
         paddingRight: "clamp(0.65rem, 3vw, 1rem)",

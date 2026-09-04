@@ -104,12 +104,13 @@ export default function CalendarScreen({ refreshKey, onOpen, onSent }: {
   }, [events]);
 
   return (
-    // Full height of <main>; the two control rows sit at the top as their
-    // natural height, and the active view (WeekView / GlanceView / MonthView)
-    // takes the remaining space via `flex-1 min-h-0` on its own container.
-    // Only the WeekView timeline actually scrolls inside that space — the
-    // shell doesn't scroll at all.
-    <div className="flex h-full min-h-0 flex-col">
+    // Fills <main>'s remaining space (as a flex-1 child of the <main> flex
+    // column). The two control rows sit at the top at their natural height,
+    // and the active view (WeekView / GlanceView / MonthView) takes the
+    // remaining space via `flex-1 min-h-0` on its own container. Only the
+    // WeekView timeline actually scrolls inside that space — the shell
+    // doesn't scroll at all.
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — mode selector on the left, Today anchored to the right.
           `ml-auto` on Today keeps it flush right on any width; both items
           wrap to a second line only when there's truly no room. */}
